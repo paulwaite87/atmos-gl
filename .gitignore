@@ -1,9 +1,43 @@
-.venv
-data/*.jpg
-data/*.idx
-data/*.txt
-data/*.bak
-data/*.png
-*.idx
-.env
+# --- Project Specific (Data & Config) ---
+# Ignore all dynamic data files in the data directory
+# but keep the directory itself
+data/*
+!data/.gitkeep
 
+# Ignore environment secrets
+.env
+.env.local
+
+# --- Python ---
+.venv/
+__pycache__/
+*.py[cod]
+*$py.class
+.ipynb_checkpoints/
+.pytest_cache/
+.mypy_cache/
+
+# --- Build & Packaging ---
+dist/
+build/
+*.egg-info/
+
+# --- Docker ---
+.dockerignore
+# (Wait, don't ignore .dockerignore itself, but you might ignore
+# local docker-compose overrides if you use them)
+docker-compose.override.yml
+
+# --- OS & IDEs ---
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*~
+
+# --- Ship Data / XPlanet Artifacts ---
+# This catches any loose index or backup files in the root
+*.idx
+*.bak
+*.tmp
