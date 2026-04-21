@@ -1,0 +1,67 @@
+#!/usr/bin/env python3
+
+import pandas as pd
+import requests
+import io
+import argparse
+import sys
+import os
+import configparser
+
+# Define which section this specific script should look at
+SCRIPT_SECTION = 'quake_markers'
+
+def update_quakes(**kwargs):
+    base_url = kwargs.get('base_url')
+    marker_color = kwargs.get('marker_color', 'red')
+    min_mag = kwargs.get('min_mag', 4.5)
+    workdir = kwargs.get('workdir', '..')
+    outfile = kwargs.get('outfile')
+
+    # Construct the full output path
+    os.makedirs(workdir, exist_ok=True)
+    output_path = os.path.join(os.path.abspath(workdir), outfile)
+
+    try:
+        print(base_url)
+        r = requests.get(base_url, timeout=15)
+        r.raise_for_status()
+
+        df = pd.read_csv(io.StringIO(r.text))
+        
+        # Filter by magnitude
+        df = df[df['mag'] >= min_mag]
+
+        with open(output_path, "w") as f:
+            for _, row in df.iterrows():
+                mag = row['mag']
+                depth = int(row['depth'])
+                f.write(f'{row["latitude"]} {row["longitude"]} "M{mag} {depth}km" color={marker_color} fontsize=15 image={workdir}/symbols/earthquake_symbol.png\n')
+       
+        print(f"Updated {len(df)} quakes (Mag >= {min_mag}) in {output_path}")
+        
+    except Exception as e:
+        print(f"Error fetching quakes: {e}", file=sys.stderr)
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Update Quake Markers")
+    parser.add_argument("--config", required=True, help="Path to main config")
+    args = parser.parse_args()
+    if not os.path.exists(args.config):
+        raise FileNotFoundError(f"Config file not found at {args.config}")
+
+    config = configparser.ConfigParser()
+    config.read(args.config)
+    s = SCRIPT_SECTION
+
+    try:
+        params = {
+            'base_url': config.get(s, 'url'),
+            'marker_color': config.get(s, 'marker_color', fallback='red'),
+            'min_mag': config.getfloat(s, 'min_mag', fallback=4.5),
+            'workdir': config.get('common', 'workdir'),
+            'outfile': config.get(s, 'outfile'),
+        }
+        update_quakes(**params)
+    except Exception as e:
+        print(f"Error: {e}")

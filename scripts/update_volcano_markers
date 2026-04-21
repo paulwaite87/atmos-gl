@@ -1,0 +1,115 @@
+#!/usr/bin/env python3
+
+import argparse
+import json
+import sys
+import urllib.request
+import urllib.error
+import os
+import configparser
+import argparse
+
+# Define which section this specific script should look at
+SCRIPT_SECTION = 'volcano_markers'
+
+def fetch_volcano_data(base_url, page_size=200):
+    """Fetch all records from the NOAA HazEL API."""
+    items = []
+    page = 1
+    
+    try:
+        while True:
+            url = f"{base_url}?page={page}&itemsPerPage={page_size}"
+            req = urllib.request.Request(url, headers={"Accept": "application/json"})
+            
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                batch = data.get("items", [])
+                if not batch:
+                    break
+                items.extend(batch)
+                
+                # If we've collected everything reported by 'count', stop
+                if len(items) >= data.get("count", 0):
+                    break
+                page += 1
+        return items
+    except Exception as e:
+        print(f"Error connecting to NOAA: {e}", file=sys.stderr)
+        return []
+
+def update_volcanoes(**kwargs):
+    base_url = kwargs.get('base_url')
+    marker_color = kwargs.get('marker_color', 'red')
+    workdir = kwargs.get('workdir', '..')
+    outfile = kwargs.get('outfile')
+
+    output_path = os.path.join(os.path.abspath(workdir), outfile)
+    records = fetch_volcano_data(base_url)
+    
+    if not records:
+        return
+
+    count = 0
+    with open(output_path, "w") as f:
+        for r in records:
+            lat = r.get("latitude")
+            lon = r.get("longitude")
+            name = r.get("name", "Unknown")
+
+            # Volcanic Explosivity Index (VEI):
+            # 0	non-explosive
+            # 1 Small
+            # 2	Moderate
+            # 3	Moderate-Large
+            # 4	Large
+            # 5	Very Large
+            # 6	Paroxysmal
+            # 7	Colossal
+            # 8	Super colossal
+
+            # Eruption date codes:
+            # D1 - 1964 or later
+            # D2 - 1900 to 1963
+            # D3 - 1800 to 1899
+            # D4 - 1700 to 1799
+            # D5 - 1500 to 1699
+            # D6 - A.D.1 to 1499
+            # D7 - B.C. (Holocene)
+            # U  - Undated, prob. Holocene
+            # Q  - Quaternary (very fucking old!)
+            # ?  - Uncertain Holocene
+            significant = r.get("significant", False)
+            last_erupt = r.get("timeErupt", "")
+            vei = r.get("vei", 0)
+
+            if significant and last_erupt in ['D1'] and vei >= 4:
+                if lat and lon:
+                    # XPlanet Marker Format
+                    f.write(f'{lat} {lon} "{name}" color={marker_color} image={workdir}/symbols/volcano_symbol.png\n')
+                    count += 1
+    
+    print(f"Updated {count} volcanoes in {output_path}")
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Update Volcano Markers")
+    parser.add_argument("--config", required=True, help="Path to main config")
+    args = parser.parse_args()
+    if not os.path.exists(args.config):
+        raise FileNotFoundError(f"Config file not found at {args.config}")
+
+    config = configparser.ConfigParser()
+    config.read(args.config)
+    s = SCRIPT_SECTION
+
+    try:
+        params = {
+            'base_url': config.get(s, 'url'),
+            'marker_color': config.get(s, 'marker_color', fallback='red'),
+            'workdir': config.get('common', 'workdir'),
+            'outfile': config.get(s, 'outfile'),
+        }
+        update_volcanoes(**params)
+    except Exception as e:
+        print(f"Error: {e}")
+

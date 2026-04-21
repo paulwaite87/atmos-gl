@@ -1,0 +1,178 @@
+#!/usr/bin/env python3
+
+import os
+import configparser
+import warnings
+import logging
+import xarray as xr
+import numpy as np
+import matplotlib.pyplot as plt
+import cartopy.crs as ccrs
+import requests
+import argparse
+from matplotlib import patheffects
+from datetime import datetime, timezone, timedelta
+
+# Silence cfgrib/eccodes warnings
+warnings.filterwarnings("ignore", message=".*missingValue.*")
+logging.getLogger("cfgrib").setLevel(logging.ERROR)
+
+# Define which section this specific script should look at
+SCRIPT_SECTION = 'isobars'
+
+def find_latest_gfs_file(base_url):
+    """Finds the most recent GFS run on NOAA NOMADS."""
+    now = datetime.now(timezone.utc)
+    for day_offset in range(0, 3):
+        date = now - timedelta(days=day_offset)
+        date_str = date.strftime("%Y%m%d")
+        for run in ["18", "12", "06", "00"]:
+            url = f"{base_url}/gfs.{date_str}/{run}/atmos/gfs.t{run}z.pgrb2.0p25.f000"
+            try:
+                r = requests.head(url, timeout=10)
+                if r.status_code == 200:
+                    return url, date_str, run
+            except requests.RequestException:
+                continue
+    raise RuntimeError("Could not find a recent GFS file on NOMADS.")
+
+def get_mslp_byte_range(idx_url):
+    """Parse .idx file to find PRMSL byte range for partial download."""
+    r = requests.get(idx_url, timeout=30)
+    r.raise_for_status()
+    lines = r.text.strip().split('\n')
+    start_byte = None
+    end_byte = None
+
+    for i, line in enumerate(lines):
+        if ':PRMSL:mean sea level:' in line:
+            parts = line.split(':')
+            start_byte = int(parts[1])
+            if i + 1 < len(lines):
+                next_parts = lines[i + 1].split(':')
+                end_byte = int(next_parts[1]) - 1
+            break
+    if start_byte is None:
+        raise RuntimeError("PRMSL field not found in index file.")
+    return start_byte, end_byte
+
+def download_mslp_only(grib_url, grib_path):
+    """Download only the MSLP portion of the GRIB2 file using Range headers."""
+    idx_url = grib_url + ".idx"
+    start_byte, end_byte = get_mslp_byte_range(idx_url)
+    headers = {"Range": f"bytes={start_byte}-{end_byte}" if end_byte else f"bytes={start_byte}-"}
+    
+    r = requests.get(grib_url, headers=headers, timeout=120, stream=True)
+    r.raise_for_status()
+    with open(grib_path, 'wb') as f:
+        for chunk in r.iter_content(chunk_size=1024*1024):
+
+            f.write(chunk)
+
+def plot_isobars(grib_path, isobar_color, label_fontsize, output_path):
+    print("Reading GRIB2 file...")
+    ds = xr.open_dataset(
+        grib_path,
+        engine='cfgrib',
+        backend_kwargs={'filter_by_keys': {'typeOfLevel': 'meanSea', 'shortName': 'prmsl'}}
+    )
+
+    p = ds['prmsl'].values / 100.0
+    lons = ds['longitude'].values
+    lats = ds['latitude'].values
+
+    fig = plt.figure(figsize=(20.48, 10.24), dpi=100)
+    ax = plt.axes(projection=ccrs.PlateCarree())
+    ax.set_global()
+
+    levels = np.arange(940, 1060, 4)
+
+    # Path effect for visibility
+    outline_effect = [patheffects.withStroke(linewidth=2.0, foreground='black', alpha=0.3)]
+
+    # 1. Draw Isobars
+    cs = ax.contour(lons, lats, p, levels=levels, colors=isobar_color, 
+                    linewidths=1.0, alpha=1.0, transform=ccrs.PlateCarree())
+    
+    # Modern & Safe Artist Handling
+    # We apply effects to everything that looks like a LineCollection or PathCollection
+    import matplotlib.collections as mcoll
+    
+    # Check if collections exist (older mpl)
+    if hasattr(cs, 'collections') and cs.collections:
+        for collection in cs.collections:
+            collection.set_path_effects(outline_effect)
+    else:
+        # For modern Matplotlib, we iterate through children carefully
+        for artist in ax.get_children():
+            # Apply to LineCollections (the isobars)
+            if isinstance(artist, mcoll.LineCollection):
+                artist.set_path_effects(outline_effect)
+
+    # 2. Draw Labels
+    contour_labels = plt.clabel(cs, fmt='%d', fontsize=label_fontsize, inline=True, 
+                       colors=isobar_color, inline_spacing=4)
+    if contour_labels:
+        for txt in contour_labels:
+            txt.set_path_effects(outline_effect)
+    
+    # 3. Coastlines
+    coast = ax.coastlines(linewidth=1.0, color=isobar_color, alpha=0.8)
+    # FeatureArtist for coastlines handles effects differently; we apply to its artist
+    coast.set_path_effects(outline_effect)
+
+    # Final formatting
+    ax.set_frame_on(False)
+    ax.set_position([0, 0, 1, 1])
+    ax.patch.set_alpha(0)  
+    fig.patch.set_alpha(0) 
+    plt.axis('off')
+
+    ax.set_extent([-180, 180, -90, 90], crs=ccrs.PlateCarree())
+
+    plt.savefig(output_path, transparent=True, bbox_inches=None, pad_inches=0)
+    plt.close(fig)
+    print(f"Isobar map saved: {output_path}")
+
+def update_isobars(**kwargs):
+    base_url = kwargs.get('base_url')
+    isobar_color = kwargs.get('isobar_color', 'white')
+    font_size = kwargs.get('font_size', 8)
+    workdir = kwargs.get('workdir', '..')
+    outfile = kwargs.get('outfile')
+
+    os.makedirs(workdir, exist_ok=True)
+    grib_path = os.path.join(workdir, "data/gfs_temp.grib2")
+    output_path = os.path.join(workdir, outfile)
+
+    try:
+        grib_url, date_str, run = find_latest_gfs_file(base_url)
+        print(f"Latest GFS run: {date_str} {run}Z")
+        download_mslp_only(grib_url, grib_path)
+        plot_isobars(grib_path, isobar_color, font_size, output_path)
+    finally:
+        if os.path.exists(grib_path):
+            os.remove(grib_path)
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Update Isobars")
+    parser.add_argument("--config", required=True, help="Path to main config")
+    args = parser.parse_args()
+    if not os.path.exists(args.config):
+        raise FileNotFoundError(f"Config file not found at {args.config}")
+
+    config = configparser.ConfigParser()
+    config.read(args.config)
+    s = SCRIPT_SECTION
+
+    try:
+        params = {
+            'base_url': config.get(s, 'url'),
+            'isobar_color': config.get(s, 'isobar_color', fallback='white'),
+            'font_size': config.getint(s, 'min_mag', fallback=8),
+            'workdir': config.get('common', 'workdir'),
+            'outfile': config.get(s, 'outfile'),
+        }
+        update_isobars(**params)
+    except Exception as e:
+        print(f"Error: {e}")

@@ -1,0 +1,69 @@
+#!/usr/bin/env python3
+
+import os
+import argparse
+import urllib.request
+import urllib.error
+from datetime import datetime, timedelta, timezone
+
+def download_clouds(workdir, filename, dimensions):
+    base_url = "https://gibs.earthdata.nasa.gov/wms/epsg4326/best/wms.cgi"
+    output_path = os.path.join(os.path.abspath(workdir), filename)
+    width, height = dimensions.lower().split('x')
+    
+    # Using the modern, timezone-aware UTC datetime
+    # We still subtract 6 hours to ensure NASA's 'Best' layer has data processed
+    try:
+        # Python 3.11+
+        now_utc = datetime.now(timezone.utc)
+    except AttributeError:
+        # Fallback for older Python 3 versions
+        now_utc = datetime.now(timezone.utc)
+
+    date_str = (now_utc - timedelta(hours=6)).strftime("%Y-%m-%d")
+    
+    # 1. Change the Layer to VIIRS
+    params = {
+        "SERVICE": "WMS",
+        "VERSION": "1.1.1",
+        "REQUEST": "GetMap",
+        "LAYERS": "VIIRS_SNPP_CorrectedReflectance_TrueColor", # Better coverage
+        "FORMAT": "image/jpeg",
+        "TRANSPARENT": "FALSE",
+        "STYLES": "",
+        "SRS": "EPSG:4326",
+        "BBOX": "-180,-90,180,90",
+        "WIDTH": width,
+        "HEIGHT": height,
+        # 2. Subtract 24 hours to ensure a complete world composite
+        "TIME": (now_utc - timedelta(days=1)).strftime("%Y-%m-%d")
+    }
+
+    query_string = "&".join([f"{k}={v}" for k, v in params.items()])
+    full_url = f"{base_url}?{query_string}"
+
+    try:
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        print(f"Fetching {dimensions} clouds for {date_str} (UTC)...")
+        
+        req = urllib.request.Request(full_url, headers={'User-Agent': 'XPlanet-Cloud-Fetcher/1.0'})
+        with urllib.request.urlopen(req, timeout=60) as response:
+            with open(output_path, 'wb') as f:
+                f.write(response.read())
+                
+        print(f"Cloud map successfully saved to: {output_path}")
+        
+    except urllib.error.HTTPError as e:
+        print(f"NASA GIBS returned an error: {e.code} {e.reason}")
+    except Exception as e:
+        print(f"Failed to download clouds: {e}")
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Download NASA GIBS Cloud Maps for XPlanet")
+    parser.add_argument("--workdir", default=".", help="Working directory")
+    parser.add_argument("--outfile", default="cloud_map.jpg", help="Output filename")
+    parser.add_argument("--dimensions", default="2048x1024", help="WidthxHeight (default: 2048x1024)")
+    
+    args = parser.parse_args()
+    download_clouds(args.workdir, args.outfile, args.dimensions)
+

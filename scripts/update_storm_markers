@@ -1,0 +1,134 @@
+#!/usr/bin/env python3
+
+import pandas as pd
+import requests
+import argparse
+from bs4 import BeautifulSoup
+import io
+import os
+from datetime import datetime, timezone, timedelta
+import configparser
+
+# Section for the update_map.ini
+SCRIPT_SECTION = 'storm_markers'
+
+def get_active_csv_url(directory_url):
+    """Scrapes the directory for the file containing 'ACTIVE'."""
+    response = requests.get(directory_url)
+    response.raise_for_status()
+    soup = BeautifulSoup(response.text, 'html.parser')
+    for link in soup.find_all('a', href=True):
+        href = link['href']
+        if 'ACTIVE' in href.upper() and href.endswith('.csv'):
+            return directory_url.rstrip('/') + '/' + href
+    raise FileNotFoundError("Could not find ACTIVE CSV file.")
+
+def update_storm_markers(**kwargs):
+    base_url = kwargs.get('base_url')
+    marker_color = kwargs.get('marker_color', 'red')
+    workdir = kwargs.get('workdir', '..')
+    outfile = kwargs.get('outfile')
+    regional_only = kwargs.get('regional_only', False)
+    expiry_days = kwargs.get('expiry_days', 30)
+
+    # Construct the full output path
+    output_path = os.path.join(os.path.abspath(workdir), outfile)
+
+    # Get current time in UTC
+    now = datetime.now(timezone.utc)
+
+    try:
+        active_url = get_active_csv_url(base_url)
+        response = requests.get(active_url)
+        response.raise_for_status()
+
+        df = pd.read_csv(io.StringIO(response.text), header=0, low_memory=False, encoding='utf-8-sig')
+        df = df[df['SID'] != 'SID'] 
+        
+        df['LAT'] = pd.to_numeric(df['LAT'], errors='coerce')
+        df['LON'] = pd.to_numeric(df['LON'], errors='coerce')
+        df['NAME'] = df['NAME'].astype(str).str.strip()
+        
+        # 1. Parse dates and localize to UTC
+        df['ISO_TIME'] = pd.to_datetime(df['ISO_TIME'], format='%Y-%m-%d %H:%M:%S', errors='coerce')
+        df['ISO_TIME'] = df['ISO_TIME'].dt.tz_localize('UTC')
+
+        # 2. THE FRESHNESS FILTER (Global Purge)
+        # Identify the latest timestamp for EVERY unique storm ID
+        # We use SID because names like 'NONAME' can overlap
+        latest_times = df.groupby('SID')['ISO_TIME'].transform('max')
+        
+        # Create a boolean mask: True if the storm's LAST update was within expiry
+        is_fresh = (now - latest_times) <= timedelta(days=expiry_days)
+        
+        # Apply the mask to the entire dataframe (this kills the trail AND the lead)
+        df = df[is_fresh].copy()
+
+        # 3. Geographic Filtering
+        if regional_only:
+            lat_mask = (df['LAT'] <= 0) & (df['LAT'] >= -90)
+            lon_mask = (df['LON'] >= 130) | (df['LON'] <= -120)
+            df = df[lat_mask & lon_mask].copy()
+            mode_text = "Regional (South Pacific)"
+        else:
+            mode_text = "Global"
+
+        if df.empty:
+            print(f"No storms found within expiry window in {mode_text} mode.")
+            with open(output_path, 'w') as f:
+                pass
+            return
+
+        # 4. Sort and identify the lead marker
+        df = df.sort_values(by=['SID', 'ISO_TIME'])
+        df['is_last'] = ~df.duplicated(subset=['SID'], keep='last')
+
+        # 5. Write XPlanet marker file
+        with open(output_path, 'w') as f:
+            for _, row in df.iterrows():
+                if row['is_last'] and pd.notnull(row['ISO_TIME']):
+                    date_str = row['ISO_TIME'].strftime('%d/%m')
+                    label = f'"{row["NAME"]} ({date_str})"'
+                    image = f'image={workdir}/symbols/storm_symbol.png'
+                elif row['is_last']:
+                    label = f'"{row["NAME"]}"'
+                    image = ''
+                else:
+                    # Trail point: no label/image, just a dot
+                    label = '""'
+                    image = ''
+                
+                f.write(f"{row['LAT']} {row['LON']} {label} color={marker_color} {image}\n")
+        
+        print(f"Markers generated for {df['SID'].nunique()} storms (Lats: {df['LAT'].min():.1f} to {df['LAT'].max():.1f})")
+
+    except Exception as e:
+        print(f"Error updating storm markers: {e}")
+
+def main(base_url, marker_color, regional_only, expiry_days, workdir, outfile):
+    os.makedirs(workdir, exist_ok=True)
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Update Storm Markers")
+    parser.add_argument("--config", required=True, help="Path to main config")
+    args = parser.parse_args()
+    if not os.path.exists(args.config):
+        raise FileNotFoundError(f"Config file not found at {args.config}")
+
+    config = configparser.ConfigParser()
+    config.read(args.config)
+    s = SCRIPT_SECTION
+
+    try:
+        params = {
+            'base_url': config.get(s, 'url'),
+            'marker_color': config.get(s, 'marker_color', fallback='red'),
+            'regional_only': config.getboolean(s, 'regional_only', fallback=False),
+            'expiry_days': config.getint(s, 'expiry_days', fallback=7),
+            'workdir': config.get('common', 'workdir'),
+            'outfile': config.get(s, 'outfile'),
+        }
+        update_storm_markers(**params)
+    except Exception as e:
+        print(f"Configuration error: {e}")
+

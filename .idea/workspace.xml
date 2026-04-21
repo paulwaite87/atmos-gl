@@ -1,0 +1,142 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="AutoImportSettings">
+    <option name="autoReloadType" value="ALL" />
+  </component>
+  <component name="ChangeListManager">
+    <list default="true" id="81fb972d-9761-4cee-aed3-ce77125008a1" name="Changes" comment="">
+      <change afterPath="$PROJECT_DIR$/.idea/WorldMap.iml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.idea/inspectionProfiles/profiles_settings.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.idea/modules.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.idea/vcs.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Dockerfile" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/common.sh" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/config/cloudmap.conf" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/config/worldmap.conf" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/config/xplanet.conf" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/data/ship_cache.json" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/do_harvest_shipdata.sh" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/do_map_updates.sh" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/docker-compose.yml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/map_system_daemon.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/pyproject.toml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/resources/city_markers.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/scripts/create_map" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/scripts/harvest_ship_data" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/scripts/update_clouds_nasa" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/scripts/update_isobars" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/scripts/update_quake_markers" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/scripts/update_shipping" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/scripts/update_storm_markers" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/scripts/update_volcano_markers" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tools/check_noaa_gws_layers.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tools/overlay_outlines.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/uv.lock" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/wallpaper_update_daemon.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/wallpaper_updater.sh" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/config/config.conf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/config/dnb_land_ocean_ice.2012.3600x1800.jpg" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/config/specular.png" beforeDir="false" afterPath="$PROJECT_DIR$/resources/coastlines" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/config/world.topo.bathy.200407.3x5400x2700.jpg" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/config/world.topo.bathy.200412.3x5400x2700.jpg" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/images/.gitkeep" beforeDir="false" />
+    </list>
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="EmbeddingIndexingInfo">
+    <option name="cachedIndexableFilesCount" value="77" />
+  </component>
+  <component name="FileTemplateManagerImpl">
+    <option name="RECENT_TEMPLATES">
+      <list>
+        <option value="Dockerfile" />
+        <option value="Python Script" />
+      </list>
+    </option>
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+  </component>
+  <component name="McpProjectServerCommands">
+    <commands />
+    <urls />
+  </component>
+  <component name="ProjectColorInfo">{
+  &quot;associatedIndex&quot;: 3,
+  &quot;fromUser&quot;: false
+}</component>
+  <component name="ProjectId" id="3CbBkE85bGDJc4GU4iwgEB80KVH" />
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.MCP Project settings loaded&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.typescript.service.memoryLimit.init&quot;: &quot;true&quot;,
+    &quot;SHELLCHECK.PATH&quot;: &quot;I do mind&quot;,
+    &quot;codeWithMe.voiceChat.enabledByDefault&quot;: &quot;false&quot;,
+    &quot;com.intellij.ml.llm.matterhorn.ej.ui.settings.DefaultModelSelectionForGA.v1&quot;: &quot;true&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;master&quot;,
+    &quot;junie.onboarding.icon.badge.shown&quot;: &quot;true&quot;,
+    &quot;last_opened_file_path&quot;: &quot;/var/share/dev/WorldMap&quot;,
+    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
+    &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
+    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
+    &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
+    &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
+    &quot;settings.editor.selected.configurable&quot;: &quot;ml.llm.LLMThirdPartyAiProvidersConfigurable&quot;,
+    &quot;to.speed.mode.migration.done&quot;: &quot;true&quot;,
+    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
+  }
+}</component>
+  <component name="RecentsManager">
+    <key name="CopyFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$" />
+    </key>
+    <key name="MoveFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$/tools" />
+      <recent name="$PROJECT_DIR$/resources" />
+      <recent name="$PROJECT_DIR$/scripts" />
+      <recent name="$PROJECT_DIR$" />
+      <recent name="$PROJECT_DIR$/config" />
+    </key>
+  </component>
+  <component name="SharedIndexes">
+    <attachedChunks>
+      <set>
+        <option value="bundled-python-sdk-b63d5a1f7c97-b61e75351b1f-com.jetbrains.pycharm.pro.sharedIndexes.bundled-PY-261.22158.340" />
+      </set>
+    </attachedChunks>
+  </component>
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="Default task">
+      <changelist id="81fb972d-9761-4cee-aed3-ce77125008a1" name="Changes" comment="" />
+      <created>1776644529434</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1776644529434</updated>
+      <workItem from="1776644530525" duration="656000" />
+      <workItem from="1776645202417" duration="1723000" />
+      <workItem from="1776646940703" duration="255000" />
+      <workItem from="1776647219069" duration="34641000" />
+      <workItem from="1776748174059" duration="4926000" />
+    </task>
+    <servers />
+  </component>
+  <component name="TypeScriptGeneratedFilesManager">
+    <option name="version" value="3" />
+  </component>
+  <component name="UnknownFeatures">
+    <option featureType="com.intellij.fileTypeFactory" implementationName="*.conf" />
+  </component>
+</project>

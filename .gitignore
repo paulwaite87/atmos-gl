@@ -1,2 +1,9 @@
-images/*.jpg
-macos_wallpaper_change.scpt
+.venv
+data/*.jpg
+data/*.idx
+data/*.txt
+data/*.bak
+data/*.png
+*.idx
+.env
+

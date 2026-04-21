@@ -1,0 +1,216 @@
+#!/usr/bin/env python3
+
+import asyncio
+import websockets
+import json
+import os
+import configparser
+import argparse
+import sys
+from websockets.exceptions import ConnectionClosed
+
+SCRIPT_SECTION = 'shipping_markers'
+
+def load_cache(cache_path):
+    """Safely loads the ship database with error recovery."""
+    if os.path.exists(cache_path):
+        if os.path.getsize(cache_path) == 0:
+            return {}
+        with open(cache_path, 'r') as f:
+            try:
+                return json.load(f)
+            except json.JSONDecodeError:
+                bak_path = cache_path + ".broken"
+                print(f"Error: {cache_path} is corrupted. Moving to {bak_path}")
+                try: os.rename(cache_path, bak_path)
+                except: pass
+                return {}
+    return {}
+
+def save_cache(cache_path, cache_data):
+    """Saves the database, ensuring directories exist."""
+    os.makedirs(os.path.dirname(cache_path), exist_ok=True)
+    with open(cache_path, 'w') as f:
+        json.dump(cache_data, f, indent=4)
+
+async def get_ais_messages(url, subscription_dict, duration=30):
+    messages = []
+    try:
+        async with websockets.connect(url, close_timeout=1) as websocket:
+            await websocket.send(json.dumps(subscription_dict))
+            start_time = asyncio.get_event_loop().time()
+            while asyncio.get_event_loop().time() - start_time < duration:
+                try:
+                    msg_json = await asyncio.wait_for(websocket.recv(), timeout=1.0)
+                    messages.append(json.loads(msg_json))
+                except asyncio.TimeoutError: continue
+                except ConnectionClosed: break 
+    except Exception as e:
+        if "no close frame" not in str(e):
+            print(f"WebSocket Error: {e}", file=sys.stderr)
+    return messages
+
+async def run_shipping_update(**kwargs):
+    # Unpack kwargs with defaults
+    url = kwargs.get('url')
+    api_key = kwargs.get('api_key')
+    pos_duration = kwargs.get('pos_duration', 30)
+    static_duration = kwargs.get('static_duration', 30)
+    bbox = kwargs.get('bbox')
+    workdir = kwargs.get('workdir')
+    db_rel_path = kwargs.get('db_rel_path')
+    outfile = kwargs.get('outfile')
+    marker_color = kwargs.get('marker_color', 'red')
+    show_ship_names = kwargs.get('show_ship_names', False)
+    filter_types = kwargs.get('filter_types', ["Tanker", "Cargo"])
+
+    full_db_path = os.path.join(workdir, db_rel_path)
+    ship_cache = load_cache(full_db_path)
+    print(f"Loaded {len(ship_cache)} ships. Filtering for: {filter_types}")
+
+    # --- PHASE 1: POSITIONS & TYPE FILTERING ---
+    pos_sub = {"APIKey": api_key, "BoundingBoxes": bbox, "FilterMessageTypes": ["PositionReport"]}    
+    raw_pos_messages = await get_ais_messages(url, pos_sub, duration=pos_duration)
+
+    active_ships = {} 
+    for msg in raw_pos_messages:
+        if msg.get("MessageType") == "PositionReport":
+            meta = msg.get("MetaData", {})
+            pos_data = msg.get("Message", {}).get("PositionReport", {})
+            mmsi = str(meta.get("MMSI", ""))
+            if not mmsi: continue
+
+            sog = pos_data.get("Sog", 0.0)
+            nav_status = pos_data.get("NavigationalStatus", 15)
+            
+            # Movement Filter: Moving and not moored/anchored
+            if (sog > 1.0 and nav_status not in [1, 5]):
+                cached = ship_cache.get(mmsi, {})
+                v_type = cached.get('type', 0)
+                name = (cached.get('name') or meta.get("ShipName", "Unknown")).strip()
+
+                is_tanker = (80 <= v_type <= 89)
+                is_cargo = (70 <= v_type <= 79)
+                
+                # Keyword fallback for Type 0
+                if v_type == 0:
+                    keywords = ['TANKER','OIL','GAS','LPG','LNG','CHEM','PRODUCT']
+                    if any(w in name.upper() for w in keywords):
+                        is_tanker = True
+
+                # Apply Config Filter
+                keep = False
+                if "Tanker" in filter_types and is_tanker: keep = True
+                if "Cargo" in filter_types and is_cargo: keep = True
+
+                if keep:
+                    active_ships[mmsi] = {
+                        'lat': meta.get("latitude"), 
+                        'lon': meta.get("longitude"),
+                        'name': name, 
+                        'type': v_type, 
+                        'sog': sog, 
+                        'is_tanker': is_tanker,
+                        'is_cargo': is_cargo,
+                        'draught': cached.get('draught', 0.0),
+                        'prev_draught': cached.get('prev_draught', 0.0)
+                    }
+
+    # --- PHASE 2: STATIC DISCOVERY & DRAUGHT SHIFTING ---
+    if active_ships:
+        static_sub = {"APIKey": api_key, "BoundingBoxes": bbox, "FilterMessageTypes": ["ShipStaticData"]}
+        raw_static = await get_ais_messages(url, static_sub, duration=static_duration)
+        
+        db_updated = False
+        for msg in raw_static:
+            if msg.get("MessageType") == "ShipStaticData":
+                m = msg.get("MetaData", {})
+                b = msg.get("Message", {}).get("ShipStaticData", {})
+                mid = str(m.get("MMSI") or b.get("UserID", ""))
+                
+                if mid in active_ships:
+                    new_drgt = b.get("MaximumStaticDraught", 0.0)
+                    curr = ship_cache.get(mid, {})
+                    
+                    # Logic: If draught has changed, shift current to previous
+                    prev_drgt = curr.get('draught', 0.0)
+                    if new_drgt != 0.0 and prev_drgt != 0.0 and prev_drgt != new_drgt:
+                        prev_drgt = curr['draught']
+                    
+                    # Update local view for marker generation
+                    active_ships[mid]['draught'] = new_drgt if new_drgt != 0.0 else (active_ships[mid]['draught'] or prev_drgt)
+                    active_ships[mid]['prev_draught'] = prev_drgt
+
+                    # Persist to cache
+                    ship_cache[mid] = {
+                        'name': m.get("ShipName") or b.get("Name") or active_ships[mid]['name'],
+                        'type': b.get("Type") or b.get("VesselType") or active_ships[mid]['type'],
+                        'imo': b.get("ImoNumber", 0) or curr.get('imo', 0),
+                        'callsign': b.get("CallSign", "").strip() or curr.get('callsign', ""),
+                        'dimensions': b.get("Dimension", {}) or curr.get('dimensions', {}),
+                        'draught': active_ships[mid]['draught'],
+                        'prev_draught': active_ships[mid]['prev_draught']
+                    }
+                    db_updated = True
+
+        if db_updated:
+            save_cache(full_db_path, ship_cache)
+
+    # --- PHASE 3: OUTPUT FILE GENERATION ---
+    output_path = os.path.join(workdir, outfile)
+    with open(output_path, "w") as f:
+        for mmsi, info in active_ships.items():
+            clean_name = info['name'].replace('"', '')
+            
+            # Select base symbol
+            if info['is_tanker']:
+                symbol = "ship_tanker.png"
+            else:
+                symbol = "ship_cargo.png"
+            
+            # Check for "Empty" status (current draught < previous draught)
+            d = info['draught']
+            p = info['prev_draught']
+            if d > 0.0 and p > 0.0 and d < p:
+                if info['is_tanker']:
+                    symbol = "ship_tanker_empty.png"
+                else:
+                    symbol = "ship_cargo_empty.png"
+            
+            # Determine color (Highlight fast ships in white)
+            color = "white" if info['sog'] > 20 else marker_color
+            label = clean_name if show_ship_names else ""
+            
+            f.write(f'{info["lat"]} {info["lon"]} "{label}" color={color} image={workdir}/symbols/{symbol}\n')
+    
+    print(f"Success! Processed {len(active_ships)} markers.")
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Update Shipping Markers")
+    parser.add_argument("--config", required=True, help="Path to main config")
+    args = parser.parse_args()
+    if not os.path.exists(args.config):
+        raise FileNotFoundError(f"Config file not found at {args.config}")
+
+    config = configparser.ConfigParser()
+    config.read(args.config)
+    s = SCRIPT_SECTION
+
+    try:
+        # Build params dict using Kwargs methodology
+        params = {
+            'url': config.get(s, 'url'),
+            'api_key': config.get(s, 'api_key'),
+            'pos_duration': config.getint(s, 'listen_for_positional_data'),
+            'static_duration': config.getint(s, 'listen_for_static_data'),
+            'bbox': json.loads(config.get(s, 'bbox')),
+            'workdir': config.get('common', 'workdir'),
+            'outfile': config.get(s, 'outfile'),
+            'marker_color': config.get(s, 'marker_color'),
+            'show_ship_names': config.getboolean(s, 'show_ship_names'),
+            'filter_types': json.loads(config.get(s, 'show_ship_types', fallback='["Tanker", "Cargo"]')),
+            'db_rel_path': config.get('shipping_harvester', 'static_database'),
+        }
+        asyncio.run(run_shipping_update(**params))
+    except Exception as e: 
+        print(f"Error: {e}")
