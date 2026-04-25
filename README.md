@@ -33,12 +33,15 @@ To avoid having to use sudo with every command, ensure your user is added to the
 containers and orchestration seamlessly while working within the repository.
 
 ### Configuration
+Enable your configuration, and an initial ship static data cache as described here.
 
 Configuration files live in the `config` folder. You can change the way the system behaves with those.
 
-The first thing to do is copy `worldmap.conf.example` to your own local `worldmap.conf`.
+The first thing to do is copy `worldmap.conf.example` to your own local `worldmap.conf`. This is the file you will want to tinker with, not `xplanet.conf` (unless you know what you are doing).
 
 This configuration file is in .ini format. Each section controls one of the processes involved in producing the map, and each has an `enabled` flag. If that is set to `False` the process will be skipped. Out of the box, the system will have the shipping processes skipped, because an API Key is needed for that data (easily obtained, see below).
+
+The second thing to do is copy `data/ship_cache.json.example` to `data/ship_cache.json`. This will give you a head start in cacheing ship static data as it has around 18,000 ships logged.
 
 Here are a few notes about a couple of these sections.
 
@@ -46,13 +49,13 @@ Here are a few notes about a couple of these sections.
 First of all edit `config/worldmap.conf` and go down to the `[xplanet]` section. There you should set the `geometry` to match your desktop, and `longitude` such that it centres the map over your location. Of course the latter is optional.
 
 #### Section [daemon]
-At the top you will see a section named `daemon`. The daemon which does all the work is `map_system_daemon.py` and it reads this section to figure out how to operate.
+At the top you will see a section named `daemon`. The daemon which does all the work is `daemon.py` and it reads this section to figure out how to operate.
 
-There are two processes that the daemon executes, the first being the map update which generates a new World map image. This runs from the time specified as `morning` in the config file until the time specified in `evening`.
+There are two processes that the daemon executes, the first being the map builder (`map_bilder.py`) which generates a new World map image. This runs from the time specified as `morning` in the config file until the time specified in `evening`.
 
-The second process is a ship data harvester. The harvester runs from evening through to morning if it is enabled. What this does is listen for ship broadcasting their `ShipStaticData` message. That message tells us some basics about the ship like name, dimensions, type, draught etc. and we store the retrieved information in `data/ship_cache.json`. That file is read by the map updater so it can fill in the details of any ships it discovers in the areas we are looking in (see the bbox setting in the [shipping_markers] section of the config file).
+The second process is a ship data harvester (`tasks/harvester.py`). The harvester runs from evening through to morning if it is enabled. What this does is listen for ship broadcasting their `ShipStaticData` message. That message tells us some basics about the ship like name, dimensions, type, draught etc. and we store the retrieved information in `data/ship_cache.json`. That file is read by the map updater so it can fill in the details of any ships it discovers in the areas we are looking in (see the bbox setting in the [shipping_markers] section of the config file).
 
-There are already around 15,000 ships recorded in that cache file, but there are many more at sea, hence the option to scan the globe for these repeatedly. The static data messages are only broadcast infrequently so we just keep on until we grab most if not all of them.
+There are already around 18,000 ships recorded in that cache file, but there are many more at sea, hence the option to scan the globe for these repeatedly. The static data messages are only broadcast infrequently so we just keep on until we grab most if not all of them.
 
 The two sleep settings are the interval in seconds to sleep after each process has run.
 
@@ -88,7 +91,7 @@ If this all works as it should, you will see the logs showing it is generating w
 
 The resulting World map will be placed in the `data` folder. It will be prefixed with a Unix timestamp (after the previous image is removed). The different image names each time help certain desktops refresh as they should when you update the wallpaper.
 
-Note that the map update will itself indulge in a bit of Ship Static Data harvesting. It does that after listening for   ship position status data, but not for very long. The static data is broadcast much less frequently than position data,so it isn't worth hanging around very long when updating the map. The harvester does a much better job of that.
+Note that the map update will itself indulge in a bit of Ship Static Data harvesting. It does that after listening for ship position status data, but not for very long. The static data is broadcast much less frequently than position data,so it isn't worth hanging around very long when updating the map. The harvester does a much better job of that.
 
 ### Some further notes
 
@@ -98,14 +101,16 @@ Storms will drop off the map when the `expiry_days` (see worldmap.conf [storm_ma
 
 With shipping icons there are basically two variants Cargo (has a 'C' in the middle) and Tankers ('T' in the middle).
 They each have their own default colours, but these can also vary if the system detects their draught (loading) has
-decreased. Shipping with speeds less than 1.0 knots, or flagged as moored are NOT displayed. This avoids masses of ship
+decreased.
+
+Tip: If you have `show_only_active_ships` set to True, shipping with speeds less than 1.0 knots, or flagged as anchored or moored are NOT displayed. This avoids masses of ship
 icons overlaying each other in port locations making a mess on the map.
 
 You can have a look at the symbols used for these and other markers on the map by viewing the images in the `symbols` folder.
 
 ### Running the harvester
 
-As mentioned above this is done by the same daemon. You just have to set `enabled` True in the `[shipping_harvester]` section.
+As mentioned above this is done by the same daemon. You just have to set `enabled` True in the `[shipping_harvester]` section (once you have an API Key).
 
 Set the time you want the harvester to take over from the map updater. The two processes are mutually exclusive, so I have provided `morning` and `evening` times for you.
 
@@ -113,6 +118,6 @@ The map updater runs between morning and evening. The harvester, if enabled, run
 
 ### Wallpaper updates
 
-There is a daemon to run on your local host which should hopefully update your background/wallpaper image. This is `wallpaper_update_daemon.py`. You run it by running `wallpaper_updater.sh` from the command line.
+There is a daemon to run on your local host which should hopefully update your background/wallpaper image. You run it by running `wallpaper_updater.sh` from the command line. This sets up a Virtual Env and runs the updater in a loop until you Ctrl-C out of it.
 
 This daemon is, in theory, able to update for a number of desktops including Gnome, KDE, Linux Mint Cinammon and Mate, and XFCE. However these things being as they are, I expect there will be issues with YOUR particular desktop, so I am open to improvements!

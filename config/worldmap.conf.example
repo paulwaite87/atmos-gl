@@ -8,10 +8,10 @@ workdir = .
 # map updates and shipping data harvesting. Maps are updated
 # morning to evening, and harvesting is done evening through
 # to morning (if enabled below)
-update_sleep = 60
+update_sleep = 120
 harvest_sleep = 1200
 morning = 06:00
-evening = 20:00
+evening = 19:00
 
 [clouds]
 # Clouds sourced via https://clouds.matteason.co.uk/
@@ -100,7 +100,7 @@ enabled = False
 url = wss://stream.aisstream.io/v0/stream
 outfile = data/ship_markers.txt
 # Time to listen for positional data broadcasts
-listen_for_positional_data = 30
+listen_for_positional_data = 240
 # Time to listen for static data broadcasts
 listen_for_static_data = 10
 # Order is important! [Lat South, Lon West, Lat North, Lon East]
@@ -113,6 +113,7 @@ listen_for_static_data = 10
 bbox = [[[-48.0, 140.0], [-10.0, 180.0]], [[22.0, 52.0], [28.0, 62.0]], [[27.0, 30.0], [33.0, 35.0]],[[34.0, -9.0], [37.0, -4.0]], [[48.0, -6.0], [52.0, 3.0]]]
 harvest_bbox = [[[-48.0, 140.0], [-10.0, 180.0]], [[22.0, 52.0], [28.0, 62.0]], [[27.0, 30.0], [33.0, 35.0]],[[34.0, -9.0], [37.0, -4.0]], [[48.0, -6.0], [52.0, 3.0]]]
 marker_color = orange
+label_fontsize = 14
 # Show only these types of vessel. Possible values: ["Tanker", "Cargo"]
 show_ship_types = ["Tanker", "Cargo"]
 # Show names for specific ship types (same options as for show_ship_types)
@@ -128,21 +129,23 @@ url = wss://stream.aisstream.io/v0/stream
 # Ships will be added/updated every time the harvester is run
 static_database = data/ship_cache.json
 # Time to listen for static data broadcasts
-listen_for_static_data = 600
+listen_for_static_data = 1200
 # Where in the World we look for harvesting ship data
-harvest_bbox = [[[-90.0, -180.0], [90.0, 180.0]]]
+bbox = [[[-90.0, -180.0], [90.0, 180.0]]]
 # Split harvest into this many chunks by longitude; this will
 # decrease load on the streaming service and avoid possible
 # throttling and/or blocking by the service
 harvest_chunks = 8
 
 [xplanet]
-# Projection and Geometry
 enabled = True
 projection = rectangular
+# Set to the geometry of your desktop
 geometry = 1920x1200
+# Set to centre over your location
 longitude = 175
-# Output naming
+# This is the final map image we generate
 base_filename = worldmap.jpg
-# Path to the specific xplanet configuration file
+# This file holds standard XPlanet configration settings
+# See https://xplanet.sourceforge.net/README.config
 xplanet_conf = config/xplanet.conf
