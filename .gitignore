@@ -1,6 +1,7 @@
 # --- Project Specific (Data & Config) ---
 # Ignore all files in data/
 data/*
+/config/worldmap.conf
 
 # Ensure the live ship data cache is ignored even if the folder is negated
 data/ship_cache.json

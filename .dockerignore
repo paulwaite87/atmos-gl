@@ -1,6 +1,5 @@
 # Ignore local data (volumes handle this at runtime)
 data/
-scripts/
 config/
 
 # Ignore Python artifacts

@@ -1,25 +1,32 @@
 services:
   worldmap:
     container_name: worldmap
-    image: worldmap
+    image: worldmap:latest
     build:
       context: .
       dockerfile: Dockerfile
     env_file:
       - .env
     environment:
-      # Map the host AIS_API_KEY to the container
       - AIS_API_KEY=${AIS_API_KEY}
       - TZ=Pacific/Auckland
     restart: unless-stopped
     volumes:
+      # Mount the data dir for persistence (maps, json dbs, markers)
       - ./data:/opt/project/data
-      - ./scripts:/opt/project/scripts
       - ./config:/opt/project/config
     healthcheck:
-      # Specifically check for an updated file in the data directory
-      test: [ "CMD", "find", "/opt/project/data/quake_markers.txt", "-mmin", "-30" ]
+      # Check if quake_markers.txt has been touched in the last 120 minutes.
+      # Note: Since the daemon might only run map updates hourly, and the
+      # shift changes to harvesting at night, 30m might be too aggressive
+      # for a general healthcheck. Adjust based on your 'update_sleep'.
+      test: ["CMD", "find", "/opt/project/data/quake_markers.txt", "-mmin", "-120"]
       interval: 5m
       timeout: 10s
       retries: 3
-      start_period: 2m
+      start_period: 5m
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

@@ -4,33 +4,66 @@
     <option name="autoReloadType" value="ALL" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="81fb972d-9761-4cee-aed3-ce77125008a1" name="Changes" comment="Large amount of re-work to the way scripts are organised in particular the configuration methodology is greatly improved. Also brought the CreateCloudMaps and XPlanet execution and configuration into the main configuration file.">
-      <change afterPath="$PROJECT_DIR$/scripts/do_harvest_shipdata" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/scripts/do_map_updates" afterDir="false" />
+    <list default="true" id="81fb972d-9761-4cee-aed3-ce77125008a1" name="Changes" comment="Orchestration scripts now moved to Python.">
+      <change afterPath="$PROJECT_DIR$/src/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/worldmap/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/worldmap/lib/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/worldmap/lib/config.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/worldmap/lib/logging.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/worldmap/map_builder.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/worldmap/tasks/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/worldmap/tasks/clouds.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/worldmap/tasks/clouds_nasa.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/worldmap/tasks/composite.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/worldmap/tasks/isobars.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/worldmap/tasks/quakes.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/worldmap/tasks/renderer.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/worldmap/tasks/shipping.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/worldmap/tasks/storms.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/worldmap/tasks/volcanoes.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.dockerignore" beforeDir="false" afterPath="$PROJECT_DIR$/.dockerignore" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/misc.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/WorldMap.iml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/WorldMap.iml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Dockerfile" beforeDir="false" afterPath="$PROJECT_DIR$/Dockerfile" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/config/worldmap.conf" beforeDir="false" afterPath="$PROJECT_DIR$/config/worldmap.conf" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/do_harvest_shipdata.sh" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/do_harvest_shipdata.sh" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/do_map_updates.sh" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/do_map_updates.sh" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/config/common.conf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/config/worldmap.conf" beforeDir="false" afterPath="$PROJECT_DIR$/config/worldmap.conf.example" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/config/xplanet.conf" beforeDir="false" afterPath="$PROJECT_DIR$/config/xplanet.conf" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/docker-compose.yml" beforeDir="false" afterPath="$PROJECT_DIR$/docker-compose.yml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/map_system_daemon.py" beforeDir="false" afterPath="$PROJECT_DIR$/map_system_daemon.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/map_system_daemon.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/worldmap/daemon.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/pyproject.toml" beforeDir="false" afterPath="$PROJECT_DIR$/pyproject.toml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/scripts/harvest_ship_data" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/harvest_ship_data" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/scripts/run_xplanet" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/run_xplanet" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/scripts/update_clouds" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/update_clouds" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/scripts/update_clouds_nasa" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/update_clouds_nasa" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/scripts/update_composite_image" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/update_composite_image" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/scripts/update_isobars" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/update_isobars" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/scripts/update_quakes" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/update_quakes" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/scripts/update_shipping" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/update_shipping" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/scripts/update_storms" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/update_storms" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/scripts/update_volcanoes" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/update_volcanoes" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/tools/check_noaa_gws_layers.py" beforeDir="false" afterPath="$PROJECT_DIR$/tools/check_noaa_gws_layers.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/tools/overlay_outlines.py" beforeDir="false" afterPath="$PROJECT_DIR$/tools/overlay_outlines.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/uv.lock" beforeDir="false" afterPath="$PROJECT_DIR$/uv.lock" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/wallpaper_update_daemon.py" beforeDir="false" afterPath="$PROJECT_DIR$/wallpaper_update_daemon.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/resources/city_markers.txt" beforeDir="false" afterPath="$PROJECT_DIR$/markers/city_markers.txt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/resources/coastlines.jpg" beforeDir="false" afterPath="$PROJECT_DIR$/images/coastlines.jpg" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/resources/day_map_realistic.jpg" beforeDir="false" afterPath="$PROJECT_DIR$/images/day_map_realistic.jpg" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/resources/day_map_realistic_outline.jpg" beforeDir="false" afterPath="$PROJECT_DIR$/images/day_map_realistic_outline.jpg" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/resources/earthbump.jpg" beforeDir="false" afterPath="$PROJECT_DIR$/images/earthbump.jpg" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/resources/earthspec.jpg" beforeDir="false" afterPath="$PROJECT_DIR$/images/earthspec.jpg" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/resources/night_map_realistic.jpg" beforeDir="false" afterPath="$PROJECT_DIR$/images/night_map_realistic.jpg" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/resources/night_map_realistic_outline.jpg" beforeDir="false" afterPath="$PROJECT_DIR$/images/night_map_realistic_outline.jpg" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/resources/specular.png" beforeDir="false" afterPath="$PROJECT_DIR$/images/specular.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/scripts/do_harvest_shipdata" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/scripts/do_map_updates" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/scripts/harvest_ship_data" beforeDir="false" afterPath="$PROJECT_DIR$/src/worldmap/tasks/harvester.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/scripts/run_xplanet" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/scripts/update_clouds" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/scripts/update_clouds_nasa" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/scripts/update_composite_image" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/scripts/update_isobars" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/scripts/update_quakes" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/scripts/update_shipping" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/scripts/update_storms" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/scripts/update_volcanoes" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/symbols/earthquake_symbol.png" beforeDir="false" afterPath="$PROJECT_DIR$/images/earthquake_symbol.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/symbols/earthquake_symbol_fullsize.png" beforeDir="false" afterPath="$PROJECT_DIR$/images/earthquake_symbol_fullsize.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/symbols/ship_cargo.png" beforeDir="false" afterPath="$PROJECT_DIR$/images/ship_cargo.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/symbols/ship_cargo_empty.png" beforeDir="false" afterPath="$PROJECT_DIR$/images/ship_cargo_empty.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/symbols/ship_tanker.png" beforeDir="false" afterPath="$PROJECT_DIR$/images/ship_tanker.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/symbols/ship_tanker_empty.png" beforeDir="false" afterPath="$PROJECT_DIR$/images/ship_tanker_empty.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/symbols/storm_symbol.png" beforeDir="false" afterPath="$PROJECT_DIR$/images/storm_symbol.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/symbols/volcano_symbol.png" beforeDir="false" afterPath="$PROJECT_DIR$/images/volcano_symbol.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/symbols/volcano_symbol_sm.png" beforeDir="false" afterPath="$PROJECT_DIR$/images/volcano_symbol_sm.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/wallpaper_updater.sh" beforeDir="false" afterPath="$PROJECT_DIR$/wallpaper_updater.sh" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -91,29 +124,31 @@
     "com.intellij.ml.llm.matterhorn.ej.ui.settings.DefaultModelSelectionForGA.v1": "true",
     "git-widget-placeholder": "master",
     "junie.onboarding.icon.badge.shown": "true",
-    "last_opened_file_path": "/var/share/dev/WorldMap/docs",
+    "last_opened_file_path": "/var/share/dev/WorldMap/data",
     "node.js.detected.package.eslint": "true",
     "node.js.detected.package.tslint": "true",
     "node.js.selected.package.eslint": "(autodetect)",
     "node.js.selected.package.tslint": "(autodetect)",
     "nodejs_package_manager_path": "npm",
     "run.code.analysis.last.selected.profile": "aDefault",
-    "settings.editor.selected.configurable": "actions.on.save",
+    "settings.editor.selected.configurable": "Errors",
     "to.speed.mode.migration.done": "true",
     "vue.rearranger.settings.migration": "true"
   }
 }]]></component>
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$/data" />
+      <recent name="$PROJECT_DIR$/config" />
       <recent name="$PROJECT_DIR$/docs" />
       <recent name="$PROJECT_DIR$" />
     </key>
     <key name="MoveFile.RECENT_KEYS">
-      <recent name="$PROJECT_DIR$/scripts" />
-      <recent name="$PROJECT_DIR$" />
-      <recent name="$PROJECT_DIR$/config" />
-      <recent name="$PROJECT_DIR$/tools" />
-      <recent name="$PROJECT_DIR$/resources" />
+      <recent name="$PROJECT_DIR$/markers" />
+      <recent name="$PROJECT_DIR$/images" />
+      <recent name="$PROJECT_DIR$/src/worldmap" />
+      <recent name="$PROJECT_DIR$/src/worldmap/orchestrators" />
+      <recent name="$PROJECT_DIR$/src/worldmap/tasks" />
     </key>
   </component>
   <component name="SharedIndexes">
@@ -134,7 +169,7 @@
       <workItem from="1776645202417" duration="1723000" />
       <workItem from="1776646940703" duration="255000" />
       <workItem from="1776647219069" duration="34641000" />
-      <workItem from="1776748174059" duration="48416000" />
+      <workItem from="1776748174059" duration="85256000" />
     </task>
     <task id="LOCAL-00001" summary="Initial repo commit">
       <option name="closed" value="true" />
@@ -160,7 +195,15 @@
       <option name="project" value="LOCAL" />
       <updated>1776907022836</updated>
     </task>
-    <option name="localTasksCounter" value="4" />
+    <task id="LOCAL-00004" summary="Orchestration scripts now moved to Python.">
+      <option name="closed" value="true" />
+      <created>1776919265324</created>
+      <option name="number" value="00004" />
+      <option name="presentableId" value="LOCAL-00004" />
+      <option name="project" value="LOCAL" />
+      <updated>1776919265324</updated>
+    </task>
+    <option name="localTasksCounter" value="5" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -173,6 +216,7 @@
     <MESSAGE value="Initial repo commit" />
     <MESSAGE value="Modified .gitignore" />
     <MESSAGE value="Large amount of re-work to the way scripts are organised in particular the configuration methodology is greatly improved. Also brought the CreateCloudMaps and XPlanet execution and configuration into the main configuration file." />
-    <option name="LAST_COMMIT_MESSAGE" value="Large amount of re-work to the way scripts are organised in particular the configuration methodology is greatly improved. Also brought the CreateCloudMaps and XPlanet execution and configuration into the main configuration file." />
+    <MESSAGE value="Orchestration scripts now moved to Python." />
+    <option name="LAST_COMMIT_MESSAGE" value="Orchestration scripts now moved to Python." />
   </component>
 </project>

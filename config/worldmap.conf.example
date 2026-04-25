@@ -1,17 +1,17 @@
+# Make a copy of this file as 'worldmap.conf' in the same 'config'
+# folder, and then customize the settings accordingly
 [common]
 workdir = .
 
 [daemon]
-# The World Map System Daemon is the orchestrator for map updates
-# and shipping data harvesting. It runs two main tasks:
-# 1. The map updater will run from morning to evening
-# 2. If enabled, the harvester will run from evening to morning
-map_updater = python3 scripts/do_map_updates --config=config/worldmap.conf
-harvester = python3 scripts/do_harvest_shipdata --config=config/worldmap.conf
-update_sleep = 30
-harvest_sleep = 600
-morning = 09:00
-evening = 23:00
+# The World Map System Daemon is the controlling process for
+# map updates and shipping data harvesting. Maps are updated
+# morning to evening, and harvesting is done evening through
+# to morning (if enabled below)
+update_sleep = 60
+harvest_sleep = 1200
+morning = 06:00
+evening = 20:00
 
 [clouds]
 # Clouds sourced via https://clouds.matteason.co.uk/
@@ -21,6 +21,7 @@ enabled = True
 outfile = data/cloud_map.jpg
 width = 2048
 height = 1024
+force = False
 
 [clouds_nasa]
 # Optional source for clouds; may have issues so prefer the above
@@ -46,6 +47,7 @@ enabled = True
 url = https://www.ncei.noaa.gov/data/international-best-track-archive-for-climate-stewardship-ibtracs/v04r01/access/csv/
 outfile = data/storm_markers.txt
 marker_color=yellow
+marker_symbol = storm_symbol.png
 regional_only=false
 expiry_days=3
 
@@ -54,14 +56,16 @@ enabled = True
 url = https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.csv
 outfile = data/quake_markers.txt
 marker_color = White
+marker_symbol = earthquake_symbol.png
 label_fontsize = 14
 min_mag = 5.0
 
 [volcanoes]
-enabled = True
+enabled = False
 url = https://www.ngdc.noaa.gov/hazel/hazard-service/api/v1/volcanoes
 outfile = data/volcano_markers.txt
 marker_color = DeepPink
+marker_symbol = volcano_symbol.png
 # Show only volcanoes flagged as 'significant'
 significant_only = True
 # Volcanic Explosivity Index (VEI):
@@ -96,9 +100,9 @@ enabled = False
 url = wss://stream.aisstream.io/v0/stream
 outfile = data/ship_markers.txt
 # Time to listen for positional data broadcasts
-listen_for_positional_data = 120
+listen_for_positional_data = 30
 # Time to listen for static data broadcasts
-listen_for_static_data = 30
+listen_for_static_data = 10
 # Order is important! [Lat South, Lon West, Lat North, Lon East]
 # Example Bounding Box List:
 # 1. NZ/Australia (Tasman Sea focused)
@@ -109,9 +113,13 @@ listen_for_static_data = 30
 bbox = [[[-48.0, 140.0], [-10.0, 180.0]], [[22.0, 52.0], [28.0, 62.0]], [[27.0, 30.0], [33.0, 35.0]],[[34.0, -9.0], [37.0, -4.0]], [[48.0, -6.0], [52.0, 3.0]]]
 harvest_bbox = [[[-48.0, 140.0], [-10.0, 180.0]], [[22.0, 52.0], [28.0, 62.0]], [[27.0, 30.0], [33.0, 35.0]],[[34.0, -9.0], [37.0, -4.0]], [[48.0, -6.0], [52.0, 3.0]]]
 marker_color = orange
-show_ship_names = False
-# Possible values: ["Tanker", "Cargo"]
+# Show only these types of vessel. Possible values: ["Tanker", "Cargo"]
 show_ship_types = ["Tanker", "Cargo"]
+# Show names for specific ship types (same options as for show_ship_types)
+# Leave as an empty list to suppress all names
+show_ship_names_for_types = ["Tanker"]
+# Filter out ships with speeds < 1 knots or flagged as moored/anchored
+show_only_active_ships = False
 
 [shipping_harvester]
 enabled = False
@@ -120,7 +128,7 @@ url = wss://stream.aisstream.io/v0/stream
 # Ships will be added/updated every time the harvester is run
 static_database = data/ship_cache.json
 # Time to listen for static data broadcasts
-listen_for_static_data = 300
+listen_for_static_data = 600
 # Where in the World we look for harvesting ship data
 harvest_bbox = [[[-90.0, -180.0], [90.0, 180.0]]]
 # Split harvest into this many chunks by longitude; this will
