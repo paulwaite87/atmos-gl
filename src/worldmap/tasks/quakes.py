@@ -29,7 +29,7 @@ class QuakeUpdater:
         min_mag = self.settings.getfloat("min_mag", fallback=5.0)
 
         # Resolve paths, ensure directory
-        output_path = os.path.join(self.workdir, outfile)
+        output_path = str(os.path.join(self.workdir, outfile))
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
         # If these markers are being skipped we ensure the marker file
@@ -42,7 +42,7 @@ class QuakeUpdater:
             return
 
         try:
-            logger.info(f"Fetching earthquake data from USGS (Min Mag: {min_mag})...")
+            logger.debug(f"Fetching earthquake data from USGS (Min Mag: {min_mag})...")
             r = requests.get(url, timeout=15)
             r.raise_for_status()
 
@@ -64,7 +64,7 @@ class QuakeUpdater:
                     )
                     f.write(line)
 
-            logger.info(
+            logger.debug(
                 f"Successfully wrote {len(filtered_df)} quake markers to: {output_path}"
             )
 

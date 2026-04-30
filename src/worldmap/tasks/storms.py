@@ -60,7 +60,7 @@ class StormUpdater:
         now = datetime.now(timezone.utc)
         try:
             active_url = self._get_active_csv_url()
-            logger.info(f"Downloading storm data from: {active_url}")
+            logger.debug(f"Downloading storm data from: {active_url}")
             response = requests.get(active_url, timeout=30)
             response.raise_for_status()
 
@@ -95,7 +95,7 @@ class StormUpdater:
                 df = df[lat_mask & lon_mask].copy()
 
             if df.empty:
-                logger.info("No active storms found within expiry window.")
+                logger.debug("No active storms found within expiry window.")
                 with open(output_path, "w") as f:
                     pass
                 return

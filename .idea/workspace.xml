@@ -4,16 +4,29 @@
     <option name="autoReloadType" value="ALL" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="81fb972d-9761-4cee-aed3-ce77125008a1" name="Changes" comment="Updated README.md">
-      <change afterPath="$PROJECT_DIR$/config/database/001_create_dbs.sql" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/worldmap/lib/shipping.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/misc.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
+    <list default="true" id="81fb972d-9761-4cee-aed3-ce77125008a1" name="Changes" comment="Interim state. Just before commiting to Postgres/PostGIS upgrade.">
+      <change afterPath="$PROJECT_DIR$/src/worldmap/harvester.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/config/worldmap.conf.example" beforeDir="false" afterPath="$PROJECT_DIR$/config/worldmap.conf.example" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Dockerfile" beforeDir="false" afterPath="$PROJECT_DIR$/Dockerfile" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/config/database/001_create_dbs.sql" beforeDir="false" afterPath="$PROJECT_DIR$/config/database/001_create_dbs.sql" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/docker-compose.yml" beforeDir="false" afterPath="$PROJECT_DIR$/docker-compose.yml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/worldmap/tasks/harvester.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/worldmap/tasks/harvester.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/pyproject.toml" beforeDir="false" afterPath="$PROJECT_DIR$/pyproject.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/worldmap/daemon.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/worldmap/lib/config.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/worldmap/lib/config.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/worldmap/lib/logging.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/worldmap/lib/logging.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/worldmap/lib/shipping.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/worldmap/lib/shipping.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/worldmap/map_builder.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/worldmap/map_builder.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/worldmap/tasks/clouds.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/worldmap/tasks/clouds.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/worldmap/tasks/clouds_nasa.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/worldmap/tasks/clouds_nasa.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/worldmap/tasks/composite.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/worldmap/tasks/composite.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/worldmap/tasks/harvester.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/worldmap/tasks/isobars.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/worldmap/tasks/isobars.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/worldmap/tasks/quakes.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/worldmap/tasks/quakes.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/worldmap/tasks/renderer.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/worldmap/tasks/renderer.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/worldmap/tasks/shipping.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/worldmap/tasks/shipping.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/worldmap/tasks/storms.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/worldmap/tasks/storms.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/worldmap/tasks/volcanoes.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/worldmap/tasks/volcanoes.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/uv.lock" beforeDir="false" afterPath="$PROJECT_DIR$/uv.lock" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -21,7 +34,7 @@
     <option name="LAST_RESOLUTION" value="IGNORE" />
   </component>
   <component name="EmbeddingIndexingInfo">
-    <option name="cachedIndexableFilesCount" value="1181" />
+    <option name="cachedIndexableFilesCount" value="1184" />
   </component>
   <component name="FileTemplateManagerImpl">
     <option name="RECENT_TEMPLATES">
@@ -74,14 +87,14 @@
     "com.intellij.ml.llm.matterhorn.ej.ui.settings.DefaultModelSelectionForGA.v1": "true",
     "git-widget-placeholder": "master",
     "junie.onboarding.icon.badge.shown": "true",
-    "last_opened_file_path": "/var/share/dev/wrms3",
+    "last_opened_file_path": "/var/share/dev/cloudmap",
     "node.js.detected.package.eslint": "true",
     "node.js.detected.package.tslint": "true",
     "node.js.selected.package.eslint": "(autodetect)",
     "node.js.selected.package.tslint": "(autodetect)",
     "nodejs_package_manager_path": "npm",
     "run.code.analysis.last.selected.profile": "aDefault",
-    "settings.editor.selected.configurable": "com.jetbrains.python.black.configuration.BlackFormatterConfigurable",
+    "settings.editor.selected.configurable": "com.jetbrains.python.configuration.PyActiveSdkModuleConfigurable",
     "to.speed.mode.migration.done": "true",
     "vue.rearranger.settings.migration": "true"
   }
@@ -94,11 +107,11 @@
       <recent name="$PROJECT_DIR$" />
     </key>
     <key name="MoveFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$/src/worldmap" />
+      <recent name="$PROJECT_DIR$/src/scripts" />
+      <recent name="$PROJECT_DIR$/tools" />
       <recent name="$PROJECT_DIR$/markers" />
       <recent name="$PROJECT_DIR$/images" />
-      <recent name="$PROJECT_DIR$/src/worldmap" />
-      <recent name="$PROJECT_DIR$/src/worldmap/orchestrators" />
-      <recent name="$PROJECT_DIR$/src/worldmap/tasks" />
     </key>
   </component>
   <component name="SharedIndexes">
@@ -121,7 +134,9 @@
       <workItem from="1776647219069" duration="34641000" />
       <workItem from="1776748174059" duration="103951000" />
       <workItem from="1777324956035" duration="1364000" />
-      <workItem from="1777329733855" duration="8524000" />
+      <workItem from="1777329733855" duration="8724000" />
+      <workItem from="1777338787442" duration="3587000" />
+      <workItem from="1777345023146" duration="52135000" />
     </task>
     <task id="LOCAL-00001" summary="Initial repo commit">
       <option name="closed" value="true" />
@@ -179,7 +194,15 @@
       <option name="project" value="LOCAL" />
       <updated>1777156088482</updated>
     </task>
-    <option name="localTasksCounter" value="8" />
+    <task id="LOCAL-00008" summary="Interim state. Just before commiting to Postgres/PostGIS upgrade.">
+      <option name="closed" value="true" />
+      <created>1777338561899</created>
+      <option name="number" value="00008" />
+      <option name="presentableId" value="LOCAL-00008" />
+      <option name="project" value="LOCAL" />
+      <updated>1777338561899</updated>
+    </task>
+    <option name="localTasksCounter" value="9" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -196,6 +219,7 @@
     <MESSAGE value="Large refactor to rationalise everything into a more standard Python setup." />
     <MESSAGE value="Updated README.md to reflect changes. Updated worldmap.conf.example with latest conf settings, and als the ship cache with latest static data." />
     <MESSAGE value="Updated README.md" />
-    <option name="LAST_COMMIT_MESSAGE" value="Updated README.md" />
+    <MESSAGE value="Interim state. Just before commiting to Postgres/PostGIS upgrade." />
+    <option name="LAST_COMMIT_MESSAGE" value="Interim state. Just before commiting to Postgres/PostGIS upgrade." />
   </component>
 </project>

@@ -51,7 +51,7 @@ class CompositeUpdater:
         try:
             logger.info(f"Compositing {isobar_map} onto {cloud_map}...")
             subprocess.run(cmd, check=True, capture_output=True, text=True)
-            logger.info(f"Successfully created composite: {dest_path}")
+            logger.debug(f"Successfully created composite: {dest_path}")
 
         except subprocess.CalledProcessError as e:
             logger.error(f"ImageMagick composite failed: {e.stderr}")

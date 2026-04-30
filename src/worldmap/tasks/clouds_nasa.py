@@ -60,7 +60,7 @@ class NasaCloudUpdater:
 
         try:
             os.makedirs(os.path.dirname(output_path), exist_ok=True)
-            logger.info(
+            logger.debug(
                 f"Fetching NASA GIBS clouds for {display_date} (Target: {width}x{height})"
             )
 
@@ -72,7 +72,7 @@ class NasaCloudUpdater:
                 with open(output_path, "wb") as f:
                     f.write(response.read())
 
-            logger.info(f"NASA cloud map successfully saved: {output_path}")
+            logger.debug(f"NASA cloud map successfully saved: {output_path}")
 
         except urllib.error.HTTPError as e:
             logger.error(f"NASA GIBS returned an error: {e.code} {e.reason}")

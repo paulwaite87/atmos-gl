@@ -24,6 +24,7 @@ dependencies = [
     "numpy==2.4.4",
     "pandas==3.0.2",
     "pillow==12.2.0",
+    "psycopg2-binary>=2.9.12",
     "pydap==3.5.9",
     "python-dateutil==2.9.0.post0",
     "pytz==2026.1.post1",
@@ -40,10 +41,8 @@ dependencies = [
 ]
 
 [project.scripts]
-# Updated to match the new flat structure in src/worldmap/
-worldmap-daemon = "worldmap.daemon:main"
-worldmap-update = "worldmap.orchestrate:main"
 worldmap-harvest = "worldmap.harvest:main"
+worldmap-builder = "worldmap.map_builder:main"
 
 [build-system]
 requires = ["hatchling"]

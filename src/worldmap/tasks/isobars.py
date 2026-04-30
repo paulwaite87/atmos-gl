@@ -13,9 +13,16 @@ from matplotlib import patheffects
 # Internal imports from your new library
 from worldmap.lib.config import WorldMapConfig
 
-# Silence specific data-processing warnings
+# Silence specific data-processing warnings and talkative libraries
 warnings.filterwarnings("ignore", message=".*missingValue.*")
+
+# This silences the cfgrib high-level logger
 logging.getLogger("cfgrib").setLevel(logging.ERROR)
+
+# This silences the underlying ecCodes bindings
+gribapi_logger = logging.getLogger("gribapi.bindings")
+gribapi_logger.setLevel(logging.ERROR)
+gribapi_logger.propagate = False
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +77,7 @@ class IsobarUpdater:
         start, end = self._get_mslp_range(url)
         headers = {"Range": f"bytes={start}-{end if end else ''}"}
 
-        logger.info("Downloading MSLP data from GFS...")
+        logger.debug("Downloading MSLP data from GFS...")
         r = requests.get(url, headers=headers, timeout=120, stream=True)
         r.raise_for_status()
 
@@ -81,7 +88,7 @@ class IsobarUpdater:
 
     def plot(self):
         """Renders the isobar transparent PNG."""
-        logger.info(f"Plotting isobars to {self.output_path}...")
+        logger.debug(f"Plotting isobars to {self.output_path}...")
         ds = xr.open_dataset(
             self.grib_path,
             engine="cfgrib",
@@ -141,7 +148,7 @@ class IsobarUpdater:
 
         try:
             url, date, run = self.find_latest_gfs_file()
-            logger.info(f"Using GFS run: {date} {run}Z")
+            logger.debug(f"Using GFS run: {date} {run}Z")
             self.download_data(url)
             self.plot()
         finally:

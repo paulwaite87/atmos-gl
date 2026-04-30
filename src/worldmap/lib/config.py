@@ -20,14 +20,14 @@ class WorldMapConfig:
 
         self.config.read(self.config_path)
         self._inject_secrets()
-        logger.info(f"Configuration loaded/refreshed from {self.config_path}")
+        logger.debug(f"Configuration loaded/refreshed from {self.config_path}")
 
     def _inject_secrets(self):
         """Silently injects API keys from environment into the config object."""
         api_key = os.getenv("AIS_API_KEY")
 
         # Sections that require the AIS key
-        for section in ["shipping", "shipping_harvester"]:
+        for section in ["shipping_harvester"]:
             if self.config.has_section(section):
                 if api_key:
                     # Injecting into the parser proxy
@@ -41,6 +41,7 @@ class WorldMapConfig:
                         sys.exit(1)
 
     def get_section(self, section):
-        if section in self.config:
+        if self.config.has_section(section):
             return self.config[section]
-        return {}
+        # Return an empty SectionProxy
+        return self.config['DEFAULT']

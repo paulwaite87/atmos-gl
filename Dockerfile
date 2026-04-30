@@ -1,12 +1,13 @@
 FROM python:3.12-slim
 
-# Prevent Python from writing .pyc files and ensure logs are flushed immediately
-ENV PYTHONUNBUFFERED=1
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV DEBIAN_FRONTEND=noninteractive
+# 1. Environment & Global Settings
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    DEBIAN_FRONTEND=noninteractive \
+    TZ=Pacific/Auckland \
+    LANG=en_NZ.UTF-8
 
-# Install system dependencies
-# Added procps for debugging and ensured ca-certificates are up to date
+# 2. System Dependencies
 RUN apt-get update -y \
     && apt-get -y install --no-install-recommends \
     locales \
@@ -19,38 +20,40 @@ RUN apt-get update -y \
     procps \
     && rm -rf /var/lib/apt/lists/* /var/cache/apt/*
 
-# Set timezone and locale to New Zealand
-ENV TZ=Pacific/Auckland
+# Relax ImageMagick security policy
+RUN sed -i 's/domain="coder" rights="none" pattern="PDF"/domain="coder" rights="read|write" pattern="PDF"/' /etc/ImageMagick-6/policy.xml || true
+
+# Localization
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone \
     && echo 'en_NZ.UTF-8 UTF-8' > /etc/locale.gen && locale-gen en_NZ.UTF-8
-ENV LANG=en_NZ.UTF-8
 
-# Install UV for high-performance dependency management
+# 3. Virtual Environment & Tooling Setup
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
+# Move the venv OUTSIDE the project root so it isn't overwritten by host volumes
+ENV UV_PROJECT_ENVIRONMENT=/opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
 
 WORKDIR /opt/project
 
-# Setup the virtual environment path
-ENV PATH="/opt/project/.venv/bin:$PATH"
-
-# 1. Install dependencies (Layer Caching)
-# We copy only the lockfiles first so that code changes don't trigger a re-download of packages
-COPY pyproject.toml uv.lock ./
+# 4. Dependency Installation (Cached Layer)
+COPY pyproject.toml uv.lock README.md ./
 RUN uv sync --frozen --no-install-project --no-dev
 
-# Copy system content
+# 5. Application Code & Assets
+# Note: Copy the whole src directory to ensure the 'worldmap' package is findable
 COPY src/ ./src/
 COPY images/ ./images/
 COPY markers/ ./markers/
 
-# 3. Finalize installation
-# This installs the project itself into the venv
-RUN uv sync --frozen --no-dev
+# 6. Final Sync & Script Installation
+# This ensures all dependencies are synced AND the
+# scripts (harvester, builder) are created in /opt/venv/bin/
+RUN uv sync --frozen --no-dev --editable \
+    && uv pip install -e .
 
-# 4. Set Python Path
-# This is CRITICAL: it allows 'python -m worldmap.daemon' to find the package inside /src
+# 7. Runtime Configuration
 ENV PYTHONPATH="/opt/project/src"
 
-# The daemon manages the shift between World map rendering and Ship data harvesting.
-# It handles SIGTERM and SIGINT for graceful shutdowns in Docker.
-CMD ["python", "-m", "worldmap.daemon", "--config", "config/worldmap.conf"]
+# Updated fallback command to use the new 'builder' script entry point
+CMD ["builder", "--config", "config/worldmap.conf"]

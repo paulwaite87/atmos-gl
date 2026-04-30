@@ -4,6 +4,8 @@ import re
 import sys
 import logging
 import configparser
+import io
+from contextlib import redirect_stdout, redirect_stderr
 from pathlib import Path
 
 # The third-party library
@@ -61,7 +63,7 @@ class CloudUpdater:
 
             # 2. Create the bridging config file
             temp_conf_path = self._generate_temp_conf(outfile, width, height)
-            logger.info(f"Generated bridge config: {temp_conf_path}")
+            logger.debug(f"Generated bridge config: {temp_conf_path}")
 
             # 3. Prepare sys.argv for the library
             prog_name = re.sub(r"(-script\.pyw|\.exe)?$", "", sys.argv[0])
@@ -71,14 +73,46 @@ class CloudUpdater:
 
             # Append the --forced flag if the config setting is True
             if force:
-                logger.info("Forced update enabled")
+                logger.debug("Forced update enabled")
                 new_args.append("--force")
 
             sys.argv = new_args
 
             # 4. Hand over control to the library
-            logger.info("Starting cloud map generation...")
-            cloudmap_main()
+            logger.debug("Starting cloud map generation...")
+
+            # Target the specific logger
+            external_logger = logging.getLogger("create_map_logger")
+
+            # Clear any existing handlers the library might have added
+            if external_logger.hasHandlers():
+                external_logger.handlers.clear()
+
+            # Set the level to ERROR
+            external_logger.setLevel(logging.ERROR)
+
+            # Disable propagation so it doesn't send messages to your root logger
+            external_logger.propagate = False
+
+            f_stdout = io.StringIO()
+            f_stderr = io.StringIO()
+
+            try:
+                with redirect_stdout(f_stdout), redirect_stderr(f_stderr):
+                    cloudmap_main()
+            finally:
+                # Get the captured text
+                out_content = f_stdout.getvalue()
+                err_content = f_stderr.getvalue()
+
+                # Log or process the output
+                if out_content:
+                    for line in out_content.splitlines():
+                        logger.debug(f"[CloudMap STDOUT] {line}")
+
+                if err_content:
+                    for line in err_content.splitlines():
+                        logger.error(f"[CloudMap STDERR] {line}")
 
         except Exception as e:
             logger.error(f"Error during cloud map generation: {e}")

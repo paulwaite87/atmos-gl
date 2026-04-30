@@ -1,16 +1,20 @@
 services:
-  worldmap:
-    container_name: worldmap
+  # Listens to AIS stream 24/7
+  harvester:
+    container_name: worldmap_harvester
     image: worldmap:latest
     build:
       context: .
       dockerfile: Dockerfile
+    command: python -m worldmap.harvester --config /opt/project/config/worldmap.conf
     env_file:
       - .env
     environment:
+      - LOG_LEVEL=INFO
       - AIS_API_KEY=${AIS_API_KEY}
       - TZ=Pacific/Auckland
-      # Standard Postgres Env Vars
+      - PYTHONPATH=/opt/project/src
+      - PYTHONUNBUFFERED=1
       - PGHOST=worldmap_db
       - PGPORT=5432
       - PGDATABASE=worldmap
@@ -23,13 +27,44 @@ services:
     volumes:
       - ./data:/opt/project/data
       - ./config:/opt/project/config
-    # ... healthcheck and logging stay the same ...
+      - .:/opt/project
+    networks:
+      - wmap
+
+  # Manages map assets and rendering on a schedule
+  builder:
+    container_name: worldmap_builder
+    image: worldmap:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: python -m worldmap.map_builder --config /opt/project/config/worldmap.conf
+    env_file:
+      - .env
+    environment:
+      - LOG_LEVEL=INFO
+      - TZ=Pacific/Auckland
+      - PYTHONPATH=/opt/project/src
+      - PYTHONUNBUFFERED=1
+      - PGHOST=worldmap_db
+      - PGPORT=5432
+      - PGDATABASE=worldmap
+      - PGUSER=wmap
+      - PGPASSWORD=wmap
+    restart: unless-stopped
+    depends_on:
+      worldmap_db:
+        condition: service_healthy
+    volumes:
+      - ./data:/opt/project/data
+      - ./config:/opt/project/config
+      - .:/opt/project
     networks:
       - wmap
 
   worldmap_db:
     container_name: worldmap_db
-    image: postgis/postgis:15-3.3 # Adjusted to a verified tag
+    image: postgis/postgis:15-3.3
     environment:
       POSTGRES_USER: wmap
       POSTGRES_PASSWORD: wmap
@@ -41,11 +76,23 @@ services:
     volumes:
       - wmap-pgdata:/var/lib/postgresql/data
       - ./config/database:/docker-entrypoint-initdb.d
+    command: >
+      postgres
+      -c max_wal_size=512MB
+      -c min_wal_size=128MB
+      -c checkpoint_timeout=15min
+      -c log_checkpoints=off
+      -c log_min_messages=warning
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready"] # Now works automatically with env vars
-      interval: 10s
+      test: ["CMD-SHELL", "pg_isready -U wmap -d worldmap"]
+      interval: 30s
       timeout: 5s
-      retries: 5
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     networks:
       - wmap
 

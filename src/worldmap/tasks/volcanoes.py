@@ -67,13 +67,13 @@ class VolcanoUpdater:
         # If these markers are being skipped we ensure the marker file
         # exists to avoid xplanet warnings, and we truncate existing data
         if not self.settings.getboolean("enabled", fallback=False):
-            logger.info("Shipping task disabled. Skipping.")
+            logger.info("Volcanoes task disabled. Skipping.")
             # Truncate existing markers
             with open(output_path, "w") as _:
                 pass
             return
 
-        logger.info(f"Fetching volcano data (VEI >= {vei_min})...")
+        logger.debug(f"Fetching volcano data (VEI >= {vei_min})...")
         records = self._fetch_volcano_data(base_url)
         if not records:
             logger.warning("No volcano records retrieved.")
@@ -104,7 +104,7 @@ class VolcanoUpdater:
                         )
                         count += 1
 
-        logger.info(f"Successfully wrote {count} volcano markers to: {output_path}")
+        logger.debug(f"Successfully wrote {count} volcano markers to: {output_path}")
 
 
 def main():

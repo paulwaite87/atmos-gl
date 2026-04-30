@@ -27,7 +27,7 @@ class XPlanetRenderer:
             self.workdir,
             self.settings.get("xplanet_conf", fallback="config/xplanet.conf"),
         )
-        logger.info(f"XPlanet conf: {x_conf}")
+        logger.debug(f"XPlanet conf: {x_conf}")
         base_name = self.settings.get("base_filename", fallback="worldmap.jpg")
 
         # Rendering parameters
@@ -67,10 +67,10 @@ class XPlanetRenderer:
             "-num_times",
             "1",
         ]
-        logger.info(f"Running XPlanet command: {' '.join(cmd)}")
+        logger.debug(f"Running XPlanet command: {' '.join(cmd)}")
 
         try:
-            logger.info(f"Rendering {geometry} map via XPlanet...")
+            logger.debug(f"Rendering {geometry} map via XPlanet...")
             # We use a timeout to ensure XPlanet doesn't hang the whole pipeline
             result = subprocess.run(
                 cmd,
@@ -84,7 +84,7 @@ class XPlanetRenderer:
             if result.stderr:
                 logger.warning(f"XPlanet Warnings: {result.stderr}")
 
-            logger.info(f"Final map generated: {output_path}")
+            logger.debug(f"Final map generated: {output_path}")
         except subprocess.TimeoutExpired:
             logger.error("XPlanet timed out after 60 seconds.")
         except subprocess.CalledProcessError as e:
