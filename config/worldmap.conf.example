@@ -8,10 +8,9 @@ workdir = .
 # map updates and shipping data harvesting. Maps are updated
 # morning to evening, and harvesting is done evening through
 # to morning (if enabled below)
-update_sleep = 120
-harvest_sleep = 1200
+sleep = 300
 morning = 06:00
-evening = 21:00
+evening = 10:00
 
 [clouds]
 # Clouds sourced via https://clouds.matteason.co.uk/
@@ -22,6 +21,7 @@ outfile = data/cloud_map.jpg
 width = 2048
 height = 1024
 force = False
+runs_per_day = 8
 
 [clouds_nasa]
 # Optional source for clouds; use as backup for the above
@@ -30,6 +30,7 @@ url = https://gibs.earthdata.nasa.gov/wms/epsg4326/best/wms.cgi
 outfile = data/cloud_map.jpg
 width = 2048
 height = 1024
+runs_per_day = 8
 
 [isobars]
 enabled = True
@@ -41,15 +42,17 @@ label_fontsize = 10
 label_outline = True
 # This is where we put the isobars image overlaid onto the clouds image
 composite_outfile = data/cloud_map_with_isobars.jpg
+runs_per_day = 4
 
 [storms]
-enabled = True
+enabled = False
 url = https://www.ncei.noaa.gov/data/international-best-track-archive-for-climate-stewardship-ibtracs/v04r01/access/csv/
 outfile = data/storm_markers.txt
 marker_color=yellow
 marker_symbol = storm_symbol.png
 regional_only=false
 expiry_days=3
+runs_per_day = 8
 
 [quakes]
 enabled = True
@@ -59,6 +62,7 @@ marker_color = White
 marker_symbol = earthquake_symbol.png
 label_fontsize = 14
 min_mag = 5.0
+runs_per_day = 4
 
 [volcanoes]
 enabled = False
@@ -93,51 +97,46 @@ vei_min = 5
 # ?  - Uncertain Holocene
 # Show only volcanoes with on of this list of date codes
 erupt_date_codes = ["D1"]
+runs_per_day = 1
 
 [shipping]
 enabled = False
 # Needs an API Key in your .env file; see https://aisstream.io/documentation
 url = wss://stream.aisstream.io/v0/stream
 outfile = data/ship_markers.txt
-# Time to listen for positional data broadcasts
-listen_for_positional_data = 240
-# Order is important! [Lat South, Lon West, Lat North, Lon East]
-# Example Bounding Box List:
-# 1. NZ/Australia (Tasman Sea focused)
-# 2. Strait of Hormuz (Entrance to Persian Gulf)
-# 3. Suez Canal (North & South entrances)
-# 4. Strait of Gibraltar (Entrance to Mediterranean)
-# 5. English Channel (Dover Strait focused)
-bbox = [[[-48.0, 140.0], [-10.0, 180.0]], [[22.0, 52.0], [28.0, 62.0]], [[27.0, 30.0], [33.0, 35.0]],[[34.0, -9.0], [37.0, -4.0]], [[48.0, -6.0], [52.0, 3.0]]]
-harvest_bbox = [[[-48.0, 140.0], [-10.0, 180.0]], [[22.0, 52.0], [28.0, 62.0]], [[27.0, 30.0], [33.0, 35.0]],[[34.0, -9.0], [37.0, -4.0]], [[48.0, -6.0], [52.0, 3.0]]]
 marker_color = orange
-label_fontsize = 12
+label_fontsize = 8
 # Show only these classes of vessel. Possible values: ["Passenger Ship", Tanker", "Cargo"]
 # Leave as an empty list [] to show all vessels
 filter_show_ship_classes = ["Tanker"]
 # Show names for specific classes of ship (same options as for filter_show_ship_classes)
 # Leave as an empty list to suppress all names
 filter_show_names_for_classes = ["Tanker"]
-# Filter out ships with speeds < 1 knots or flagged as moored/anchored
-filter_only_active_ships = False
 # Show ships with lengths >= this (metres 0=>no filtering)
 # Use this to filter out the small-fry
 filter_ships_minimum_length = 150
+# Show ships which are moving >1.0 knots and not flagged as moored or anchored
+filter_ships_underway = False
+# Where in the World we will display ships
+# If empty [], displays ships everywhere (not recommended!)
+regions = ["NZ_Aus", "Suez_Canal", "English_Channel", "Strait_of_Hormuz", "Gulf_of_Aden", "Panama_Canal", "Strait_of_Malacca"]
+# If a ship has been inactive for this time or more, don't display it
+expiry_days = 3
+runs_per_day = 24
 
 [shipping_harvester]
+# The harvester acquires ship data and stores it in the db, listening in an endless loop.
+# This stored data is used by the map builder when displaying ships on the map.
 enabled = False
 # Needs an API Key in your .env file; see https://aisstream.io/documentation
 url = wss://stream.aisstream.io/v0/stream
-# Ships will be added/updated every time the harvester is run
-static_database = data/ship_cache.json
-# Time to listen for static data broadcasts
-listen_for_static_data = 1200
+# Time to listen for data broadcasts
+listen_duration = 1200
 # Where in the World we look for harvesting ship data
-bbox = [[[-90.0, -180.0], [90.0, 180.0]]]
-# Split harvest into this many chunks by longitude; this will
-# decrease load on the streaming service and avoid possible
-# throttling and/or blocking by the service
-harvest_chunks = 8
+# If empty [], harvests the whole world (recommended)
+regions = []
+# Time to sleep between harvesting runs
+sleep_interval = 120
 
 [xplanet]
 enabled = True
