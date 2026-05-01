@@ -10,16 +10,15 @@ from datetime import datetime, timedelta, timezone
 
 # Internal library import
 from worldmap.lib.config import WorldMapConfig
+from .common import Updater
 
 logger = logging.getLogger(__name__)
 
 
-class StormUpdater:
+class StormUpdater (Updater):
     def __init__(self, config: WorldMapConfig):
-        self.config = config
-        self.settings = config.get_section("storms")
-        self.common = config.get_section("common")
-        self.workdir = self.common.get("workdir", ".")
+        super().__init__(config, "Storms")
+        self.set_output_path()
 
     def _get_active_csv_url(self):
         """Scrapes the NOAA IBTrACS directory for the 'ACTIVE' CSV file."""
@@ -39,23 +38,12 @@ class StormUpdater:
 
     def run(self):
         """Fetches storm tracks and generates XPlanet markers with trails."""
-        outfile = self.settings.get("outfile")
+        self.exit_if_disabled()
+
         marker_color = self.settings.get("marker_color", fallback="red")
         marker_symbol = self.settings.get("marker_symbol")
         regional_only = self.settings.getboolean("regional_only", fallback=False)
         expiry_days = self.settings.getint("expiry_days", fallback=7)
-
-        # Resolve paths
-        output_path = os.path.join(self.workdir, outfile)
-
-        # If these markers are being skipped we ensure the marker file
-        # exists to avoid xplanet warnings, and we truncate existing data
-        if not self.settings.getboolean("enabled", fallback=False):
-            logger.info("Shipping task disabled. Skipping.")
-            # Truncate existing markers
-            with open(output_path, "w") as _:
-                pass
-            return
 
         now = datetime.now(timezone.utc)
         try:
@@ -96,16 +84,13 @@ class StormUpdater:
 
             if df.empty:
                 logger.debug("No active storms found within expiry window.")
-                with open(output_path, "w") as f:
-                    pass
                 return
 
             # Sort and identify the lead marker vs trail
             df = df.sort_values(by=["SID", "ISO_TIME"])
             df["is_last"] = ~df.duplicated(subset=["SID"], keep="last")
 
-            os.makedirs(os.path.dirname(output_path), exist_ok=True)
-            with open(output_path, "w") as f:
+            with open(self.output_path, "w") as f:
                 for _, row in df.iterrows():
                     if row["is_last"] and pd.notnull(row["ISO_TIME"]):
                         date_label = row["ISO_TIME"].strftime("%d/%m")
@@ -123,9 +108,7 @@ class StormUpdater:
                         f"{row['LAT']} {row['LON']} {label} color={marker_color} {image}\n"
                     )
 
-            logger.info(
-                f"Storm markers generated for {df['SID'].nunique()} active storms."
-            )
+            logger.debug(f"Storm update complete. Updated {df['SID'].nunique()} active storms.")
 
         except Exception as e:
             logger.error(f"Error updating storm markers: {e}")

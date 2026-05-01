@@ -7,16 +7,15 @@ import urllib.request
 
 # Internal library import
 from worldmap.lib.config import WorldMapConfig
+from .common import Updater
 
 logger = logging.getLogger(__name__)
 
 
-class VolcanoUpdater:
+class VolcanoUpdater(Updater):
     def __init__(self, config: WorldMapConfig):
-        self.config = config
-        self.settings = config.get_section("volcanoes")
-        self.common = config.get_section("common")
-        self.workdir = self.common.get("workdir", ".")
+        super().__init__(config, "Volcanoes")
+        self.set_output_path()
 
     def _fetch_volcano_data(self, base_url, page_size=200):
         """Fetch all records from the NOAA HazEL API with pagination."""
@@ -46,9 +45,10 @@ class VolcanoUpdater:
             return []
 
     def run(self):
-        """Processes volcano records and generates XPlanet markers."""
+        """Processes volcano records and generates markers."""
+        self.exit_if_disabled()
+
         base_url = self.settings.get("url")
-        outfile = self.settings.get("outfile")
         marker_color = self.settings.get("marker_color", fallback="red")
         marker_symbol = self.settings.get("marker_symbol")
         significant_only = self.settings.getboolean("significant_only", fallback=False)
@@ -61,18 +61,6 @@ class VolcanoUpdater:
         except json.JSONDecodeError:
             erupt_codes = ["D1"]
 
-        # Resolve paths
-        output_path = os.path.join(self.workdir, outfile)
-
-        # If these markers are being skipped we ensure the marker file
-        # exists to avoid xplanet warnings, and we truncate existing data
-        if not self.settings.getboolean("enabled", fallback=False):
-            logger.info("Volcanoes task disabled. Skipping.")
-            # Truncate existing markers
-            with open(output_path, "w") as _:
-                pass
-            return
-
         logger.debug(f"Fetching volcano data (VEI >= {vei_min})...")
         records = self._fetch_volcano_data(base_url)
         if not records:
@@ -80,9 +68,7 @@ class VolcanoUpdater:
             return
 
         count = 0
-        os.makedirs(os.path.dirname(output_path), exist_ok=True)
-
-        with open(output_path, "w") as f:
+        with open(self.output_path, "w") as f:
             for r in records:
                 lat = r.get("latitude")
                 lon = r.get("longitude")
@@ -104,7 +90,7 @@ class VolcanoUpdater:
                         )
                         count += 1
 
-        logger.debug(f"Successfully wrote {count} volcano markers to: {output_path}")
+        logger.debug(f"Volcanoes update complete. Updated {count} volcanoes.")
 
 
 def main():

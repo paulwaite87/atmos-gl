@@ -12,6 +12,7 @@ from matplotlib import patheffects
 
 # Internal imports from your new library
 from worldmap.lib.config import WorldMapConfig
+from .common import Updater
 
 # Silence specific data-processing warnings and talkative libraries
 warnings.filterwarnings("ignore", message=".*missingValue.*")
@@ -27,14 +28,11 @@ gribapi_logger.propagate = False
 logger = logging.getLogger(__name__)
 
 
-class IsobarUpdater:
+class IsobarUpdater(Updater):
     def __init__(self, config: WorldMapConfig):
-        self.config = config
-        self.settings = config.get_section("isobars")
-        self.common = config.get_section("common")
+        super().__init__(config, "Isobars")
 
         # Path resolution using the workdir from config
-        self.workdir = self.common.get("workdir", ".")
         self.grib_path = os.path.join(self.workdir, "data/gfs_temp.grib2")
         self.output_path = os.path.join(self.workdir, self.settings.get("outfile"))
 
@@ -142,15 +140,14 @@ class IsobarUpdater:
 
     def run(self):
         """Entry point for the task."""
-        if not self.settings.getboolean("enabled", fallback=False):
-            logger.info("Isobars task disabled. Skipping.")
-            return
+        self.exit_if_disabled()
 
         try:
             url, date, run = self.find_latest_gfs_file()
             logger.debug(f"Using GFS run: {date} {run}Z")
             self.download_data(url)
             self.plot()
+            logger.debug("Isobars update complete.")
         finally:
             if os.path.exists(self.grib_path):
                 os.remove(self.grib_path)

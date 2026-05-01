@@ -10,6 +10,7 @@ from pathlib import Path
 
 # The third-party library
 from cloudmap.create_map import main as cloudmap_main
+from .common import Updater
 
 # Internal library import
 from worldmap.lib.config import WorldMapConfig
@@ -17,12 +18,9 @@ from worldmap.lib.config import WorldMapConfig
 logger = logging.getLogger(__name__)
 
 
-class CloudUpdater:
+class CloudUpdater(Updater):
     def __init__(self, config: WorldMapConfig):
-        self.config = config
-        self.settings = config.get_section("clouds")
-        self.common = config.get_section("common")
-        self.workdir = self.common.get("workdir", ".")
+        super().__init__(config, "Clouds")
 
     def _generate_temp_conf(self, outfile, width, height):
         """Generates the temporary INI file required by the cloudmap library."""
@@ -42,7 +40,6 @@ class CloudUpdater:
 
         # Ensure the directory exists
         os.makedirs(os.path.dirname(temp_conf_path), exist_ok=True)
-
         with open(temp_conf_path, "w") as f:
             temp_config.write(f)
 
@@ -50,9 +47,9 @@ class CloudUpdater:
 
     def run(self):
         """Prepares the environment and executes the cloudmap generator."""
-        if not self.settings.getboolean("enabled", fallback=False):
-            logger.info("Clouds task disabled. Skipping.")
-            return
+
+        # Skip this task if not enabled
+        self.exit_if_disabled()
 
         try:
             # 1. Extract values

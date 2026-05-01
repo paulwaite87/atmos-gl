@@ -9,29 +9,25 @@ from worldmap.lib.config import WorldMapConfig
 from worldmap.lib.shipping import (
     ShipDatabase,
     get_vessel_class,
-    get_vessel_subclass,
     get_vessel_dimensions,
     get_vessel_description,
-    get_vessel_navigational_status,
     get_vessel_position,
     vessel_is_underway, get_expanded_vessel_class,
 )
+from .common import Updater
 
 logger = logging.getLogger(__name__)
 
 
-class ShippingUpdater:
+class ShippingUpdater(Updater):
     def __init__(self, config: WorldMapConfig):
-        self.config = config
-        self.settings = config.get_section("shipping")
-        self.common = config.get_section("common")
-        self.workdir = self.common.get("workdir", ".")
-
-        # Path resolution for the marker file
-        self.output_path = os.path.join(self.workdir, self.settings.get("outfile"))
+        super().__init__(config, "Shipping")
+        self.set_output_path()
 
     async def run(self):
         self.config.load()  # Refresh config
+        self.exit_if_disabled()
+
         ship_db = ShipDatabase()
 
         region_list = json.loads(self.settings.get("regions", fallback="[]"))
@@ -121,7 +117,7 @@ class ShippingUpdater:
                 f.write(f"{ship_latitude} {ship_longitude} {ship_label} image={ship_symbol}\n")
                 written_count += 1
 
-        logger.debug(f"Shipping update complete. {written_count} markers written to {self.output_path}.")
+        logger.debug(f"Shipping update complete. Updated {written_count} ships.")
 
 
 def main():

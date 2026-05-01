@@ -72,10 +72,10 @@ def get_expanded_vessel_class(vessel):
         # Categorizing based on the 3 levels of Cruise Ship scale
         if length > 250:
             return "Cruise MEGA"  # Mega-Cruise / Super-Liner
-        elif length > 150:
-            return "Cruise"  # Standard Mid-Size Cruise
+        elif length > 190:
+            return "Cruise"  # Standard Cruise Ship
         elif length > 50:
-            return "Ferry"  # Boutique / Large Ferry
+            return "Ferry"  # Small / Large Ferry
         else:
             return vessel_class
 

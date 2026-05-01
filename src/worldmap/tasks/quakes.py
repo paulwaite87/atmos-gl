@@ -8,38 +8,25 @@ import pandas as pd
 
 # Internal library import
 from worldmap.lib.config import WorldMapConfig
+from .common import Updater
 
 logger = logging.getLogger(__name__)
 
 
-class QuakeUpdater:
+class QuakeUpdater(Updater):
     def __init__(self, config: WorldMapConfig):
-        self.config = config
-        self.settings = config.get_section("quakes")
-        self.common = config.get_section("common")
-        self.workdir = self.common.get("workdir", ".")
+        super().__init__(config, "Quakes")
+        self.set_output_path()
 
     def run(self):
         """Fetches USGS quake data and generates an XPlanet marker file."""
+        self.exit_if_disabled()
+
         url = self.settings.get("url")
-        outfile = self.settings.get("outfile")
         marker_color = self.settings.get("marker_color", fallback="white")
         marker_symbol = self.settings.get("marker_symbol")
         label_size = self.settings.get("label_fontsize", fallback="12")
         min_mag = self.settings.getfloat("min_mag", fallback=5.0)
-
-        # Resolve paths, ensure directory
-        output_path = str(os.path.join(self.workdir, outfile))
-        os.makedirs(os.path.dirname(output_path), exist_ok=True)
-
-        # If these markers are being skipped we ensure the marker file
-        # exists to avoid xplanet warnings, and we truncate existing data
-        if not self.settings.getboolean("enabled", fallback=False):
-            logger.info("Quakes task disabled. Skipping.")
-            # Truncate existing markers
-            with open(output_path, "w") as _:
-                pass
-            return
 
         try:
             logger.debug(f"Fetching earthquake data from USGS (Min Mag: {min_mag})...")
@@ -52,7 +39,7 @@ class QuakeUpdater:
             # Filter by magnitude
             filtered_df = df[df["mag"] >= min_mag]
 
-            with open(output_path, "w") as f:
+            with open(self.output_path, "w") as f:
                 for _, row in filtered_df.iterrows():
                     mag = row["mag"]
                     depth = int(row["depth"])
@@ -64,9 +51,7 @@ class QuakeUpdater:
                     )
                     f.write(line)
 
-            logger.debug(
-                f"Successfully wrote {len(filtered_df)} quake markers to: {output_path}"
-            )
+            logger.debug(f"Earthquake update complete. Updated {len(filtered_df)} quakes.")
 
         except requests.RequestException as e:
             logger.error(f"Network error fetching quakes: {e}")

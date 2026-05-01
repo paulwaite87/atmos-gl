@@ -6,23 +6,21 @@ import subprocess
 
 # Internal library import
 from worldmap.lib.config import WorldMapConfig
+from .common import Updater
 
 logger = logging.getLogger(__name__)
 
 
-class CompositeUpdater:
+class CompositeUpdater(Updater):
     def __init__(self, config: WorldMapConfig):
-        self.config = config
-        self.cloud_settings = config.get_section("clouds")
-        self.isobar_settings = config.get_section("isobars")
-        self.common = config.get_section("common")
-        self.workdir = self.common.get("workdir", ".")
+        super().__init__(config, "Clouds")
+        self.isobar_settings = self.config.get_section("isobars")
 
     def run(self):
         """Combines the isobar overlay onto the cloud map background."""
         # Retrieve paths from different config sections
         try:
-            cloud_map = self.cloud_settings.get("outfile")
+            cloud_map = self.settings.get("outfile")
             isobar_map = self.isobar_settings.get("outfile")
             output_rel_path = self.isobar_settings.get(
                 "composite_outfile", fallback="data/cloud_map_with_isobars.jpg"
@@ -32,7 +30,6 @@ class CompositeUpdater:
             bg_path = os.path.join(self.workdir, cloud_map)
             overlay_path = os.path.join(self.workdir, isobar_map)
             dest_path = os.path.join(self.workdir, output_rel_path)
-
         except (AttributeError, KeyError) as e:
             logger.error(f"Missing required config keys for composite: {e}")
             sys.exit(1)
@@ -49,7 +46,7 @@ class CompositeUpdater:
         cmd = ["composite", overlay_path, bg_path, dest_path]
 
         try:
-            logger.info(f"Compositing {isobar_map} onto {cloud_map}...")
+            logger.debug(f"Compositing {isobar_map} onto {cloud_map}...")
             subprocess.run(cmd, check=True, capture_output=True, text=True)
             logger.debug(f"Successfully created composite: {dest_path}")
 

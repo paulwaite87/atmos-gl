@@ -4,22 +4,20 @@ import glob
 import time
 import logging
 import subprocess
+
 from worldmap.lib.config import WorldMapConfig
+from .common import Updater
 
 logger = logging.getLogger(__name__)
 
 
-class XPlanetRenderer:
+class XPlanetRenderer(Updater):
     def __init__(self, config: WorldMapConfig):
-        self.config = config
-        self.settings = config.get_section("xplanet")
-        self.workdir = config.get_section("common").get("workdir", ".")
+        super().__init__(config, "Xplanet")
 
     def run(self):
         """Executes XPlanet to render the final map image."""
-        if not self.settings.getboolean("enabled", fallback=False):
-            logger.info("XPlanet rendering disabled. Skipping.")
-            return
+        self.exit_if_disabled()
 
         # Resolve paths relative to workdir
         data_dir = os.path.join(self.workdir, "data")

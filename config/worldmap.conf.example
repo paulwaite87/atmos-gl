@@ -106,7 +106,7 @@ url = wss://stream.aisstream.io/v0/stream
 outfile = data/ship_markers.txt
 marker_color = orange
 label_fontsize = 8
-# Show only these classes of vessel. Possible values: ["Passenger Ship", Tanker", "Cargo"]
+# Show only these classes of vessel. Possible values: ["Passenger", Tanker", "Cargo"]
 # Leave as an empty list [] to show all vessels
 filter_show_ship_classes = ["Tanker"]
 # Show names for specific classes of ship (same options as for filter_show_ship_classes)

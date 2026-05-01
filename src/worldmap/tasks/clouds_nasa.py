@@ -8,22 +8,18 @@ from datetime import datetime, timedelta, timezone
 
 # Internal library import
 from worldmap.lib.config import WorldMapConfig
+from .common import Updater
 
 logger = logging.getLogger(__name__)
 
 
-class NasaCloudUpdater:
+class NasaCloudUpdater(Updater):
     def __init__(self, config: WorldMapConfig):
-        self.config = config
-        self.settings = config.get_section("clouds_nasa")
-        self.common = config.get_section("common")
-        self.workdir = self.common.get("workdir", ".")
+        super().__init__(config, "Clouds_NASA")
 
     def run(self):
         """Downloads the cloud layer from NASA GIBS WMS."""
-        if not self.settings.getboolean("enabled", fallback=False):
-            logger.info("NASA Clouds task disabled. Skipping.")
-            return
+        self.exit_if_disabled()
 
         base_url = self.settings.get("url").strip('"')  # Handle quoted URLs from config
         outfile = self.settings.get("outfile")
@@ -31,7 +27,7 @@ class NasaCloudUpdater:
         height = self.settings.getint("height", fallback=1024)
 
         # Construct full output path
-        output_path = os.path.join(self.workdir, outfile)
+        output_path = str(os.path.join(self.workdir, outfile))
 
         # NASA's 'Best' layer availability logic
         now_utc = datetime.now(timezone.utc)
@@ -59,7 +55,7 @@ class NasaCloudUpdater:
         full_url = f"{base_url}?{query_string}"
 
         try:
-            os.makedirs(os.path.dirname(output_path), exist_ok=True)
+            os.makedirs(str(os.path.dirname(output_path)), exist_ok=True)
             logger.debug(
                 f"Fetching NASA GIBS clouds for {display_date} (Target: {width}x{height})"
             )

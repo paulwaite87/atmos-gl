@@ -61,6 +61,10 @@ class MapBuilder:
         Determines if a task is due based on runs_per_day.
         Returns True if the elapsed time exceeds (86400 / runs_per_day).
         """
+        # This section depends on isobars; always run
+        if section == "composite":
+            return True
+
         settings = self.config.get_section(section)
 
         if not settings.getboolean("enabled", fallback=False):

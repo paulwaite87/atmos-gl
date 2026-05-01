@@ -5,28 +5,20 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="81fb972d-9761-4cee-aed3-ce77125008a1" name="Changes" comment="Interim state. Just before commiting to Postgres/PostGIS upgrade.">
-      <change afterPath="$PROJECT_DIR$/src/worldmap/harvester.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/worldmap/tasks/common.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Dockerfile" beforeDir="false" afterPath="$PROJECT_DIR$/Dockerfile" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/config/database/001_create_dbs.sql" beforeDir="false" afterPath="$PROJECT_DIR$/config/database/001_create_dbs.sql" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/docker-compose.yml" beforeDir="false" afterPath="$PROJECT_DIR$/docker-compose.yml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/pyproject.toml" beforeDir="false" afterPath="$PROJECT_DIR$/pyproject.toml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/worldmap/daemon.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/worldmap/lib/config.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/worldmap/lib/config.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/worldmap/lib/logging.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/worldmap/lib/logging.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/config/worldmap.conf.example" beforeDir="false" afterPath="$PROJECT_DIR$/config/worldmap.conf.example" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/worldmap/lib/shipping.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/worldmap/lib/shipping.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/worldmap/map_builder.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/worldmap/map_builder.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/worldmap/tasks/clouds.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/worldmap/tasks/clouds.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/worldmap/tasks/clouds_nasa.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/worldmap/tasks/clouds_nasa.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/worldmap/tasks/composite.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/worldmap/tasks/composite.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/worldmap/tasks/harvester.py" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/src/worldmap/tasks/isobars.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/worldmap/tasks/isobars.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/worldmap/tasks/quakes.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/worldmap/tasks/quakes.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/worldmap/tasks/renderer.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/worldmap/tasks/renderer.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/worldmap/tasks/shipping.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/worldmap/tasks/shipping.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/worldmap/tasks/storms.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/worldmap/tasks/storms.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/worldmap/tasks/volcanoes.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/worldmap/tasks/volcanoes.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/uv.lock" beforeDir="false" afterPath="$PROJECT_DIR$/uv.lock" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -56,7 +48,7 @@
   <component name="GithubPullRequestsUISettings">{
   &quot;selectedUrlAndAccountId&quot;: {
     &quot;url&quot;: &quot;https://github.com/paulwaite87/WorldMap.git&quot;,
-    &quot;accountId&quot;: &quot;3515d5cd-5f67-4a1e-bfa2-02bfe2fe2a35&quot;
+    &quot;accountId&quot;: &quot;0435cae2-7c35-4e33-813d-0de4db8ac59d&quot;
   }
 }</component>
   <component name="HighlightingSettingsPerFile">
@@ -87,7 +79,7 @@
     "com.intellij.ml.llm.matterhorn.ej.ui.settings.DefaultModelSelectionForGA.v1": "true",
     "git-widget-placeholder": "master",
     "junie.onboarding.icon.badge.shown": "true",
-    "last_opened_file_path": "/var/share/dev/cloudmap",
+    "last_opened_file_path": "/home/pj/PycharmProjects/WorldMap/config",
     "node.js.detected.package.eslint": "true",
     "node.js.detected.package.tslint": "true",
     "node.js.selected.package.eslint": "(autodetect)",
@@ -102,9 +94,9 @@
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
       <recent name="$PROJECT_DIR$/config" />
+      <recent name="$PROJECT_DIR$" />
       <recent name="$PROJECT_DIR$/data" />
       <recent name="$PROJECT_DIR$/docs" />
-      <recent name="$PROJECT_DIR$" />
     </key>
     <key name="MoveFile.RECENT_KEYS">
       <recent name="$PROJECT_DIR$/src/worldmap" />
@@ -117,7 +109,7 @@
   <component name="SharedIndexes">
     <attachedChunks>
       <set>
-        <option value="bundled-python-sdk-b63d5a1f7c97-b61e75351b1f-com.jetbrains.pycharm.pro.sharedIndexes.bundled-PY-261.22158.340" />
+        <option value="bundled-python-sdk-024ed6589d45-c2ffad84badb-com.jetbrains.pycharm.pro.sharedIndexes.bundled-PY-261.23567.174" />
       </set>
     </attachedChunks>
   </component>
@@ -137,6 +129,8 @@
       <workItem from="1777329733855" duration="8724000" />
       <workItem from="1777338787442" duration="3587000" />
       <workItem from="1777345023146" duration="52135000" />
+      <workItem from="1777529172335" duration="1135000" />
+      <workItem from="1777531572695" duration="13695000" />
     </task>
     <task id="LOCAL-00001" summary="Initial repo commit">
       <option name="closed" value="true" />
