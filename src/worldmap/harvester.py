@@ -1,6 +1,4 @@
 #!/usr/bin/env python3
-import os
-import sys
 import json
 import logging
 import asyncio
@@ -26,7 +24,6 @@ class ShipHarvester:
     async def harvest_region(self, db, url, api_key, bbox, duration, label):
         """Connects to AIS stream and processes messages for a specific bbox."""
 
-        # Format for AIS WebSocket API: [[LatS, LonW], [LatN, LonE]]
         sub = {
             "APIKey": api_key,
             "BoundingBoxes": [bbox],
@@ -37,21 +34,24 @@ class ShipHarvester:
         pos_count = 0
 
         try:
-            async with websockets.connect(url) as ws:
+            # ping_interval and ping_timeout help detect dead connections
+            async with websockets.connect(
+                    url, ping_interval=20, ping_timeout=20
+            ) as ws:
                 await ws.send(json.dumps(sub))
                 start_time = asyncio.get_event_loop().time()
 
-                logger.info(f"Monitoring '{label}' for {duration}s")
+                logger.info(f"Harvesting for {duration}s")
+                logger.info(f"{label}")
 
                 while asyncio.get_event_loop().time() - start_time < duration:
                     try:
-                        # Short timeout to allow loop to check the clock (start_time)
+                        # Short timeout to allow loop to check the clock
                         msg_raw = await asyncio.wait_for(ws.recv(), timeout=2.0)
                         msg = json.loads(msg_raw)
                         m_type = msg.get("MessageType")
                         meta = msg.get("MetaData", {})
 
-                        # Extract MMSI - essential for both types
                         mmsi = str(meta.get("MMSI") or "")
                         if not mmsi:
                             continue
@@ -59,17 +59,22 @@ class ShipHarvester:
                         # --- Handle Static Data ---
                         if m_type == "ShipStaticData":
                             body = msg.get("Message", {}).get("ShipStaticData", {})
-                            db.update_ship_static_data(mmsi, meta, body)
+                            # Offload blocking DB call to a thread to keep loop responsive
+                            await asyncio.to_thread(db.update_ship_static_data, mmsi, meta, body)
                             static_count += 1
 
                         # --- Handle Position Reports ---
                         elif m_type == "PositionReport":
                             body = msg.get("Message", {}).get("PositionReport", {})
-                            db.update_ship_position_data(mmsi, body)
+                            # Offload blocking DB call to a thread
+                            await asyncio.to_thread(db.update_ship_position_data, mmsi, body)
                             pos_count += 1
 
                     except asyncio.TimeoutError:
                         continue
+                    except websockets.ConnectionClosed:
+                        logger.warning(f"WebSocket closed unexpectedly in {label}")
+                        break
                     except Exception as e:
                         logger.error(f"Error processing message in {label}: {e}")
 
@@ -85,45 +90,44 @@ class ShipHarvester:
         url = self.settings.get("url")
         api_key = self.settings.get("api_key")
         listen_duration = self.settings.getint("listen_duration", fallback=300)
-
-        # New setting: How long to wait before starting the next harvest cycle
         sleep_between_runs = self.settings.getint("sleep_interval", fallback=60)
+        track_expiry = self.settings.getint("vessel_track_expiry_days", fallback=30)
 
-        # Get regions from [shipping_harvester] section
-        region_labels = json.loads(self.settings.get("regions", fallback="[]"))
+        # Calculate harvest chunks based on worldmap.conf setting
+        num_chunks = self.settings.getint("harvest_chunks", fallback=12)
+        slice_width = 360.0 / num_chunks
 
         while True:
-            logger.info("Ship-harvester Service run started")
+            logger.info("Ship-harvester Service: Starting global rotation")
             start_total = db.get_current_ship_total()
-            logger.info(f"{start_total} ships in the database")
+
             try:
-                # Refresh bboxes in case the database regions changed
-                bboxes_data = db.get_active_bboxes(region_labels)
+                # 1. Maintenance: Keep the database lean
+                db.prune_vessel_tracks(track_expiry)
 
-                if not bboxes_data:
-                    logger.error("No valid bounding boxes found. Retrying in 120s")
-                    await asyncio.sleep(120)
-                    continue
+                # 2. Sequential Global Sweep
+                for i in range(num_chunks):
+                    lon_start = -180.0 + (i * slice_width)
+                    lon_end = lon_start + slice_width
 
+                    # Final slice safety check to ensure full 180.0 coverage
+                    if i == num_chunks - 1:
+                        lon_end = 180.0
 
-                for box in bboxes_data:
-                    # Reformat list to the nested API requirement
-                    api_bbox = [[box[0], box[1]], [box[2], box[3]]]
-                    current_label = "Targeted Zone" if region_labels else "Global World"
+                    chunk_bbox = [[-90.0, lon_start], [90.0, lon_end]]
+                    chunk_label = f"Slice {i + 1}/{num_chunks} ({lon_start:.1f}° -> {lon_end:.1f}°)"
 
-                    await self.harvest_region(db, url, api_key, api_bbox, listen_duration, current_label)
+                    await self.harvest_region(db, url, api_key, chunk_bbox, listen_duration, chunk_label)
 
                 end_total = db.get_current_ship_total()
-                logger.info(f"Added {end_total - start_total} ships. Database total: {end_total}")
+                logger.info(f"Rotation complete. Added {end_total - start_total} new vessels. Total: {end_total}")
 
             except Exception as e:
                 logger.error(f"Unexpected error in harvester loop: {e}")
-                await asyncio.sleep(30)  # Prevent rapid-fire crashing
+                await asyncio.sleep(30)
 
-            logger.debug(f"Sleeping for {sleep_between_runs}s")
+            logger.debug(f"Cooling down for {sleep_between_runs}s before next rotation")
             await asyncio.sleep(sleep_between_runs)
-
-            logger.info("Ship-harvester Service run finished")
 
 
 def main():

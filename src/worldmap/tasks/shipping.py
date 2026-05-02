@@ -3,6 +3,7 @@ import os
 import json
 import logging
 import asyncio
+import math
 
 # Internal library imports
 from worldmap.lib.config import WorldMapConfig
@@ -12,11 +13,28 @@ from worldmap.lib.shipping import (
     get_vessel_dimensions,
     get_vessel_description,
     get_vessel_position,
-    vessel_is_underway, get_expanded_vessel_class,
+    vessel_is_underway,
+    get_expanded_vessel_class,
 )
 from .common import Updater
 
 logger = logging.getLogger(__name__)
+
+
+def get_distance_km(lat1, lon1, lat2, lon2):
+    """
+    Haversine formula to calculate the great-circle distance between two points
+    on a sphere given their longitudes and latitudes.
+    """
+    R = 6371.0  # Earth's radius in km
+    phi1, phi2 = math.radians(lat1), math.radians(lat2)
+    dphi = math.radians(lat2 - lat1)
+    dlambda = math.radians(lon2 - lon1)
+
+    a = math.sin(dphi / 2) ** 2 + \
+        math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2) ** 2
+
+    return 2 * R * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
 
 class ShippingUpdater(Updater):
@@ -33,12 +51,17 @@ class ShippingUpdater(Updater):
         region_list = json.loads(self.settings.get("regions", fallback="[]"))
         expiry = self.settings.getint("expiry_days", fallback=3)
 
+        # Track Settings
+        show_tracks = self.settings.getboolean("show_tracks", fallback=False)
+        track_min_dist = float(self.settings.get("track_min_distance_km", fallback=5.0))
+        track_max_points = self.settings.getint("track_max_points", fallback=10)
+
         logger.debug(f"Generating map for regions: {region_list or 'GLOBAL'} (Expiry: {expiry} days)")
 
         fleet = ship_db.get_fleet(region_labels=region_list, expiry_days=expiry)
 
         # Filter and Format Markers
-        show_ships_underway = self.settings.get("show_ships_underway", fallback="False")
+        show_ships_underway = self.settings.getboolean("show_ships_underway", fallback=False)
         show_ship_classes = json.loads(
             self.settings.get("filter_show_ship_classes", fallback='["Tanker", "Cargo"]')
         )
@@ -70,7 +93,6 @@ class ShippingUpdater(Updater):
                     continue
 
                 # Formatting coordinates for Xplanet
-                # In your DB these are stored as 'lat' and 'lon' floats
                 ship_latitude, ship_longitude = get_vessel_position(ship)
                 if ship_latitude is None or ship_longitude is None:
                     continue
@@ -113,9 +135,34 @@ class ShippingUpdater(Updater):
                     ship_label = (f'"{get_vessel_description(ship)}" '
                                   f'color={label_color} fontsize={label_size}')
 
-                # Final Write to Xplanet file
+                # --- Write the Primary Ship Marker ---
                 f.write(f"{ship_latitude} {ship_longitude} {ship_label} image={ship_symbol}\n")
                 written_count += 1
+
+                # --- Write Track Markers ---
+                # Rule 1: No marker for latest position is handled by starting distance
+                # check from current ship_latitude/longitude.
+                if show_tracks and ship_class in show_names_classes:
+                    # Fetch history (limited to 100 to ensure we find enough distant points)
+                    history = ship_db.get_ship_track(ship["mmsi"], limit=100)
+
+                    last_lat, last_lon = ship_latitude, ship_longitude
+                    points_placed = 0
+
+                    for pos in history:
+                        # Rule 3: Return a maximum of M markers
+                        if points_placed >= track_max_points:
+                            break
+
+                        h_lat, h_lon = float(pos['lat']), float(pos['lon'])
+                        dist = get_distance_km(last_lat, last_lon, h_lat, h_lon)
+
+                        # Rule 2: Skip markers less than N kilometres from last marker
+                        if dist >= track_min_dist:
+                            f.write(f"{h_lat} {h_lon} color={label_color_default}\n")
+
+                            last_lat, last_lon = h_lat, h_lon
+                            points_placed += 1
 
         logger.debug(f"Shipping update complete. Updated {written_count} ships.")
 

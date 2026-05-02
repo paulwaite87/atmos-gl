@@ -35,6 +35,9 @@ class MapBuilder:
         # This gets reset every time a loop starts
         self.map_updated = False
 
+        # Flag to indicate isobars were updated so run composite
+        self.isobars_were_updated = False
+
         # Execution order registry
         self.task_registry: List[Tuple[str, Type[Any]]] = [
             ("clouds", CloudUpdater),
@@ -75,6 +78,10 @@ class MapBuilder:
         if section == "xplanet" and self.map_updated:
             return True
 
+        # If isobars were updated, then composite should run
+        if section == "composite" and self.isobars_were_updated:
+            return True
+
         try:
             runs_per_day: int = settings.getint("runs_per_day", fallback=0)
         except ValueError:
@@ -100,17 +107,13 @@ class MapBuilder:
         while True:
             self.config.load()
             self.map_updated = False
+            self.isobars_were_updated = False
 
             if self.some_tasks_ready_to_run():
 
                 logger.info("Map-builder scheduler run started")
 
                 for section, task_class in self.task_registry:
-                    # Composite logic depends on isobar settings
-                    if section == "composite":
-                        if not self.config.get_section("isobars").getboolean("enabled", False):
-                            continue
-
                     if self.should_run(section):
                         try:
                             logger.info(f"Running scheduled task: '{section}'")
@@ -125,7 +128,12 @@ class MapBuilder:
                             # Timestamp the completion with high precision
                             self.last_run_times[section] = datetime.now()
 
+                            # Will trigger xplanet to update
                             self.map_updated = True
+
+                            # Will allow composite overlay to update
+                            if section == "isobars":
+                                self.isobars_were_updated = True
 
                         except Exception as e:
                             logger.error(f"Task '{section}' execution failed: {e}")

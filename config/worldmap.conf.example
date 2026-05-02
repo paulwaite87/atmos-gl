@@ -3,15 +3,6 @@
 [common]
 workdir = .
 
-[daemon]
-# The World Map System Daemon is the controlling process for
-# map updates and shipping data harvesting. Maps are updated
-# morning to evening, and harvesting is done evening through
-# to morning (if enabled below)
-sleep = 300
-morning = 06:00
-evening = 10:00
-
 [clouds]
 # Clouds sourced via https://clouds.matteason.co.uk/
 # Codebase here https://github.com/jmozmoz/cloudmap
@@ -105,7 +96,7 @@ enabled = False
 url = wss://stream.aisstream.io/v0/stream
 outfile = data/ship_markers.txt
 marker_color = orange
-label_fontsize = 8
+label_fontsize = 12
 # Show only these classes of vessel. Possible values: ["Passenger", Tanker", "Cargo"]
 # Leave as an empty list [] to show all vessels
 filter_show_ship_classes = ["Tanker"]
@@ -114,9 +105,15 @@ filter_show_ship_classes = ["Tanker"]
 filter_show_names_for_classes = ["Tanker"]
 # Show ships with lengths >= this (metres 0=>no filtering)
 # Use this to filter out the small-fry
-filter_ships_minimum_length = 150
-# Show ships which are moving >1.0 knots and not flagged as moored or anchored
+filter_ships_minimum_length = 0
+# Show only ships moving >1.0 knots and not flagged as moored or anchored
 filter_ships_underway = False
+# Whether to show vessel tracks
+show_tracks = True
+# Minimum distance between track points in km
+track_min_dist = 125.0
+# Maximum number of tracking positions to show
+track_max_points = 20
 # Where in the World we will display ships
 # If empty [], displays ships everywhere (not recommended!)
 regions = ["NZ_Aus", "Suez_Canal", "English_Channel", "Strait_of_Hormuz", "Gulf_of_Aden", "Panama_Canal", "Strait_of_Malacca"]
@@ -131,12 +128,15 @@ enabled = False
 # Needs an API Key in your .env file; see https://aisstream.io/documentation
 url = wss://stream.aisstream.io/v0/stream
 # Time to listen for data broadcasts
-listen_duration = 1200
-# Where in the World we look for harvesting ship data
-# If empty [], harvests the whole world (recommended)
-regions = []
+listen_duration = 300
+# The number of 'slices' by longitude that we define for
+# harvesting. The higher this number, the smaller the area of
+# listening and the less load on the AIS stream source.
+harvest_chunks = 15
 # Time to sleep between harvesting runs
-sleep_interval = 120
+sleep_interval = 300
+# Number of days worth of vessel tracking to retain
+vessel_track_expiry_days = 14
 
 [xplanet]
 enabled = True

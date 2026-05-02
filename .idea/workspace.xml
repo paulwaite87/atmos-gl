@@ -4,213 +4,29 @@
     <option name="autoReloadType" value="ALL" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="81fb972d-9761-4cee-aed3-ce77125008a1" name="Changes" comment="Rework of updater classes to use parent Updater class with common config handling.">
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+    <list default="true" id="6430cf8b-a1e5-466a-95d5-e9b7f4c4bf75" name="Changes" comment="Cater for websocket drops in the harvester.&#10;Return to harvesting in chunks globally (no region filter)&#10;Trigger composite correctly.&#10;PositionReports for ships not yet in the database have a 'shadow record' created.&#10;Ship position history is now recorded.&#10;Rendering now shows ship tracks.">
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/config/database/001_create_dbs.sql" beforeDir="false" afterPath="$PROJECT_DIR$/config/database/001_create_dbs.sql" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/config/worldmap.conf.example" beforeDir="false" afterPath="$PROJECT_DIR$/config/worldmap.conf.example" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/worldmap/harvester.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/worldmap/harvester.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/worldmap/lib/shipping.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/worldmap/lib/shipping.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/worldmap/map_builder.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/worldmap/map_builder.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/worldmap/tasks/shipping.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/worldmap/tasks/shipping.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
     <option name="LAST_RESOLUTION" value="IGNORE" />
   </component>
-  <component name="EmbeddingIndexingInfo">
-    <option name="cachedIndexableFilesCount" value="1184" />
-  </component>
-  <component name="FileTemplateManagerImpl">
-    <option name="RECENT_TEMPLATES">
-      <list>
-        <option value="Dockerfile" />
-        <option value="Python Script" />
-      </list>
-    </option>
-  </component>
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
   </component>
-  <component name="GitHubPullRequestSearchHistory">{
-  &quot;lastFilter&quot;: {
-    &quot;state&quot;: &quot;OPEN&quot;,
-    &quot;assignee&quot;: &quot;paulwaite87&quot;
-  }
-}</component>
-  <component name="GithubPullRequestsUISettings">{
-  &quot;selectedUrlAndAccountId&quot;: {
-    &quot;url&quot;: &quot;https://github.com/paulwaite87/WorldMap.git&quot;,
-    &quot;accountId&quot;: &quot;0435cae2-7c35-4e33-813d-0de4db8ac59d&quot;
-  }
-}</component>
-  <component name="HighlightingSettingsPerFile">
-    <setting file="file://$PROJECT_DIR$/data/ship_markers.txt" root0="FORCE_HIGHLIGHTING" />
-  </component>
-  <component name="McpProjectServerCommands">
-    <commands />
-    <urls />
-  </component>
-  <component name="ProjectColorInfo">{
-  &quot;associatedIndex&quot;: 3,
-  &quot;fromUser&quot;: false
-}</component>
-  <component name="ProjectId" id="3CbBkE85bGDJc4GU4iwgEB80KVH" />
-  <component name="ProjectViewState">
-    <option name="hideEmptyMiddlePackages" value="true" />
-    <option name="showLibraryContents" value="true" />
-  </component>
   <component name="PropertiesComponent"><![CDATA[{
   "keyToString": {
-    "ModuleVcsDetector.initialDetectionPerformed": "true",
-    "RunOnceActivity.MCP Project settings loaded": "true",
-    "RunOnceActivity.ShowReadmeOnStart": "true",
-    "RunOnceActivity.git.unshallow": "true",
-    "RunOnceActivity.typescript.service.memoryLimit.init": "true",
-    "SHELLCHECK.PATH": "I do mind",
-    "codeWithMe.voiceChat.enabledByDefault": "false",
-    "com.intellij.ml.llm.matterhorn.ej.ui.settings.DefaultModelSelectionForGA.v1": "true",
-    "git-widget-placeholder": "master",
-    "junie.onboarding.icon.badge.shown": "true",
-    "last_opened_file_path": "/home/pj/PycharmProjects/WorldMap/config",
-    "node.js.detected.package.eslint": "true",
-    "node.js.detected.package.tslint": "true",
-    "node.js.selected.package.eslint": "(autodetect)",
-    "node.js.selected.package.tslint": "(autodetect)",
-    "nodejs_package_manager_path": "npm",
-    "run.code.analysis.last.selected.profile": "aDefault",
-    "settings.editor.selected.configurable": "com.jetbrains.python.configuration.PyActiveSdkModuleConfigurable",
-    "to.speed.mode.migration.done": "true",
-    "vue.rearranger.settings.migration": "true"
+    "git-widget-placeholder": "master"
   }
 }]]></component>
-  <component name="RecentsManager">
-    <key name="CopyFile.RECENT_KEYS">
-      <recent name="$PROJECT_DIR$/config" />
-      <recent name="$PROJECT_DIR$" />
-      <recent name="$PROJECT_DIR$/data" />
-      <recent name="$PROJECT_DIR$/docs" />
-    </key>
-    <key name="MoveFile.RECENT_KEYS">
-      <recent name="$PROJECT_DIR$/src/worldmap" />
-      <recent name="$PROJECT_DIR$/src/scripts" />
-      <recent name="$PROJECT_DIR$/tools" />
-      <recent name="$PROJECT_DIR$/markers" />
-      <recent name="$PROJECT_DIR$/images" />
-    </key>
-  </component>
-  <component name="SharedIndexes">
-    <attachedChunks>
-      <set>
-        <option value="bundled-python-sdk-024ed6589d45-c2ffad84badb-com.jetbrains.pycharm.pro.sharedIndexes.bundled-PY-261.23567.174" />
-      </set>
-    </attachedChunks>
-  </component>
   <component name="TaskManager">
-    <task active="true" id="Default" summary="Default task">
-      <changelist id="81fb972d-9761-4cee-aed3-ce77125008a1" name="Changes" comment="" />
-      <created>1776644529434</created>
-      <option name="number" value="Default" />
-      <option name="presentableId" value="Default" />
-      <updated>1776644529434</updated>
-      <workItem from="1776644530525" duration="656000" />
-      <workItem from="1776645202417" duration="1723000" />
-      <workItem from="1776646940703" duration="255000" />
-      <workItem from="1776647219069" duration="34641000" />
-      <workItem from="1776748174059" duration="103951000" />
-      <workItem from="1777324956035" duration="1364000" />
-      <workItem from="1777329733855" duration="8724000" />
-      <workItem from="1777338787442" duration="3587000" />
-      <workItem from="1777345023146" duration="52135000" />
-      <workItem from="1777529172335" duration="1135000" />
-      <workItem from="1777531572695" duration="15707000" />
-    </task>
-    <task id="LOCAL-00001" summary="Initial repo commit">
-      <option name="closed" value="true" />
-      <created>1776808481279</created>
-      <option name="number" value="00001" />
-      <option name="presentableId" value="LOCAL-00001" />
-      <option name="project" value="LOCAL" />
-      <updated>1776808481279</updated>
-    </task>
-    <task id="LOCAL-00002" summary="Modified .gitignore">
-      <option name="closed" value="true" />
-      <created>1776808622433</created>
-      <option name="number" value="00002" />
-      <option name="presentableId" value="LOCAL-00002" />
-      <option name="project" value="LOCAL" />
-      <updated>1776808622433</updated>
-    </task>
-    <task id="LOCAL-00003" summary="Large amount of re-work to the way scripts are organised in particular the configuration methodology is greatly improved. Also brought the CreateCloudMaps and XPlanet execution and configuration into the main configuration file.">
-      <option name="closed" value="true" />
-      <created>1776907022836</created>
-      <option name="number" value="00003" />
-      <option name="presentableId" value="LOCAL-00003" />
-      <option name="project" value="LOCAL" />
-      <updated>1776907022836</updated>
-    </task>
-    <task id="LOCAL-00004" summary="Orchestration scripts now moved to Python.">
-      <option name="closed" value="true" />
-      <created>1776919265324</created>
-      <option name="number" value="00004" />
-      <option name="presentableId" value="LOCAL-00004" />
-      <option name="project" value="LOCAL" />
-      <updated>1776919265324</updated>
-    </task>
-    <task id="LOCAL-00005" summary="Large refactor to rationalise everything into a more standard Python setup.">
-      <option name="closed" value="true" />
-      <created>1777155075625</created>
-      <option name="number" value="00005" />
-      <option name="presentableId" value="LOCAL-00005" />
-      <option name="project" value="LOCAL" />
-      <updated>1777155075625</updated>
-    </task>
-    <task id="LOCAL-00006" summary="Updated README.md to reflect changes. Updated worldmap.conf.example with latest conf settings, and als the ship cache with latest static data.">
-      <option name="closed" value="true" />
-      <created>1777155976028</created>
-      <option name="number" value="00006" />
-      <option name="presentableId" value="LOCAL-00006" />
-      <option name="project" value="LOCAL" />
-      <updated>1777155976028</updated>
-    </task>
-    <task id="LOCAL-00007" summary="Updated README.md">
-      <option name="closed" value="true" />
-      <created>1777156088482</created>
-      <option name="number" value="00007" />
-      <option name="presentableId" value="LOCAL-00007" />
-      <option name="project" value="LOCAL" />
-      <updated>1777156088482</updated>
-    </task>
-    <task id="LOCAL-00008" summary="Interim state. Just before commiting to Postgres/PostGIS upgrade.">
-      <option name="closed" value="true" />
-      <created>1777338561899</created>
-      <option name="number" value="00008" />
-      <option name="presentableId" value="LOCAL-00008" />
-      <option name="project" value="LOCAL" />
-      <updated>1777338561899</updated>
-    </task>
-    <task id="LOCAL-00009" summary="Rework of updater classes to use parent Updater class with common config handling.">
-      <option name="closed" value="true" />
-      <created>1777596661888</created>
-      <option name="number" value="00009" />
-      <option name="presentableId" value="LOCAL-00009" />
-      <option name="project" value="LOCAL" />
-      <updated>1777596661889</updated>
-    </task>
-    <option name="localTasksCounter" value="10" />
     <servers />
-  </component>
-  <component name="TypeScriptGeneratedFilesManager">
-    <option name="version" value="3" />
-  </component>
-  <component name="UnknownFeatures">
-    <option featureType="com.intellij.fileTypeFactory" implementationName="*.conf" />
-  </component>
-  <component name="VcsManagerConfiguration">
-    <MESSAGE value="Initial repo commit" />
-    <MESSAGE value="Modified .gitignore" />
-    <MESSAGE value="Large amount of re-work to the way scripts are organised in particular the configuration methodology is greatly improved. Also brought the CreateCloudMaps and XPlanet execution and configuration into the main configuration file." />
-    <MESSAGE value="Orchestration scripts now moved to Python." />
-    <MESSAGE value="Large refactor to rationalise everything into a more standard Python setup." />
-    <MESSAGE value="Updated README.md to reflect changes. Updated worldmap.conf.example with latest conf settings, and als the ship cache with latest static data." />
-    <MESSAGE value="Updated README.md" />
-    <MESSAGE value="Interim state. Just before commiting to Postgres/PostGIS upgrade." />
-    <MESSAGE value="Rework of updater classes to use parent Updater class with common config handling." />
-    <option name="LAST_COMMIT_MESSAGE" value="Rework of updater classes to use parent Updater class with common config handling." />
   </component>
 </project>

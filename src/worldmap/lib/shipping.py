@@ -1,4 +1,5 @@
 import os
+import math
 import psycopg2
 from psycopg2.extras import RealDictCursor
 import logging
@@ -6,7 +7,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 def get_vessel_class(vessel):
-    vessel_type = int(vessel["vessel_type"]) or 0
+    vessel_type = int(vessel.get("vessel_type") or 0)
 
     # Specific/Specialized Codes
     special_vessel_types = {
@@ -78,8 +79,8 @@ def get_expanded_vessel_class(vessel):
 
     elif vessel_class == "Passenger":
         if length > 250:
-            return "Cruise MEGA"  # Mega-Cruise / Super-Liner
-        elif length > 150:
+            return "Mega Cruise"  # Floating shopping mall/theme park
+        elif length > 190:
             return "Cruise"  # Standard Cruise Ship
         elif length > 50:
             return "Ferry"  # Small / Large Ferry
@@ -89,7 +90,7 @@ def get_expanded_vessel_class(vessel):
     return vessel_class
 
 def get_vessel_subclass(vessel):
-    vessel_type = int(vessel["vessel_type"]) or 0
+    vessel_type = int(vessel.get("vessel_type") or 0)
 
     if not vessel or vessel_type == 0:
         return ""
@@ -104,23 +105,25 @@ def get_vessel_subclass(vessel):
     return vessel_subclasses.get(sub_digit, "")
 
 def get_vessel_dimensions(vessel):
-    length = int(vessel["length"]) or 0
-    beam = int(vessel["beam"]) or 0
+    length = int(vessel.get("length") or 0)
+    beam = int(vessel.get("beam") or 0)
     return length, beam
 
 def get_vessel_navigational_status(vessel):
-    cog = float(vessel["cog"]) or 0.0
-    sog = float(vessel["sog"]) or 0.0
-    nav_status = int(vessel["nav_status"]) or 1
+    cog = float(vessel.get("cog") or 0.0)
+    sog = float(vessel.get("sog") or 0.0)
+    nav_status = int(vessel.get("nav_status") or 1)
     return cog, sog, nav_status
 
 def get_vessel_position(vessel):
-    latitude = float(vessel["lat"]) or None
-    longitude = float(vessel["lon"]) or None
-    return latitude, longitude
+    lat = vessel.get("lat")
+    lon = vessel.get("lon")
+    return (float(lat) if lat is not None else None,
+            float(lon) if lon is not None else None)
 
 def get_vessel_name(vessel):
-    return vessel["name"].replace('"', "").strip()
+    v_name = vessel.get("name") or "Unknown"
+    return v_name.replace('"', "").strip()
 
 def get_vessel_description(vessel):
     """This function returns the vessel description which starts with the
@@ -141,6 +144,20 @@ def vessel_is_underway(vessel) -> bool:
     cog, sog, nav_status = get_vessel_navigational_status(vessel)
     return sog > 1.0 and nav_status not in [1, 5]
 
+def get_distance_km(lat1, lon1, lat2, lon2):
+    """
+    Haversine formula to calculate the great-circle distance between two points
+    on a sphere given their longitudes and latitudes.
+    """
+    R = 6371.0  # Earth's radius in km
+    phi1, phi2 = math.radians(lat1), math.radians(lat2)
+    dphi = math.radians(lat2 - lat1)
+    dlambda = math.radians(lon2 - lon1)
+
+    a = math.sin(dphi / 2) ** 2 + \
+        math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2) ** 2
+
+    return 2 * R * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
 class ShipDatabase:
     def __init__(self):
@@ -202,25 +219,47 @@ class ShipDatabase:
     def update_ship_position_data(self, mmsi, body):
         lat = body.get("Latitude")
         lon = body.get("Longitude")
-        nav_status = body.get("NavigationalStatus")
-        cog = body.get("Cog")
-        sog = body.get("Sog")
+        nav_status = body.get("NavigationalStatus", 0)
+        cog = body.get("Cog", 0.0)
+        sog = body.get("Sog", 0.0)
 
-        """Updates a ship's current location, spatial geometry, speed, course and nav status."""
-        sql = """
-              UPDATE ships
-              SET lat                  = %s,
-                  lon                  = %s,
-                  geom                 = ST_SetSRID(ST_MakePoint(%s, %s), 4326),
-                  nav_status           = %s,
-                  cog                  = %s,
-                  sog                  = %s,
-                  last_position_update = NOW()
-              WHERE mmsi = %s;
-              """
-        with self.conn.cursor() as cur:
-            # We use nav_status here, which may be None if not provided
-            cur.execute(sql, (lat, lon, lon, lat, nav_status, cog, sog, str(mmsi)))
+        # Ensure the ship exists in the 'ships' table first (Shadow Insert)
+        # This prevents Foreign Key violations in the history table.
+        sql_ensure_ship = """
+                          INSERT INTO ships (mmsi, name, vessel_type)
+                          VALUES (%s, 'Unknown', 0) ON CONFLICT (mmsi) DO NOTHING; \
+                          """
+
+        # Update current ship status
+        sql_live = """
+                   UPDATE ships
+                   SET lat                  = %s,
+                       lon                  = %s,
+                       geom                 = ST_SetSRID(ST_MakePoint(%s, %s), 4326),
+                       nav_status           = %s,
+                       cog                  = %s,
+                       sog                  = %s,
+                       last_position_update = NOW()
+                   WHERE mmsi = %s; \
+                   """
+
+        # Insert historical track
+        sql_history = """
+                      INSERT INTO ship_position (mmsi, lat, lon, geom, sog, cog, nav_status, acquired_at)
+                      VALUES (%s, %s, %s, ST_SetSRID(ST_MakePoint(%s, %s), 4326), %s, %s, %s, NOW());
+                      """
+        try:
+            with self.conn.cursor() as cur:
+                # Step 1: Guarantee the parent record exists
+                cur.execute(sql_ensure_ship, (str(mmsi),))
+
+                # Step 2: Update live position
+                cur.execute(sql_live, (lat, lon, lon, lat, nav_status, cog, sog, str(mmsi)))
+
+                # Step 3: Record history (now safe from FK errors)
+                cur.execute(sql_history, (str(mmsi), lat, lon, lon, lat, sog, cog, nav_status))
+        except Exception as e:
+            logger.error(f"Database error updating position for {mmsi}: {e}")
 
     def get_current_ship_total(self):
         """Returns the total number of ships currently in the database."""
@@ -301,3 +340,47 @@ class ShipDatabase:
     def __del__(self):
         if hasattr(self, 'conn'):
             self.conn.close()
+
+    def get_ship_track(self, mmsi, limit=100):
+        """
+        Retrieves historical positions for a specific ship, newest first.
+        Includes a protective check to return an empty track if MMSI is missing.
+        """
+        if not mmsi:
+            return []
+
+        sql = """
+            SELECT lat, lon FROM ship_position 
+            WHERE mmsi = %s 
+            ORDER BY acquired_at DESC 
+            LIMIT %s;
+        """
+        try:
+            with self.conn.cursor() as cur:
+                cur.execute(sql, (str(mmsi), limit))
+                # Returns an empty list [] if no rows are found
+                return cur.fetchall() or []
+        except Exception as e:
+            logger.error(f"Error fetching track for MMSI {mmsi}: {e}")
+            return []
+
+    def prune_vessel_tracks(self, expiry_days):
+        """Removes position history older than the specified number of days."""
+        if not expiry_days or expiry_days <= 0:
+            return 0
+
+        sql = """
+              DELETE \
+              FROM ship_position
+              WHERE acquired_at < NOW() - INTERVAL '%s days'; \
+              """
+        try:
+            with self.conn.cursor() as cur:
+                cur.execute(sql, (expiry_days,))
+                deleted_rows = cur.rowcount
+                if deleted_rows > 0:
+                    logger.info(f"Pruned {deleted_rows} old position records.")
+                return deleted_rows
+        except Exception as e:
+            logger.error(f"Error pruning vessel tracks: {e}")
+            return 0
