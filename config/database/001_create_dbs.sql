@@ -54,7 +54,7 @@ CREATE INDEX IF NOT EXISTS idx_ship_pos_time ON ship_position(acquired_at);
 CREATE INDEX IF NOT EXISTS idx_ship_pos_geom ON ship_position USING GIST(geom);
 
 -- Populate Regions
-INSERT INTO map_region (label, boundary) VALUES ('NZ_Aus', ST_MakeEnvelope(112.169258, -51.660072, 181.099240, -9.251137, 4326));
+INSERT INTO map_region (label, boundary) VALUES ('NZ_Aus', ST_MakeEnvelope(63.131759, -57.173648, 190.337125, 0.239941, 4326));
 INSERT INTO map_region (label, boundary) VALUES ('Suez_Canal', ST_MakeEnvelope(27.665706, 21.859824, 40.572526, 33.179878, 4326));
 INSERT INTO map_region (label, boundary) VALUES ('English_Channel', ST_MakeEnvelope(-13.134662, 48.654641, 9.564140, 59.612725, 4326));
 INSERT INTO map_region (label, boundary) VALUES ('Singapore', ST_MakeEnvelope(93.568655, -7.149559, 118.816790, 10.193142, 4326));

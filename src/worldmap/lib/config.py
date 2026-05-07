@@ -1,23 +1,43 @@
 import os
 import sys
 import configparser
+import json
 import logging
 
 logger = logging.getLogger(__name__)
-
 
 class WorldMapConfig:
     def __init__(self, config_path):
         self.config_path = config_path
         self.config = configparser.ConfigParser()
+        # Track the modification time to detect external changes
+        self._last_mtime = self._get_current_mtime()
         self.load()
+
+    def _get_current_mtime(self):
+        """Returns the current modification time of the config file."""
+        try:
+            return os.path.getmtime(self.config_path)
+        except OSError:
+            return 0
+
+    def is_changed(self):
+        """
+        Returns True if the config file has been modified since the last check.
+        Updates the internal timestamp reference.
+        """
+        current_mtime = self._get_current_mtime()
+        if current_mtime > self._last_mtime:
+            self._last_mtime = current_mtime
+            return True
+        return False
 
     def load(self):
         """Reads or re-reads the config file from disk."""
         if not os.path.exists(self.config_path):
             logger.error(f"Config file not found: {self.config_path}")
             return
-
+        self.config.clear()
         self.config.read(self.config_path)
         self._inject_secrets()
         logger.debug(f"Configuration loaded/refreshed from {self.config_path}")
@@ -43,7 +63,6 @@ class WorldMapConfig:
     def get_section(self, section):
         if self.config.has_section(section):
             return self.config[section]
-        # Return an empty SectionProxy
         return self.config['DEFAULT']
 
     def section_enabled(self, section):
@@ -55,3 +74,5 @@ class WorldMapConfig:
         if self.config.has_section(section):
             return self.config.get(section, "outfile", fallback=None)
         return None
+
+

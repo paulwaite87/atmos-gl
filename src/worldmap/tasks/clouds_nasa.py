@@ -8,15 +8,15 @@ from datetime import datetime, timedelta, timezone
 
 # Internal library import
 from worldmap.lib.config import WorldMapConfig
-from .common import Updater
+from .common import Updater, MapData
 
 logger = logging.getLogger(__name__)
 
 
 class NasaCloudUpdater(Updater):
-    def __init__(self, config: WorldMapConfig):
-        super().__init__(config, "Clouds_NASA")
-        self.clouds_settings = config.get_section("clouds")
+    def __init__(self, config: WorldMapConfig, map_data: MapData):
+        super().__init__(config, "Clouds_NASA", map_data)
+        self.set_output_path()
 
     def run(self):
         """Downloads the cloud layer from NASA GIBS WMS."""
@@ -24,11 +24,8 @@ class NasaCloudUpdater(Updater):
 
         base_url = self.settings.get("url").strip('"')  # Handle quoted URLs from config
         outfile = self.settings.get("outfile")
-        width = self.clouds_settings.getint("width", fallback=2048)
-        height = self.clouds_settings.getint("height", fallback=1024)
-
-        # Construct full output path
-        output_path = str(os.path.join(self.workdir, outfile))
+        width = self.settings.getint("width", fallback=2048)
+        height = self.settings.getint("height", fallback=1024)
 
         # NASA's 'Best' layer availability logic
         now_utc = datetime.now(timezone.utc)
@@ -56,7 +53,7 @@ class NasaCloudUpdater(Updater):
         full_url = f"{base_url}?{query_string}"
 
         try:
-            os.makedirs(str(os.path.dirname(output_path)), exist_ok=True)
+            os.makedirs(str(os.path.dirname(self.output_path)), exist_ok=True)
             logger.debug(
                 f"Fetching NASA GIBS clouds for {display_date} (Target: {width}x{height})"
             )
@@ -66,10 +63,10 @@ class NasaCloudUpdater(Updater):
             )
 
             with urllib.request.urlopen(req, timeout=60) as response:
-                with open(output_path, "wb") as f:
+                with open(self.output_path, "wb") as f:
                     f.write(response.read())
 
-            logger.debug(f"NASA cloud map successfully saved: {output_path}")
+            logger.debug(f"NASA cloud map successfully saved: {self.output_path}")
 
         except urllib.error.HTTPError as e:
             logger.error(f"NASA GIBS returned an error: {e.code} {e.reason}")

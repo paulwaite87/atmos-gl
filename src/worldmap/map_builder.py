@@ -12,7 +12,7 @@ from worldmap.lib.config import WorldMapConfig
 from worldmap.lib.logging import setup_logging
 
 # Task imports
-from worldmap.tasks.common import Updater
+from worldmap.tasks.common import MapData, Updater
 from worldmap.tasks.clouds import CloudUpdater
 from worldmap.tasks.clouds_nasa import NasaCloudUpdater
 from worldmap.tasks.isobars import IsobarUpdater
@@ -29,6 +29,8 @@ logger = logging.getLogger("worldmap.map_builder")
 class MapBuilder:
     def __init__(self, config_path: str):
         self.config = WorldMapConfig(config_path)
+        self.map_data = MapData(self.config)
+        self.config_changed = False
 
         # Explicitly typed dictionary for tracking task completion
         self.last_run_times: Dict[str, datetime] = {}
@@ -37,8 +39,8 @@ class MapBuilder:
         # This gets reset every time a loop starts
         self.map_updated = False
 
-        # Flag to indicate isobars were updated so run composite
-        self.isobars_were_updated = False
+        # Flag to indicate isobars or clouds were updated so run composite
+        self.weather_image_updated = False
 
         # Register the signal handler for SIGUSR1
         # In Docker/Linux, this is often signal 10
@@ -62,10 +64,9 @@ class MapBuilder:
         logger.debug("External trigger received (SIGUSR1): Resetting task timings")
         self.last_run_times.clear()
 
-    def some_tasks_ready_to_run(self) -> bool:
+    def tasks_ready_to_run(self) -> bool:
         for section, task_class in self.task_registry:
-            updater = task_class(self.config)
-            logger.debug(f"Updater task '{updater.section}' checking if it could run")
+            updater = task_class(self.config, self.map_data)
             if section == "composite":
                 continue
             if self.should_run(updater):
@@ -77,20 +78,23 @@ class MapBuilder:
         Determines if an updater task is due based on runs_per_day.
         Returns True if the elapsed time exceeds (86400 / runs_per_day).
         """
-        logger.debug(f"Updater task '{updater.section}' checking if we should run")
-        # If isobars were updated, then composite should always run
-        if updater.section == "composite":
-            return True if self.isobars_were_updated else False
-
         # If the updater is disabled, make it remove any output, then skip
         if not updater.enabled:
-            logger.debug(f"Updater task '{updater.section}' should not run - disabled")
             if clear_output:
                 updater.remove_output_file()
             return False
 
-        # Handle special case of xplanet renderer, which doesn't
-        # have a schedule and updates when the map has changed
+        # Refresh everything if config changed
+        if self.config_changed:
+            return True
+
+        # Composite produces the weather image from clouds and/or isobars,
+        # so we run that if they were updated
+        if updater.section == "composite" and self.weather_image_updated:
+            return True
+
+        # Handle special case of xplanet renderer, which doesn't have a schedule
+        # and updates when either the configuration or the map has changed
         if updater.section == "xplanet" and self.map_updated:
             return True
 
@@ -118,15 +122,17 @@ class MapBuilder:
 
         while True:
             self.config.load()
+            self.map_data.refresh()
             self.map_updated = False
-            self.isobars_were_updated = False
+            self.weather_image_updated = False
+            self.config_changed = self.config.is_changed()
 
-            if self.some_tasks_ready_to_run():
+            if self.config_changed or self.tasks_ready_to_run():
                 logger.info("Map-builder scheduler run started")
 
                 for section, task_class in self.task_registry:
-                    logger.debug(f"Updater task '{section}' checking runable")
-                    updater = task_class(self.config)
+                    logger.debug(f"Updater task '{section}' checking runnable")
+                    updater = task_class(self.config, self.map_data)
                     if self.should_run(updater, clear_output=True):
                         try:
                             logger.info(f"Running scheduled task: '{section}'")
@@ -144,8 +150,8 @@ class MapBuilder:
                             self.map_updated = True
 
                             # Will allow composite overlay to update
-                            if section == "isobars":
-                                self.isobars_were_updated = True
+                            if section in ["isobars", "clouds", "clouds_nasa"]:
+                                self.weather_image_updated = True
 
                         except Exception as e:
                             logger.error(f"Task '{section}' execution failed: {e}")

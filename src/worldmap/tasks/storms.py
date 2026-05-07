@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-import os
 import io
 import sys
 import logging
@@ -10,14 +9,14 @@ from datetime import datetime, timedelta, timezone
 
 # Internal library import
 from worldmap.lib.config import WorldMapConfig
-from .common import Updater
+from .common import Updater, MapData
 
 logger = logging.getLogger(__name__)
 
 
 class StormUpdater (Updater):
-    def __init__(self, config: WorldMapConfig):
-        super().__init__(config, "Storms")
+    def __init__(self, config: WorldMapConfig, map_data: MapData):
+        super().__init__(config, "Storms", map_data)
         self.set_output_path()
 
     def _get_active_csv_url(self):

@@ -7,12 +7,13 @@ import numpy as np
 import xarray as xr
 import matplotlib.pyplot as plt
 import cartopy.crs as ccrs
+import scipy.ndimage as ndimage
 from datetime import datetime, timedelta, timezone
 from matplotlib import patheffects
 
 # Internal imports from your new library
 from worldmap.lib.config import WorldMapConfig
-from .common import Updater
+from .common import Updater, MapData
 
 # Silence specific data-processing warnings and talkative libraries
 warnings.filterwarnings("ignore", message=".*missingValue.*")
@@ -29,8 +30,8 @@ logger = logging.getLogger(__name__)
 
 
 class IsobarUpdater(Updater):
-    def __init__(self, config: WorldMapConfig):
-        super().__init__(config, "Isobars")
+    def __init__(self, config: WorldMapConfig, map_data: MapData):
+        super().__init__(config, "Isobars", map_data)
 
         # Path resolution using the workdir from config
         self.grib_path = os.path.join(self.workdir, "data/gfs_temp.grib2")
@@ -85,8 +86,13 @@ class IsobarUpdater(Updater):
                 f.write(chunk)
 
     def plot(self):
-        """Renders the isobar transparent PNG."""
+        """Renders the isobar transparent PNG, perfectly scaled and smoothed."""
         logger.debug(f"Plotting isobars to {self.output_path}...")
+
+        plot_target_width = float(self.target_width) / 100
+        plot_target_height = float(self.target_height) / 100
+
+        # Load the Data
         ds = xr.open_dataset(
             self.grib_path,
             engine="cfgrib",
@@ -95,40 +101,78 @@ class IsobarUpdater(Updater):
             },
         )
 
+        # This gets the 'region' setting from [xplanet] as a bbox or
+        # None if it isn't defined, which represents 'The World'
+        bbox = self.map_region_bbox
+
+        # Smart Longitude Handling
+        # GFS is natively 0 to 360.
+        # If the user's bbox crosses the Prime Meridian (e.g. -10 to 20), we must shift it to -180 to 180.
+        # If it crosses the Date Line (e.g. 150 to 190), 0 to 360 works perfectly natively!
+        if bbox:
+            if bbox[0] < 0:
+                logger.debug("Shifting GFS longitudes to -180..180 for Western Hemisphere")
+                ds = ds.assign_coords(longitude=(((ds.longitude + 180) % 360) - 180))
+                ds = ds.sortby('longitude')
+            elif bbox[2] > 180.0:
+                logger.debug("Cropping East longitude to 180")
+                bbox[2] = 180.0
+
         p = ds["prmsl"].values / 100.0
         lons, lats = ds["longitude"].values, ds["latitude"].values
 
-        fig = plt.figure(figsize=(20.48, 10.24), dpi=100)
-        ax = plt.axes(projection=ccrs.PlateCarree())
-        ax.set_global()
+        # Smooth the grid for high-resolution zoom
+        # This prevents the lines from looking "chunky" or polygonal when zoomed in
+        p_smooth = ndimage.gaussian_filter(p, sigma=1.2)
 
-        levels = np.arange(940, 1060, 4)
+        # Canvas sizing
+        if bbox:
+            # Calculate aspect ratio to prevent padding/stretching
+            width_deg = bbox[2] - bbox[0]
+            height_deg = bbox[3] - bbox[1]
+            aspect = width_deg / height_deg
+            # Target width is 2048, calculate precise height
+            fig = plt.figure(figsize=(plot_target_width, plot_target_width / aspect), dpi=100)
+        else:
+            fig = plt.figure(figsize=(plot_target_width, plot_target_height), dpi=100)
+
+        ax = plt.axes(projection=ccrs.PlateCarree())
+
+        # Set Extent
+        if bbox:
+            logger.debug(f"Setting bbox isobars extent: {bbox}")
+            ax.set_extent([bbox[0], bbox[2], bbox[1], bbox[3]], crs=ccrs.PlateCarree())
+        else:
+            logger.debug("Setting global isobars extent")
+            ax.set_global()
+
+        # Adaptive contour density
+        step = 2 if bbox else 4
+        levels = np.arange(940, 1060, step)
         color = self.settings.get("isobar_color", fallback="white")
         f_size = self.settings.getint("label_fontsize", fallback=10)
-
         effect = [patheffects.withStroke(linewidth=2.0, foreground="black", alpha=0.3)]
 
+        # Draw the smooth contours
         cs = ax.contour(
             lons,
             lats,
-            p,
+            p_smooth,  # Using the smoothed data array
             levels=levels,
             colors=color,
-            linewidths=1.0,
+            linewidths=1.2,  # Slightly thicker looks better on smooth lines
             transform=ccrs.PlateCarree(),
         )
 
-        # Apply path effects to contours
         for collection in getattr(cs, "collections", []):
             collection.set_path_effects(effect)
 
-        # Draw and style labels
         labels = plt.clabel(cs, fmt="%d", fontsize=f_size, inline=True, colors=color)
         if labels and self.settings.getboolean("label_outline", fallback=False):
             for txt in labels:
                 txt.set_path_effects(effect)
 
-        # Transparency formatting for compositing
+        # Transparency and Output
         ax.set_frame_on(False)
         ax.set_position((0, 0, 1, 1))
         ax.patch.set_alpha(0)

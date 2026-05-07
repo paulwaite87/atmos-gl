@@ -40,13 +40,15 @@ class MapRefreshHandler(FileSystemEventHandler):
             return
 
         # Trigger on file lifecycle events
-        if event.event_type in ("created", "modified", "moved"):
+        if event.event_type in ("created"):
+            logger.info("Triggered on file create")
             latest = self.get_latest_file()
 
             # Prevent feedback loop from cleanup logic
             if latest and latest != self.last_applied:
                 # Brief sleep to ensure the file write/move is finalized
                 time.sleep(0.5)
+                logger.info(f"Applying latest file {latest}")
                 self.apply_wallpaper(latest)
 
     def apply_wallpaper(self, path):
@@ -181,8 +183,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--suffix",
         type=str,
-        default="worldmap.jpg",
-        help="Suffix of the render files (e.g. worldmap.jpg)",
+        default="regionmap.jpg",
+        help="Suffix of the render files (e.g. regionmap.jpg)",
     )
     args = parser.parse_args()
 

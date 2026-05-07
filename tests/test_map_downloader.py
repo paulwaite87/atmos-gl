@@ -1,9 +1,8 @@
 import sys
-import os
 import json
 import logging
 from worldmap.lib.maps import NASAGIBSDownloader
-from worldmap.lib.shipping import ShipDatabase
+from worldmap.lib.db import Database
 
 # Setup basic logging to see the downloader progress
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
@@ -29,7 +28,7 @@ def main():
 
     if args.label:
         logger.info(f"Resolving coordinates for label: {args.label}")
-        db = ShipDatabase()
+        db = Database()
         bbox = db.get_region_definition(args.label)
         if not bbox:
             logger.error(f"Could not find region '{args.label}' in database.")

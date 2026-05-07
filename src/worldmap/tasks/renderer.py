@@ -3,175 +3,72 @@ import os
 import glob
 import time
 import logging
-import subprocess
 import json
+import subprocess
 
 from worldmap.lib.config import WorldMapConfig
-from worldmap.lib.shipping import ShipDatabase
 from worldmap.lib.maps import NASAGIBSDownloader
-from .common import Updater
-from PIL import Image
+from .common import Updater, MapData
 
 logger = logging.getLogger(__name__)
 
 
 class XPlanetRenderer(Updater):
-    def __init__(self, config: WorldMapConfig):
-        super().__init__(config, "XPlanet")
-        self.db = ShipDatabase()
+    def __init__(self, config: WorldMapConfig, map_data):
+        super().__init__(config, "XPlanet", map_data)
         self.downloader = NASAGIBSDownloader()
 
-        # Geometry needs to match what we get from clouds updater
-        clouds_settings = self.settings.get("clouds", fallback=None)
-        if clouds_settings:
-            self.target_width = clouds_settings.get("width")
-            self.target_height = clouds_settings.get("height")
-        else:
-            self.target_width = 2048
-            self.target_height = 1024
+        # This is the default colour Xplanet will use when it has no map image
+        # Used when we specify a bbox extending beyond 180 longitude, and
+        # avoids the default white being used.
+        self.default_fill_colour = self.settings.get("default_fill_colour", fallback="black")
 
         # Ensure regional data directory exists for caching
         self.region_dir = os.path.join(self.workdir, "data", "regions")
         os.makedirs(self.region_dir, exist_ok=True)
 
-    def adjust_bbox_for_aspect_ratio(self, bbox, target_ratio=2.0):
-        """
-        Extends the lesser dimension of the bbox to match the target aspect ratio
-        to ensure zero distortion in rectangular projections.
-        """
-        lon_min, lat_min, lon_max, lat_max = bbox
+        # Weather imagery flags
+        self.clouds_enabled = self.config.section_enabled("clouds")
+        self.isobars_enabled = self.config.section_enabled("isobars")
+        self.composite_enabled = self.config.section_enabled("composite")
 
-        delta_lon = lon_max - lon_min
-        delta_lat = lat_max - lat_min
-
-        # Prevent division by zero
-        if delta_lat == 0:
-            return bbox
-
-        current_ratio = delta_lon / delta_lat
-
-        if current_ratio < target_ratio:
-            # Width is too small; extend longitude outward from center
-            target_lon_span = delta_lat * target_ratio
-            padding = (target_lon_span - delta_lon) / 2
-            lon_min -= padding
-            lon_max += padding
-        elif current_ratio > target_ratio:
-            # Height is too small; extend latitude outward from center
-            target_lat_span = delta_lon / target_ratio
-            padding = (target_lat_span - delta_lat) / 2
-            lat_min -= padding
-            lat_max += padding
-
-        # Safety Cap: Latitude cannot exceed 90 or -90
-        if lat_max > 90:
-            shift = lat_max - 90
-            lat_max = 90
-            lat_min -= shift
-        if lat_min < -90:
-            shift = -90 - lat_min
-            lat_min = -90
-            lat_max += shift
-
-        logger.info(f"Adjusted BBox for zero distortion: {lon_min, lat_min, lon_max, lat_max}")
-        return [lon_min, lat_min, lon_max, lat_max]
-
-    def resolve_region_bbox(self):
-        """Determines the bbox from config string or database label."""
-        region_raw = self.settings.get("region", fallback="").strip()
-        if not region_raw:
-            return None
-
-        # Check if it's a JSON BBox: [-125, 24, -66, 49]
-        if region_raw.startswith("["):
-            try:
-                return json.loads(region_raw)
-            except json.JSONDecodeError:
-                logger.error(f"Invalid BBox JSON in config: {region_raw}")
-
-        # Otherwise, treat as a database label (e.g., 'NZ_Aus')
-        return self.db.get_region_definition(region_raw)
-
-    def get_regional_maps(self, region_str, bbox):
+    def get_regional_maps(self):
         """Returns paths for day/night maps, downloading if missing from cache."""
-        if isinstance(region_str, (list, tuple)):
-            name_part = "_".join(map(str, region_str))
-        else:
-            name_part = str(region_str).strip("[] ").replace(" ", "_").replace(",", "_")
-
-        day_path = os.path.join(self.region_dir, f"{name_part}_day.jpg")
-        night_path = os.path.join(self.region_dir, f"{name_part}_night.jpg")
+        region_identifier = self.map_data.region.region_identifier
+        target_width = self.map_data.region.target_width
+        target_height = self.map_data.region.target_height
+        bbox = self.map_data.region.bbox
+        day_path = os.path.join(
+            self.region_dir,
+            f"{region_identifier}_day.jpg"
+        )
+        night_path = os.path.join(
+            self.region_dir,
+            f"{region_identifier}_night.jpg"
+        )
 
         if not os.path.exists(day_path):
-            logger.info(f"Cache miss: Downloading regional day map for {name_part}...")
-            self.downloader.download_region_map(bbox, self.target_width, self.target_height, day_path, is_night=False)
+            logger.info(f"Cache miss: Downloading regional day map for {region_identifier}...")
+            logger.debug(f"bbox: {bbox} target_width: {target_width} target_height: {target_height} day_path: {day_path}")
+            self.downloader.download_region_map(
+                bbox,
+                target_width,
+                target_height,
+                day_path,
+                is_night=False
+            )
 
         if not os.path.exists(night_path):
-            logger.info(f"Cache miss: Downloading regional night map for {name_part}...")
-            self.downloader.download_region_map(bbox, self.target_width, self.target_height, night_path, is_night=True)
+            logger.info(f"Cache miss: Downloading regional night map for {region_identifier}...")
+            self.downloader.download_region_map(
+                bbox,
+                target_width,
+                target_height,
+                night_path,
+                is_night=True
+            )
 
         return day_path, night_path
-
-    def prepare_regional_clouds(self, bbox, region_name):
-        """Crops the global cloud/isobar map to match the regional bbox."""
-        # Use the global file generated by your map_builder process
-        source_path = os.path.join(self.workdir, "data", "cloud_map_with_isobars.jpg")
-
-        if not os.path.exists(source_path):
-            logger.warning("Global cloud map not found. Falling back to global texture.")
-            return "data/cloud_map_with_isobars.jpg"
-
-        output_path = os.path.join(self.region_dir, f"{region_name}_clouds.jpg")
-
-        try:
-            with Image.open(source_path) as img:
-                src_w, src_h = img.size
-                lon_min, lat_min, lon_max, lat_max = bbox
-
-                def get_px(lon, lat):
-                    """Converts lat/lon to pixel coordinates on the global source map."""
-                    # Normalize -180...180 to 0...1 (180 becomes 1.0, not 0)
-                    x_pct = (lon + 180) / 360
-                    # Clamp to prevent edge-case pixel overflows
-                    x = max(0, min(src_w - 1, int(x_pct * src_w)))
-
-                    # Latitude 90 (North) is Y=0, -90 (South) is Y=src_h
-                    y_pct = (90 - lat) / 180
-                    y = max(0, min(src_h - 1, int(y_pct * src_h)))
-                    return x, y
-
-                if lon_max > 180:
-                    logger.debug(f"Cropping cloud map with Date Line wrap for {region_name}")
-                    # TILE A: The "Western" part (e.g., 112 to 180)
-                    ax1, ay1 = get_px(lon_min, lat_max)
-                    ax2, ay2 = get_px(180, lat_min)
-                    # PIL.crop uses (left, top, right, bottom)
-                    tile_a = img.crop((ax1, ay1, ax2, ay2))
-
-                    # TILE B: The "Eastern" part (e.g., -180 to -178.9)
-                    bx1, by1 = get_px(-180, lat_max)
-                    bx2, by2 = get_px(lon_max - 360, lat_min)
-                    tile_b = img.crop((bx1, by1, bx2, by2))
-
-                    # Calculate the seam point proportionally
-                    w_a = int(((180 - lon_min) / (lon_max - lon_min)) * self.target_width)
-                    w_b = self.target_width - w_a
-
-                    regional_clouds = Image.new('RGB', (self.target_width, self.target_height))
-                    regional_clouds.paste(tile_a.resize((w_a, self.target_height), Image.Resampling.LANCZOS), (0, 0))
-                    regional_clouds.paste(tile_b.resize((w_b, self.target_height), Image.Resampling.LANCZOS), (w_a, 0))
-                else:
-                    # Standard linear crop
-                    x1, y1 = get_px(lon_min, lat_max)
-                    x2, y2 = get_px(lon_max, lat_min)
-                    regional_clouds = img.crop((x1, y1, x2, y2)).resize((self.target_width, self.target_height), Image.Resampling.LANCZOS)
-
-                regional_clouds.save(output_path, "JPEG", quality=90)
-                return output_path
-
-        except Exception as e:
-            logger.error(f"Failed to crop regional clouds: {e}")
-            return source_path
 
     def run(self):
         """Executes XPlanet using a dynamically generated configuration file."""
@@ -179,94 +76,53 @@ class XPlanetRenderer(Updater):
 
         # Setup paths and base settings
         data_dir = os.path.join(self.workdir, "data")
-        base_name = self.settings.get("base_filename", fallback="worldmap.jpg")
+        base_name = self.settings.get("base_filename", fallback="regionmap.jpg")
 
-        day_map = "day_map_realistic_outline.jpg"
-        night_map = "night_map_realistic_outline.jpg"
-        projection = self.settings.get("projection", fallback="rectangular")
-        longitude = self.settings.get("longitude", fallback="175")
-        latitude = "0"
-        range_val = None
-        bbox = None
+        # Acquire the maps
+        day_map, night_map = self.get_regional_maps()
 
-        # Handle Regional Map Logic
-        raw_bbox = self.resolve_region_bbox()
-        regional_cloud_path = "data/cloud_map_with_isobars.jpg"
-        if raw_bbox:
-            # Extract values safely into a float list [lon_min, lat_min, lon_max, lat_max]
-            if raw_bbox:
-                # Use explicit type checking to satisfy the IDE
-                if isinstance(raw_bbox, dict):
-                    # Accessing dict keys is now safe
-                    bbox = [
-                        float(raw_bbox['lon_min']),
-                        float(raw_bbox['lat_min']),
-                        float(raw_bbox['lon_max']),
-                        float(raw_bbox['lat_max'])
-                    ]
-                elif isinstance(raw_bbox, (list, tuple)):
-                    # Iterating over a sequence is now safe
-                    bbox = [float(x) for x in raw_bbox]
-                else:
-                    logger.error(f"Unexpected BBox type: {type(raw_bbox)}")
-                    return
-
-            # Adjust BBox for zero distortion (Targeting 4096x2048 = 2.0 ratio)
-            bbox = self.adjust_bbox_for_aspect_ratio(bbox, target_ratio=2.0)
-
-            # Generate regional clouds to match the bbox
-            region_name = self.settings.get("region", "NZ_Aus")
-            regional_cloud_path = self.prepare_regional_clouds(bbox, region_name)
-
-            # Pass the adjusted bbox to the downloader
-            region_str = self.settings.get("region", fallback="region")
-            day_map, night_map = self.get_regional_maps(region_str, bbox)
-
-            # Center the camera on the NEW adjusted BBox center
-            # Note: If lon_max > 180, we use the midpoint. Xplanet handles values > 180 fine for centering.
-            longitude = str((bbox[0] + bbox[2]) / 2)
-            latitude = str((bbox[1] + bbox[3]) / 2)
-
-            projection = "rectangular"
-            range_val = "5"
+        projection = "rectangular"
+        range_val = "5"
 
         # Create the dynamic xplanet.conf
         temp_conf_path = os.path.join(data_dir, "xplanet_dynamic.conf")
         with open(temp_conf_path, "w") as f:
             f.write("[earth]\n")
             f.write('"Earth"\n')
-            f.write('color=0x04040e\n')
+            f.write(f'color={self.default_fill_colour}\n')
             f.write(f"map={day_map}\n")
             f.write(f"night_map={night_map}\n")
             # Xplanet mapbounds={NorthWest_Lat, NorthWest_Lon, SouthEast_Lat, SouthEast_Lon}
             # bbox order from maps.py: [lon_min, lat_min, lon_max, lat_max]
             # Therefore: {lat_max, lon_min, lat_min, lon_max}
-            f.write(f"mapbounds={{{bbox[3]},{bbox[0]},{bbox[1]},{bbox[2]}}}\n")
+            f.write(f"mapbounds={{{self.map_region_bbox[3]},{self.map_region_bbox[0]},{self.map_region_bbox[1]},{self.map_region_bbox[2]}}}\n")
 
-            # lon_start = bbox[0] - 360
-            # lon_end = bbox[2] - 360
-            #f.write(f"mapbounds={{{bbox[3]},{lon_start},{bbox[1]},{lon_end}}}\n")
+            # Whether to display the weather
+            if self.composite_enabled and (self.clouds_enabled or self.isobars_enabled):
+                f.write(f'cloud_map={self.config.get_section("composite").get("outfile")}\n')
+                f.write(f'cloud_threshold={self.settings.getint("cloud_threshold", fallback=90)}\n')
+                f.write(f'cloud_gamma={self.settings.getfloat("cloud_gamma", fallback=1.0)}\n')
 
-            #f.write("specular_map=earthspec.jpg\n")
-
-            # if self.config.section_enabled("clouds"):
-            #     f.write(f'cloud_map={regional_cloud_path}\n')
-            #     f.write(f'cloud_threshold={self.settings.getint("cloud_threshold", fallback=90)}\n')
-            #     f.write(f'cloud_gamma={self.settings.getfloat("cloud_gamma", fallback=1.0)}\n')
-
-            f.write('marker_file=city_markers.txt\n')
-
+            # Show active storms
             if self.config.section_enabled("storms"):
                 f.write(f'marker_file={self.config.get_section_outfile("storms")}\n')
 
+            # Show earthquake markers
             if self.config.section_enabled("quakes"):
                 f.write(f'marker_file={self.config.get_section_outfile("quakes")}\n')
 
+            # Show volcanoes
             if self.config.section_enabled("volcanoes"):
                 f.write(f'marker_file={self.config.get_section_outfile("volcanoes")}\n')
 
+            # Show shipping activity
             if self.config.section_enabled("shipping"):
                 f.write(f'marker_file={self.config.get_section_outfile("shipping")}\n')
+
+            # Additional marker files from config
+            marker_files = json.loads(self.settings.get("marker_files", fallback='[]'))
+            for marker_file in marker_files:
+                f.write(f"marker_file={marker_file}\n")
 
             # Default style for markers if not specified
             f.write(f'marker_color={self.settings.get("marker_default_colour", "cyan")}\n')
@@ -289,19 +145,15 @@ class XPlanetRenderer(Updater):
             "-conf", temp_conf_path,
             "-searchdir", self.workdir,
             "-projection", projection,
-            "-geometry", f"{self.target_width}x{self.target_height}",
-#            "-geometry", self.settings.get("geometry"),
-            "-longitude", longitude,
-            "-latitude", latitude,
+            "-geometry", self.settings.get("geometry"),
+            "-latitude", str(self.centre_latitude),
+            "-longitude", str(self.centre_longitude),
             "-output", output_path,
+            "-range", range_val,
             "-num_times", "1",
         ]
 
-        if range_val:
-            cmd += ["-range", range_val]
-
         logger.debug(f"Running XPlanet: {' '.join(cmd)}")
-
         try:
             result = subprocess.run(
                 cmd, check=True, timeout=60, capture_output=True, text=True, cwd=self.workdir

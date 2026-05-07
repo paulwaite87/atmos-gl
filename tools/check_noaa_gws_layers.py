@@ -18,16 +18,16 @@ def list_nasa_layers():
                 r"<Layer[^>]*>.*?<Name>(.*?)</Name>", content, re.DOTALL
             )
 
-            pressure_layers = [l for l in layers if "Pressure" in l or "MSLP" in l]
+            pressure_layers = [layer for layer in layers if "Pressure" in layer or "MSLP" in layer]
 
             if not pressure_layers:
                 print("No pressure layers found. Here are the first 10 general layers:")
-                for l in layers[:10]:
-                    print(f" - {l}")
+                for layer in layers[:10]:
+                    print(f" - {layer}")
             else:
                 print(f"\nFound {len(pressure_layers)} Pressure-related layers:")
-                for l in pressure_layers:
-                    print(f" -> {l}")
+                for layer in pressure_layers:
+                    print(f" -> {layer}")
 
     except Exception as e:
         print(f"Failed to query NASA: {e}")

@@ -67,7 +67,7 @@ purge:
 
 # Desktop Management
 start-desktop:
-	nohup ./wallpaper_updater.sh > /dev/null 2>&1 &
+	./wallpaper_updater.sh
 	@echo "Wallpaper updater started in background."
 
 stop-desktop:
