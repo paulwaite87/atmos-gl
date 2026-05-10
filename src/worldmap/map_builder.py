@@ -16,6 +16,7 @@ from worldmap.tasks.common import MapData, Updater
 from worldmap.tasks.clouds import CloudUpdater
 from worldmap.tasks.clouds_nasa import NasaCloudUpdater
 from worldmap.tasks.isobars import IsobarUpdater
+from worldmap.tasks.wind import WindUpdater
 from worldmap.tasks.composite import CompositeUpdater
 from worldmap.tasks.storms import StormUpdater
 from worldmap.tasks.quakes import QuakeUpdater
@@ -51,6 +52,7 @@ class MapBuilder:
             ("clouds", CloudUpdater),
             ("clouds_nasa", NasaCloudUpdater),
             ("isobars", IsobarUpdater),
+            ("wind", WindUpdater),
             ("composite", CompositeUpdater),
             ("storms", StormUpdater),
             ("quakes", QuakeUpdater),
@@ -150,7 +152,7 @@ class MapBuilder:
                             self.map_updated = True
 
                             # Will allow composite overlay to update
-                            if section in ["isobars", "clouds", "clouds_nasa"]:
+                            if section in ["wind", "isobars", "clouds", "clouds_nasa"]:
                                 self.weather_image_updated = True
 
                         except Exception as e:

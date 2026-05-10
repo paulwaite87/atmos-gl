@@ -55,6 +55,7 @@ CREATE INDEX IF NOT EXISTS idx_ship_pos_geom ON ship_position USING GIST(geom);
 
 -- Populate Regions
 INSERT INTO map_region (label, boundary) VALUES ('NZ_Aus', ST_MakeEnvelope(63.131759, -57.173648, 190.337125, 0.239941, 4326));
+INSERT INTO map_region (label, boundary) VALUES ('NZ', ST_MakeEnvelope(153.019076, -48.473543, 188.534969, -31.786772, 4326));
 INSERT INTO map_region (label, boundary) VALUES ('Suez_Canal', ST_MakeEnvelope(27.665706, 21.859824, 40.572526, 33.179878, 4326));
 INSERT INTO map_region (label, boundary) VALUES ('English_Channel', ST_MakeEnvelope(-13.134662, 48.654641, 9.564140, 59.612725, 4326));
 INSERT INTO map_region (label, boundary) VALUES ('Singapore', ST_MakeEnvelope(93.568655, -7.149559, 118.816790, 10.193142, 4326));
@@ -62,4 +63,3 @@ INSERT INTO map_region (label, boundary) VALUES ('Strait_of_Hormuz', ST_MakeEnve
 INSERT INTO map_region (label, boundary) VALUES ('Saudi_Arabia', ST_MakeEnvelope(18.167952, 2.294974, 71.636505, 34.836029, 4326));
 INSERT INTO map_region (label, boundary) VALUES ('Mediterranean', ST_MakeEnvelope(-24.658106, 19.590094, 40.609030, 47.955593, 4326));
 INSERT INTO map_region (label, boundary) VALUES ('Panama_Canal', ST_MakeEnvelope(-115.741454, -8.257072, -56.267345, 30.935109, 4326));
-

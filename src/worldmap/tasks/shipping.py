@@ -127,7 +127,7 @@ class ShippingUpdater(Updater):
                 written_count += 1
 
                 # --- Track Normalization ---
-                if show_tracks and ship.vessel_class in show_names_classes:
+                if show_tracks:
                     history = ship_db.get_ship_track(ship.mmsi, limit=100)
                     last_lat, last_lon = ship_latitude, ship_longitude
                     points_placed = 0
@@ -142,7 +142,7 @@ class ShippingUpdater(Updater):
                         dist = get_distance_km(last_lat, last_lon, h_lat, h_lon)
                         if dist >= track_min_dist:
                             # Only write track points if they are within our bbox
-                            if not bbox or self.map_data.region.is_in_region(h_lat, h_lon):
+                            if self.map_data.region.is_in_region(h_lat, h_lon):
                                 f.write(f"{h_lat} {h_lon} color={label_color_default}\n")
                                 last_lat, last_lon = h_lat, h_lon
                                 points_placed += 1
