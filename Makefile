@@ -47,7 +47,7 @@ restore:
 	@echo "Stopping harvester and map_builder"
 	docker compose stop harvester map_builder
 	@echo "Ensuring worldmap database is running"
-	docker compose up worldmap_db -d
+	@docker compose up worldmap_db -d
 	@echo "Restoring database..."
 	cat $(DUMP_FILE) | docker compose exec -T $(DB_SERVICE) pg_restore -U $(DB_USER) -d postgres --clean --create --if-exists
 	@echo "Restore complete."
@@ -67,7 +67,7 @@ purge:
 
 # Desktop Management
 start-desktop:
-	nohup ./wallpaper_updater.sh > /dev/null 2>&1 &
+	./wallpaper_updater.sh
 	@echo "Wallpaper updater started in background."
 
 stop-desktop:
@@ -75,7 +75,9 @@ stop-desktop:
 
 # Database Access
 psql:
-	docker compose exec $(DB_SERVICE) psql -U $(DB_USER) $(DB_NAME)
+	@echo "Ensuring worldmap database is running"
+	@docker compose up worldmap_db -d
+	@docker compose exec $(DB_SERVICE) psql -U $(DB_USER) $(DB_NAME)
 
 # Database Status Report
 # 1. Reports ship counts per region (spatial check)
@@ -84,7 +86,7 @@ status:
 	@echo "--- Ships Located in Each Region ---"
 	@docker compose exec -T $(DB_SERVICE) psql -U $(DB_USER) $(DB_NAME) -c \
 	"SELECT r.label as region, count(s.mmsi) as ships \
-	 FROM ship_regions r \
+	 FROM map_region r \
 	 LEFT JOIN ships s ON ST_Within(s.geom, r.boundary) \
 	 GROUP BY r.label \
 	 ORDER BY ships DESC;"

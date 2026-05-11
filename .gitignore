@@ -10,6 +10,7 @@ data/*
 # --- Python ---
 .idea/
 .venv/
+.venv_wallpaper/
 __pycache__/
 *.py[cod]
 *$py.class
@@ -39,3 +40,4 @@ Thumbs.db
 *.idx
 *.bak
 *.tmp
+

@@ -8,14 +8,14 @@ import pandas as pd
 
 # Internal library import
 from worldmap.lib.config import WorldMapConfig
-from .common import Updater
+from .common import Updater, MapData
 
 logger = logging.getLogger(__name__)
 
 
 class QuakeUpdater(Updater):
-    def __init__(self, config: WorldMapConfig):
-        super().__init__(config, "Quakes")
+    def __init__(self, config: WorldMapConfig, map_data: MapData):
+        super().__init__(config, "Quakes", map_data)
         self.set_output_path()
 
     def run(self):

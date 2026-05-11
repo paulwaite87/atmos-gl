@@ -4,15 +4,15 @@ import logging
 import asyncio
 import websockets
 from worldmap.lib.config import WorldMapConfig
-from worldmap.lib.shipping import ShipDatabase
+from worldmap.lib.db import Database
 
 logger = logging.getLogger("worldmap.harvester")
 
 # A 10-element shipping density map (Weight x Base Duration)
 # 1.0 is standard, >1.0 spends extra time, <1.0 is a quick pass
 SLICE_DENSITY_MAP = {
-    0: {"label": "Mid-Pacific (East)", "weight": 0.5},       # -180 to -144
-    1: {"label": "Eastern Pacific / Americas West", "weight": 0.7}, # -144 to -108
+    0: {"label": "Mid-Pacific (East)", "weight": 0.3},       # -180 to -144
+    1: {"label": "Eastern Pacific / Americas West", "weight": 0.5}, # -144 to -108
     2: {"label": "Americas East / Panama / Caribbean", "weight": 1.5}, # -108 to -72
     3: {"label": "Western Atlantic", "weight": 0.8},        # -72 to -36
     4: {"label": "Eastern Atlantic / Gibraltar", "weight": 1.5}, # -36 to 0
@@ -20,7 +20,7 @@ SLICE_DENSITY_MAP = {
     6: {"label": "Middle East / Suez / Hormuz / Aden", "weight": 2.0}, # 36 to 72
     7: {"label": "Indian Ocean / Bay of Bengal", "weight": 1.0}, # 72 to 108
     8: {"label": "SE Asia / Malacca / South China Sea", "weight": 2.0}, # 108 to 144
-    9: {"label": "Australia / NZ / Japan / West Pacific", "weight": 1.2}, # 144 to 180
+    9: {"label": "Australia / NZ / Japan / West Pacific", "weight": 0.9}, # 144 to 180
 }
 
 
@@ -101,7 +101,7 @@ class ShipHarvester:
     async def run(self):
         import random
         self.load_settings()
-        db = ShipDatabase()
+        db = Database()
 
         url = self.settings.get("url")
         api_key = self.settings.get("api_key")

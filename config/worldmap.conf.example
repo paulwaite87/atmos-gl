@@ -2,6 +2,17 @@
 # folder, and then customize the settings accordingly
 [common]
 workdir = .
+# Set to the geometry (graphics resolution) of your desktop. The
+# final render of the map image will use this.
+desktop_geometry = 1920x1200
+# Target geometry is an internal, operational geometry. Images such as
+# clouds, isobars etc will all be acquired/scaled to this geometry.
+# Depending on the source only a few options may be available. The
+# default is 2048x1024 which is fairly universal. Setting this to higher
+# values has benefits when you display a zoomed-in region and will
+# result in sharper maps, clouds etc.
+#target_geometry = 2048x1024
+target_geometry = 4096x2048
 
 [clouds]
 # Clouds sourced via https://clouds.matteason.co.uk/
@@ -9,34 +20,68 @@ workdir = .
 # High quality images and kept reasonably up to date
 enabled = True
 outfile = data/cloud_map.jpg
-width = 2048
-height = 1024
 force = False
+# threshold: 0-255 (e.g., 20 removes dim haze)
+threshold = 150
+# gamma: 0.1 - 2.0 (e.g., 0.5 makes clouds much more transparent)
+gamma = 0.5
 runs_per_day = 8
 
 [clouds_nasa]
 # Optional source for clouds; use as backup for the above
+# NB: width and height are defined in 'clouds' section
 enabled = False
 url = https://gibs.earthdata.nasa.gov/wms/epsg4326/best/wms.cgi
-outfile = data/cloud_map.jpg
-width = 2048
-height = 1024
+outfile = data/cloud_map_nasa.jpg
+# threshold: 0-255 (e.g., 20 removes dim haze)
+threshold = 90
+# gamma: 0.1 - 2.0 (e.g., 0.5 makes clouds much more transparent)
+gamma = 0.7
 runs_per_day = 8
 
 [isobars]
 enabled = True
 url = https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod
-outfile = data/global_isobars.png
+outfile = data/isobars.png
 isobar_color = White
-label_fontsize = 10
+label_fontsize = 8
 # Optional: isobar text labels outlined for better legibility
 label_outline = True
-# This is where we put the isobars image overlaid onto the clouds image
-composite_outfile = data/cloud_map_with_isobars.jpg
 runs_per_day = 8
 
+[wind]
+enabled = True
+url = https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod
+outfile = data/wind.png
+vector_color = yellow
+# The base length for light winds
+barb_length_base = 4.5
+# How many points to add to the length for every 20 kph of speed
+barb_length_step = 0.8
+# A density factor. Number of barbs across the region image
+# If you want more wind info (more barbs), increase this
+barb_density = 30.0
+
+[precipitation]
+enabled = True
+url = https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod
+outfile = data/precipitation.png
+# Minimum rain rate to display (mm/hr)
+min_mm_hr = 0.4
+# Overall transparency (0.0 to 1.0)
+alpha = 0.4
+# Options: standard, ocean_blue, or high_contrast
+palette = high_contrast
+# GFS forecast hour (usually 3 or 6 for current conditions)
+forecast_hour = 3
+
+[composite]
+# Creates a composite image of clouds, isobars and wind
+enabled = True
+outfile = data/weather_map.png
+
 [storms]
-enabled = False
+enabled = True
 url = https://www.ncei.noaa.gov/data/international-best-track-archive-for-climate-stewardship-ibtracs/v04r01/access/csv/
 outfile = data/storm_markers.txt
 marker_color=yellow
@@ -91,9 +136,7 @@ erupt_date_codes = ["D1"]
 runs_per_day = 1
 
 [shipping]
-enabled = False
-# Needs an API Key in your .env file; see https://aisstream.io/documentation
-url = wss://stream.aisstream.io/v0/stream
+enabled = True
 outfile = data/ship_markers.txt
 marker_color = orange
 label_fontsize = 12
@@ -105,37 +148,42 @@ filter_show_ship_classes = []
 filter_show_names_for_classes = []
 # Show ships with lengths >= this (metres 0=>no filtering)
 # Use this to filter out the small-fry
-filter_ships_minimum_length = 290
+filter_ships_minimum_length = 100
 # Show only ships moving >1.0 knots and not flagged as moored or anchored
 filter_ships_underway = True
-# Whether to show icon images; otherwise show standard marker circles
-show_ship_icons = True
+# Only show ships with these names
+filter_show_ships_by_name = []
+# Show ships on the map as icons, either 'Arrows' or 'Disc', or comment out for default markers
+# 'Arrows': Directional icon images. These are arrows colour-coded as:
+# 'Discs'. These are filled circular icons which may have a 'T' or 'C' inside.
+# 'C' - Cargo. Green = loaded; Red = unloaded since last info
+# 'T' - Tanker. Red = loaded; Lime green = unloaded
+# Purple discs are for Passenger ships and all other vessel types
+#show_ship_icons = Discs
+#show_ship_icons = Arrows
 # Whether to show vessel tracks
-show_tracks = True
+show_tracks = False
 # Minimum distance between track points in km
 track_min_dist = 125.0
 # Maximum number of tracking positions to show
-track_max_points = 50
-# Where in the World we will display ships
-# If empty [], displays ships everywhere (map could get busy!)
-#regions = ["NZ_Aus", "Suez_Canal", "English_Channel", "Strait_of_Hormuz", "Gulf_of_Aden", "Panama_Canal", "Strait_of_Malacca"]
-regions = []
+track_max_points = 15
 # If a ship has been inactive for this time or more, don't display it
-expiry_days = 5
+expiry_days = 14
 runs_per_day = 24
 
 [shipping_harvester]
-# The harvester acquires ship data and stores it in the db, listening in
+# The harvester acquires ship data and stores it in the db, listening to AIS in
 # an endless loop. The harvesting is done globally in 10 longitudinal 'slices'.
 # This stored data is used by the map builder when displaying ships on the map.
-enabled = False
+enabled = True
 # Needs an API Key in your .env file; see https://aisstream.io/documentation
 url = wss://stream.aisstream.io/v0/stream
 # Time to listen for data broadcasts
-listen_duration = 300
-# Time to sleep between harvesting slices. This time will be 'tweaked'
-# internally according to the slice and an estimate of ship density
-# within that slice. This ensure we focus on busy shipping lanes.
+# This time will be modified internally according to the slice and an
+# estimate of ship density within that slice. This ensures we focus
+# more on busy shipping lanes.
+listen_duration = 1200
+# Time to sleep between harvesting slices.
 sleep_interval = 300
 # Number of days worth of vessel tracking to retain
 vessel_track_expiry_days = 14
@@ -143,12 +191,33 @@ vessel_track_expiry_days = 14
 [xplanet]
 enabled = True
 projection = rectangular
-# Set to the geometry of your desktop
-geometry = 1920x1200
-# Set to centre over your location
-longitude = 175
+# Set to centre over your location in global/World view; if you select a
+# region instead this will be ignored, and the region centre will be used
+longitude = 174
+# This colour is used when XPlanet can't fill an area with an image
+# such as when a bounding box extends beyond 180 longitude
+# 0x04040e is a deep blue to match NASA blue marble seas
+default_fill_colour = 0x04040e
 # This is the final map image we generate
-base_filename = worldmap.jpg
-# This file holds standard XPlanet configration settings
-# See https://xplanet.sourceforge.net/README.config
-xplanet_conf = config/xplanet.conf
+base_filename = regionmap.jpg
+marker_default_colour = cyan
+marker_default_fontsize = 12
+# If you add your own marker files, then list the filenames here
+# and put the files in the 'markers' folder
+marker_files = ["worldmap_markers.txt"]
+# This 'region' variable will determine the map that is displayed. If empty,
+# commented-out or nullstring we display the whole World. Otherwise we will
+# try to download a high-res map of the region specified and display that.
+# NOTE: Xplanet has issues with regions crossing the dateline at 180E
+# and for that reason, such regions will be shifted West so as to end at
+# that boundary if they cross it.
+# This setting can be the name of a region in your 'map_region' table,
+# or it can define a bounding box in format:
+# [lon_top_left, lat_top_left, lon_bottom_right, lat_bottom_right]
+# region = [63.131759, -57.173648, 190.337125, 0.239941]
+# Handy tool for defining your own regions: https://tools.mofei.life/bbox
+# It provides a bounding box in the same format as above.
+# Regions defined for you out-of-the-box are:
+# NZ, NZ_Aus, Suez_Canal, English_Channel, Strait_of_Hormuz, Singapore,
+# Saudi_Arabia, Mediterranean, Panama_Canal, Ukraine
+region = NZ_Aus

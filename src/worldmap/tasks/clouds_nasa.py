@@ -8,33 +8,29 @@ from datetime import datetime, timedelta, timezone
 
 # Internal library import
 from worldmap.lib.config import WorldMapConfig
-from .common import Updater
+from .common import Updater, MapData
 
 logger = logging.getLogger(__name__)
 
 
 class NasaCloudUpdater(Updater):
-    def __init__(self, config: WorldMapConfig):
-        super().__init__(config, "Clouds_NASA")
+    def __init__(self, config: WorldMapConfig, map_data: MapData):
+        super().__init__(config, "Clouds_NASA", map_data)
+        self.set_output_path()
 
     def run(self):
-        """Downloads the cloud layer from NASA GIBS WMS."""
+        """Downloads the cloud layer from NASA GIBS with caching logic."""
         self.exit_if_disabled()
 
-        base_url = self.settings.get("url").strip('"')  # Handle quoted URLs from config
-        outfile = self.settings.get("outfile")
+        base_url = self.settings.get("url").strip('"')
         width = self.settings.getint("width", fallback=2048)
         height = self.settings.getint("height", fallback=1024)
 
-        # Construct full output path
-        output_path = str(os.path.join(self.workdir, outfile))
-
-        # NASA's 'Best' layer availability logic
+        # NASA GIBS availability logic
         now_utc = datetime.now(timezone.utc)
-        # We subtract 24 hours for the TIME parameter to ensure a complete composite
-        time_param = (now_utc - timedelta(days=1)).strftime("%Y-%m-%d")
-        # Log date is just for user info
-        display_date = (now_utc - timedelta(hours=6)).strftime("%Y-%m-%d")
+        # We use yesterday's date to ensure the global mosaic is complete
+        target_date = now_utc - timedelta(days=1)
+        time_param = target_date.strftime("%Y-%m-%d")
 
         params = {
             "SERVICE": "WMS",
@@ -54,42 +50,67 @@ class NasaCloudUpdater(Updater):
         query_string = "&".join([f"{k}={v}" for k, v in params.items()])
         full_url = f"{base_url}?{query_string}"
 
+        # --- Cache Logic ---
+        # We check three things:
+        # 1. Does the file exist?
+        # 2. Is the file from the same 'NASA day' we are looking for?
+        # 3. Has the config (resolution) changed?
+
+        file_exists = os.path.exists(self.output_path)
+        is_same_day = False
+
+        if file_exists:
+            # Check the file's modification time
+            file_mtime = datetime.fromtimestamp(os.path.getmtime(self.output_path), tz=timezone.utc)
+            # If the file was downloaded today (local time) and matches the target date logic, skip
+            if file_mtime.date() == now_utc.date():
+                is_same_day = True
+
+        if file_exists and is_same_day and not self.config.has_changed:
+            logger.info(f"NASA clouds for {time_param} are already cached and up to date.")
+            return
+
+        # --- Execution ---
         try:
-            os.makedirs(str(os.path.dirname(output_path)), exist_ok=True)
-            logger.debug(
-                f"Fetching NASA GIBS clouds for {display_date} (Target: {width}x{height})"
-            )
+            os.makedirs(str(os.path.dirname(self.output_path)), exist_ok=True)
+            logger.info(f"Fetching NASA GIBS clouds for {time_param} ({width}x{height})...")
 
             req = urllib.request.Request(
                 full_url, headers={"User-Agent": "WorldMap-Cloud-Fetcher/1.0"}
             )
 
             with urllib.request.urlopen(req, timeout=60) as response:
-                with open(output_path, "wb") as f:
-                    f.write(response.read())
+                # Check for a 'Last-Modified' header just in case NASA provides it
+                remote_mtime = response.headers.get('Last-Modified')
 
-            logger.debug(f"NASA cloud map successfully saved: {output_path}")
+                data = response.read()
+                with open(self.output_path, "wb") as f:
+                    f.write(data)
+
+            logger.debug(f"NASA cloud map successfully saved: {self.output_path}")
 
         except urllib.error.HTTPError as e:
             logger.error(f"NASA GIBS returned an error: {e.code} {e.reason}")
-            sys.exit(1)
+            # Don't exit 1 if we have a cached version we can fall back on
+            if not file_exists:
+                sys.exit(1)
         except Exception as e:
             logger.error(f"Failed to download NASA clouds: {e}")
-            sys.exit(1)
+            if not file_exists:
+                sys.exit(1)
 
 
 def main():
     import argparse
     from worldmap.lib.logging import setup_logging
-
     setup_logging()
 
     parser = argparse.ArgumentParser(description="WorldMap NASA Cloud Updater")
-    parser.add_argument("--config", required=True, help="Path to worldmap.conf")
+    parser.add_argument("--config", required=True)
     args = parser.parse_args()
 
     config = WorldMapConfig(args.config)
-    updater = NasaCloudUpdater(config)
+    updater = NasaCloudUpdater(config, None)
     updater.run()
 
 

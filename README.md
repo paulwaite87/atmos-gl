@@ -2,10 +2,10 @@
 
 ## What is this?
 
-A Docker container-based system that features a number of data acquisition scripts for Clouds, Isobars, Storm tracking,
-Earthquakes, Volcanoes, and Shipping before utilizing `xplanet` to render the image for your desktop. There is also a
-daemon which will monitor the folder this image is generated in, and update your desktop wallpaper with what is
-essentially a live view of what's happening on the planet.
+A Docker container-based system that features a number of data acquisition scripts for Clouds, Isobars, Wind,
+Storm tracking, Earthquakes, Volcanoes, and Shipping before utilizing `xplanet` to render an image of The World
+or part of it, for your desktop. There is also a daemon which will monitor the folder this image is generated
+in, and update your desktop wallpaper with what is essentially a live view of what's happening on the planet.
 
 ![World Map Example](docs/worldmap-example.jpg)
 

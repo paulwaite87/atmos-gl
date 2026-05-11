@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-import os
 import json
 import logging
 import urllib.error
@@ -7,14 +6,14 @@ import urllib.request
 
 # Internal library import
 from worldmap.lib.config import WorldMapConfig
-from .common import Updater
+from .common import Updater, MapData
 
 logger = logging.getLogger(__name__)
 
 
 class VolcanoUpdater(Updater):
-    def __init__(self, config: WorldMapConfig):
-        super().__init__(config, "Volcanoes")
+    def __init__(self, config: WorldMapConfig, map_data: MapData):
+        super().__init__(config, "Volcanoes", map_data)
         self.set_output_path()
 
     def _fetch_volcano_data(self, base_url, page_size=200):
