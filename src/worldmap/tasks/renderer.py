@@ -37,19 +37,19 @@ class XPlanetRenderer(Updater):
         region_identifier = self.map_data.region.region_identifier
         target_width = self.map_data.region.target_width
         target_height = self.map_data.region.target_height
+        region_geometry = f"{target_width}x{target_height}"
         bbox = self.map_data.region.bbox
         day_path = os.path.join(
             self.region_dir,
-            f"{region_identifier}_day.jpg"
+            f"{region_identifier}_{region_geometry}_day.jpg"
         )
         night_path = os.path.join(
             self.region_dir,
-            f"{region_identifier}_night.jpg"
+            f"{region_identifier}_{region_geometry}_night.jpg"
         )
 
         if not os.path.exists(day_path):
-            logger.info(f"Cache miss: Downloading regional day map for {region_identifier}...")
-            logger.debug(f"bbox: {bbox} target_width: {target_width} target_height: {target_height} day_path: {day_path}")
+            logger.debug(f"Cache miss: Downloading {region_geometry} regional day map for {region_identifier}...")
             self.downloader.download_region_map(
                 bbox,
                 target_width,
@@ -59,7 +59,7 @@ class XPlanetRenderer(Updater):
             )
 
         if not os.path.exists(night_path):
-            logger.info(f"Cache miss: Downloading regional night map for {region_identifier}...")
+            logger.debug(f"Cache miss: Downloading {region_geometry} regional night map for {region_identifier}...")
             self.downloader.download_region_map(
                 bbox,
                 target_width,
@@ -80,9 +80,6 @@ class XPlanetRenderer(Updater):
 
         # Acquire the maps
         day_map, night_map = self.get_regional_maps()
-
-        projection = "rectangular"
-        range_val = "5"
 
         # Create the dynamic xplanet.conf
         temp_conf_path = os.path.join(data_dir, "xplanet_dynamic.conf")
@@ -140,16 +137,18 @@ class XPlanetRenderer(Updater):
         timestamp = int(time.time())
         output_path = os.path.join(data_dir, f"{timestamp}-{base_name}")
 
+        # This matches the clouds, isobars data which we download
+        projection = "rectangular"
+
         cmd = [
             "xplanet",
             "-conf", temp_conf_path,
             "-searchdir", self.workdir,
             "-projection", projection,
-            "-geometry", self.settings.get("geometry"),
+            "-geometry", self.common.get("desktop_geometry"),
             "-latitude", str(self.centre_latitude),
             "-longitude", str(self.centre_longitude),
             "-output", output_path,
-            "-range", range_val,
             "-num_times", "1",
         ]
 

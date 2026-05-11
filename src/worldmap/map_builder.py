@@ -32,6 +32,7 @@ class MapBuilder:
         self.config = WorldMapConfig(config_path)
         self.map_data = MapData(self.config)
         self.config_changed = False
+        self.starting_up = True
 
         # Explicitly typed dictionary for tracking task completion
         self.last_run_times: Dict[str, datetime] = {}
@@ -87,7 +88,7 @@ class MapBuilder:
             return False
 
         # Refresh everything if config changed
-        if self.config_changed:
+        if self.starting_up or self.config_changed:
             return True
 
         # Composite produces the weather image from clouds and/or isobars,
@@ -121,7 +122,6 @@ class MapBuilder:
         return elapsed_seconds >= interval_seconds
 
     async def start_scheduler(self):
-
         while True:
             self.config.load()
             self.map_data.refresh()
@@ -129,7 +129,7 @@ class MapBuilder:
             self.weather_image_updated = False
             self.config_changed = self.config.is_changed()
 
-            if self.config_changed or self.tasks_ready_to_run():
+            if self.starting_up or self.config_changed or self.tasks_ready_to_run():
                 logger.info("Map-builder scheduler run started")
 
                 for section, task_class in self.task_registry:
@@ -158,6 +158,7 @@ class MapBuilder:
                         except Exception as e:
                             logger.error(f"Task '{section}' execution failed: {e}")
 
+                self.starting_up = False
                 logger.info("Map-builder scheduler run finished")
 
             # Heartbeat sleep

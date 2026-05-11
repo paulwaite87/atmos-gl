@@ -129,6 +129,7 @@ class MapRegion:
         if not region:
             bbox = [-180.0, -90.0, 180.0, 90.0]
             self.world_view = True
+            bbox_prefix = "bbox_"
 
         elif str(region).startswith("["):
             try:

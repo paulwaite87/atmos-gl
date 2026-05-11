@@ -2,12 +2,17 @@
 # folder, and then customize the settings accordingly
 [common]
 workdir = .
-# This is the geometry we try to standardise on. Images such
-# as clouds, isobars etc will all be acquired/scaled to this.
-# This is not necessarily the same as your screen geometry
-# which is defined in the [xplanet] section below and is used
-# to provide the final render.
-target_geometry = 4096x2048
+# Set to the geometry (graphics resolution) of your desktop. The
+# final render of the map image will use this.
+desktop_geometry = 1920x1200
+# Target geometry is an internal, operational geometry. Images such as
+# clouds, isobars etc will all be acquired/scaled to this geometry.
+# Depending on the source only a few options may be available. The
+# default is 2048x1024 which is fairly universal. Setting this to higher
+# values has benefits when you display a zoomed-in region and will
+# result in sharper maps, clouds etc.
+#target_geometry = 4096x2048
+target_geometry = 2048x1024
 
 [clouds]
 # Clouds sourced via https://clouds.matteason.co.uk/
@@ -166,8 +171,6 @@ vessel_track_expiry_days = 14
 [xplanet]
 enabled = True
 projection = rectangular
-# Set to the geometry of your desktop
-geometry = 1920x1200
 # Set to centre over your location in global/World view; if you select a
 # region instead this will be ignored, and the region centre will be used
 longitude = 175

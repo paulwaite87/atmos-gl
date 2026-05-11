@@ -3,7 +3,7 @@ import os
 import logging
 import warnings
 import requests
-import numpy as np  # Added for speed calculations and masking
+import numpy as np
 import xarray as xr
 import matplotlib.pyplot as plt
 import cartopy.crs as ccrs
@@ -27,7 +27,6 @@ class WindUpdater(Updater):
     def __init__(self, config: WorldMapConfig, map_data: MapData):
         super().__init__(config, "Wind", map_data)
         self.set_output_path()
-        # Using a unique filename to avoid conflict with Isobars
         self.grib_path = os.path.join(self.workdir, "data/gfs_wind_temp.grib2")
 
     def find_latest_gfs_file(self):
@@ -86,30 +85,41 @@ class WindUpdater(Updater):
                 f.write(chunk)
 
     def plot(self):
-        """Renders wind vectors with dynamic lengths based on wind speed."""
+        """Renders wind vectors with auto-calculated spacing based on zoom level."""
         logger.debug(f"Plotting wind vectors to {self.output_path}...")
 
-        # 1. Spacing and Geometry Configuration
-        spacing_deg = self.settings.getfloat("barb_spacing", fallback=3.0)
-        density_step = max(1, int(spacing_deg / 0.25))
-
-        # Barb Length Configuration
-        base_len = self.settings.getfloat("barb_length_base", fallback=5.0)
-        len_step = self.settings.getfloat("barb_length_step", fallback=1.0)
-
+        # Configuration & Bounding Box
+        bbox = self.map_region_bbox
         vector_color = self.settings.get("vector_color", fallback="cyan")
         plot_target_width = float(self.target_width) / 100
 
-        # 2. Load Data
+        base_len = self.settings.getfloat("barb_length_base", fallback=5.0)
+        len_step = self.settings.getfloat("barb_length_step", fallback=1.0)
+
+        # Dynamic spacing calculation
+        if bbox:
+            lon_span = abs(bbox[2] - bbox[0])
+            # Divide by number of barbs across the image width
+            calc_spacing = lon_span / self.settings.getfloat("barb_density", fallback=30.0)
+            # Clamp to GFS resolution (0.25) as minimum, and some reasonable max
+            spacing_deg = max(0.25, calc_spacing)
+        else:
+            # Fallback for global if no bbox
+            spacing_deg = 5.0
+
+        # Convert degrees to array index steps (GFS is 0.25 deg resolution)
+        density_step = max(1, int(spacing_deg / 0.25))
+
+        logger.debug(f"Auto-calculated spacing: {spacing_deg:.2f}° (Step: {density_step})")
+
+        # Load Data
         ds = xr.open_dataset(
             self.grib_path,
             engine="cfgrib",
             backend_kwargs={"filter_by_keys": {"typeOfLevel": "heightAboveGround", "level": 10}},
         )
 
-        bbox = self.map_region_bbox
-
-        # 3. Handle Longitude Shifting
+        # Handle Longitude Shifting
         if bbox:
             if bbox[0] < 0:
                 ds = ds.assign_coords(longitude=(((ds.longitude + 180) % 360) - 180))
@@ -117,8 +127,7 @@ class WindUpdater(Updater):
             elif bbox[2] > 180.0:
                 bbox[2] = 180.0
 
-        # 4. Extract and Flatten (Using meshgrid for precise masking)
-        # Squeeze ensures we don't have a hidden 'time' or 'level' dimension causing density issues
+        # Extract and Flatten
         u = ds["u10"].values.squeeze()
         v = ds["v10"].values.squeeze()
         lons = ds["longitude"].values
@@ -126,18 +135,17 @@ class WindUpdater(Updater):
 
         lon2d, lat2d = np.meshgrid(lons, lats)
 
-        # Apply subsampling
         lons_flat = lon2d[::density_step, ::density_step].flatten()
         lats_flat = lat2d[::density_step, ::density_step].flatten()
         u_flat = u[::density_step, ::density_step].flatten()
         v_flat = v[::density_step, ::density_step].flatten()
 
-        # 5. Speed Calculation (m/s to kph)
+        # Speed Calculation (m/s to kph)
         speed_kph = np.sqrt(u_flat ** 2 + v_flat ** 2) * 3.6
 
-        # 6. Setup Figure
+        # Setup Figure
         if bbox:
-            width_deg, height_deg = bbox[2] - bbox[0], bbox[3] - bbox[1]
+            width_deg, height_deg = abs(bbox[2] - bbox[0]), abs(bbox[3] - bbox[1])
             fig = plt.figure(figsize=(plot_target_width, plot_target_width / (width_deg / height_deg)), dpi=100)
         else:
             fig = plt.figure(figsize=(plot_target_width, float(self.target_height) / 100), dpi=100)
@@ -148,8 +156,7 @@ class WindUpdater(Updater):
         else:
             ax.set_global()
 
-        # 7. Plot in Speed Bins to vary length
-        # We create 5 bins: 0-20, 20-40, 40-60, 60-80, 80+ kph
+        # Plot in Speed Bins
         speed_bins = [
             (0, 20, base_len),
             (20, 40, base_len + len_step),
@@ -171,7 +178,7 @@ class WindUpdater(Updater):
                 transform=ccrs.PlateCarree()
             )
 
-        # 8. Clean up and Save
+        # Save
         ax.set_frame_on(False)
         ax.set_position((0, 0, 1, 1))
         ax.patch.set_alpha(0)
@@ -180,17 +187,13 @@ class WindUpdater(Updater):
 
         plt.savefig(self.output_path, transparent=True, bbox_inches=None, pad_inches=0)
         plt.close(fig)
-        logger.debug(f"Wind vector plot saved (Step used: {density_step})")
 
     def run(self):
-        """Entry point for the task."""
         self.exit_if_disabled()
         try:
             url, date, run = self.find_latest_gfs_file()
-            logger.debug(f"Using GFS run: {date} {run}Z")
             self.download_data(url)
             self.plot()
-            logger.debug("Wind update complete.")
         finally:
             if os.path.exists(self.grib_path):
                 os.remove(self.grib_path)
