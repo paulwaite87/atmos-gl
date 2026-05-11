@@ -139,11 +139,10 @@ class SSTUpdater(Updater):
             ax.set_global()
 
         # --- The Render ---
-        # 'gouraud' shading creates a smooth, liquid gradient instead of data "blocks"
         mesh = ax.pcolormesh(lons, lats, sst_c,
                              cmap=plt.get_cmap(cmap_name),
                              alpha=alpha,
-                             shading='gouraud',
+                             shading='nearest',
                              transform=ccrs.PlateCarree(),
                              vmin=vmin, vmax=vmax)
 
