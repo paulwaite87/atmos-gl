@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 import os
 import sys
-import shutil
 import logging
 from pathlib import Path
 
@@ -21,7 +20,7 @@ class CompositeUpdater(Updater):
     Layers are applied dynamically bottom-to-top based on configuration.
     """
 
-    def __init__(self, config: WorldMapConfig, map_data):
+    def __init__(self, config: WorldMapConfig, map_data: MapData):
         super().__init__(config, "Composite", map_data)
         self.set_output_path()
 
@@ -108,7 +107,6 @@ class CompositeUpdater(Updater):
             sys.exit(1)
 
         # --- Dynamic Compositing Logic ---
-        # Note the order: SST is at the bottom, Wind is at the top.
         layers = []
 
         if self.sst_enabled:
@@ -136,36 +134,28 @@ class CompositeUpdater(Updater):
                 logger.error(f"Source file missing ({label}): {path}")
                 sys.exit(1)
 
-        # Case 1: Only a single layer is enabled
-        if len(layers) == 1:
-            label, path = layers[0]
-            logger.debug(f"Only {label} enabled. Copying to output.")
-            shutil.copyfile(path, self.output_path)
-            return
-
-        # Case 2: Compositing process
+        # Case: Compositing process
         try:
             logger.debug(f"Compositing layers: {[l[0] for l in layers]}...")
 
-            # Open first layer as canvas
-            bottom_label, bottom_path = layers[0]
-            with Image.open(bottom_path) as bg_img:
-                bg_img = bg_img.convert("RGBA")
+            # Use target dimensions from the MapData object to create a standardized canvas.
+            # This prevents clipping when a single layer's aspect ratio differs from the background.
+            target_size = (self.target_width, self.target_height)
+            bg_img = Image.new("RGBA", target_size, (0, 0, 0, 0))
 
-                # Paste subsequent layers
-                for label, path in layers[1:]:
-                    with Image.open(path) as overlay_img:
-                        overlay_img = overlay_img.convert("RGBA")
+            for label, path in layers:
+                with Image.open(path) as overlay_img:
+                    overlay_img = overlay_img.convert("RGBA")
 
-                        if overlay_img.size != bg_img.size:
-                            overlay_img = overlay_img.resize(bg_img.size, Image.Resampling.LANCZOS)
+                    # Resize to match the global project dimensions using high-quality resampling
+                    if overlay_img.size != target_size:
+                        overlay_img = overlay_img.resize(target_size, Image.Resampling.LANCZOS)
 
-                        # Overlaying using the image's own alpha channel
-                        bg_img.paste(overlay_img, (0, 0), mask=overlay_img)
+                    # Paste layer using its own alpha channel as the mask
+                    bg_img.paste(overlay_img, (0, 0), mask=overlay_img)
 
-                # Save final output as PNG
-                bg_img.save(self.output_path, "PNG")
-
+            # Save final standardized output
+            bg_img.save(self.output_path, "PNG")
             logger.debug(f"Successfully created composite: {self.output_path}")
 
         except Exception as e:
@@ -184,6 +174,8 @@ def main():
     args = parser.parse_args()
 
     config = WorldMapConfig(args.config)
+    # Note: Composite requires map_data for dimensions.
+    # In a full run, this is passed by the manager.
     updater = CompositeUpdater(config, None)
     updater.run()
 

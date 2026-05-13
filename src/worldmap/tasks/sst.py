@@ -170,6 +170,23 @@ class SSTUpdater(Updater):
         ds.close()
         logger.debug(f"SST plot completed using {cmap_name}")
 
+    def run(self):
+        """Orchestrates the SST update with bandwidth-saving logic."""
+        self.exit_if_disabled()
+
+        # Check if we need to download/update the NetCDF
+        new_data_downloaded = self.download_data()
+
+        # Check if the final output PNG already exists
+        png_exists = os.path.exists(self.output_path)
+
+        # Only plot if we have new data OR the PNG is missing
+        if new_data_downloaded or not png_exists or self.config.has_changed:
+            logger.info("Generating SST plot...")
+            self.plot()
+        else:
+            logger.info("SST PNG already exists and data hasn't changed. Skipping plot.")
+
 
 if __name__ == "__main__":
     import argparse
