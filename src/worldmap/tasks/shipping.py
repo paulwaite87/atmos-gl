@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
+import os
 import json
 import logging
 import math
+from PIL import Image
 
 # Internal library imports
 from worldmap.lib.config import WorldMapConfig
@@ -28,10 +30,35 @@ class ShippingUpdater(Updater):
         super().__init__(config, "Shipping", map_data)
         self.set_output_path()
         self.xplanet_settings = self.config.get_section("xplanet")
+        self.icon_cache = {}
 
     def normalize_lon_for_bbox(self, lon, lon_min):
         """Shifts longitude into the 360-degree window starting at lon_min."""
         return None if not lon else (lon - lon_min) % 360 + lon_min
+
+    def get_cached_rotated_icon(self, color, angle):
+        """
+        Rotates a base icon to a specific angle and caches the result.
+        angle: normalized to 16 points (22.5 degree increments)
+        """
+        cache_key = f"{color}_{int(angle):03d}"
+        if cache_key in self.icon_cache:
+            return self.icon_cache[cache_key]
+
+        icon_filename = f"ship_{cache_key}.png"
+        icon_path = os.path.join("images", icon_filename)
+
+        # If it doesn't exist on disk, create it
+        if not os.path.exists(icon_path):
+            base_path = os.path.join("images", f"{color}_ship_base.png")
+            with Image.open(base_path) as img:
+                # Expand=True ensures the corners aren't cut off during rotation
+                # Rotate is counter-clockwise in PIL, so use -angle for clockwise
+                rotated = img.rotate(-angle, resample=Image.Resampling.BICUBIC, expand=False)
+                rotated.save(icon_path)
+
+        self.icon_cache[cache_key] = icon_filename
+        return icon_filename
 
     async def run(self):
         self.config.load()
@@ -112,7 +139,11 @@ class ShippingUpdater(Updater):
 
                 # Ship icon image logic
                 if show_ship_icons == "Arrows":
-                    marker_image = f"image={ship.get_vessel_directional_icon()}"
+                    color = ship.get_vessel_color_name()
+                    angle = ship.get_vessel_16point_angle()
+                    icon_file = self.get_cached_rotated_icon(color, angle)
+                    marker_image = f" image={icon_file}"
+                    #marker_image = f"image={ship.get_vessel_directional_icon()}"
                 elif show_ship_icons == "Discs":
                     marker_image = f" image={ship.get_vessel_disc_icon()}"
                 else:
@@ -143,5 +174,12 @@ class ShippingUpdater(Updater):
                                 f.write(f"{h_lat} {h_lon} color={label_color_default}\n")
                                 last_lat, last_lon = h_lat, h_lon
                                 points_placed += 1
+
+        file_size = os.path.getsize(self.output_path) if os.path.exists(self.output_path) else 0
+        abs_path = os.path.abspath(self.output_path)
+
+        logger.info(f"Shipping update complete. Placed {written_count} ships.")
+        logger.info(f"Marker file written to: {abs_path}")
+        logger.info(f"Final file size: {file_size} bytes")
 
         logger.info(f"Shipping update complete. Placed {written_count} ships in region.")

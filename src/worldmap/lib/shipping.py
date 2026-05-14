@@ -142,6 +142,19 @@ class Ship:
         # Use modulo 8 to wrap 337.5 - 360 back to index 0 (North)
         return directions[index % 8]
 
+    def get_vessel_16point_angle(self):
+        """Normalizes COG to the nearest 22.5 degrees."""
+        cog, _, _ = self.get_vessel_navigational_status()
+        # 360 / 16 = 22.5
+        return round(cog / 22.5) * 22.5 % 360
+
+    def get_vessel_color_name(self):
+        if self.vessel_class == "Tanker":
+            return "red"
+        elif self.vessel_class == "Cargo":
+            return "green"
+        return "purple"
+
     def get_vessel_directional_icon(self):
         """Returns what is essentially the filename of the icon eg. 'red_ship_NW.png'"""
         vessel_heading = self.get_vessel_heading_str()
