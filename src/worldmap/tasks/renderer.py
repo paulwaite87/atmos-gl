@@ -33,6 +33,7 @@ class XPlanetRenderer(Updater):
         self.isobars_enabled = self.config.section_enabled("isobars")
         self.wind_enabled = self.config.section_enabled("wind")
         self.precipitation_enabled = self.config.section_enabled("precipitation")
+        self.sst_enabled = self.config.section_enabled("sst")
 
     def get_regional_maps(self):
         """Returns paths for day/night maps, downloading if missing from cache."""
@@ -97,7 +98,7 @@ class XPlanetRenderer(Updater):
             f.write(f"mapbounds={{{self.map_region_bbox[3]},{self.map_region_bbox[0]},{self.map_region_bbox[1]},{self.map_region_bbox[2]}}}\n")
 
             # Whether to display the weather
-            if self.composite_enabled and (self.clouds_enabled or self.isobars_enabled or self.wind_enabled or self.precipitation_enabled):
+            if self.composite_enabled and (self.clouds_enabled or self.isobars_enabled or self.wind_enabled or self.precipitation_enabled or self.sst_enabled):
                 f.write(f'cloud_map={self.config.get_section("composite").get("outfile")}\n')
                 f.write("cloud_threshold=0\n")
                 f.write("cloud_gamma=1.0\n")
@@ -169,19 +170,3 @@ class XPlanetRenderer(Updater):
             logger.error(f"XPlanet failed (exit {e.returncode}): {e.stderr}")
         except Exception as e:
             logger.error(f"Unexpected error during render: {e}")
-
-
-def main():
-    import argparse
-    from worldmap.lib.logging import setup_logging
-    setup_logging()
-    parser = argparse.ArgumentParser(description="WorldMap XPlanet Renderer")
-    parser.add_argument("--config", required=True, help="Path to worldmap.conf")
-    args = parser.parse_args()
-    config = WorldMapConfig(args.config)
-    renderer = XPlanetRenderer(config)
-    renderer.run()
-
-
-if __name__ == "__main__":
-    main()

@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
 import os
 import logging
-import requests
 import numpy as np
 import xarray as xr
 import matplotlib.pyplot as plt
 import cartopy.crs as ccrs
+import cartopy.mpl.geoaxes as geoaxes
 from datetime import datetime, timedelta, timezone
+from typing import cast
 
 # Internal imports
 from worldmap.lib.config import WorldMapConfig
-from .common import Updater, MapData
+from .common import Updater, MapData, Plot
 
 logger = logging.getLogger(__name__)
 
@@ -19,186 +20,133 @@ class SSTUpdater(Updater):
     def __init__(self, config: WorldMapConfig, map_data: MapData):
         super().__init__(config, "sst", map_data)
         self.set_output_path()
-        # Changed to .nc
-        self.nc_path = os.path.join(self.workdir, "data/rtofs_sst.nc")
+        # Local cache for the subsetted data
+        self.nc_path = os.path.join(self.workdir, "data/rtofs_sst_subset.nc")
 
     def download_data(self):
-        """Downloads the RTOFS SST file only if the upstream version is newer."""
+        """
+        Fetches a geographic subset of RTOFS data using HTTP Byte-Range requests.
+        Replaces the retired OPeNDAP/DODS service.
+        """
+        # Ensure your config URL points to the pub/data/nccf/com/rtofs/prod directory
         base_url = self.settings.get("url").rstrip('/')
         now = datetime.now(timezone.utc)
+        bbox = self.map_region_bbox  # [lon_min, lat_min, lon_max, lat_max]
 
+        # Search the last 3 days for available forecast files
         for i in range(3):
             date_str = (now - timedelta(days=i)).strftime("%Y%m%d")
-            for mode in ["n000", "f000"]:
-                url = f"{base_url}/rtofs.{date_str}/rtofs_glo_2ds_{mode}_prog.nc"
+            # 'n000' is the analysis/nowcast file
+            url = f"{base_url}/rtofs.{date_str}/rtofs_glo_2ds_n000_prog.nc"
 
-                try:
-                    logger.debug(f"Checking RTOFS ({mode}) at {url}...")
-                    response = requests.head(url, timeout=10)
+            try:
+                logger.debug(f"Attempting remote subsetting via byte-range: {url}")
 
-                    if response.status_code == 200:
-                        # Get upstream modification time
-                        remote_mtime_str = response.headers.get('Last-Modified')
-                        remote_mtime = None
-                        if remote_mtime_str:
-                            remote_mtime = datetime.strptime(remote_mtime_str, '%a, %d %b %Y %H:%M:%S %Z').replace(
-                                tzinfo=timezone.utc)
+                # Open remote dataset lazily. 'chunks={}' enables dask/lazy loading.
+                # Requires 'h5netcdf' and 'fsspec' packages.
+                with xr.open_dataset(url, engine='h5netcdf', chunks={}) as ds:
+                    # Identify coordinate names (RTOFS uses Latitude/Longitude)
+                    lon_name = 'Longitude' if 'Longitude' in ds.coords else 'lon'
+                    lat_name = 'Latitude' if 'Latitude' in ds.coords else 'lat'
 
-                        # Check local file
-                        local_file_exists = os.path.exists(self.nc_path)
-                        remote_is_newer = False
-                        if local_file_exists and remote_mtime:
-                            local_mtime = datetime.fromtimestamp(os.path.getmtime(self.nc_path), tz=timezone.utc)
-                            remote_is_newer = remote_mtime > local_mtime
+                    # 1. Fetch 1D coordinate vectors to calculate indices
+                    lons_raw = ds[lon_name].values
+                    lats_raw = ds[lat_name].values
 
-                        # 3. Decision: Download, Use Existing, or Skip
-                        if not local_file_exists or remote_is_newer:
-                            logger.info(f"Downloading newer SST data: {date_str} ({mode})")
-                            r = requests.get(url, stream=True, timeout=120)
-                            r.raise_for_status()
-                            os.makedirs(os.path.dirname(self.nc_path), exist_ok=True)
-                            with open(self.nc_path, "wb") as f:
-                                for chunk in r.iter_content(chunk_size=1024 * 1024):
-                                    f.write(chunk)
-                            return True  # Signal that we downloaded new data
-                        else:
-                            logger.info("Local SST NetCDF is up to date")
-                            return False  # Signal we are using existing data
-                except Exception as e:
-                    logger.warning(f"Metadata check failed for {url}: {e}")
-                    continue
+                    # Flatten curvilinear coordinates to 1D for index lookup
+                    if lons_raw.ndim > 1: lons_raw = lons_raw[0, :]
+                    if lats_raw.ndim > 1: lats_raw = lats_raw[:, 0]
+
+                    # Normalize 0..360 to -180..180 for BBOX comparison
+                    lons_norm = ((lons_raw + 180) % 360) - 180
+
+                    # 2. Identify indices matching the BBOX
+                    lon_mask = (lons_norm >= bbox[0]) & (lons_norm <= bbox[2])
+                    lat_mask = (lats_raw >= bbox[1]) & (lats_raw <= bbox[3])
+
+                    lon_indices = np.where(lon_mask)[0]
+                    lat_indices = np.where(lat_mask)[0]
+
+                    if len(lon_indices) == 0 or len(lat_indices) == 0:
+                        continue
+
+                    # 3. Trigger the network transfer for only the required slice
+                    # RTOFS NetCDF dimensions are usually (MT, Y, X)
+                    sst_var = next(n for n in ['sst', 'sea_surface_temperature', 'temp'] if n in ds)
+                    subset = ds[sst_var].isel(
+                        MT=0,
+                        Y=slice(lat_indices.min(), lat_indices.max() + 1),
+                        X=slice(lon_indices.min(), lon_indices.max() + 1)
+                    ).compute()
+
+                    # Save subset locally to avoid repeated network calls during plotting
+                    os.makedirs(os.path.dirname(self.nc_path), exist_ok=True)
+                    subset.to_netcdf(self.nc_path)
+
+                logger.info(f"Retrieved SST subset for {date_str} ({subset.shape})")
+                return True
+
+            except Exception as e:
+                logger.debug(f"NOMADS access failed for {date_str}: {e}")
+                continue
 
         if not os.path.exists(self.nc_path):
-            raise RuntimeError("No local SST data found and could not connect to NOMADS")
+            raise RuntimeError("Could not retrieve SST data from NOMADS HTTPS endpoints.")
         return False
 
     def plot(self):
-        # --- Configuration & Palette Setup ---
+        # --- Configuration ---
         alpha = self.settings.getfloat("alpha", fallback=0.4)
         palette_key = self.settings.get("palette", fallback="thermal").lower()
-
-        # Allows you to "zoom" the color range via config (e.g., 10 to 25 for winter)
-        vmin = self.settings.getint("min_c", fallback=0)
-        vmax = self.settings.getint("max_c", fallback=32)
-
-        palettes = {
-            "thermal": "magma",
-            "vivid": "turbo",
-            "deep": "viridis",
-            "ocean": "inferno"
-        }
-
+        vmin, vmax = self.settings.getint("min_c", fallback=0), self.settings.getint("max_c", fallback=32)
+        palettes = {"thermal": "magma", "vivid": "turbo", "deep": "viridis", "ocean": "inferno"}
         cmap_name = palettes.get(palette_key, "magma")
+
         bbox = self.map_region_bbox
         plot_target_width = float(self.target_width) / 100
-
-        logger.debug(f"Plotting SST (Palette: {palette_key}, Alpha: {alpha})")
+        plot_target_height = float(self.target_height) / 100
 
         # --- Data Loading ---
         ds = xr.open_dataset(self.nc_path)
-
-        # Find the temperature variable
-        possible_names = ['sst', 'sea_surface_temperature', 'temp', 't0']
-        sst_var = next((name for name in possible_names if name in ds), None)
-
-        if not sst_var:
-            available_vars = list(ds.data_vars.keys())
-            raise KeyError(f"Could not find temperature variable. Available vars: {available_vars}")
-
-        # Extract and clean data
+        sst_var = list(ds.data_vars)[0]
         sst_raw = ds[sst_var].values.squeeze()
+        sst_c = sst_raw - 273.15 if np.nanmax(sst_raw) > 100 else sst_raw
 
-        # Unit conversion
-        if np.nanmax(sst_raw) > 100:
-            sst_c = sst_raw - 273.15
-        else:
-            sst_c = sst_raw
-
-        # Coordinate handling
         lons = ds.Longitude.values if 'Longitude' in ds.coords else ds.lon.values
         lats = ds.Latitude.values if 'Latitude' in ds.coords else ds.lat.values
 
-        # Handle International Date Line wrap-around logic
-        if bbox and bbox[0] < 0:
-            lons = ((lons + 180) % 360) - 180
-            idx = np.argsort(lons)
-            lons, sst_c = lons[idx], sst_c[:, idx]
+        # Flatten curvilinear coordinates to 1D axes for mapping
+        if lons.ndim > 1: lons = lons[0, :]
+        if lats.ndim > 1: lats = lats[:, 0]
 
-        # --- Figure Setup ---
-        if bbox:
-            width_deg = abs(bbox[2] - bbox[0])
-            height_deg = abs(bbox[3] - bbox[1])
-            # Use height/width ratio to prevent canvas distortion
-            fig = plt.figure(figsize=(plot_target_width, plot_target_width * (height_deg / width_deg)), dpi=100)
-        else:
-            fig = plt.figure(figsize=(plot_target_width, float(self.target_height) / 100), dpi=100)
+        # Normalize subset lons back to -180..180
+        lons = ((lons + 180) % 360) - 180
 
-        # Use PlateCarree but center it at 180 to handle the NZ/Tasman region seamlessly
-        projection = ccrs.PlateCarree(central_longitude=180)
-        ax = plt.axes(projection=projection)
+        # Sort indices to ensure strictly increasing arrays for pcolormesh
+        lon_idx = np.argsort(lons)
+        lat_idx = np.argsort(lats)
 
-        # Force the extent to your specific BBOX immediately
-        if bbox:
-            ax.set_extent([bbox[0], bbox[2], bbox[1], bbox[3]], crs=ccrs.PlateCarree())
-        else:
-            ax.set_global()
+        lons = lons[lon_idx]
+        lats = lats[lat_idx]
+        sst_c = sst_c[:, lon_idx][lat_idx, :]
 
-        # --- The Render ---
-        # transform=ccrs.PlateCarree() tells Matplotlib that the DATA is in standard +/-180,
-        # even though the AXES is centered at 180.
-        mesh = ax.pcolormesh(lons, lats, sst_c,
-                             cmap=plt.get_cmap(cmap_name),
-                             alpha=alpha,
-                             shading='nearest',
-                             transform=ccrs.PlateCarree(),
-                             vmin=vmin, vmax=vmax)
+        plot = Plot(self.map_data.region)
+        plot.get_figure()
 
-        # RE-ASSERT EXTENT: This prevents the "Suva Truncation" bug where the data
-        # footprint tries to redefine the image boundaries.
-        if bbox:
-            ax.set_extent([bbox[0], bbox[2], bbox[1], bbox[3]], crs=ccrs.PlateCarree())
+        # This forces the map to respect the non-linear Mercator grid spacing of RTOFS.
+        plot.ax.pcolormesh(lons, lats, sst_c,
+                      transform=ccrs.PlateCarree(),
+                      cmap=plt.get_cmap(cmap_name),
+                      alpha=alpha,
+                      vmin=vmin, vmax=vmax,
+                      shading='nearest')
 
-        # --- Clean up & Save ---
-        ax.set_frame_on(False)
-        ax.set_position((0, 0, 1, 1))
-        ax.patch.set_alpha(0)
-        fig.patch.set_alpha(0)
-        plt.axis("off")
-
-        plt.savefig(self.output_path, transparent=True, bbox_inches=None, pad_inches=0)
-        plt.close(fig)
+        plot.save_figure(self.output_path)
         ds.close()
-        logger.debug(f"SST plot completed using {cmap_name}")
+        logger.debug("Finished SST plot...saving")
 
     def run(self):
-        """Orchestrates the SST update with bandwidth-saving logic."""
         self.exit_if_disabled()
-
-        # Check if we need to download/update the NetCDF
-        new_data_downloaded = self.download_data()
-
-        # Check if the final output PNG already exists
-        png_exists = os.path.exists(self.output_path)
-
-        # Only plot if we have new data OR the PNG is missing
-        if new_data_downloaded or not png_exists or self.config.has_changed:
+        if self.download_data() or not os.path.exists(self.output_path) or self.config.has_changed:
             logger.info("Generating SST plot...")
             self.plot()
-        else:
-            logger.info("SST PNG already exists and data hasn't changed. Skipping plot.")
-
-
-if __name__ == "__main__":
-    import argparse
-    from worldmap.lib.logging import setup_logging
-
-    setup_logging()
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--config", required=True)
-    args = parser.parse_args()
-
-    config = WorldMapConfig(args.config)
-    # Note: In standalone mode, MapData might be None;
-    # ensure your base classes handle this or provide a mock.
-    updater = SSTUpdater(config, None)
-    updater.run()

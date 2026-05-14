@@ -5,13 +5,12 @@ import warnings
 import requests
 import numpy as np
 import xarray as xr
-import matplotlib.pyplot as plt
 import cartopy.crs as ccrs
 from datetime import datetime, timedelta, timezone
 
 # Internal imports
 from worldmap.lib.config import WorldMapConfig
-from .common import Updater, MapData
+from .common import Updater, MapData, Plot
 
 # Silence warnings
 warnings.filterwarnings("ignore", message=".*missingValue.*")
@@ -27,11 +26,12 @@ class WindUpdater(Updater):
     def __init__(self, config: WorldMapConfig, map_data: MapData):
         super().__init__(config, "Wind", map_data)
         self.set_output_path()
-        self.grib_path = os.path.join(self.workdir, "data/gfs_wind_temp.grib2")
+        # Persist grib path to allow freshness checks
+        self.grib_path = os.path.join(self.workdir, "data/gfs_wind.grib2")
 
-    def find_latest_gfs_file(self):
-        """Finds the most recent GFS run on NOAA NOMADS."""
-        base_url = self.settings.get("url")
+    def check_remote_freshness(self):
+        """Finds the most recent GFS run and checks if it's newer than local cache."""
+        base_url = self.settings.get("url").rstrip('/')
         now = datetime.now(timezone.utc)
 
         for day_offset in range(3):
@@ -39,11 +39,24 @@ class WindUpdater(Updater):
             for run in ["18", "12", "06", "00"]:
                 url = f"{base_url}/gfs.{date_str}/{run}/atmos/gfs.t{run}z.pgrb2.0p25.f000"
                 try:
-                    r = requests.head(url, timeout=10)
-                    if r.status_code == 200:
-                        return url, date_str, run
+                    response = requests.head(url, timeout=10)
+                    if response.status_code == 200:
+                        remote_mtime_str = response.headers.get('Last-Modified')
+                        if remote_mtime_str:
+                            remote_mtime = datetime.strptime(remote_mtime_str, '%a, %d %b %Y %H:%M:%S %Z').replace(
+                                tzinfo=timezone.utc)
+
+                            if os.path.exists(self.grib_path):
+                                local_mtime = datetime.fromtimestamp(os.path.getmtime(self.grib_path), tz=timezone.utc)
+                                if remote_mtime <= local_mtime:
+                                    return url, False
+
+                        return url, True
                 except requests.RequestException:
                     continue
+
+        if os.path.exists(self.grib_path):
+            return None, False
         raise RuntimeError("Could not find a recent GFS file on NOMADS.")
 
     def _get_wind_range(self, grib_url):
@@ -53,21 +66,16 @@ class WindUpdater(Updater):
         lines = r.text.strip().split("\n")
 
         u_start = v_start = end_byte = None
-
-        # UGRD and VGRD at 10m are almost always contiguous in GFS.
         for i, line in enumerate(lines):
             if ":UGRD:10 m above ground:" in line:
                 u_start = int(line.split(":")[1])
             elif ":VGRD:10 m above ground:" in line:
                 v_start = int(line.split(":")[1])
-                # The end of VGRD is the start of the next variable
-                end_byte = int(lines[i + 1].split(":")[1]) - 1 if i + 1 < len(lines) else None
+                end_byte = int(lines[i + 1].split(":")[1]) - 1 if i + 1 < len(lines) else ""
                 break
 
-        if u_start is not None and end_byte is not None:
-            # Return the block that covers both U and V
+        if u_start is not None and v_start is not None:
             return min(u_start, v_start), end_byte
-
         raise RuntimeError("10m Wind fields not found in GFS index.")
 
     def download_data(self, url):
@@ -75,7 +83,7 @@ class WindUpdater(Updater):
         start, end = self._get_wind_range(url)
         headers = {"Range": f"bytes={start}-{end}"}
 
-        logger.debug("Downloading Wind data from GFS...")
+        logger.debug(f"Downloading partial Wind GRIB: {headers['Range']}")
         r = requests.get(url, headers=headers, timeout=120, stream=True)
         r.raise_for_status()
 
@@ -85,32 +93,19 @@ class WindUpdater(Updater):
                 f.write(chunk)
 
     def plot(self):
-        """Renders wind vectors with auto-calculated spacing based on zoom level."""
+        """Renders wind vectors with registration and type-hint fixes."""
         logger.debug(f"Plotting wind vectors to {self.output_path}...")
 
-        # Configuration & Bounding Box
         bbox = self.map_region_bbox
         vector_color = self.settings.get("vector_color", fallback="cyan")
-        plot_target_width = float(self.target_width) / 100
-
         base_len = self.settings.getfloat("barb_length_base", fallback=5.0)
         len_step = self.settings.getfloat("barb_length_step", fallback=1.0)
 
-        # Dynamic spacing calculation
-        if bbox:
-            lon_span = abs(bbox[2] - bbox[0])
-            # Divide by number of barbs across the image width
-            calc_spacing = lon_span / self.settings.getfloat("barb_density", fallback=30.0)
-            # Clamp to GFS resolution (0.25) as minimum, and some reasonable max
-            spacing_deg = max(0.25, calc_spacing)
-        else:
-            # Fallback for global if no bbox
-            spacing_deg = 5.0
-
-        # Convert degrees to array index steps (GFS is 0.25 deg resolution)
+        # Spacing logic
+        lon_span = abs(bbox[2] - bbox[0]) if bbox else 360
+        calc_spacing = lon_span / self.settings.getfloat("barb_density", fallback=30.0)
+        spacing_deg = max(0.25, calc_spacing)
         density_step = max(1, int(spacing_deg / 0.25))
-
-        logger.debug(f"Auto-calculated spacing: {spacing_deg:.2f}° (Step: {density_step})")
 
         # Load Data
         ds = xr.open_dataset(
@@ -119,44 +114,30 @@ class WindUpdater(Updater):
             backend_kwargs={"filter_by_keys": {"typeOfLevel": "heightAboveGround", "level": 10}},
         )
 
-        # Handle Longitude Shifting
-        if bbox:
-            if bbox[0] < 0:
-                ds = ds.assign_coords(longitude=(((ds.longitude + 180) % 360) - 180))
-                ds = ds.sortby('longitude')
-            elif bbox[2] > 180.0:
-                bbox[2] = 180.0
-
-        # Extract and Flatten
-        u = ds["u10"].values.squeeze()
-        v = ds["v10"].values.squeeze()
+        # Coordinate Standardization
         lons = ds["longitude"].values
         lats = ds["latitude"].values
+        u = ds["u10"].values.squeeze()
+        v = ds["v10"].values.squeeze()
+
+        # Wrap to -180..180 and sort
+        lons = ((lons + 180) % 360) - 180
+        idx = np.argsort(lons)
+        lons, u, v = lons[idx], u[:, idx], v[:, idx]
 
         lon2d, lat2d = np.meshgrid(lons, lats)
 
+        # Flatten with calculated density step
         lons_flat = lon2d[::density_step, ::density_step].flatten()
         lats_flat = lat2d[::density_step, ::density_step].flatten()
         u_flat = u[::density_step, ::density_step].flatten()
         v_flat = v[::density_step, ::density_step].flatten()
-
-        # Speed Calculation (m/s to kph)
         speed_kph = np.sqrt(u_flat ** 2 + v_flat ** 2) * 3.6
 
-        # Setup Figure
-        if bbox:
-            width_deg, height_deg = abs(bbox[2] - bbox[0]), abs(bbox[3] - bbox[1])
-            fig = plt.figure(figsize=(plot_target_width, plot_target_width / (width_deg / height_deg)), dpi=100)
-        else:
-            fig = plt.figure(figsize=(plot_target_width, float(self.target_height) / 100), dpi=100)
+        # Setup Figure to match target canvas exactly
+        plot = Plot(self.map_data.region)
+        plot.get_figure()
 
-        ax = plt.axes(projection=ccrs.PlateCarree())
-        if bbox:
-            ax.set_extent([bbox[0], bbox[2], bbox[1], bbox[3]], crs=ccrs.PlateCarree())
-        else:
-            ax.set_global()
-
-        # Plot in Speed Bins
         speed_bins = [
             (0, 20, base_len),
             (20, 40, base_len + len_step),
@@ -170,7 +151,7 @@ class WindUpdater(Updater):
             if not np.any(mask):
                 continue
 
-            ax.barbs(
+            plot.ax.barbs(
                 lons_flat[mask], lats_flat[mask], u_flat[mask], v_flat[mask],
                 length=current_length,
                 linewidth=0.6,
@@ -178,33 +159,18 @@ class WindUpdater(Updater):
                 transform=ccrs.PlateCarree()
             )
 
-        # Save
-        ax.set_frame_on(False)
-        ax.set_position((0, 0, 1, 1))
-        ax.patch.set_alpha(0)
-        fig.patch.set_alpha(0)
-        plt.axis("off")
-
-        plt.savefig(self.output_path, transparent=True, bbox_inches=None, pad_inches=0)
-        plt.close(fig)
+        plot.save_figure(self.output_path)
+        ds.close()
 
     def run(self):
         self.exit_if_disabled()
         try:
-            url, date, run = self.find_latest_gfs_file()
-            self.download_data(url)
-            self.plot()
-        finally:
-            if os.path.exists(self.grib_path):
-                os.remove(self.grib_path)
+            url, needs_download = self.check_remote_freshness()
+            if needs_download:
+                self.download_data(url)
 
-
-if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--config", required=True)
-    args = parser.parse_args()
-    config = WorldMapConfig(args.config)
-    updater = WindUpdater(config, None)
-    updater.run()
+            if needs_download or not os.path.exists(self.output_path) or self.config.has_changed:
+                logger.info("Generating Wind plot...")
+                self.plot()
+        except Exception as e:
+            logger.error(f"Wind update failed: {e}")

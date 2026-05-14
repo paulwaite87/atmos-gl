@@ -161,24 +161,3 @@ class CompositeUpdater(Updater):
         except Exception as e:
             logger.error(f"Unexpected error during PIL composite: {e}")
             sys.exit(1)
-
-
-def main():
-    import argparse
-    from worldmap.lib.logging import setup_logging
-
-    setup_logging()
-
-    parser = argparse.ArgumentParser(description="WorldMap Image Compositor")
-    parser.add_argument("--config", required=True, help="Path to worldmap.conf")
-    args = parser.parse_args()
-
-    config = WorldMapConfig(args.config)
-    # Note: Composite requires map_data for dimensions.
-    # In a full run, this is passed by the manager.
-    updater = CompositeUpdater(config, None)
-    updater.run()
-
-
-if __name__ == "__main__":
-    main()

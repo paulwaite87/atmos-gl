@@ -23,8 +23,6 @@ class NasaCloudUpdater(Updater):
         self.exit_if_disabled()
 
         base_url = self.settings.get("url").strip('"')
-        width = self.settings.getint("width", fallback=2048)
-        height = self.settings.getint("height", fallback=1024)
 
         # NASA GIBS availability logic
         now_utc = datetime.now(timezone.utc)
@@ -42,8 +40,8 @@ class NasaCloudUpdater(Updater):
             "STYLES": "",
             "SRS": "EPSG:4326",
             "BBOX": "-180,-90,180,90",
-            "WIDTH": str(width),
-            "HEIGHT": str(height),
+            "WIDTH": str(self.target_width),
+            "HEIGHT": str(self.target_height),
             "TIME": time_param,
         }
 
@@ -73,16 +71,13 @@ class NasaCloudUpdater(Updater):
         # --- Execution ---
         try:
             os.makedirs(str(os.path.dirname(self.output_path)), exist_ok=True)
-            logger.info(f"Fetching NASA GIBS clouds for {time_param} ({width}x{height})...")
+            logger.info(f"Fetching NASA GIBS clouds for {time_param} ({self.target_width}x{self.target_height})...")
 
             req = urllib.request.Request(
                 full_url, headers={"User-Agent": "WorldMap-Cloud-Fetcher/1.0"}
             )
 
             with urllib.request.urlopen(req, timeout=60) as response:
-                # Check for a 'Last-Modified' header just in case NASA provides it
-                remote_mtime = response.headers.get('Last-Modified')
-
                 data = response.read()
                 with open(self.output_path, "wb") as f:
                     f.write(data)
@@ -98,21 +93,3 @@ class NasaCloudUpdater(Updater):
             logger.error(f"Failed to download NASA clouds: {e}")
             if not file_exists:
                 sys.exit(1)
-
-
-def main():
-    import argparse
-    from worldmap.lib.logging import setup_logging
-    setup_logging()
-
-    parser = argparse.ArgumentParser(description="WorldMap NASA Cloud Updater")
-    parser.add_argument("--config", required=True)
-    args = parser.parse_args()
-
-    config = WorldMapConfig(args.config)
-    updater = NasaCloudUpdater(config, None)
-    updater.run()
-
-
-if __name__ == "__main__":
-    main()

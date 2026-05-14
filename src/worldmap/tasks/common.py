@@ -3,6 +3,10 @@ import os
 import sys
 import json
 import logging
+import matplotlib.pyplot as plt
+import cartopy.crs as ccrs
+import cartopy.mpl.geoaxes as geoaxes
+from typing import cast
 
 from pathlib import Path
 
@@ -120,7 +124,7 @@ class MapRegion:
         return (self.bbox[1] <= lat <= self.bbox[3] and
                 self.bbox[0] <= lon <= self.bbox[2])
 
-    def set_map_region_data(self, region : str | list[float] | None):
+    def set_map_region_data(self, region: str | list[float] | None):
         bbox = None
         bbox_prefix = "region_"
         self.world_view = False
@@ -134,7 +138,6 @@ class MapRegion:
         elif str(region).startswith("["):
             try:
                 data = json.loads(str(region))
-                # Check if the parsed JSON is an empty list []
                 if isinstance(data, list) and not data:
                     bbox = [-180.0, -90.0, 180.0, 90.0]
                     self.world_view = True
@@ -159,6 +162,12 @@ class MapRegion:
 
         # Apply aspect ratio adjustment and 180-degree safety shift
         if bbox:
+            # lon_min is index 0, lon_max is index 2
+            if bbox[2] > 180.0:
+                overflow = bbox[2] - 180.0
+                bbox[2] = 180.0  # Cap East at 180
+                bbox[0] = bbox[0] - overflow  # Shift West by the same amount
+
             self.bbox = bbox
             target_ratio = self.target_width / self.target_height
             bbox = adjust_bbox_for_aspect_ratio(bbox, target_ratio)
@@ -191,6 +200,34 @@ class MapData:
         if user_longitude and self.region.world_view:
             self.region.centre_longitude = user_longitude
 
+
+class Plot:
+    def __init__(self, region: MapRegion):
+        self.region = region
+        self.fig = None
+        self.ax = None
+
+    def get_figure(self):
+        plot_target_width = float(self.region.target_width) / 100
+        plot_target_height = float(self.region.target_height) / 100
+
+        self.fig = plt.figure(figsize=(plot_target_width, plot_target_height), dpi=100)
+
+        projection = ccrs.PlateCarree()
+        self.ax = cast(geoaxes.GeoAxes, self.fig.add_axes((0, 0, 1, 1), **{'projection': projection}))
+
+        # Lock the exact view to your base map's bbox
+        bbox = self.region.bbox
+        self.ax.set_extent([bbox[0], bbox[2], bbox[1], bbox[3]], crs=ccrs.PlateCarree())
+        self.ax.set_aspect('auto', adjustable='box')
+
+    def save_figure(self, output_path: str):
+        self.ax.set_axis_off()
+        self.ax.patch.set_alpha(0)
+        self.fig.patch.set_alpha(0)
+
+        plt.savefig(output_path, transparent=True, bbox_inches=None, pad_inches=0)
+        plt.close(self.fig)
 
 class Updater:
     def __init__(self, config: WorldMapConfig, section: str, map_data: MapData):
@@ -299,3 +336,19 @@ class Updater:
             logger.error(f"Failed to crop to regional image: {e}")
 
         return None
+
+    def create_plot(self):
+        plot_target_width = float(self.target_width) / 100
+        plot_target_height = float(self.target_height) / 100
+
+        fig = plt.figure(figsize=(plot_target_width, plot_target_height), dpi=100)
+
+        projection = ccrs.PlateCarree()
+        ax = cast(geoaxes.GeoAxes, fig.add_axes((0, 0, 1, 1), **{'projection': projection}))
+
+        # Lock the exact view to your base map's bbox
+        bbox = self.map_region_bbox
+        ax.set_extent([bbox[0], bbox[2], bbox[1], bbox[3]], crs=ccrs.PlateCarree())
+        ax.set_aspect('auto', adjustable='box')
+
+        return fig, ax

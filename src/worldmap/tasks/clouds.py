@@ -117,22 +117,3 @@ class CloudUpdater(Updater):
         except Exception as e:
             logger.error(f"Error during cloud map generation: {e}")
             sys.exit(1)
-
-
-def main():
-    import argparse
-    from worldmap.lib.logging import setup_logging
-
-    setup_logging()
-
-    parser = argparse.ArgumentParser(description="WorldMap Cloud Updater")
-    parser.add_argument("--config", required=True, help="Path to worldmap.conf")
-    args = parser.parse_args()
-
-    config = WorldMapConfig(args.config)
-    updater = CloudUpdater(config)
-    updater.run()
-
-
-if __name__ == "__main__":
-    main()
