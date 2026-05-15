@@ -44,8 +44,8 @@ restore:
 	@echo "WARNING: This will DELETE and RECREATE the $(DB_NAME) database from $(DUMP_FILE)."
 	@if [ ! -f $(DUMP_FILE) ]; then echo "Error: $(DUMP_FILE) not found."; exit 1; fi
 	@read -p "Are you sure? [y/N] " ans && [ $${ans:-N} = y ]
-	@echo "Stopping harvester and map_builder"
-	docker compose stop harvester map_builder
+	@echo "Stopping services"
+	docker compose stop shipping_collector weather_scanner map_builder
 	@echo "Ensuring worldmap database is running"
 	@docker compose up worldmap_db -d
 	@echo "Restoring database..."

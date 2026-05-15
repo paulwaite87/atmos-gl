@@ -48,7 +48,7 @@ COPY markers/ ./markers/
 
 # 6. Final Sync & Script Installation
 # This ensures all dependencies are synced AND the
-# scripts (harvester, builder) are created in /opt/venv/bin/
+# scripts are created in /opt/venv/bin/
 RUN uv sync --frozen --no-dev --editable \
     && uv pip install -e .
 
