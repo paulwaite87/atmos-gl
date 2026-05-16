@@ -35,6 +35,7 @@ class CompositeUpdater(Updater):
         self.isobar_settings = self.config.get_section("isobars")
         self.wind_settings = self.config.get_section("wind")
         self.currents_settings = self.config.get_section("currents")
+        self.waves_settings = self.config.get_section("waves")
 
         # Enabled flags
         self.sst_enabled = self.config.section_enabled("sst")
@@ -43,6 +44,7 @@ class CompositeUpdater(Updater):
         self.isobars_enabled = self.config.section_enabled("isobars")
         self.wind_enabled = self.config.section_enabled("wind")
         self.currents_enabled = self.config.section_enabled("currents")
+        self.waves_enabled = self.config.section_enabled("waves")
 
     def _apply_cloud_transparency(self, cloud_img: Image.Image) -> Image.Image:
         """
@@ -83,6 +85,7 @@ class CompositeUpdater(Updater):
             isobars_map_path = self.get_output_path_if_exists("isobars")
             wind_map_path = self.get_output_path_if_exists("wind")
             currents_map_path = self.get_output_path_if_exists("currents")
+            waves_map_path = self.get_output_path_if_exists("waves")
 
             regional_cloud_map = ""
 
@@ -117,6 +120,9 @@ class CompositeUpdater(Updater):
 
         if self.currents_enabled and currents_map_path:
             layers.append(("Currents", currents_map_path))
+
+        if self.waves_enabled and waves_map_path:
+            layers.append(("Waves", waves_map_path))
 
         if self.clouds_enabled and regional_cloud_map:
             layers.append(("Clouds", regional_cloud_map))
