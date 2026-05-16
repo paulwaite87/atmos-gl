@@ -29,12 +29,33 @@ class PrecipitationUpdater(Updater):
         self.grib_path = os.path.join(self.workdir, "data/gfs_precip.grib2")
 
         self.PALETTES = {
-            "standard": [(0.0, 1.0, 1.0), (0.0, 0.5, 1.0), (0.0, 1.0, 0.0), (1.0, 1.0, 0.0), (1.0, 0.5, 0.0),
-                         (1.0, 0.0, 0.0), (1.0, 0.0, 1.0)],
-            "ocean_blue": [(0.8, 0.9, 1.0), (0.6, 0.8, 1.0), (0.4, 0.6, 1.0), (0.2, 0.4, 1.0), (0.0, 0.2, 0.8),
-                           (0.0, 0.0, 0.6), (0.0, 0.0, 0.4)],
-            "high_contrast": [(0.0, 0.9, 0.0), (0.0, 0.6, 0.0), (1.0, 1.0, 0.0), (1.0, 0.6, 0.0), (1.0, 0.0, 0.0),
-                              (0.7, 0.0, 0.0), (1.0, 0.0, 1.0)]
+            "standard": [
+                (0.0, 1.0, 1.0),
+                (0.0, 0.5, 1.0),
+                (0.0, 1.0, 0.0),
+                (1.0, 1.0, 0.0),
+                (1.0, 0.5, 0.0),
+                (1.0, 0.0, 0.0),
+                (1.0, 0.0, 1.0)
+            ],
+            "ocean_blue": [
+                (0.8, 0.9, 1.0),
+                (0.6, 0.8, 1.0),
+                (0.4, 0.6, 1.0),
+                (0.2, 0.4, 1.0),
+                (0.0, 0.2, 0.8),
+                (0.0, 0.0, 0.6),
+                (0.0, 0.0, 0.4)
+            ],
+            "high_contrast": [
+                (0.0, 0.9, 0.0),
+                (0.0, 0.6, 0.0),
+                (1.0, 1.0, 0.0),
+                (1.0, 0.6, 0.0),
+                (1.0, 0.0, 0.0),
+                (0.7, 0.0, 0.0),
+                (1.0, 0.0, 1.0)
+            ]
         }
 
     def check_remote_freshness(self):
@@ -94,6 +115,7 @@ class PrecipitationUpdater(Updater):
 
     def plot(self):
         """Renders precipitation with early clipping to prevent memory exhaustion."""
+        import matplotlib.pyplot as plt
         from scipy.interpolate import RegularGridInterpolator
         import gc  # Garbage collector
 
@@ -102,6 +124,10 @@ class PrecipitationUpdater(Updater):
         min_rate = self.settings.getfloat("min_mm_hr", fallback=0.1)
         alpha = self.settings.getfloat("alpha", fallback=0.5)
         palette_name = self.settings.get("palette", fallback="standard")
+
+        # Parse key layout configurations
+        key_position = self.settings.get("key_position", fallback="bottom-right").strip().lower()
+        key_fontsize = self.settings.getint("key_fontsize", fallback=10)
 
         # 1. Load Dataset and Clip Immediately
         ds = xr.open_dataset(self.grib_path, engine="cfgrib")
@@ -115,7 +141,6 @@ class PrecipitationUpdater(Updater):
         buf = 1.0
 
         # SLICE EARLY: This is the primary memory-saving step
-        # GFS lats are North to South, so slice is (lat_max, lat_min)
         ds_clipped = ds.sel(
             latitude=slice(lat_max + buf, lat_min - buf),
             longitude=slice(lon_min - buf, lon_max + buf)
@@ -131,7 +156,6 @@ class PrecipitationUpdater(Updater):
         gc.collect()
 
         # 2. Interpolation on the clipped subset only
-        # 0.05 step is ~5km resolution, 0.02 is ~2km
         step = 0.02
         new_lats = np.arange(lats.min(), lats.max() + step, step)
         new_lons = np.arange(lons.min(), lons.max() + step, step)
@@ -163,18 +187,47 @@ class PrecipitationUpdater(Updater):
         cmap = mcolors.LinearSegmentedColormap.from_list("smooth_precip", rgba_colors, N=256)
         norm = mcolors.BoundaryNorm(levels, cmap.N)
 
-        # 4. Render
-        # Sigma of 1.0 to 1.5 is usually the "sweet spot" for GFS data
+        # 4. Render Heatmap Contour
         prate_smooth = gaussian_filter(prate_smooth, sigma=1.2)
-        plot.ax.contourf(
+        cf = plot.ax.contourf(
             new_lons, new_lats, prate_smooth,
             levels=levels,
             cmap=cmap,
             norm=norm,
             transform=ccrs.PlateCarree(),
             extend='max',
-            antialiased=True
+            antialiased=True,
+            zorder=2
         )
+
+        # 5. ENHANCEMENT: DYNAMIC ADJUSTED COLOR KEY OVERLAY
+        position_map = {
+            "top-left":     [0.04, 0.89, 0.28, 0.03],
+            "top-right":    [0.68, 0.89, 0.28, 0.03],
+            "bottom-left":  [0.04, 0.08, 0.28, 0.03],
+            "bottom-right": [0.68, 0.08, 0.28, 0.03]
+        }
+
+        bbox_coords = position_map.get(key_position, position_map["bottom-right"])
+        cbar_ax = plot.ax.inset_axes(bbox_coords, transform=plot.ax.transAxes)
+
+        cbar_ax.patch.set_facecolor('#111111')
+        cbar_ax.patch.set_alpha(0.4)
+
+        # Clean selection of key checkpoints from the BoundaryNorm spectrum
+        key_ticks = [0.1, 1.0, 5.0, 15.0, 50.0, 100.0]
+
+        cbar = plt.colorbar(
+            cf,
+            cax=cbar_ax,
+            orientation='horizontal',
+            ticks=key_ticks
+        )
+
+        cbar.ax.xaxis.set_tick_params(color='white', labelsize=key_fontsize, labelcolor='white', pad=3)
+        cbar.outline.set_edgecolor('white')
+        cbar.outline.set_linewidth(0.5)
+        cbar.ax.set_title("Precipitation (mm/hr)", color='white', fontsize=key_fontsize, pad=5, weight='bold')
 
         plot.save_figure(self.output_path)
 
@@ -184,7 +237,6 @@ class PrecipitationUpdater(Updater):
             plt_close()
 
         logger.debug(f"Finished Precipitation plot. Memory cleared.")
-
 
     def run(self):
         self.exit_if_disabled()

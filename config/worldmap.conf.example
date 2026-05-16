@@ -40,7 +40,7 @@ log_level = INFO
 # Clouds sourced via https://clouds.matteason.co.uk/
 # Codebase here https://github.com/jmozmoz/cloudmap
 # High quality images and kept reasonably up to date
-enabled = True
+enabled = False
 outfile = data/cloud_map.jpg
 force = False
 # threshold: 0-255 (e.g., 20 removes dim haze)
@@ -58,18 +58,18 @@ outfile = data/cloud_map_nasa.jpg
 # threshold: 0-255 (e.g., 20 removes dim haze)
 threshold = 150
 # gamma: 0.1 - 2.0 (e.g., 0.5 makes clouds much more transparent)
-gamma = 0.5
-runs_per_day = 8
+gamma = 0.4
+runs_per_day = 12
 
 [isobars]
-enabled = True
+enabled = False
 url = https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod
 outfile = data/isobars.png
 isobar_color = White
 label_fontsize = 12
 # Optional: isobar text labels outlined for better legibility
 label_outline = False
-runs_per_day = 10
+runs_per_day = 12
 
 [wind]
 enabled = False
@@ -86,17 +86,20 @@ barb_density = 30.0
 runs_per_day = 8
 
 [precipitation]
-enabled = True
+enabled = False
 url = https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod
 outfile = data/precipitation.png
 # Minimum rain rate to display (mm/hr)
-min_mm_hr = 0.6
+min_mm_hr = 0.5
 # Overall transparency (0.0 to 1.0)
-alpha = 0.6
+alpha = 0.8
 # Options: standard, ocean_blue, or high_contrast
 palette = standard
 # GFS forecast hour (usually 3 or 6 for current conditions)
 forecast_hour = 3
+key_fontsize = 18
+# Options: top-left, top-right, bottom-left, bottom-right
+key_position = top-left
 runs_per_day = 8
 
 [lightning]
@@ -108,44 +111,95 @@ expiry_hours = 1
 runs_per_day = 24
 
 [sst]
-# Sea Surface Temperatures. An interesting layer but best used with
-# other layers disabled, so you get the full effect.
+# Sea Surface Temperatures. An interesting layer but best used
+# with other layers which paint the region disabled (eg waves)
 enabled = False
 url = https://nomads.ncep.noaa.gov/pub/data/nccf/com/rtofs/prod
 outfile = data/sst.png
 # Overall transparency (0.0 to 1.0)
-alpha = 0.5
+alpha = 0.7
 # Options: thermal, vivid, deep, or ocean
 palette = vivid
 # Max/min temperatures
 min_c = 0
 max_c = 32
-runs_per_day = 1
+key_fontsize = 18
+# Options: top-left, top-right, bottom-left, bottom-right
+key_position = bottom-left
+runs_per_day = 2
+
+[currents]
+# Ocean currents colour-coded by speed
+enabled = False
+url = https://nomads.ncep.noaa.gov/pub/data/nccf/com/rtofs/prod/
+outfile = data/currents.png
+forecast_hour = 0
+# Options: thermal_red, electric_blue, toxic_neon, cyberpunk
+palette = toxic_neon
+alpha = 0.5
+# Larger values widen the ocean current plots
+width_factor = 2.5
+runs_per_day = 2
+
+[waves]
+# Paints the region with colors according to wave height
+# with arrows indicating direction. Best used with other
+# layers which paint the region disabled (eg. sst)
+enabled = False
+url = https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod
+outfile = data/waves.png
+forecast_hour = 24
+# Options: ocean_storm, neon_surge, solar_flare
+palette = solar_flare
+alpha = 0.7
+# Play with these to get the number and size of arrows just
+# right for your desktop
+show_arrows = False
+arrow_density = 1.0
+arrow_scale = 1.0
+key_fontsize = 18
+# Options: top-left, top-right, bottom-left, bottom-right
+key_position = top-right
+runs_per_day = 2
+
+[temperature]
+enabled = False
+url = https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod
+outfile = data/temperature.png
+# Options: global_thermal, extreme_contrast, twilight_gradient
+palette = global_thermal
+forecast_hour = 0
+alpha = 0.8
+show_freezing_line = True
+key_fontsize = 18
+# Options: top-left, top-right, bottom-left, bottom-right
+key_position = top-left
+runs_per_day = 8
 
 [composite]
 # Creates a composite image of clouds, isobars and wind
 enabled = True
-outfile = data/weather_map.png
+outfile = data/composite_layer.png
 
 [storms]
-enabled = True
+enabled = False
 url = https://www.ncei.noaa.gov/data/international-best-track-archive-for-climate-stewardship-ibtracs/v04r01/access/csv/
 outfile = data/storm_markers.txt
 marker_color=yellow
 marker_symbol = storm_symbol.png
 regional_only=false
-expiry_days=3
-runs_per_day = 4
+expiry_days=4
+runs_per_day = 8
 
 [quakes]
-enabled = True
+enabled = False
 url = https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.csv
 outfile = data/quake_markers.txt
 marker_color = White
 marker_symbol = earthquake_symbol.png
 label_fontsize = 14
 min_mag = 5.0
-runs_per_day = 4
+runs_per_day = 8
 
 [volcanoes]
 enabled = False
@@ -196,9 +250,9 @@ label_fontsize = 12
 # 'C' - Cargo. Green = loaded; Red = unloaded since last info
 # 'T' - Tanker. Red = loaded; Lime green = unloaded
 # Purple discs are for Passenger ships and all other vessel types
-#show_ship_icons = default
+show_ship_icons = default
 #show_ship_icons = Discs
-show_ship_icons = Arrows
+#show_ship_icons = Arrows
 # Show only these classes of vessel. Possible values: ["Passenger", Tanker", "Cargo"]
 # Leave as an empty list [] to show all vessels
 filter_show_ship_classes = []
@@ -209,7 +263,7 @@ filter_show_names_for_classes = []
 # Use this to filter out the small-fry
 filter_ships_minimum_length = 100
 # Show only ships moving >1.0 knots and not flagged as moored or anchored
-filter_ships_underway = True
+filter_ships_underway = False
 # Only show ships with these names. Useful with tracking on (see below).
 filter_show_ships_by_name = []
 # Whether to show vessel tracks. Useful mainly when filtering
@@ -254,7 +308,7 @@ log_level = INFO
 [map_builder]
 enabled = True
 # Level for logging: DEBUG, INFO, WARNING, ERROR, CRITICAL
-log_level = DEBUG
+log_level = INFO
 
 [xplanet]
 enabled = True

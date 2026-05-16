@@ -26,7 +26,6 @@ class SSTUpdater(Updater):
         Fetches a geographic subset of RTOFS data using HTTP Byte-Range requests.
         Replaces the retired OPeNDAP/DODS service.
         """
-        # Ensure your config URL points to the pub/data/nccf/com/rtofs/prod directory
         base_url = self.settings.get("url").rstrip('/')
         now = datetime.now(timezone.utc)
         bbox = self.map_region_bbox  # [lon_min, lat_min, lon_max, lat_max]
@@ -34,31 +33,23 @@ class SSTUpdater(Updater):
         # Search the last 3 days for available forecast files
         for i in range(3):
             date_str = (now - timedelta(days=i)).strftime("%Y%m%d")
-            # 'n000' is the analysis/nowcast file
             url = f"{base_url}/rtofs.{date_str}/rtofs_glo_2ds_n000_prog.nc"
 
             try:
                 logger.debug(f"Attempting remote subsetting via byte-range: {url}")
 
-                # Open remote dataset lazily. 'chunks={}' enables dask/lazy loading.
-                # Requires 'h5netcdf' and 'fsspec' packages.
                 with xr.open_dataset(url, engine='h5netcdf', chunks={}) as ds:
-                    # Identify coordinate names (RTOFS uses Latitude/Longitude)
                     lon_name = 'Longitude' if 'Longitude' in ds.coords else 'lon'
                     lat_name = 'Latitude' if 'Latitude' in ds.coords else 'lat'
 
-                    # 1. Fetch 1D coordinate vectors to calculate indices
                     lons_raw = ds[lon_name].values
                     lats_raw = ds[lat_name].values
 
-                    # Flatten curvilinear coordinates to 1D for index lookup
                     if lons_raw.ndim > 1: lons_raw = lons_raw[0, :]
                     if lats_raw.ndim > 1: lats_raw = lats_raw[:, 0]
 
-                    # Normalize 0..360 to -180..180 for BBOX comparison
                     lons_norm = ((lons_raw + 180) % 360) - 180
 
-                    # 2. Identify indices matching the BBOX
                     lon_mask = (lons_norm >= bbox[0]) & (lons_norm <= bbox[2])
                     lat_mask = (lats_raw >= bbox[1]) & (lats_raw <= bbox[3])
 
@@ -68,8 +59,6 @@ class SSTUpdater(Updater):
                     if len(lon_indices) == 0 or len(lat_indices) == 0:
                         continue
 
-                    # 3. Trigger the network transfer for only the required slice
-                    # RTOFS NetCDF dimensions are usually (MT, Y, X)
                     sst_var = next(n for n in ['sst', 'sea_surface_temperature', 'temp'] if n in ds)
                     subset = ds[sst_var].isel(
                         MT=0,
@@ -77,7 +66,6 @@ class SSTUpdater(Updater):
                         X=slice(lon_indices.min(), lon_indices.max() + 1)
                     ).compute()
 
-                    # Save subset locally to avoid repeated network calls during plotting
                     os.makedirs(os.path.dirname(self.nc_path), exist_ok=True)
                     subset.to_netcdf(self.nc_path)
 
@@ -93,12 +81,16 @@ class SSTUpdater(Updater):
         return False
 
     def plot(self):
-        # --- Configuration ---
+        # --- Configuration Parsing ---
         alpha = self.settings.getfloat("alpha", fallback=0.4)
         palette_key = self.settings.get("palette", fallback="thermal").lower()
         vmin, vmax = self.settings.getint("min_c", fallback=0), self.settings.getint("max_c", fallback=32)
         palettes = {"thermal": "magma", "vivid": "turbo", "deep": "viridis", "ocean": "inferno"}
         cmap_name = palettes.get(palette_key, "magma")
+
+        # Layout positioning flags for the visual key scale
+        key_position = self.settings.get("key_position", fallback="bottom-right").strip().lower()
+        key_fontsize = self.settings.getint("key_fontsize", fallback=10)
 
         # --- Data Loading ---
         ds = xr.open_dataset(self.nc_path)
@@ -109,14 +101,11 @@ class SSTUpdater(Updater):
         lons = ds.Longitude.values if 'Longitude' in ds.coords else ds.lon.values
         lats = ds.Latitude.values if 'Latitude' in ds.coords else ds.lat.values
 
-        # Flatten curvilinear coordinates to 1D axes for mapping
         if lons.ndim > 1: lons = lons[0, :]
         if lats.ndim > 1: lats = lats[:, 0]
 
-        # Normalize subset lons back to -180..180
         lons = ((lons + 180) % 360) - 180
 
-        # Sort indices to ensure strictly increasing arrays for pcolormesh
         lon_idx = np.argsort(lons)
         lat_idx = np.argsort(lats)
 
@@ -127,13 +116,46 @@ class SSTUpdater(Updater):
         plot = Plot(self.map_data.region)
         plot.get_figure()
 
-        # This forces the map to respect the non-linear Mercator grid spacing of RTOFS.
-        plot.ax.pcolormesh(lons, lats, sst_c,
-                      transform=ccrs.PlateCarree(),
-                      cmap=plt.get_cmap(cmap_name),
-                      alpha=alpha,
-                      vmin=vmin, vmax=vmax,
-                      shading='nearest')
+        # Capture scalar reference for color key allocation
+        mesh = plot.ax.pcolormesh(lons, lats, sst_c,
+                                  transform=ccrs.PlateCarree(),
+                                  cmap=plt.get_cmap(cmap_name),
+                                  alpha=alpha,
+                                  vmin=vmin, vmax=vmax,
+                                  shading='nearest')
+
+        # --- FINE-TUNED INSET COLOR KEY COORDINATES ---
+        # Format: [left_x, bottom_y, width, height]
+        # Halfway adjustment to maximize map space while saving labels from clipping
+        position_map = {
+            "top-left": [0.04, 0.89, 0.28, 0.03],
+            "top-right": [0.68, 0.89, 0.28, 0.03],
+            "bottom-left": [0.04, 0.08, 0.28, 0.03],
+            "bottom-right": [0.68, 0.08, 0.28, 0.03]
+        }
+
+        bbox_coords = position_map.get(key_position, position_map["bottom-right"])
+        cbar_ax = plot.ax.inset_axes(bbox_coords, transform=plot.ax.transAxes)
+
+        # Render clean semi-translucent backplate for contrast
+        cbar_ax.patch.set_facecolor('#111111')
+        cbar_ax.patch.set_alpha(0.4)
+
+        # Generate dynamically distributed ticks
+        calculated_ticks = np.linspace(vmin, vmax, 5)
+
+        cbar = plt.colorbar(
+            mesh,
+            cax=cbar_ax,
+            orientation='horizontal',
+            ticks=calculated_ticks
+        )
+
+        # Apply clean typography offsets
+        cbar.ax.xaxis.set_tick_params(color='white', labelsize=key_fontsize, labelcolor='white', pad=3)
+        cbar.outline.set_edgecolor('white')
+        cbar.outline.set_linewidth(0.5)
+        cbar.ax.set_title("Sea Surface Temp (°C)", color='white', fontsize=key_fontsize, pad=5, weight='bold')
 
         plot.save_figure(self.output_path)
         ds.close()

@@ -32,23 +32,23 @@ class WavesUpdater(Updater):
                 (0.0, 0.6, 0.3),  # Low: Emerald Teal
                 (0.9, 0.7, 0.0),  # Moderate: Amber Yellow
                 (0.8, 0.2, 0.0),  # Heavy: Crimson Red
-                (0.9, 0.9, 0.9)  # Extreme: Foam White
+                (0.9, 0.9, 0.9)   # Extreme: Foam White
             ],
             "neon_surge": [
                 (0.0, 0.8, 1.0),  # 0m+: Electric Cyan
-                (0.0, 0.95, 0.4),  # Low Swell: Neon Green
+                (0.0, 0.95, 0.4), # Low Swell: Neon Green
                 (1.0, 0.9, 0.0),  # Moderate: Vivid Yellow
                 (1.0, 0.3, 0.0),  # Heavy: Bright Orange
                 (0.9, 0.0, 0.5),  # Violent: Hot Magenta
-                (0.6, 0.0, 0.7)  # Extreme: Deep Purple
+                (0.6, 0.0, 0.7)   # Extreme: Deep Purple
             ],
             "solar_flare": [
                 (0.6, 1.0, 0.9),  # 0m+: Soft, glowing cyan (Calm)
                 (0.0, 1.0, 0.0),  # Low Swell: Electric Lime
                 (1.0, 1.0, 0.0),  # Light Seas: Pure, Blazing Yellow
-                (1.0, 0.65, 0.0),  # Moderate: Pierce Orange
+                (1.0, 0.65, 0.0), # Moderate: Pierce Orange
                 (1.0, 0.2, 0.1),  # Heavy: Safety Red
-                (1.0, 0.0, 1.0)  # Extreme: Hot Magenta/Pink
+                (1.0, 0.0, 1.0)   # Extreme: Hot Magenta/Pink
             ]
         }
 
@@ -123,6 +123,7 @@ class WavesUpdater(Updater):
         """Plots an underlying significant wave height contour heatmap
         with adaptive directional quiver arrows layered over top.
         """
+        import matplotlib.pyplot as plt
         from scipy.interpolate import griddata, NearestNDInterpolator
 
         logger.debug(f"Plotting Sea Conditions for {self.map_data.region.region_identifier}")
@@ -134,12 +135,14 @@ class WavesUpdater(Updater):
         alpha_setting = self.settings.getfloat("alpha", fallback=0.75)
         alpha_setting = np.clip(alpha_setting, 0.1, 1.0)
 
-        # Parse new visibility configuration flag
+        # Parse layout configurations
         show_arrows = self.settings.getboolean("show_arrows", fallback=True)
-
         arrow_density_mod = self.settings.getfloat("arrow_density", fallback=1.0)
         arrow_scale_mod = self.settings.getfloat("arrow_scale", fallback=1.0)
         arrow_scale_mod = max(0.1, arrow_scale_mod)
+
+        key_position = self.settings.get("key_position", fallback="bottom-right").strip().lower()
+        key_fontsize = self.settings.getint("key_fontsize", fallback=10)
 
         # 1. Open Dataset with cfgrib engine backend
         ds = xr.open_dataset(
@@ -227,7 +230,7 @@ class WavesUpdater(Updater):
         levels = np.linspace(0.0, 8.0, 17)
         norm = mcolors.Normalize(vmin=0.0, vmax=8.0)
 
-        plot.ax.contourf(
+        cf = plot.ax.contourf(
             grid_lon, grid_lat, swh_grid,
             levels=levels,
             cmap=cmap,
@@ -293,6 +296,32 @@ class WavesUpdater(Updater):
                 )
         else:
             logger.debug("Wave vector rendering skipped by user configuration settings.")
+
+        # 7. ENHANCEMENT: DYNAMIC ADJUSTED COLOR KEY OVERLAY
+        position_map = {
+            "top-left":     [0.04, 0.89, 0.28, 0.03],
+            "top-right":    [0.68, 0.89, 0.28, 0.03],
+            "bottom-left":  [0.04, 0.08, 0.28, 0.03],
+            "bottom-right": [0.68, 0.08, 0.28, 0.03]
+        }
+
+        bbox_coords = position_map.get(key_position, position_map["bottom-right"])
+        cbar_ax = plot.ax.inset_axes(bbox_coords, transform=plot.ax.transAxes)
+
+        cbar_ax.patch.set_facecolor('#111111')
+        cbar_ax.patch.set_alpha(0.4)
+
+        cbar = plt.colorbar(
+            cf,
+            cax=cbar_ax,
+            orientation='horizontal',
+            ticks=[0, 2, 4, 6, 8]
+        )
+
+        cbar.ax.xaxis.set_tick_params(color='white', labelsize=key_fontsize, labelcolor='white', pad=3)
+        cbar.outline.set_edgecolor('white')
+        cbar.outline.set_linewidth(0.5)
+        cbar.ax.set_title("Wave Height (m)", color='white', fontsize=key_fontsize, pad=5, weight='bold')
 
         plot.save_figure(self.output_path)
 

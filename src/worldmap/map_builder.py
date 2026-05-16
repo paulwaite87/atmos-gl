@@ -22,6 +22,7 @@ from worldmap.tasks.precipitation import PrecipitationUpdater
 from worldmap.tasks.sst import SSTUpdater
 from worldmap.tasks.currents import CurrentsUpdater
 from worldmap.tasks.waves import WavesUpdater
+from worldmap.tasks.temperature import TemperatureUpdater
 from worldmap.tasks.composite import CompositeUpdater
 from worldmap.tasks.storms import StormUpdater
 from worldmap.tasks.lightning import LightningUpdater
@@ -65,6 +66,7 @@ class MapBuilder:
             ("sst", SSTUpdater),
             ("currents", CurrentsUpdater),
             ("waves", WavesUpdater),
+            ("temperature", TemperatureUpdater),
             ("composite", CompositeUpdater),
             ("storms", StormUpdater),
             ("lightning", LightningUpdater),
@@ -181,7 +183,8 @@ class MapBuilder:
                                     "precipitation",
                                     "sst",
                                     "currents",
-                                    "waves"
+                                    "waves",
+                                    "temperature"
                                 ]:
                                     self.composite_layers_updated = True
 
