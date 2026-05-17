@@ -15,8 +15,8 @@
 # It provides a bounding box in the same format as above.
 # Regions defined for you out-of-the-box are:
 # NZ, NZ_Aus, Suez_Canal, English_Channel, Strait_of_Hormuz, Singapore,
-# Saudi_Arabia, Mediterranean, Panama_Canal, Ukraine
-region = NZ_Aus
+# Saudi_Arabia, Mediterranean, Panama_Canal, Ukraine, Europe
+region =
 # Set to the geometry (graphics resolution) of your desktop. The
 # final render of the map image will use this.
 desktop_geometry = 1920x1200
@@ -34,19 +34,19 @@ workdir = .
 # This affects all processes in the system, so will be very noisy if you
 # have certain elements enabled, eg. weather_collector. Instead you can
 # set log_level for individual processes in their sections below.
-log_level = INFO
+log_level = DEBUG
 
 [clouds]
 # Clouds sourced via https://clouds.matteason.co.uk/
 # Codebase here https://github.com/jmozmoz/cloudmap
 # High quality images and kept reasonably up to date
-enabled = False
+enabled = True
 outfile = data/cloud_map.jpg
 force = False
 # threshold: 0-255 (e.g., 20 removes dim haze)
 threshold = 150
 # gamma: 0.1 - 2.0 (e.g., 0.5 makes clouds much more transparent)
-gamma = 0.5
+gamma = 0.6
 runs_per_day = 8
 
 [clouds_nasa]
@@ -102,22 +102,18 @@ key_fontsize = 18
 key_position = top-left
 runs_per_day = 8
 
-[lightning]
-# Uses the data acquired by the [weather_scanner] (see below section)
-# hence disabled until you get an API Key for it.
-enabled = False
-outfile = markers/lightning.txt
-expiry_hours = 1
-runs_per_day = 24
-
 [sst]
 # Sea Surface Temperatures. An interesting layer but best used
 # with other layers which paint the region disabled (eg waves)
 enabled = False
-url = https://nomads.ncep.noaa.gov/pub/data/nccf/com/rtofs/prod
+url = https://downloads.psl.noaa.gov/Datasets/noaa.oisst.v2.highres
 outfile = data/sst.png
+# Mode: absolute or anomaly
+# SST anomalies are calculated as deviation from the temperatures
+# expected from historical data.
+mode = Absolute
 # Overall transparency (0.0 to 1.0)
-alpha = 0.7
+alpha = 1.0
 # Options: thermal, vivid, deep, or ocean
 palette = vivid
 # Max/min temperatures
@@ -135,10 +131,14 @@ url = https://nomads.ncep.noaa.gov/pub/data/nccf/com/rtofs/prod/
 outfile = data/currents.png
 forecast_hour = 0
 # Options: thermal_red, electric_blue, toxic_neon, cyberpunk
-palette = toxic_neon
-alpha = 0.5
+palette = thermal_red
+# Overall transparency (0.0 to 1.0)
+alpha = 0.8
 # Larger values widen the ocean current plots
-width_factor = 2.5
+width_factor = 2.6
+key_fontsize = 18
+# Options: top-left, top-right, bottom-left, bottom-right
+key_position = bottom-left
 runs_per_day = 2
 
 [waves]
@@ -151,6 +151,7 @@ outfile = data/waves.png
 forecast_hour = 24
 # Options: ocean_storm, neon_surge, solar_flare
 palette = solar_flare
+# Overall transparency (0.0 to 1.0)
 alpha = 0.7
 # Play with these to get the number and size of arrows just
 # right for your desktop
@@ -166,33 +167,55 @@ runs_per_day = 2
 enabled = False
 url = https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod
 outfile = data/temperature.png
+# Mode: absolute or anomaly
+# Air Temperature anomalies are calculated as deviation from the
+# mean temperature across the region being viewed right now,
+# not deviations from 'expected' or historical data.
+mode = absolute
 # Options: global_thermal, extreme_contrast, twilight_gradient
-palette = global_thermal
+palette = extreme_contrast
 forecast_hour = 0
-alpha = 0.8
+# Overall transparency (0.0 to 1.0)
+alpha = 1.0
 show_freezing_line = True
 key_fontsize = 18
 # Options: top-left, top-right, bottom-left, bottom-right
 key_position = top-left
 runs_per_day = 8
 
+[storms]
+enabled = True
+ibtracs_url = https://www.ncei.noaa.gov/data/international-best-track-archive-for-climate-stewardship-ibtracs/v04r01/access/csv/
+jtwc_url = https://www.ssd.noaa.gov/PS/TROP/DATA/ATCF/JTWC/
+nhc_url = https://ftp.nhc.noaa.gov/atcf/fst/
+outfile = data/storms.png
+storm_icon = images/storm_symbol.png
+storm_icon_zoom = 1.5
+storm_name_fontsize = 18
+forecast_cone_alpha = 0.5
+forecast_cone_color = White
+storm_track_color = DeepPink
+expiry_days=4
+runs_per_day = 8
+test_mode = true
+test_lat = -30.5
+test_lon = 90.0
+
 [composite]
 # Creates a composite image of clouds, isobars and wind
 enabled = True
 outfile = data/composite_layer.png
 
-[storms]
+[lightning]
+# Uses the data acquired by the [weather_scanner] (see below section)
+# hence disabled until you get an API Key for it.
 enabled = False
-url = https://www.ncei.noaa.gov/data/international-best-track-archive-for-climate-stewardship-ibtracs/v04r01/access/csv/
-outfile = data/storm_markers.txt
-marker_color=yellow
-marker_symbol = storm_symbol.png
-regional_only=false
-expiry_days=4
-runs_per_day = 8
+outfile = markers/lightning.txt
+expiry_hours = 1
+runs_per_day = 24
 
 [quakes]
-enabled = False
+enabled = True
 url = https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.csv
 outfile = data/quake_markers.txt
 marker_color = White
@@ -237,7 +260,7 @@ erupt_date_codes = ["D1"]
 runs_per_day = 1
 
 [shipping]
-enabled = False
+enabled = True
 outfile = data/ship_markers.txt
 marker_color = orange
 label_fontsize = 12
@@ -282,7 +305,7 @@ runs_per_day = 24
 # This collector acquires ship data and stores it in the db, listening to AIS in
 # an endless loop. The harvesting is done globally in 10 longitudinal 'slices'.
 # This stored data is used by the map builder when displaying ships on the map.
-enabled = False
+enabled = True
 # Needs an API Key in your .env file; see https://aisstream.io/documentation
 url = wss://stream.aisstream.io/v0/stream
 # Time to listen for data broadcasts
@@ -299,7 +322,7 @@ log_level = INFO
 
 [weather_scanner]
 # Needs an API Key in your .env file; see https://openweathermap.org
-enabled = False
+enabled = True
 url = https://demo.openweathermap.org/lightning/1.0/data
 expiry_hours = 24
 # Level for logging: DEBUG, INFO, WARNING, ERROR, CRITICAL
