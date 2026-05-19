@@ -207,9 +207,6 @@ forecast_cone_color = White
 storm_track_color = DeepPink
 expiry_days=4
 runs_per_day = 8
-test_mode = true
-test_lat = -30.5
-test_lon = 90.0
 
 [composite]
 # Creates a composite image of many layers
