@@ -3,9 +3,9 @@ import os
 import sys
 import logging
 import requests
+import pytest
 from urllib.parse import urlparse
 from PIL import Image
-import pytest
 
 # Append project root to path to ensure clean internal imports
 sys.path.insert(0, os.path.abspath(str(os.path.join(str(os.path.dirname(__file__)), ".."))))
