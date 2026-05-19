@@ -38,10 +38,10 @@ class StormUpdater(Updater):
                 if "ACTIVE" in href.upper() and href.endswith(".csv"):
                     return directory_url.rstrip("/") + "/" + href
         except Exception as e:
-            raise RuntimeError(f"Failed to scrape storm directory: {e}")
-        raise FileNotFoundError("Could not find ACTIVE CSV file on NOAA servers.")
+            raise RuntimeError(f"Failed to scrape storms directory: {e}")
+        raise FileNotFoundError("No ACTIVE storms currently on NOAA servers.")
 
-    def download_if_newer(self):
+    def download_if_newer(self) -> bool:
         """Downloads the global IBTrACS CSV only if the remote file is newer than local cache."""
         try:
             active_url = self.get_active_csv_url()
@@ -58,10 +58,10 @@ class StormUpdater(Updater):
             if file_exists and remote_mtime:
                 local_mtime = datetime.fromtimestamp(os.path.getmtime(self.csv_path), tz=timezone.utc)
                 if remote_mtime <= local_mtime:
-                    logger.info("Storm CSV cache is up to date.")
+                    logger.info("Storms CSV cache is up to date.")
                     return False
 
-            logger.info(f"Downloading fresh global storm data from {active_url}")
+            logger.info(f"Downloading fresh storms data from {active_url}")
             r = requests.get(active_url, timeout=30)
             r.raise_for_status()
 
@@ -70,7 +70,7 @@ class StormUpdater(Updater):
                 f.write(r.content)
             return True
         except Exception as e:
-            logger.warning(f"Metadata check failed for storm data: {e}")
+            logger.warning(f"Download of storms data failed: {e}")
             return False
 
     def _parse_atcf_file(self, file_url, target_name):
@@ -115,16 +115,15 @@ class StormUpdater(Updater):
                     "TYPE": "FORECAST"
                 })
         except Exception as e:
-            logger.debug(f"Failed parsing track file {file_url}: {e}")
+            logger.debug(f"Failed parsing storms track file {file_url}: {e}")
         return forecast_points
 
     def _fetch_global_forecast(self, storm_name):
         """Scrapes both JTWC and NHC active forecasting directories simultaneously."""
         target_name = storm_name.upper().strip()
 
-        jtwc_endpoint = self.settings.get("jtwc_url",
-                                          fallback="https://www.ssd.noaa.gov/PS/TROP/DATA/ATCF/JTWC/").strip()
-        nhc_endpoint = self.settings.get("nhc_url", fallback="https://ftp.nhc.noaa.gov/atcf/fst/").strip()
+        jtwc_endpoint = self.settings.get("jtwc_url").strip()
+        nhc_endpoint = self.settings.get("nhc_url").strip()
 
         endpoints = [
             {"name": "JTWC", "url": jtwc_endpoint},
@@ -151,12 +150,12 @@ class StormUpdater(Updater):
 
                     found_tracks = self._parse_atcf_file(file_url, target_name)
                     if found_tracks:
-                        logger.info(f"Successfully linked official {source['name']} forecast track for {storm_name}")
+                        logger.info(f"Successfully linked official {source['name']} storm forecast track for {storm_name}")
                         df_fc = pd.DataFrame(found_tracks).drop_duplicates(subset=["TAU"]).sort_values("TAU")
                         return df_fc.to_dict(orient="records")
 
             except Exception as e:
-                logger.warning(f"Failed polling live feed for {source['name']}: {e}")
+                logger.warning(f"Failed polling live feed for storm {source['name']}: {e}")
 
         return []
 
@@ -264,7 +263,7 @@ class StormUpdater(Updater):
         plt_close = getattr(plot, 'close', None)
         if callable(plt_close):
             plt_close()
-        logger.info(f"Successfully rendered global storm layer directly to {self.output_path}")
+        logger.info(f"Successfully rendered storms layer directly to {self.output_path}")
 
     def run(self):
         self.exit_if_disabled()
@@ -273,11 +272,11 @@ class StormUpdater(Updater):
         marker_file_exists = os.path.exists(self.output_path)
 
         if not (data_updated or not marker_file_exists or self.config.has_changed):
-            logger.info("Global storm layers are up to date.")
+            logger.info("Storms layer not updated.")
             return
 
         if not os.path.exists(self.csv_path):
-            logger.error("No raw global storm track dataset available.")
+            logger.error("No raw storms tracking dataset available.")
             return
 
         try:
@@ -331,4 +330,4 @@ class StormUpdater(Updater):
             self.plot_storms(df)
 
         except Exception as e:
-            logger.exception(f"Storm tracking global execution crash: {e}")
+            logger.exception(f"Storms tracking execution crash: {e}")

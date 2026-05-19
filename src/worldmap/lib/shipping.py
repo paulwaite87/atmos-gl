@@ -112,9 +112,15 @@ class Ship:
         return length, beam
 
     def get_vessel_navigational_status(self):
-        cog = float(self.vessel.get("cog") or 0.0)
-        sog = float(self.vessel.get("sog") or 0.0)
-        nav_status = int(self.vessel.get("nav_status") or 1)
+        cog = 0.0
+        sog = 0.0
+        nav_status = 1
+        if "cog" in self.vessel:
+            cog = float(self.vessel.get("cog"))
+        if "sog" in self.vessel:
+            sog = float(self.vessel.get("sog"))
+        if "nav_status" in self.vessel:
+            nav_status = int(self.vessel.get("nav_status"))
         return cog, sog, nav_status
 
     def get_vessel_position(self):

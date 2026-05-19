@@ -91,6 +91,7 @@ class ShippingUpdater(Updater):
 
                 # Length Filter
                 ship_length, ship_beam = ship.get_vessel_dimensions()
+
                 if ship_length < min_length:
                     continue
 

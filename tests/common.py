@@ -10,11 +10,12 @@ from PIL import Image
 # Append project root to path to ensure clean internal imports
 sys.path.insert(0, os.path.abspath(str(os.path.join(str(os.path.dirname(__file__)), ".."))))
 from worldmap.lib.config import WorldMapConfig
+from worldmap.tasks.common import MapRegion
 
 logger = logging.getLogger("TestUtils")
 
 
-class MockRegion:
+class MockRegion(MapRegion):
     target_width = 2048
     target_height = 1024
     world_view = True

@@ -35,6 +35,12 @@ test:
 	@echo "Running complete discovery test suite via pytest..."
 	docker compose exec map_builder pytest tests/ -v
 
+## bash: Start a bash session in the main map_builder app
+bash:
+	@echo "Ensuring map_builder container environment is active..."
+	docker compose up map_builder -d
+	docker compose exec map_builder bash
+
 ## backup: Backup database to local worldmap-dump.sql file
 backup:
 	@echo "Ensuring worldmap database is running"

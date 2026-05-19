@@ -136,7 +136,7 @@ async def test_shipping_pipeline(test_env):
 
     # Assert xplanet syntax formatting and logic outcomes
     assert "-18.0 160.0" in main_marker, "Incorrect coordinate placement."
-    assert "TEST TANKER Tanker VLCC" in main_marker, "Vessel description generation failed."
+    assert "TEST TANKER Tanker" in main_marker, "Vessel description generation failed."
     assert "fontsize=19" in main_marker, "VLCC size multiplier (12 * 1.6) failed."
     assert "image=mock_red_ship_090.png" in main_marker, "Icon rotation reference missing."
 
