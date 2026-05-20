@@ -73,7 +73,6 @@ class WorldMapConfig:
         self.config.clear()
         self.config.read(self.config_path)
         self._inject_secrets()
-        self.listify_values()
         self.has_changed = self.check_if_changed()
         # Adjust log level for common (overall) logging
         log_level = self.get_setting("common", "log_level", None)
@@ -81,7 +80,6 @@ class WorldMapConfig:
             set_loglevel(log_level)
 
     def save(self):
-        self.de_listify_values()
         with open(self.config_path, "w") as config_file:
             self.config.write(config_file)
 

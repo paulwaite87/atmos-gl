@@ -621,35 +621,31 @@
                                     <input type="text" class="form-control bg-dark text-light border-secondary" id="${item.flatKey}" value="${safeValue}">
                                 `;
                             }
-                        } else if (item.option.includes('filter_show_ship_classes') || item.option.includes('filter_show_names')) {
-                            let activeClasses = [];
-                            try {
-                                let cleanStr = typeof item.value === 'string' ? item.value.replace(/'/g, '"') : item.value;
-                                activeClasses = Array.isArray(cleanStr) ? cleanStr : JSON.parse(cleanStr || "[]");
-                            } catch(e) {
-                                activeClasses = [];
+                        } else if (item.option === 'filter_show_ship_classes' || item.option === 'filter_show_names_for_classes') {
+                            // Split incoming comma-separated backend string into an array for selection binding
+                            let activeValues = [];
+                            if (typeof item.value === 'string' && item.value.trim() !== '') {
+                                activeValues = item.value.split(/\s*,\s*/);
                             }
                             col.innerHTML = `
                                 <label class="form-label small text-white-50 fw-bold mb-1">${item.option}</label>
-                                <select class="form-select bg-dark text-light border-secondary" id="${item.flatKey}" multiple style="height: 95px;">
-                                    <option value="Tanker" ${activeClasses.includes('Tanker') ? 'selected' : ''}>Tanker</option>
-                                    <option value="Cargo" ${activeClasses.includes('Cargo') ? 'selected' : ''}>Cargo</option>
-                                    <option value="Passenger" ${activeClasses.includes('Passenger') ? 'selected' : ''}>Passenger</option>
+                                <select class="form-select bg-dark text-light border-secondary filter-comma-separated" id="${item.flatKey}" multiple style="height: 95px;">
+                                    <option value="Tanker" ${activeValues.includes('Tanker') ? 'selected' : ''}>Tanker</option>
+                                    <option value="Cargo" ${activeValues.includes('Cargo') ? 'selected' : ''}>Cargo</option>
+                                    <option value="Passenger" ${activeValues.includes('Passenger') ? 'selected' : ''}>Passenger</option>
                                 </select>
                                 <div class="text-white-50" style="font-size: 11px; margin-top: 4px;">💡 Hold Ctrl (or Cmd ⌘) to select multiple. Select none to show all.</div>
                             `;
-                        } else if (item.option.includes('errupt_date_codes') || item.option.includes('erupt_date_codes')) {
+                        } else if (item.option === 'errupt_date_codes' || item.option === 'erupt_date_codes') {
+                            // Split incoming comma-separated backend string into an array for selection binding
                             let activeCodes = [];
-                            try {
-                                let cleanStr = typeof item.value === 'string' ? item.value.replace(/'/g, '"') : item.value;
-                                activeCodes = Array.isArray(cleanStr) ? cleanStr : JSON.parse(cleanStr || "[]");
-                            } catch(e) {
-                                activeCodes = [];
+                            if (typeof item.value === 'string' && item.value.trim() !== '') {
+                                activeCodes = item.value.split(/\s*,\s*/);
                             }
-                            col.className = 'col-12';
+                            if (item.option === 'errupt_date_codes') col.className = 'col-12';
                             col.innerHTML = `
                                 <label class="form-label small text-white-50 fw-bold mb-1">${item.option}</label>
-                                <select class="form-select bg-dark text-light border-secondary" id="${item.flatKey}" multiple style="height: 220px;">
+                                <select class="form-select bg-dark text-light border-secondary filter-comma-separated" id="${item.flatKey}" multiple style="height: 220px;">
                                     <option value="D1" ${activeCodes.includes('D1') ? 'selected' : ''}>D1 - 1964 or later</option>
                                     <option value="D2" ${activeCodes.includes('D2') ? 'selected' : ''}>D2 - 1900 to 1963</option>
                                     <option value="D3" ${activeCodes.includes('D3') ? 'selected' : ''}>D3 - 1800 to 1899</option>
@@ -697,7 +693,8 @@
         function toggleSectionVisibility() {
             const statusMap = {
                 "clouds": document.getElementById('radio__clouds_standard').checked,
-                "clouds_nasa": document.getElementById('radio__clouds_nasa').checked,                "isobars": document.getElementById('isobars__enabled').checked,
+                "clouds_nasa": document.getElementById('radio__clouds_nasa').checked,
+                "isobars": document.getElementById('isobars__enabled').checked,
                 "wind": document.getElementById('wind__enabled').checked,
                 "precipitation": document.getElementById('precipitation__enabled').checked,
                 "lightning": document.getElementById('lightning__enabled').checked,
@@ -772,7 +769,13 @@
                     }
                 } else if (input.tagName.toLowerCase() === "select" && input.hasAttribute("multiple")) {
                     const selectedOptions = Array.from(input.selectedOptions).map(opt => opt.value);
-                    payload[id] = selectedOptions;
+
+                    // Format explicitly as a simple comma-separated string if it matches our targets
+                    if (input.classList.contains('filter-comma-separated')) {
+                        payload[id] = selectedOptions.join(', ');
+                    } else {
+                        payload[id] = selectedOptions;
+                    }
                 } else {
                     const val = input.value.trim();
                     if (val.startsWith("[") && val.endsWith("]")) {

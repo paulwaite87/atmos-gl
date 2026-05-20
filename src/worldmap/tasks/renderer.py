@@ -3,12 +3,11 @@ import os
 import glob
 import time
 import logging
-import json
 import subprocess
 
 from worldmap.lib.config import WorldMapConfig
 from worldmap.lib.maps import NASAGIBSDownloader
-from .common import Updater, COMPOSITE_SECTIONS
+from .common import Updater, COMPOSITE_SECTIONS, listify
 
 logger = logging.getLogger(__name__)
 
@@ -124,7 +123,7 @@ class XPlanetRenderer(Updater):
                 f.write(f'marker_file={self.config.get_section_outfile("shipping")}\n')
 
             # Additional marker files from a list in the config
-            marker_files = json.loads(self.settings.get("marker_files", fallback='[]'))
+            marker_files = listify(self.settings.get("marker_files", fallback=''))
             for marker_file in marker_files:
                 f.write(f"marker_file={marker_file}\n")
 

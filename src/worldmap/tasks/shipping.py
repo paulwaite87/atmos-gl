@@ -74,8 +74,8 @@ class ShippingUpdater(Updater):
 
         show_ships_underway = self.settings.getboolean("show_ships_underway", fallback=False)
         show_ship_icons = self.settings.get("show_ship_icons", fallback=None)
-        show_ship_classes = json.loads(self.settings.get("filter_show_ship_classes_list", fallback='["Tanker", "Cargo"]'))
-        show_names_classes = json.loads(self.settings.get("filter_show_names_for_classes_list", fallback='[]'))
+        show_ship_classes = listify(self.settings.get("filter_show_ship_classes", fallback='Tanker, Cargo'))
+        show_names_classes = listify(self.settings.get("filter_show_names_for_classes", fallback=''))
         show_ships_by_name = listify(self.settings.get("filter_show_ships_by_name", fallback=''))
         min_length = self.settings.getint("filter_ships_minimum_length", fallback=0)
         base_label_fontsize = float(self.settings.getint("label_fontsize", fallback=12))
