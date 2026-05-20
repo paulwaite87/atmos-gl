@@ -119,6 +119,7 @@ services:
       - PGDATABASE=worldmap
       - PGUSER=wmap
       - PGPASSWORD=wmap
+      - CONFIG_PATH=/opt/project/config/worldmap.conf
     restart: unless-stopped
     depends_on:
       worldmap_db:

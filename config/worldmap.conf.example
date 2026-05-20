@@ -237,8 +237,12 @@ url = https://www.ngdc.noaa.gov/hazel/hazard-service/api/v1/volcanoes
 outfile = data/volcano_markers.txt
 marker_color = DeepPink
 marker_symbol = volcano_symbol.png
+# Show specific volcano by name
+specific_volcano_by_name =
 # Show only volcanoes flagged as 'significant'
 significant_only = True
+# Show only volcanoes named in this list (comma separated)
+filter_show_volcanoes_by_name =
 # Volcanic Explosivity Index (VEI):
 # 0	non-explosive
 # 1 Small
@@ -263,7 +267,7 @@ vei_min = 5
 # Q  - Quaternary (very fucking old!)
 # ?  - Uncertain Holocene
 # Show only volcanoes with on of this list of date codes
-erupt_date_codes = ["D1"]
+erupt_date_codes_list = "D1"
 runs_per_day = 1
 
 [shipping]
@@ -283,19 +287,19 @@ label_fontsize = 12
 show_ship_icons = default
 #show_ship_icons = Discs
 #show_ship_icons = Arrows
-# Show only these classes of vessel. Possible values: ["Passenger", Tanker", "Cargo"]
-# Leave as an empty list [] to show all vessels
-filter_show_ship_classes = []
+# Comma-separated list of vessel classes. Possible values: Passenger, Tanker, Cargo
+# Leave empty to show all vessels.
+filter_show_ship_classes_list =
 # Show names for specific classes of ship (same options as for filter_show_ship_classes)
 # Leave as an empty list to suppress all names
-filter_show_names_for_classes = []
+filter_show_names_for_classes_list =
 # Show ships with lengths >= this (metres 0=>no filtering)
 # Use this to filter out the small-fry
 filter_ships_minimum_length = 100
 # Show only ships moving >1.0 knots and not flagged as moored or anchored
 filter_ships_underway = False
 # Only show ships with these names. Useful with tracking on (see below).
-filter_show_ships_by_name = []
+filter_show_ships_by_name =
 # Whether to show vessel tracks. Useful mainly when filtering
 # to specific ship names otherwise the data is too dense
 # to make sense of.

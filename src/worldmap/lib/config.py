@@ -1,10 +1,12 @@
 import os
 import configparser
 import logging
+import ast
 
 from worldmap.lib.logging import set_loglevel
 
 logger = logging.getLogger(__name__)
+set_loglevel("INFO")
 
 class WorldMapConfig:
     def __init__(self, config_path):
@@ -33,6 +35,36 @@ class WorldMapConfig:
             return True
         return False
 
+    def listify_values(self):
+        """
+        Allows the configuration of multi-select lists to be a comma-separated
+        string. Go through all settings and for those with names ending '_list'
+        convert any values to a stringified list of values. For example:
+          "xyz, pqr" --> "['xyz', 'pqr']"
+        """
+        for section in self.config.sections():
+            for key in self.config[section]:
+                if key.endswith("_list"):
+                    value = self.get_setting(section, key)
+                    if value and not value.startswith('['):
+                        new_value = str([item.strip() for item in value.split(',')])
+                    else:
+                        new_value = '[]'
+                    self.update_setting(section, key, new_value)
+
+    def de_listify_values(self):
+        """Reversal of the above method"""
+        for section in self.config.sections():
+            for key in self.config[section]:
+                if key.endswith("_list"):
+                    value = self.get_setting(section, key, default='')
+                    if value and value.startswith('['):
+                        as_list = ast.literal_eval(value)
+                        new_value = ", ".join(as_list)
+                    else:
+                        new_value = ''
+                    self.update_setting(section, key, new_value)
+
     def load(self):
         """Reads or re-reads the config file from disk."""
         if not os.path.exists(self.config_path):
@@ -41,11 +73,17 @@ class WorldMapConfig:
         self.config.clear()
         self.config.read(self.config_path)
         self._inject_secrets()
+        self.listify_values()
         self.has_changed = self.check_if_changed()
         # Adjust log level for common (overall) logging
         log_level = self.get_setting("common", "log_level", None)
         if log_level:
             set_loglevel(log_level)
+
+    def save(self):
+        self.de_listify_values()
+        with open(self.config_path, "w") as config_file:
+            self.config.write(config_file)
 
     def _inject_secrets(self):
         """Silently injects API keys from environment into the config object."""
@@ -80,3 +118,10 @@ class WorldMapConfig:
         if self.config.has_section(section):
             return self.config.get(section, setting, fallback=default)
         return default
+
+    def update_setting(self, section, setting, value):
+        if self.config.has_section(section):
+            self.config.set(section, setting, value)
+
+
+

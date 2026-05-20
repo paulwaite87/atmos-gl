@@ -6,7 +6,7 @@ import urllib.request
 
 # Internal library import
 from worldmap.lib.config import WorldMapConfig
-from .common import Updater, MapData
+from .common import Updater, MapData, listify
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +51,7 @@ class VolcanoUpdater(Updater):
         marker_color = self.settings.get("marker_color", fallback="red")
         marker_symbol = self.settings.get("marker_symbol")
         significant_only = self.settings.getboolean("significant_only", fallback=False)
+        show_volcanoes_by_name = listify(self.settings.get("filter_show_volcanoes_by_name", fallback=''))
         vei_min = self.settings.getint("vei_min", fallback=5)
         # Load date codes (e.g., ["D1"] for Holocene)
         try:
@@ -69,9 +70,13 @@ class VolcanoUpdater(Updater):
         count = 0
         with open(self.output_path, "w") as f:
             for r in records:
+                name = r.get("name", "Unknown")
+
+                if show_volcanoes_by_name and name not in show_volcanoes_by_name:
+                    continue
+
                 lat = r.get("latitude")
                 lon = r.get("longitude")
-                name = r.get("name", "Unknown")
                 significant = r.get("significant", False)
                 last_erupt = r.get("timeErupt", "")
                 vei = r.get("vei", 0)

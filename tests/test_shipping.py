@@ -107,7 +107,7 @@ async def test_shipping_pipeline(test_env):
         "show_ship_icons": "Arrows",
         "filter_show_ship_classes": '["Tanker", "Cargo"]',
         "filter_show_names_for_classes": '["Tanker"]',
-        "filter_show_ships_by_name": '[]',
+        "filter_show_ships_by_name": '',
         "filter_ships_minimum_length": "50",
         "label_fontsize": "12",
         "marker_color": "red"

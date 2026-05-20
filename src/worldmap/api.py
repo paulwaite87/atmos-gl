@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 import os
-import configparser
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from worldmap.lib.db import Database
+from worldmap.lib.config import WorldMapConfig
 
-app = FastAPI(title="WorldMap Double Underscore API")
+
+app = FastAPI(title="WorldMap Configuration API")
 
 app.add_middleware(
     CORSMiddleware,
@@ -15,14 +16,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-CONFIG_PATH = "/opt/project/config/worldmap.conf"
 
+def load_config():
+    config_path = os.getenv("CONFIG_PATH", "./config/worldmap.conf")
 
-def load_raw_config():
-    if not os.path.exists(CONFIG_PATH):
+    if not os.path.exists(config_path):
         raise HTTPException(status_code=404, detail="Configuration layout unavailable.")
-    config = configparser.ConfigParser()
-    config.read(CONFIG_PATH)
+
+    config = WorldMapConfig(config_path)
+    config.load()
+
     return config
 
 
@@ -30,8 +33,8 @@ def load_raw_config():
 def get_regions():
     try:
         # Get current region from config to prioritize it in the list
-        config = load_raw_config()
-        current_region = config.get("common", "region", fallback="Whole World")
+        worldmap_config = load_config()
+        current_region = worldmap_config.get_setting("common", "region", "Whole World")
 
         db = Database()
         # Returns list of dicts: [{'label': 'NZ', ...}, {'label': 'Europe', ...}]
@@ -40,15 +43,16 @@ def get_regions():
         return {"status": "success", "data": regions}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/api/config")
 def get_config():
-    config = load_raw_config()
+    worldmap_config = load_config()
     flat_data = {}
 
-    for section in config.sections():
-        for option in config.options(section):
+    for section in worldmap_config.config.sections():
+        for option in worldmap_config.config.options(section):
             key = f"{section}__{option}"
-            value = config.get(section, option)
+            value = worldmap_config.config.get(section, option)
 
             # Type casting logic parsing ...
             if value.lower() in ['true', 'yes', 'on']:
@@ -79,21 +83,20 @@ def get_config():
 
 @app.post("/api/config")
 async def update_config(payload: dict):
-    config = load_raw_config()
+    worldmap_config = load_config()
 
     for flat_key, val in payload.items():
         # THE FIX: Split strictly at the double underscore
         if "__" in flat_key:
             section, option = flat_key.split("__", 1)
-            if not config.has_section(section):
-                config.add_section(section)
+            if not worldmap_config.config.has_section(section):
+                worldmap_config.config.add_section(section)
 
             if isinstance(val, bool):
-                config.set(section, option, "True" if val else "False")
+                worldmap_config.config.set(section, option, "True" if val else "False")
             else:
-                config.set(section, option, str(val))
+                worldmap_config.config.set(section, option, str(val))
 
-    with open(CONFIG_PATH, "w") as config_file:
-        config.write(config_file)
+    worldmap_config.save()
 
     return {"status": "success", "message": "Configuration updated successfully."}

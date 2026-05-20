@@ -33,6 +33,12 @@ COMPOSITE_SECTIONS = [
     "storms"
 ]
 
+def listify(text: str) -> list:
+    """Convert a comma-separated string into a list of strings"""
+    if not text or text.strip() == "":
+        return []
+    return [item.strip() for item in text.split(',')]
+
 def stringify_bbox(bbox):
     """
     Converts a bbox list into a filename-safe string.
