@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 import os
-import json
 import logging
 import math
 from PIL import Image
@@ -10,8 +9,10 @@ from worldmap.lib.config import WorldMapConfig
 from worldmap.lib.shipping import Ship
 from worldmap.lib.db import Database
 from .common import Updater, listify
+from worldmap.lib.logging import set_loglevel
 
 logger = logging.getLogger(__name__)
+set_loglevel("DEBUG")
 
 
 def get_distance_km(lat1, lon1, lat2, lon2):
@@ -93,22 +94,28 @@ class ShippingUpdater(Updater):
                 # Length Filter
                 ship_length, ship_beam = ship.get_vessel_dimensions()
                 if ship_length < show_ships_min_length:
+                    logger.info(f"exiting - shiplength={ship_length}")
                     continue
 
                 # Class Filter
                 if show_ship_classes and ship.vessel_class not in show_ship_classes:
+                    logger.info(f"exiting - ship class={ship.vessel_class} show_ship_classes={show_ship_classes}")
                     continue
 
                 # Names filter
                 if show_ships_by_name and ship.vessel_name not in show_ships_by_name:
+                    logger.info(f"exiting = ship name={ship.vessel_name}")
                     continue
 
                 # Ship underway filter
                 if show_ships_underway and not ship.is_underway():
+                    cog, sog, nav_status = ship.get_vessel_navigational_status()
+                    logger.info(f"exiting - ship not underway sog={sog} nav_status={nav_status}")
                     continue
 
                 raw_lat, raw_lon = ship.get_vessel_position()
                 if raw_lat is None or raw_lon is None:
+                    logger.info("exiting - lat lon not defined properly")
                     continue
 
                 # Default colour

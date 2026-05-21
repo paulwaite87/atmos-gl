@@ -45,8 +45,9 @@ def test_storm_pipeline(test_env):
 
     # 2. BeautifulSoup Layout Extraction Validation
     active_csv_url = updater.get_active_csv_url()
-    assert active_csv_url, "Could not extract dynamic targets from directory tree structure."
-    assert check_url_accessibility(active_csv_url, "Target Active CSV Data File")
+    assert active_csv_url, "Could not retrieve active CSV url"
+    if active_csv_url != "No ACTIVE storms":
+        assert check_url_accessibility(active_csv_url, "Target Active CSV Data File")
 
     # 3. Graphics Processing Engine Assertion
     updater.generate_and_render_mock(-18.5, 160.0)

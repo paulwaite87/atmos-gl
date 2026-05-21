@@ -39,12 +39,18 @@ class StormUpdater(Updater):
                     return directory_url.rstrip("/") + "/" + href
         except Exception as e:
             raise RuntimeError(f"Failed to scrape storms directory: {e}")
-        raise FileNotFoundError("No ACTIVE storms currently on NOAA servers.")
+        return "No ACTIVE storms"
 
     def download_if_newer(self) -> bool:
         """Downloads the global IBTrACS CSV only if the remote file is newer than local cache."""
         try:
             active_url = self.get_active_csv_url()
+
+            # If the planet is calm...
+            if active_url == "No ACTIVE storms":
+                logger.info("No ACTIVE storms currently on NOAA servers")
+                return False
+
             response = requests.head(active_url, timeout=10)
             response.raise_for_status()
 
