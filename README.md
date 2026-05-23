@@ -128,8 +128,8 @@ manual editing approach, edit your `config/worldmap.conf` and look in the first
 The other geometry setting is `target_geometry` which controls the resolution
 of what we download. I find that 4096x2048 is a good value.
 
-The `Show` tab controls what gets shown on the map. If elements are disable here,
-then the applicable sections on the other tabs are disabled and the settings on
+The `Show` tab controls what gets shown on the map. If elements are disabled here,
+then the applicable sections on the other tabs are also disabled and the settings on
 them hidden, to avoid clutter.
 
 ### Obtaining an API Key for Shipping data
