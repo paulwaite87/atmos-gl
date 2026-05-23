@@ -37,25 +37,11 @@ workdir = .
 log_level = DEBUG
 
 [clouds]
-# High quality cloud images refreshed every 3 hours. Sourced via
-# https://clouds.matteason.co.uk/
-# Codebase here https://github.com/jmozmoz/cloudmap
-enabled = True
-url = https://clouds.matteason.co.uk/images/4096x2048/clouds.jpg
-outfile = data/cloud_map.jpg
-force = False
-# threshold: 0-255 (e.g., 20 removes dim haze)
-threshold = 150
-# gamma: 0.1 - 2.0 (e.g., 0.5 makes clouds much more transparent)
-gamma = 0.6
-runs_per_day = 8
-
-[clouds_nasa]
-# Optional source for clouds; use as backup for the above
+# Source for clouds images
 # NB: width and height are defined in 'clouds' section
 enabled = False
 url = https://gibs.earthdata.nasa.gov/wms/epsg4326/best/wms.cgi
-outfile = data/cloud_map_nasa.jpg
+outfile = data/cloud_map.jpg
 # threshold: 0-255 (e.g., 20 removes dim haze)
 threshold = 150
 # gamma: 0.1 - 2.0 (e.g., 0.5 makes clouds much more transparent)

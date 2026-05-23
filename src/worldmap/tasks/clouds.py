@@ -1,119 +1,95 @@
 #!/usr/bin/env python3
 import os
-import re
 import sys
 import logging
-import configparser
-import io
-from contextlib import redirect_stdout, redirect_stderr
-from pathlib import Path
-
-# The third-party library
-from cloudmap.create_map import main as cloudmap_main
-from .common import Updater, MapData
+import urllib.error
+import urllib.request
+from datetime import datetime, timedelta, timezone
 
 # Internal library import
 from worldmap.lib.config import WorldMapConfig
+from .common import Updater, MapData
 
 logger = logging.getLogger(__name__)
 
 
 class CloudUpdater(Updater):
-    """
-    Downloads a cloud map for xplanet using the cloud map provided by https://clouds.matteason.co.uk/.
-    This package can be installed by pip from https://pypi.org/project/CreateCloudMap/.
-
-    The script automatically checks, if a new image is available. The default behavior is to only
-    download the image, if it is new.
-    """
     def __init__(self, config: WorldMapConfig, map_data: MapData):
         super().__init__(config, "Clouds", map_data)
         self.set_output_path()
 
-    def _generate_temp_conf(self):
-        """Generates the temporary INI file required by the cloudmap library."""
-        outfile_path = Path(self.output_path)
-        temp_conf_path = str(os.path.join(self.workdir, "data", "cloud_map.conf"))
-
-        temp_config = configparser.ConfigParser()
-        temp_config["xplanet"] = {
-            "destinationdir": str(outfile_path.parent),
-            "destinationfile": outfile_path.name,
-            "width": str(self.target_width),
-            "height": str(self.target_height),
-        }
-
-        # Ensure the directory exists
-        os.makedirs(os.path.dirname(temp_conf_path), exist_ok=True)
-        with open(temp_conf_path, "w") as f:
-            temp_config.write(f)
-
-        return temp_conf_path
-
     def run(self):
-        """Prepares the environment and executes the cloudmap generator."""
-
-        # Skip this task if not enabled
+        """Downloads the cloud layer from NASA GIBS with caching logic."""
         self.exit_if_disabled()
 
+        base_url = self.settings.get("url").strip('"')
+
+        # NASA GIBS availability logic
+        now_utc = datetime.now(timezone.utc)
+        # We use yesterday's date to ensure the global mosaic is complete
+        target_date = now_utc - timedelta(days=1)
+        time_param = target_date.strftime("%Y-%m-%d")
+
+        params = {
+            "SERVICE": "WMS",
+            "VERSION": "1.1.1",
+            "REQUEST": "GetMap",
+            "LAYERS": "VIIRS_SNPP_CorrectedReflectance_TrueColor",
+            "FORMAT": "image/jpeg",
+            "TRANSPARENT": "FALSE",
+            "STYLES": "",
+            "SRS": "EPSG:4326",
+            "BBOX": "-180,-90,180,90",
+            "WIDTH": str(self.target_width),
+            "HEIGHT": str(self.target_height),
+            "TIME": time_param,
+        }
+
+        query_string = "&".join([f"{k}={v}" for k, v in params.items()])
+        full_url = f"{base_url}?{query_string}"
+
+        # --- Cache Logic ---
+        # We check three things:
+        # 1. Does the file exist?
+        # 2. Is the file from the same 'NASA day' we are looking for?
+        # 3. Has the config (resolution) changed?
+
+        file_exists = os.path.exists(self.output_path)
+        is_same_day = False
+
+        if file_exists:
+            # Check the file's modification time
+            file_mtime = datetime.fromtimestamp(os.path.getmtime(self.output_path), tz=timezone.utc)
+            # If the file was downloaded today (local time) and matches the target date logic, skip
+            if file_mtime.date() == now_utc.date():
+                is_same_day = True
+
+        if file_exists and is_same_day and not self.config.has_changed:
+            logger.info(f"NASA clouds for {time_param} are already cached and up to date.")
+            return
+
+        # --- Execution ---
         try:
-            # Extract values
-            force = self.settings.getboolean("force", fallback=False)
+            os.makedirs(str(os.path.dirname(self.output_path)), exist_ok=True)
+            logger.info(f"Fetching NASA GIBS clouds for {time_param} ({self.target_width}x{self.target_height})...")
 
-            # Create the bridging config file
-            temp_conf_path = self._generate_temp_conf()
-            logger.debug(f"Generated clouds config {temp_conf_path}")
+            req = urllib.request.Request(
+                full_url, headers={"User-Agent": "WorldMap-Cloud-Fetcher/1.0"}
+            )
 
-            # Prepare sys.argv for the CreateCloudMap library
-            prog_name = re.sub(r"(-script\.pyw|\.exe)?$", "", sys.argv[0])
+            with urllib.request.urlopen(req, timeout=60) as response:
+                data = response.read()
+                with open(self.output_path, "wb") as f:
+                    f.write(data)
 
-            # Start with the basic config file argument
-            new_args = [prog_name, f"--conf_file={temp_conf_path}"]
+            logger.debug(f"NASA cloud map successfully saved: {self.output_path}")
 
-            # Append the --forced flag if the config setting is True
-            if force:
-                logger.debug("Forced update enabled")
-                new_args.append("--force")
-
-            sys.argv = new_args
-
-            # Hand over control to the library
-            logger.debug("Starting cloud map generation...")
-
-            # Target the specific logger
-            external_logger = logging.getLogger("create_map_logger")
-
-            # Clear any existing handlers the library might have added
-            if external_logger.hasHandlers():
-                external_logger.handlers.clear()
-
-            # Set the level to ERROR
-            external_logger.setLevel(logging.ERROR)
-
-            # Disable propagation so it doesn't send messages to your root logger
-            external_logger.propagate = False
-
-            f_stdout = io.StringIO()
-            f_stderr = io.StringIO()
-
-            try:
-                with redirect_stdout(f_stdout), redirect_stderr(f_stderr):
-                    # Download the clouds image
-                    cloudmap_main()
-            finally:
-                # Get the captured text
-                out_content = f_stdout.getvalue()
-                err_content = f_stderr.getvalue()
-
-                # Log or process the output
-                if out_content:
-                    for line in out_content.splitlines():
-                        logger.debug(f"[CloudMap STDOUT] {line}")
-
-                if err_content:
-                    for line in err_content.splitlines():
-                        logger.error(f"[CloudMap STDERR] {line}")
-
+        except urllib.error.HTTPError as e:
+            logger.error(f"NASA GIBS returned an error: {e.code} {e.reason}")
+            # Don't exit 1 if we have a cached version we can fall back on
+            if not file_exists:
+                sys.exit(1)
         except Exception as e:
-            logger.error(f"Error during cloud map generation: {e}")
-            sys.exit(1)
+            logger.error(f"Failed to download NASA clouds: {e}")
+            if not file_exists:
+                sys.exit(1)

@@ -75,23 +75,7 @@
                         <div class="grouping-box">
                             <h5>Atmospheric</h5>
                             <div class="row g-3">
-                                <div class="col-12 mb-2 pb-2 border-bottom border-light border-opacity-25">
-                                    <label class="form-label text-muted small fw-bold mb-2">Cloud Rendering Layer:</label>
-                                    <div class="d-flex gap-4">
-                                        <div class="form-check">
-                                            <input class="form-check-input" type="radio" name="cloud_mode" id="radio__clouds_none" value="none">
-                                            <label class="form-check-label fw-bold ms-1" for="radio__clouds_none">None</label>
-                                        </div>
-                                        <div class="form-check">
-                                            <input class="form-check-input" type="radio" name="cloud_mode" id="radio__clouds_standard" value="standard">
-                                            <label class="form-check-label fw-bold ms-1" for="radio__clouds_standard">Standard Clouds</label>
-                                        </div>
-                                        <div class="form-check">
-                                            <input class="form-check-input" type="radio" name="cloud_mode" id="radio__clouds_nasa" value="nasa">
-                                            <label class="form-check-label fw-bold ms-1" for="radio__clouds_nasa">NASA Clouds</label>
-                                        </div>
-                                    </div>
-                                </div>
+                                <div class="col-md-4"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="clouds__enabled"><label class="form-check-label fw-bold ms-2">Clouds</label></div></div>
                                 <div class="col-md-4"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="isobars__enabled"><label class="form-check-label fw-bold ms-2">Isobars</label></div></div>
                                 <div class="col-md-4"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="wind__enabled"><label class="form-check-label fw-bold ms-2">Wind Vectors</label></div></div>
                                 <div class="col-md-4"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="precipitation__enabled"><label class="form-check-label fw-bold ms-2">Precipitation</label></div></div>
@@ -208,7 +192,7 @@
 
         // Sections bucket mapping assignments matching your structural design
         const TAB_GROUPS = {
-            "atmospheric": ["clouds", "clouds_nasa", "isobars", "wind", "precipitation", "lightning", "storms"],
+            "atmospheric": ["clouds", "isobars", "wind", "precipitation", "lightning", "storms"],
             "climate": ["sst", "currents", "waves", "temperature"],
             "events": ["quakes", "volcanoes"],
             "shipping": ["shipping"],
@@ -296,21 +280,7 @@
             if(data['common__target_geometry'] !== undefined) document.getElementById('common__target_geometry').value = data['common__target_geometry'];
 
             // Bind Master Toggle Switches on 'Show' tab and attach logic updates
-            // Bind Cloud mutually exclusive radio buttons
-            ['none', 'standard', 'nasa'].forEach(mode => {
-                const el = document.getElementById(`radio__clouds_${mode}`);
-                if (el) el.addEventListener('change', toggleSectionVisibility);
-            });
-
-            // Translate backend booleans to UI radio state
-            if (data['clouds_nasa__enabled']) {
-                document.getElementById('radio__clouds_nasa').checked = true;
-            } else if (data['clouds__enabled']) {
-                document.getElementById('radio__clouds_standard').checked = true;
-            } else {
-                document.getElementById('radio__clouds_none').checked = true;
-            }
-            ['isobars', 'wind', 'precipitation', 'lightning', 'storms', 'quakes', 'volcanoes', 'shipping'].forEach(layer => {
+            ['clouds', 'isobars', 'wind', 'precipitation', 'lightning', 'storms', 'quakes', 'volcanoes', 'shipping'].forEach(layer => {
                 const el = document.getElementById(`${layer}__enabled`);
                 if (el && data[`${layer}__enabled`] !== undefined) {
                     el.checked = data[`${layer}__enabled`];
@@ -465,7 +435,7 @@
                                 <input type="range" class="form-range" id="${item.flatKey}" min="0.1" max="5.0" step="0.1" value="${initialZoom}"
                                        oninput="document.getElementById('badge-${item.flatKey}').innerText = parseFloat(this.value).toFixed(1) + 'x'">
                             `;
-                        } else if (item.option.includes('threshold') && (section === 'clouds' || section === 'clouds_nasa')) {
+                        } else if (item.option.includes('threshold') && section === 'clouds') {
                             const rawByteVal = parseInt(item.value) !== undefined ? parseInt(item.value) : 0;
                             const initialPct = Math.min(100, Math.max(0, Math.round((rawByteVal / 255) * 100)));
                             col.innerHTML = `
@@ -704,8 +674,7 @@
 
         function toggleSectionVisibility() {
             const statusMap = {
-                "clouds": document.getElementById('radio__clouds_standard').checked,
-                "clouds_nasa": document.getElementById('radio__clouds_nasa').checked,
+                "clouds": document.getElementById('clouds__enabled').checked,
                 "isobars": document.getElementById('isobars__enabled').checked,
                 "wind": document.getElementById('wind__enabled').checked,
                 "precipitation": document.getElementById('precipitation__enabled').checked,
@@ -747,14 +716,10 @@
             payload['common__target_geometry'] = document.getElementById('common__target_geometry').value;
 
             // 2. Map Standard Toggles
-            ['isobars', 'wind', 'precipitation', 'lightning', 'storms', 'quakes', 'volcanoes', 'shipping', 'shipping_collector', 'weather_scanner'].forEach(layer => {
+            ['clouds', 'isobars', 'wind', 'precipitation', 'lightning', 'storms', 'quakes', 'volcanoes', 'shipping', 'shipping_collector', 'weather_scanner'].forEach(layer => {
                 const el = document.getElementById(`${layer}__enabled`);
                 if (el) payload[`${layer}__enabled`] = el.checked;
             });
-
-            // Explicitly map Cloud Radios back to discrete backend boolean values
-            payload['clouds__enabled'] = document.getElementById('radio__clouds_standard').checked;
-            payload['clouds_nasa__enabled'] = document.getElementById('radio__clouds_nasa').checked;
 
             // 3. Map Exclusive Climate Radios
             payload['sst__enabled'] = document.getElementById('radio__sst').checked;

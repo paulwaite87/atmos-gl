@@ -16,7 +16,6 @@ from worldmap.tasks.common import COMPOSITE_SECTIONS
 # Task imports
 from worldmap.tasks.common import MapData, Updater
 from worldmap.tasks.clouds import CloudUpdater
-from worldmap.tasks.clouds_nasa import NasaCloudUpdater
 from worldmap.tasks.isobars import IsobarUpdater
 from worldmap.tasks.wind import WindUpdater
 from worldmap.tasks.precipitation import PrecipitationUpdater
@@ -60,7 +59,6 @@ class MapBuilder:
         # Execution order registry
         self.task_registry: List[Tuple[str, Type[Any]]] = [
             ("clouds", CloudUpdater),
-            ("clouds_nasa", NasaCloudUpdater),
             ("isobars", IsobarUpdater),
             ("wind", WindUpdater),
             ("precipitation", PrecipitationUpdater),

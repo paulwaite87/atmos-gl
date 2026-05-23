@@ -25,11 +25,7 @@ class CompositeUpdater(Updater):
         self.set_output_path()
 
         # Config sections
-        self.clouds_section = "clouds"
-        if self.config.section_enabled("clouds_nasa"):
-            self.clouds_section = "clouds_nasa"
-
-        self.clouds_settings = self.config.get_section(self.clouds_section)
+        self.clouds_settings = self.config.get_section("clouds")
         self.sst_settings = self.config.get_section("sst")
         self.precip_settings = self.config.get_section("precipitation")
         self.isobar_settings = self.config.get_section("isobars")
@@ -82,7 +78,7 @@ class CompositeUpdater(Updater):
             logger.debug(f"Creating weather map image => {self.output_path}")
 
             # Source paths
-            cloud_map_path = self.get_output_path_if_exists(self.clouds_section)
+            cloud_map_path = self.get_output_path_if_exists("clouds")
             regional_cloud_map = ""
 
             # Prepare the cloud base if enabled
@@ -114,7 +110,7 @@ class CompositeUpdater(Updater):
             if self.config.section_enabled(section):
                 section_image_path = self.get_output_path_if_exists(section)
                 if section_image_path:
-                    if section in ["clouds", "clouds_nasa"]:
+                    if section == "clouds":
                         section_image_path = regional_cloud_map
                     layers.append((section, section_image_path))
 
