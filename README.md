@@ -110,11 +110,23 @@ The `map_builder` is the process which puts together all the elements (including
 which get displayed on the map. Again, this process is endlessly repeating, so your map
 will change through the day as the elements are updated.
 
+### Configuration UI
+There is a handy configuration tool available to you if you don't like editing files.
+
+After firing the system up, go to the following in your web browser:
+http://localhost:8180/
+
+You should see this screen, and be able to change system behaviour there easily.
+
+![Configuration UI](docs/worldmap-configuration.png)
+
 ### Desktop Geometry and Location
-Edit your `config/worldmap.conf` and look in the first `[common]` section. There you 
-should set the `desktop_geometry` to match your desktop. The other geometry setting
-is `target_geometry` which controls the resolution of what we download. I find that
-4096x2048 is a good value.
+In the above screen, edit your desktop geometry frst of all. Or if you like the
+manual editing approach, edit your `config/worldmap.conf` and look in the first
+`[common]` section. There you should set the `desktop_geometry` accordingly.
+
+The other geometry setting is `target_geometry` which controls the resolution
+of what we download. I find that 4096x2048 is a good value.
 
 ### Obtaining an API Key for Shipping data
 The `shipping_collector` needs an API Key to access the AIS stream carrying shipping messages.
@@ -195,13 +207,18 @@ The full list is:
 * Volcanoes
 * Shipping
 
-Each of these has its own section in the `worldmap.conf` file. Hopefully the settings in
-each section are fairly self-explanatory. The one which is common to all is of course
-the `enabled` flag which will turn the display of each on or off.
+Each of these has its own section in the `worldmap.conf` file and in the above UI.
+Hopefully the settings in each section are fairly self-explanatory. The one which
+is common to all is of course the `enabled` flag which will turn the display of
+each on or off.
+
+In the web UI, the `Show` tab controls what gets shown on the map. If something is
+disabled, then the following tabs will have that section hidden, to avoid cluttering
+the interface.
 
 These elements are also updated according to a frequency determined by a `runs_per_day` 
-setting in the applicable section of `worldmap.conf`. This is to restrict load on the
-source servers, which only update their data every few hours usually anyway.
+setting. This is to restrict load on the remote servers, which only update their
+data every few hours at most anyway.
 
 You can, however, force the system to refresh the map using the following:
 
@@ -238,7 +255,6 @@ There are also other filters in that section, so play around until you get the l
 detail you want.
 
 ### Wallpaper updates
-
 The whole idea of this is to have a live desktop background. To update your wallpaper 
 (fingers crossed!) execute the following command:
 
