@@ -243,7 +243,7 @@ data every few hours at most anyway.
 
 You can, however, force the system to refresh the map using the following:
 
-    make force-map-refresh
+    make refresh-map
 
 Though it should be noted that this will not recessarily result in data being refreshed
 from the upstream source. Where possible the system will do a HEAD request to find out
@@ -285,7 +285,9 @@ This kicks off a script which runs in the background, so to stop it:
 
     make stop-desktop
 
-If you want to run it in foreground just run `./wallpaper-updater.sh`.
+If you want to run it in foreground you can use:
+
+    make start-desktop-fg
 
 Also have a look at `wallpaper-update-daemon.py` for details. It works for my distro, but
 since I can't test yours, it might not. Feel free to update the code and give the
