@@ -73,10 +73,7 @@ That will run everything in the background. To see what it's doing just use:
     make logs
 
 On your first run of the system it will create and initialise a Postgresql/PostGIS database. This
-Anyhow, after that little digression, back to basics. If this all worked as it should you 
-will see the logs showing the `map_builder` is working. As mentioned before:
-
-    make logs
+If this all worked as it should you will see the logs showing the `map_builder` is working. 
 
 A healthy repeating cycle might look something like this. Obviously the below example
 shows shipping and weather scanner output, which you won't see out of the box unless you
