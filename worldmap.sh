@@ -40,9 +40,6 @@ case "$1" in
     logs)
       docker compose logs -f
       ;;
-    status)
-      docker compose ps
-      ;;
     map-start)
       nohup ./wallpaper_update.sh > wallpaper.log 2>&1 & echo "Daemon started (logs: wallpaper.log)"
       ;;
@@ -79,22 +76,37 @@ case "$1" in
       docker kill --signal=SIGUSR1 ${MAP_SERVICE}
       echo "Refresh signal sent"
       ;;
-
+    remove)
+      echo -e "${YELLOW}Stopping services, removing containers, and deleting images...${NC}"
+      docker compose down --rmi all
+      echo -e "${GREEN}Containers and images removed. Data and configuration files preserved.${NC}"
+      ;;
+    purge)
+      echo -e "${YELLOW}WARNING: This will stop all services and delete ALL data (including database and logs).${NC}"
+      read -p "Are you sure you want to purge World Map? [y/N] " confirm
+      if [[ $confirm == [yY] ]]; then
+        docker compose down -v
+        rm -rf ./data ./config .env
+        echo -e "${GREEN}Purge complete. All containers, volumes, and local data have been removed.${NC}"
+      else
+        echo "Purge cancelled."
+      fi
+      ;;
     *)
-      echo "Usage: worldmap {start|stop|restart|logs|status|map-start|map-stop|db}"
+      echo "WorldMap Management Script"
+      echo "Usage: ./worldmap.sh {command}"
+      echo ""
+      echo "Commands:"
+      echo "  start           Start all containers in the background"
+      echo "  stop            Stop all containers"
+      echo "  restart         Restart all containers"
+      echo "  logs            Follow logs from all containers"
+      echo "  status          Show some database statistics statistics"
+      echo "  db              Open a PostgreSQL shell for the database"
+      echo "  refresh-map     Force a map refresh via signal"
+      echo "  map-start       Start the wallpaper daemon"
+      echo "  map-stop        Stop the wallpaper daemon"
+      echo "  remove          Stop services, remove containers and images (keep data)"
+      echo "  purge           Full reset: remove containers, images, volumes, and data"
       ;;
 esac
-EOF
-chmod +x worldmap.sh
-
-# Start the system
-echo -e "${BLUE}Starting World Map...${NC}"
-./worldmap.sh start
-
-echo -e "${GREEN}=== Installation Complete! ===${NC}"
-echo "System initialized. Please update your settings:"
-echo "API Keys: ${GREEN}$INSTALL_DIR/.env${NC}"
-echo "Configuration: ${GREEN}$INSTALL_DIR/config/worldmap.conf${NC}"
-echo "   Web UI: http://localhost:8180/"
-echo "Use ${GREEN}$INSTALL_DIR/worldmap.sh${NC} to manage the system."
-echo ""
