@@ -41,7 +41,7 @@ fi
 # Download the wallpaper daemon scripts
 echo "Setting up wallpaper daemon..."
 curl -fsSL ${WORLDMAP_RAW_URL}/wallpaper_update_daemon.py -o wallpaper_update_daemon.py
-curl -fsSL ${WORLDMAP_RAW_URL}/wallpaper_update.sh -o wallpaper_update.sh
+curl -fsSL ${WORLDMAP_RAW_URL}/wallpaper_updater.sh -o wallpaper_updater.sh
 chmod +x wallpaper_update.sh
 
 # Download the 'worldmap.sh' control script

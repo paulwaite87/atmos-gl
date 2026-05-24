@@ -41,7 +41,7 @@ case "$1" in
       docker compose logs -f
       ;;
     map-start)
-      nohup ./wallpaper_update.sh > wallpaper.log 2>&1 & echo "Daemon started (logs: wallpaper.log)"
+      nohup ./wallpaper_updater.sh > wallpaper.log 2>&1 & echo "Daemon started (logs: wallpaper.log)"
       ;;
     map-stop)
       pkill -f wallpaper_update_daemon.py && echo "Daemon stopped"
