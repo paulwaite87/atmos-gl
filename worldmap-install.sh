@@ -28,7 +28,7 @@ fi
 
 # 3. Handle .env file
 if [ ! -f .env ]; then
-    echo -e "${YELLOW}Please provide your API keys to configure World Map.${NC}"
+    echo -e "${YELLOW}Please provide API keys (or ENTER for none is ok)${NC}"
     read -p "Enter AIS_API_KEY: " ais_key
     read -p "Enter OPENWEATHER_API_KEY: " weather_key
 
