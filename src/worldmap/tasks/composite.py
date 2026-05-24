@@ -77,28 +77,24 @@ class CompositeUpdater(Updater):
         try:
             logger.debug(f"Creating weather map image => {self.output_path}")
 
-            # Source paths
-            cloud_map_path = self.get_output_path_if_exists("clouds")
-            regional_cloud_map = ""
+            # Define expected paths for the regional cache
+            cloud_filename = f"clouds_{self.map_data.region.region_identifier}_{self.target_width}x{self.target_height}.jpg"
+            cloud_map_path = os.path.join(self.workdir, "data", "regions", cloud_filename)
 
-            # Prepare the cloud base if enabled
-            if self.clouds_enabled and cloud_map_path:
-                p = Path(cloud_map_path)
-                regional_cloud_map = str(os.path.join(
-                    self.workdir,
-                    "data",
-                    "regions",
-                    f"{p.stem}_{self.map_data.region.region_identifier}_{self.target_width}x{self.target_height}.png"
-                ))
+            regional_cloud_map = str(os.path.join(
+                self.workdir,
+                "data",
+                "regions",
+                f"clouds_transparent_{self.map_data.region.region_identifier}_{self.target_width}x{self.target_height}.png"
+            ))
 
-                raw_clouds_image = self.get_regional_image(cloud_map_path)
-                if raw_clouds_image:
+            # Prepare the cloud base if enabled and the cached region file exists
+            if self.clouds_enabled and os.path.exists(cloud_map_path):
+                # We skip self.get_regional_image() because the file is already regional
+                with Image.open(cloud_map_path) as raw_clouds_image:
                     transparent_clouds = self._apply_cloud_transparency(raw_clouds_image)
-                    logger.debug(f"Saving regional cloud maps in {regional_cloud_map}")
+                    logger.debug(f"Saving transparent regional cloud map in {regional_cloud_map}")
                     transparent_clouds.save(regional_cloud_map, "PNG")
-                else:
-                    logger.error("Failed to generate regional cloud image.")
-                    sys.exit(1)
 
         except (AttributeError, KeyError) as e:
             logger.error(f"Missing required config keys for composite: {e}")
@@ -108,11 +104,14 @@ class CompositeUpdater(Updater):
         layers = []
         for section in COMPOSITE_SECTIONS:
             if self.config.section_enabled(section):
-                section_image_path = self.get_output_path_if_exists(section)
-                if section_image_path:
-                    if section == "clouds":
-                        section_image_path = regional_cloud_map
-                    layers.append((section, section_image_path))
+                # Inject our specialized regional cloud path if processing clouds
+                if section == "clouds":
+                    if os.path.exists(regional_cloud_map):
+                        layers.append((section, regional_cloud_map))
+                else:
+                    section_image_path = self.get_output_path_if_exists(section)
+                    if section_image_path:
+                        layers.append((section, section_image_path))
 
         if not layers:
             logger.debug("No composite layers enabled. Skipping.")

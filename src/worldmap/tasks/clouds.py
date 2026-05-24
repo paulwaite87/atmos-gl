@@ -16,19 +16,25 @@ logger = logging.getLogger(__name__)
 class CloudUpdater(Updater):
     def __init__(self, config: WorldMapConfig, map_data: MapData):
         super().__init__(config, "Clouds", map_data)
-        self.set_output_path()
+
+        # Override default output path to save directly to the regional cache
+        filename = f"clouds_{self.map_data.region.region_identifier}_{self.target_width}x{self.target_height}.jpg"
+        self.output_path = os.path.join(self.workdir, "data", "regions", filename)
 
     def run(self):
-        """Downloads the cloud layer from NASA GIBS with caching logic."""
+        """Downloads the regional cloud layer from NASA GIBS with caching logic."""
         self.exit_if_disabled()
 
         base_url = self.settings.get("url").strip('"')
 
         # NASA GIBS availability logic
         now_utc = datetime.now(timezone.utc)
-        # We use yesterday's date to ensure the global mosaic is complete
         target_date = now_utc - timedelta(days=1)
         time_param = target_date.strftime("%Y-%m-%d")
+
+        # Dynamically construct the Bounding Box for the target region using the bbox list
+        # bbox is [lon_min, lat_min, lon_max, lat_max]
+        bbox_str = f"{self.map_data.region.bbox[0]},{self.map_data.region.bbox[1]},{self.map_data.region.bbox[2]},{self.map_data.region.bbox[3]}"
 
         params = {
             "SERVICE": "WMS",
@@ -39,7 +45,7 @@ class CloudUpdater(Updater):
             "TRANSPARENT": "FALSE",
             "STYLES": "",
             "SRS": "EPSG:4326",
-            "BBOX": "-180,-90,180,90",
+            "BBOX": bbox_str,
             "WIDTH": str(self.target_width),
             "HEIGHT": str(self.target_height),
             "TIME": time_param,
@@ -49,18 +55,11 @@ class CloudUpdater(Updater):
         full_url = f"{base_url}?{query_string}"
 
         # --- Cache Logic ---
-        # We check three things:
-        # 1. Does the file exist?
-        # 2. Is the file from the same 'NASA day' we are looking for?
-        # 3. Has the config (resolution) changed?
-
         file_exists = os.path.exists(self.output_path)
         is_same_day = False
 
         if file_exists:
-            # Check the file's modification time
             file_mtime = datetime.fromtimestamp(os.path.getmtime(self.output_path), tz=timezone.utc)
-            # If the file was downloaded today (local time) and matches the target date logic, skip
             if file_mtime.date() == now_utc.date():
                 is_same_day = True
 
@@ -71,7 +70,8 @@ class CloudUpdater(Updater):
         # --- Execution ---
         try:
             os.makedirs(str(os.path.dirname(self.output_path)), exist_ok=True)
-            logger.info(f"Fetching NASA GIBS clouds for {time_param} ({self.target_width}x{self.target_height})...")
+            logger.info(
+                f"Fetching regional NASA GIBS clouds for {time_param} ({self.target_width}x{self.target_height})...")
 
             req = urllib.request.Request(
                 full_url, headers={"User-Agent": "WorldMap-Cloud-Fetcher/1.0"}
@@ -82,11 +82,10 @@ class CloudUpdater(Updater):
                 with open(self.output_path, "wb") as f:
                     f.write(data)
 
-            logger.debug(f"NASA cloud map successfully saved: {self.output_path}")
+            logger.debug(f"NASA regional cloud map successfully saved: {self.output_path}")
 
         except urllib.error.HTTPError as e:
             logger.error(f"NASA GIBS returned an error: {e.code} {e.reason}")
-            # Don't exit 1 if we have a cached version we can fall back on
             if not file_exists:
                 sys.exit(1)
         except Exception as e:

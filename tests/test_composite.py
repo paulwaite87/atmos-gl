@@ -37,24 +37,24 @@ def test_composite_pipeline(test_env):
     # 2. Generate dummy input layers on disk
     os.makedirs(os.path.join(updater.workdir, "data", "regions"), exist_ok=True)
     sst_path = os.path.join(updater.workdir, "data", "test_sst.png")
-    clouds_path = os.path.join(updater.workdir, "data", "test_clouds.png")
+
+    # NEW: Match the exact regional layout calculated by composite.py for the cloud base image
+    cloud_filename = f"clouds_{updater.map_data.region.region_identifier}_{updater.target_width}x{updater.target_height}.jpg"
+    clouds_path = os.path.join(updater.workdir, "data", "regions", cloud_filename)
 
     # Sea Surface Temp: Solid red with 50% opacity (RGBA)
     Image.new("RGBA", (updater.target_width, updater.target_height), (255, 0, 0, 128)).save(sst_path)
     # Clouds: Solid mid-gray to test the _apply_cloud_transparency gamma/threshold calculations
-    Image.new("L", (updater.target_width, updater.target_height), 128).save(clouds_path)
+    # Saved as RGB since production reads a downloaded JPEG via Image.open()
+    Image.new("RGB", (updater.target_width, updater.target_height), (128, 128, 128)).save(clouds_path)
 
     # 3. Patching dependencies
-    # Intercept the path lookups to return our dummy files
+    # Intercept the path lookups to return our dummy SST file
     def mock_get_output_path(section):
         if section == "sst": return sst_path
-        if section in ["clouds", "clouds_nasa"]: return clouds_path
         return None
 
     updater.get_output_path_if_exists = MagicMock(side_effect=mock_get_output_path)
-
-    # Mock the regional image slicer (from the parent class) to return our dummy clouds
-    updater.get_regional_image = MagicMock(return_value=Image.open(clouds_path))
 
     # 4. Pipeline Execution via Context Injection
     # Restrict the composite engine to only iterate over the two layers we just mocked
@@ -66,11 +66,12 @@ def test_composite_pipeline(test_env):
     # 5. File Generation & Format Verification
     assert os.path.exists(updater.output_path), "Composite PNG was not generated!"
 
-    # Check that the intermediate regional cloud map was saved as part of the _apply_cloud_transparency sequence
-    p = Path(clouds_path)
+    # NEW: Assert check against the modified regional transparency filename template
     regional_cloud_map = os.path.join(
-        updater.workdir, "data", "regions",
-        f"{p.stem}_{updater.map_data.region.region_identifier}_{updater.target_width}x{updater.target_height}.png"
+        updater.workdir,
+        "data",
+        "regions",
+        f"clouds_transparent_{updater.map_data.region.region_identifier}_{updater.target_width}x{updater.target_height}.png"
     )
     assert os.path.exists(regional_cloud_map), "Regional transparency cloud map was not generated!"
 
