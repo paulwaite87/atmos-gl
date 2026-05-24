@@ -51,8 +51,9 @@ The recommended method of getting this up and running is to use the pre-built
 images and the `worldmap-install.sh` script.
 
 Begin by visiting the repo on Github (which is where you are if you are reading this!)
-and downloading that file, or you can grab it directly using this link:
-    https://github.com/paulwaite87/worldmap/blob/master/worldmap-install.sh
+and downloading that file, or you can grab it in raw form directly using this link and then
+save it yourself:
+    https://raw.githubusercontent.com/paulwaite87/worldmap/refs/heads/master/worldmap-install.sh
 
 You may have to make sure it is executable with
 
