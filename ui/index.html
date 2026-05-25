@@ -655,7 +655,7 @@
                             if (typeof item.value === 'string' && item.value.trim() !== '') {
                                 activeCodes = item.value.split(/\s*,\s*/);
                             }
-                            if (item.option === 'errupt_date_codes') col.className = 'col-12';
+                            if (item.option === 'erupt_date_codes') col.className = 'col-12';
                             col.innerHTML = `
                                 <label class="form-label small text-white-50 fw-bold mb-1">${customLabelText}</label>
                                 <select class="form-select bg-dark text-light border-secondary filter-comma-separated" id="${item.flatKey}" multiple style="height: 220px;">
@@ -681,8 +681,8 @@
                             col.innerHTML = `
                                 <label class="form-label small text-white-50 fw-bold mb-1">Satellites to track</label>
                                 <select class="form-select bg-dark text-light border-secondary filter-comma-separated" id="${item.flatKey}" multiple style="height: 220px;">
-                                    <option value="ISS" ${activeNames.includes('ISS') ? 'selected' : ''}>ISS (ZARYA) - International Space Station</option>
-                                    <option value="CSS" ${activeNames.includes('CSS') ? 'selected' : ''}>CSS (TIANGONG)  - Chinese Space Station</option>
+                                    <option value="ISS \(ZARYA\)" ${activeNames.includes('ISS (ZARYA)') ? 'selected' : ''}>ISS (ZARYA) - International Space Station</option>
+                                    <option value="CSS \(TIANHE\)" ${activeNames.includes('CSS (TIANHE)') ? 'selected' : ''}>CSS (TIANHE)  - Chinese Space Station</option>
                                     <option value="HST" ${activeNames.includes('HST') ? 'selected' : ''}>HST - Hubble Space Telescope</option>
                                     <option value="NOAA 15" ${activeNames.includes('NOAA 15') ? 'selected' : ''}>NOAA 15 - Sun-synchronous weather</option>
                                     <option value="NOAA 15" ${activeNames.includes('NOAA 15') ? 'selected' : ''}>NOAA 18</option>

@@ -269,7 +269,15 @@ class Updater:
 
     def exit_if_disabled(self):
         if not self.enabled:
-            logger.info(f"{self.section} task disabled; skipping.")
+            logger.info(f"{self.section} task disabled; skipping")
+            output_path = self.get_output_path()
+            if output_path and os.path.dirname(output_path):
+                file_path = Path(output_path)
+                # create/truncate only non-image files
+                if file_path.suffix not in [".png", ".jpg", ".jpeg"]:
+                    os.makedirs(os.path.dirname(self.output_path), exist_ok=True)
+                    with open(self.output_path, "w") as _:
+                        pass
             sys.exit(0)
 
     def get_output_path(self):
@@ -278,13 +286,13 @@ class Updater:
     def set_output_path(self):
         self.output_path = self.get_output_path()
         file_path = Path(self.output_path)
-        # Initialise non-image files
+        # Safely verify directories exist for non-image files
         if file_path.suffix not in [".png", ".jpg", ".jpeg"]:
             os.makedirs(os.path.dirname(self.output_path), exist_ok=True)
-            with open(self.output_path, "w") as _:
+            # Use append mode ('a') to touch/create the file if missing,
+            # which keeps your existing data completely safe during re-initialization!
+            with open(self.output_path, "a") as _:
                 pass
-        else:
-            pass
 
     def get_output_path_if_exists(self, section=None):
         """Returns an output path for the given section, but only if the file exists"""

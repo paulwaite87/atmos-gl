@@ -81,7 +81,7 @@ class MapBuilder:
         self.config.load()
         self.enabled = self.config.get_setting("map_builder", "enabled")
         # Adjust log level if changed
-        log_level = self.config.get_setting("map_builder", "log_level")
+        log_level = self.config.get_setting("common", "log_level")
         if log_level:
             set_loglevel(log_level)
 

@@ -22,7 +22,7 @@ class QuakeUpdater(Updater):
         """Fetches USGS quake data and generates an XPlanet marker file."""
         self.exit_if_disabled()
 
-        url = self.settings.get("url")
+        url = self.get_base_url()
         marker_color = self.settings.get("marker_color", fallback="white")
         marker_symbol = self.settings.get("marker_symbol")
         label_size = self.settings.get("label_fontsize", fallback="12")
