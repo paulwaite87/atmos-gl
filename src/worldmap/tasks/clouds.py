@@ -22,10 +22,11 @@ class CloudUpdater(Updater):
         self.output_path = os.path.join(self.workdir, "data", "regions", filename)
 
     def run(self):
-        """Downloads the regional cloud layer from NASA GIBS with caching logic."""
+        """Downloads the regional cloud layer from NASA GIBS with 3-hour caching logic."""
         self.exit_if_disabled()
 
         base_url = self.settings.get("url").strip('"')
+        expiry_hours = self.settings.getint("expiry_hours", fallback=3)
 
         # NASA GIBS availability logic
         now_utc = datetime.now(timezone.utc)
@@ -55,17 +56,15 @@ class CloudUpdater(Updater):
         full_url = f"{base_url}?{query_string}"
 
         # --- Cache Logic ---
-        file_exists = os.path.exists(self.output_path)
-        is_same_day = False
-
-        if file_exists:
+        # Only download if the file does not exist OR the file is older than 3 hours
+        if os.path.exists(self.output_path):
             file_mtime = datetime.fromtimestamp(os.path.getmtime(self.output_path), tz=timezone.utc)
-            if file_mtime.date() == now_utc.date():
-                is_same_day = True
+            age = now_utc - file_mtime
 
-        if file_exists and is_same_day:
-            logger.info(f"NASA clouds for {time_param} are already cached and up to date.")
-            return
+            if age < timedelta(hours=expiry_hours):
+                logger.info(
+                    f"NASA clouds cached file is fresh ({age.total_seconds() / 3600:.1f} hours old). Skipping download.")
+                return
 
         # --- Execution ---
         try:
@@ -86,9 +85,9 @@ class CloudUpdater(Updater):
 
         except urllib.error.HTTPError as e:
             logger.error(f"NASA GIBS returned an error: {e.code} {e.reason}")
-            if not file_exists:
+            if not os.path.exists(self.output_path):
                 sys.exit(1)
         except Exception as e:
             logger.error(f"Failed to download NASA clouds: {e}")
-            if not file_exists:
+            if not os.path.exists(self.output_path):
                 sys.exit(1)
