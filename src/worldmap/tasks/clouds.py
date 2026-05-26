@@ -63,7 +63,7 @@ class CloudUpdater(Updater):
             if file_mtime.date() == now_utc.date():
                 is_same_day = True
 
-        if file_exists and is_same_day and not self.config.has_changed:
+        if file_exists and is_same_day:
             logger.info(f"NASA clouds for {time_param} are already cached and up to date.")
             return
 
