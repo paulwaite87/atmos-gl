@@ -48,6 +48,10 @@ def test_clouds_pipeline(test_env):
     # Force the config flag to bypass the time-based caching logic
     updater.config.has_changed = True
 
+    # CLEANUP STEP: Remove leftover artifacts from prior test runs to force the download pipeline
+    if os.path.exists(updater.output_path):
+        os.remove(updater.output_path)
+
     # 3. Pipeline Execution via Context Injection
     with patch("worldmap.tasks.clouds.urllib.request.urlopen") as mock_urlopen:
         mock_urlopen.return_value = mock_response

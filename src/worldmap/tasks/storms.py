@@ -24,146 +24,143 @@ class StormUpdater(Updater):
     def __init__(self, config: WorldMapConfig, map_data: MapData):
         super().__init__(config, "storms", map_data)
         self.set_output_path()
-        self.csv_path = os.path.join(self.workdir, "data/active_storms.csv")
+        # We no longer need the massive IBTrACS CSV cache
 
-    def get_active_csv_url(self):
-        """Scrapes the NOAA IBTrACS directory for the live global 'ACTIVE' CSV archive."""
-        directory_url = self.settings.get("ibtracs_url").strip()
+    def _get_file_list(self, directory_url):
+        """Scrapes a generic HTTP directory for file links."""
         try:
-            response = requests.get(directory_url, timeout=15)
-            response.raise_for_status()
-            soup = BeautifulSoup(response.text, "html.parser")
-            for link in soup.find_all("a", href=True):
-                href = link["href"]
-                if "ACTIVE" in href.upper() and href.endswith(".csv"):
-                    return directory_url.rstrip("/") + "/" + href
-        except Exception as e:
-            raise RuntimeError(f"Failed to scrape storms directory: {e}")
-        return "No ACTIVE storms"
-
-    def download_if_newer(self) -> bool:
-        """Downloads the global IBTrACS CSV only if the remote file is newer than local cache."""
-        try:
-            active_url = self.get_active_csv_url()
-
-            # If the planet is calm...
-            if active_url == "No ACTIVE storms":
-                logger.info("No ACTIVE storms currently on NOAA servers")
-                return False
-
-            response = requests.head(active_url, timeout=10)
-            response.raise_for_status()
-
-            remote_mtime_str = response.headers.get('Last-Modified')
-            remote_mtime = None
-            if remote_mtime_str:
-                remote_mtime = datetime.strptime(remote_mtime_str, '%a, %d %b %Y %H:%M:%S %Z').replace(
-                    tzinfo=timezone.utc)
-
-            file_exists = os.path.exists(self.csv_path)
-            if file_exists and remote_mtime:
-                local_mtime = datetime.fromtimestamp(os.path.getmtime(self.csv_path), tz=timezone.utc)
-                if remote_mtime <= local_mtime:
-                    logger.info("Storms CSV cache is up to date.")
-                    return False
-
-            logger.info(f"Downloading fresh storms data from {active_url}")
-            r = requests.get(active_url, timeout=30)
-            r.raise_for_status()
-
-            os.makedirs(os.path.dirname(self.csv_path), exist_ok=True)
-            with open(self.csv_path, "wb") as f:
-                f.write(r.content)
-            return True
-        except Exception as e:
-            logger.warning(f"Download of storms data failed: {e}")
-            return False
-
-    def _parse_atcf_file(self, file_url, target_name):
-        """Downloads and parses a generic ATCF .fst file, returning valid forecast tracks if matching target_name."""
-        forecast_points = []
-        try:
-            file_text = requests.get(file_url, timeout=8).text
-            lines = file_text.splitlines()
-            if not lines:
+            r = requests.get(directory_url, timeout=10)
+            if r.status_code != 200:
                 return []
+            soup = BeautifulSoup(r.text, "html.parser")
+            return [link['href'] for link in soup.find_all('a', href=True) if link['href'].endswith(('.dat', '.fst'))]
+        except Exception as e:
+            logger.debug(f"Failed to list directory {directory_url}: {e}")
+            return []
 
-            first_line_parts = lines[0].split(",")
-            if len(first_line_parts) <= 27 or target_name not in first_line_parts[27].upper():
-                return []
+    def _parse_latlon(self, lat_str, lon_str):
+        """Converts ATCF lat/lon strings (e.g., '145N', '0805W') to floats."""
+        lat_val = float(lat_str[:-1]) * 0.1
+        if lat_str.endswith("S"): lat_val = -lat_val
+
+        lon_val = float(lon_str[:-1]) * 0.1
+        if lon_str.endswith("W"): lon_val = -lon_val
+        return lat_val, lon_val
+
+    def _parse_b_deck(self, url, now_utc, expiry_days):
+        """Parses an ATCF b-deck (Best Track) and returns past/current points if active."""
+        try:
+            text = requests.get(url, timeout=10).text
+            lines = text.splitlines()
+            pts = []
+            storm_name = None
+
+            # Extract SID from filename (e.g., bsh122026.dat -> SH122026)
+            filename = url.split('/')[-1]
+            sid = filename[1:9].upper()
 
             for line in lines:
-                parts = [p.strip() for p in line.split(",")]
+                parts = [p.strip() for p in line.split(',')]
                 if len(parts) < 10:
                     continue
-                try:
-                    tau = int(parts[5])
-                    if tau == 0:
-                        continue
-                except ValueError:
-                    continue
 
-                raw_lat = parts[6]
-                raw_lon = parts[7]
-                if not raw_lat or not raw_lon:
-                    continue
+                # Filter for Best Track lines
+                if parts[4] == "BEST":
+                    dt_str = parts[2]  # YYYYMMDDHH
+                    dt = datetime.strptime(dt_str, "%Y%m%d%H").replace(tzinfo=timezone.utc)
+                    lat, lon = self._parse_latlon(parts[6], parts[7])
 
-                lat_val = float(raw_lat[:-1]) * 0.1
-                if raw_lat.endswith("S"): lat_val = -lat_val
+                    # ATCF puts the storm name in column 27, if it exists
+                    if len(parts) > 27 and parts[27]:
+                        name = parts[27]
+                        if name not in ["NONAME", "INVEST", "DB", "LO", "EX"]:
+                            storm_name = name
 
-                lon_val = float(raw_lon[:-1]) * 0.1
-                if raw_lon.endswith("W"): lon_val = -lon_val
+                    pts.append({
+                        "SID": sid,
+                        "NAME": storm_name or sid,
+                        "LAT": lat,
+                        "LON": lon,
+                        "TIME": dt,
+                        "TYPE": "PAST",
+                        "TAU": 0
+                    })
 
-                forecast_points.append({
-                    "TAU": tau,
-                    "LAT": lat_val,
-                    "LON": lon_val,
-                    "TYPE": "FORECAST"
-                })
+            if not pts:
+                return []
+
+            # Propagate the most accurate name found to all points
+            final_name = storm_name or sid
+            for p in pts:
+                p["NAME"] = final_name
+
+            # Enforce the Expiry Window
+            latest_time = pts[-1]["TIME"]
+            if (now_utc - latest_time) > timedelta(days=expiry_days):
+                return []  # Storm is expired/dead
+
+            # Mark the very last known point as CURRENT
+            pts[-1]["TYPE"] = "CURRENT"
+            return pts
+
         except Exception as e:
-            logger.debug(f"Failed parsing storms track file {file_url}: {e}")
-        return forecast_points
+            logger.debug(f"Failed to parse B-deck {url}: {e}")
+            return []
 
-    def _fetch_global_forecast(self, storm_name):
-        """Scrapes both JTWC and NHC active forecasting directories simultaneously."""
-        target_name = storm_name.upper().strip()
+    def _parse_a_deck(self, url, sid):
+        """Parses an ATCF a-deck/fst file and returns the latest official forecast track."""
+        try:
+            r = requests.get(url, timeout=10)
+            if r.status_code != 200:
+                return []
 
-        jtwc_endpoint = self.settings.get("jtwc_url").strip()
-        nhc_endpoint = self.settings.get("nhc_url").strip()
+            lines = r.text.splitlines()
+            valid_lines = []
 
-        endpoints = [
-            {"name": "JTWC", "url": jtwc_endpoint},
-            {"name": "NHC", "url": nhc_endpoint}
-        ]
+            for line in lines:
+                parts = [p.strip() for p in line.split(',')]
+                if len(parts) < 10:
+                    continue
+                # We only want the official forecast models
+                tech = parts[4]
+                if tech in ["OFCL", "JTWC"]:
+                    valid_lines.append(parts)
 
-        for source in endpoints:
-            try:
-                if not source["url"]:
+            if not valid_lines:
+                return []
+
+            # Find the most recent forecast run
+            latest_run = max(valid_lines, key=lambda x: x[2])[2]
+
+            pts = []
+            seen_taus = set()
+
+            for parts in valid_lines:
+                if parts[2] != latest_run:
                     continue
 
-                response = requests.get(source["url"], timeout=10)
-                if response.status_code != 200:
+                tau = int(parts[5])
+                # Skip TAU 0, as it overlaps with our CURRENT point from the B-Deck
+                if tau == 0 or tau in seen_taus:
                     continue
 
-                soup = BeautifulSoup(response.text, "html.parser")
-                fst_files = [link["href"] for link in soup.find_all("a", href=True) if link["href"].endswith(".fst")]
+                seen_taus.add(tau)
+                lat, lon = self._parse_latlon(parts[6], parts[7])
 
-                for fst_file in fst_files:
-                    if fst_file.startswith("http"):
-                        file_url = fst_file
-                    else:
-                        file_url = source["url"].rstrip("/") + "/" + fst_file
+                pts.append({
+                    "SID": sid,
+                    "NAME": sid,  # Name handled by SID grouping later
+                    "LAT": lat,
+                    "LON": lon,
+                    "TIME": None,
+                    "TYPE": "FORECAST",
+                    "TAU": tau
+                })
 
-                    found_tracks = self._parse_atcf_file(file_url, target_name)
-                    if found_tracks:
-                        logger.info(f"Successfully linked official {source['name']} storm forecast track for {storm_name}")
-                        df_fc = pd.DataFrame(found_tracks).drop_duplicates(subset=["TAU"]).sort_values("TAU")
-                        return df_fc.to_dict(orient="records")
-
-            except Exception as e:
-                logger.warning(f"Failed polling live feed for storm {source['name']}: {e}")
-
-        return []
+            return pts
+        except Exception as e:
+            logger.debug(f"Failed to parse A-deck {url}: {e}")
+            return []
 
     def _build_cone_polygons(self, future_track_df):
         """Calculates geographic error envelopes along a track array to draw the cone geometry."""
@@ -219,7 +216,10 @@ class StormUpdater(Updater):
 
         for sid, storm_df in df.groupby("SID"):
             storm_df = storm_df.sort_values(["TYPE", "TAU" if "TAU" in storm_df.columns else "LAT"])
-            storm_name = storm_df["NAME"].iloc[0]
+
+            # Grab the best name available from the PAST/CURRENT points
+            named_rows = storm_df[storm_df["NAME"] != sid]
+            storm_name = named_rows["NAME"].iloc[0] if not named_rows.empty else sid
 
             past_track = storm_df[storm_df["TYPE"] != "FORECAST"]
             future_track = storm_df[storm_df["TYPE"] != "PAST"]
@@ -266,74 +266,61 @@ class StormUpdater(Updater):
 
         plot.save_figure(self.output_path)
 
-        plt_close = getattr(plot, 'close', None)
-        if callable(plt_close):
-            plt_close()
-        logger.info(f"Successfully rendered storms layer directly to {self.output_path}")
+        logger.info(f"Successfully rendered active storms layer.")
 
     def run(self):
         self.exit_if_disabled()
 
-        data_updated = self.download_if_newer()
-        marker_file_exists = os.path.exists(self.output_path)
+        jtwc = self.settings.get("jtwc_url").strip()
+        nhc_fst = self.settings.get("nhc_url").strip()
+        # Derive the NHC best-track directory dynamically
+        nhc_btk = nhc_fst.replace("fst", "btk")
 
-        if not (data_updated or not marker_file_exists or self.config.has_changed):
-            logger.info("Storms layer not updated.")
+        # 1. Collect all B-Deck files from both agencies
+        b_decks = []
+        for url in [jtwc, nhc_btk]:
+            files = self._get_file_list(url)
+            for f in files:
+                if f.lower().startswith('b') and f.lower().endswith('.dat'):
+                    b_decks.append(url.rstrip('/') + '/' + f)
+
+        now_utc = datetime.now(timezone.utc)
+        expiry_days = self.settings.getint("expiry_days", fallback=4)
+
+        processed_data = []
+        active_sids = []
+
+        # 2. Parse B-Decks to find ACTIVE storms
+        for b_url in b_decks:
+            track_pts = self._parse_b_deck(b_url, now_utc, expiry_days)
+            if track_pts:
+                processed_data.extend(track_pts)
+                sid = track_pts[0]['SID']
+                active_sids.append((sid, b_url))
+
+        if not active_sids:
+            logger.info("No ACTIVE storms found within expiry window. Clearing layer.")
+            if os.path.exists(self.output_path):
+                open(self.output_path, 'w').close()  # Create empty file to wipe layer
             return
 
-        if not os.path.exists(self.csv_path):
-            logger.error("No raw storms tracking dataset available.")
-            return
+        # 3. For every active storm, hunt down its corresponding A-Deck forecast
+        for sid, b_url in active_sids:
+            filename = b_url.split('/')[-1]
+            core_id = filename[1:].replace(".dat", "")
 
-        try:
-            expiry_days = self.settings.getint("expiry_days", fallback=5)
-            now = datetime.now(timezone.utc)
+            # Potential matching forecast file URLs
+            a_deck_urls = [
+                jtwc.rstrip('/') + '/a' + core_id + '.dat',
+                nhc_fst.rstrip('/') + '/' + core_id + '.fst'
+            ]
 
-            raw_df = pd.read_csv(self.csv_path, header=0, low_memory=False, encoding="utf-8-sig")
-            raw_df = raw_df[raw_df["SID"] != "SID"]
+            for a_url in a_deck_urls:
+                fcst_pts = self._parse_a_deck(a_url, sid)
+                if fcst_pts:
+                    logger.info(f"Successfully matched official forecast for {sid}")
+                    processed_data.extend(fcst_pts)
+                    break
 
-            raw_df["LAT"] = pd.to_numeric(raw_df["LAT"], errors="coerce")
-            raw_df["LON"] = pd.to_numeric(raw_df["LON"], errors="coerce")
-            raw_df["NAME"] = raw_df["NAME"].astype(str).str.strip()
-            raw_df["ISO_TIME"] = pd.to_datetime(raw_df["ISO_TIME"], format="%Y-%m-%d %H:%M:%S",
-                                                errors="coerce").dt.tz_localize("UTC")
-
-            latest_times = raw_df.groupby("SID")["ISO_TIME"].transform("max")
-            raw_df = raw_df[(now - latest_times) <= timedelta(days=expiry_days)].copy()
-
-            if raw_df.empty:
-                if os.path.exists(self.output_path):
-                    open(self.output_path, 'w').close()
-                return
-
-            processed_data = []
-            for sid, group in raw_df.groupby("SID"):
-                group = group.sort_values("ISO_TIME")
-                total_pts = len(group)
-                storm_name = group["NAME"].iloc[0]
-
-                for idx, (_, row) in enumerate(group.iterrows()):
-                    pt_type = "PAST"
-                    if idx == total_pts - 1:
-                        pt_type = "CURRENT"
-                    processed_data.append({
-                        "SID": sid, "NAME": storm_name, "LAT": row["LAT"], "LON": row["LON"],
-                        "TYPE": pt_type, "TAU": 0
-                    })
-
-                global_forecasts = self._fetch_global_forecast(storm_name)
-                if not global_forecasts:
-                    last_row = group.iloc[-1]
-                    global_forecasts = [{"TAU": 0, "LAT": last_row["LAT"], "LON": last_row["LON"], "TYPE": "CURRENT"}]
-
-                for fc in global_forecasts:
-                    processed_data.append({
-                        "SID": sid, "NAME": storm_name, "LAT": fc["LAT"], "LON": fc["LON"],
-                        "TYPE": fc["TYPE"], "TAU": fc["TAU"]
-                    })
-
-            df = pd.DataFrame(processed_data)
-            self.plot_storms(df)
-
-        except Exception as e:
-            logger.exception(f"Storms tracking execution crash: {e}")
+        df = pd.DataFrame(processed_data)
+        self.plot_storms(df)

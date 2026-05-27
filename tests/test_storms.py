@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-import os
 import pandas as pd
 from worldmap.tasks.storms import StormUpdater
 from tests.common import test_env, assert_url_accessible, verify_generated_image
@@ -30,20 +29,26 @@ def test_storm_pipeline(test_env):
     updater = MockStormUpdater(test_env["config"], test_env["map_data"])
 
     # 1. URL Asset Safety Assertions
-    ibtracs_base = updater.settings.get("ibtracs_url")
     jtwc_url = updater.settings.get("jtwc_url")
     nhc_url = updater.settings.get("nhc_url")
 
-    assert ibtracs_base, "ibtracs_url is unconfigured!"
-    assert_url_accessible(ibtracs_base.strip(), "IBTrACS Active Storms Hub")
-    assert_url_accessible(jtwc_url.strip(), "JTWC Storm Forecast Feed") if jtwc_url else True
-    assert_url_accessible(nhc_url.strip(), "NHC Storm Forecast Feed") if nhc_url else True
+    assert jtwc_url, "jtwc_url is unconfigured!"
+    assert nhc_url, "nhc_url is unconfigured!"
 
-    # 2. BeautifulSoup Layout Extraction Validation
-    active_csv_url = updater.get_active_csv_url()
-    assert active_csv_url, "Could not retrieve active CSV url"
-    if active_csv_url != "No ACTIVE storms":
-        assert_url_accessible(active_csv_url, "Target Active CSV Data File")
+    # Derive NHC Best Track URL identically to runtime logic
+    nhc_btk_url = nhc_url.strip().replace("fst", "btk")
+
+    assert_url_accessible(jtwc_url.strip(), "JTWC Forecast Directory Hub")
+    assert_url_accessible(nhc_url.strip(), "NHC Forecast Directory Hub")
+    assert_url_accessible(nhc_btk_url, "NHC Best-Track Directory Hub")
+
+    # 2. BeautifulSoup Directory Layout Extraction Validation
+    # Verifies the parser reads the remote HTML indexing structures without crash
+    jtwc_files = updater._get_file_list(jtwc_url.strip())
+    assert isinstance(jtwc_files, list), "Failed to extract directory listing array from JTWC"
+
+    nhc_files = updater._get_file_list(nhc_btk_url)
+    assert isinstance(nhc_files, list), "Failed to extract directory listing array from NHC Best Track"
 
     # 3. Graphics Processing Engine Assertion
     updater.generate_and_render_mock(-18.5, 160.0)
