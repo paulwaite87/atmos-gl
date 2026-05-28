@@ -243,6 +243,7 @@ The full list is:
 * Ocean currents
 * Wave height & direction
 * Air temperature (absolute or anomaly)
+* Ozone layer density
 * Lightning strikes
 * Active storms
 * Earthquakes

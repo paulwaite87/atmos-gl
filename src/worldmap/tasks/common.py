@@ -30,6 +30,7 @@ COMPOSITE_SECTIONS = [
     "waves",
     "temperature",
     "ozone",
+    "stormwatch",
     "storms"
 ]
 # A subset of the above list which pertain to climate layers.
@@ -38,7 +39,8 @@ CLIMATE_LAYERS = [
     "sst",
     "waves",
     "temperature",
-    "ozone"
+    "ozone",
+    "stormwatch"
 ]
 
 def listify(text: str) -> list:

@@ -207,6 +207,24 @@ key_fontsize = 18
 key_position = bottom-left
 runs_per_day = 2
 
+[stormwatch]
+enabled = False
+url = https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod
+outfile = data/stormwatch.png
+# CAPE - Convective Available Potential Energy
+# 0 – 500	Stable; little to no chance of organized storms.
+# 500 – 1,000	Marginally unstable; weak storms possible.
+# 1,000 – 2,500	Moderately unstable; typical for garden-variety thunderstorms.
+# 2,500 – 4,000	Very unstable; likely to produce strong to severe storms.
+# > 4,000	Extremely unstable; high potential for explosive supercell
+# development and severe weather
+min_cape = 1000
+alpha = 1.0
+key_fontsize = 18
+# Options: top-left, top-right, bottom-left, bottom-right
+key_position = bottom-left
+runs_per_day = 2
+
 [storms]
 enabled = False
 # The main storm tracking site; storm name and current and past locations

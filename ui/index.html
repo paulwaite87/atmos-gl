@@ -94,6 +94,12 @@
                                         <label class="form-check-label fw-bold ms-1" for="radio__ozone">Ozone</label>
                                     </div>
                                 </div>
+                                <div class="col-md-3">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="radio" name="exclusive_climate" id="radio__stormwatch">
+                                        <label class="form-check-label fw-bold ms-1" for="radio__stormwatch">Storm Watch</label>
+                                    </div>
+                                </div>
                                 <div class="col-12 mt-2">
                                     <button type="button" class="btn btn-sm btn-outline-danger" onclick="clearClimateRadio()">None / Disable Climate Base Layer</button>
                                 </div>
@@ -187,7 +193,7 @@
         const TAB_GROUPS = {
             "global": ["common"],
             "atmospheric": ["clouds", "isobars", "wind", "precipitation", "lightning", "storms"],
-            "climate": ["sst", "currents", "waves", "temperature", "ozone"],
+            "climate": ["sst", "currents", "waves", "temperature", "ozone", "stormwatch"],
             "events": ["quakes", "volcanoes"],
             "satellites": ["satellites"],
             "shipping": ["shipping"],
@@ -822,6 +828,7 @@
                 "waves": document.getElementById('radio__waves')?.checked,
                 "temperature": document.getElementById('radio__temperature')?.checked,
                 "ozone": document.getElementById('radio__ozone')?.checked,
+                "stormwatch": document.getElementById('radio__stormwatch')?.checked,
                 "shipping_collector": document.getElementById('shipping_collector__enabled')?.checked,
                 "weather_scanner": document.getElementById('weather_scanner__enabled')?.checked
             };
@@ -857,6 +864,7 @@
             payload['waves__enabled'] = document.getElementById('radio__waves').checked;
             payload['temperature__enabled'] = document.getElementById('radio__temperature').checked;
             payload['ozone__enabled'] = document.getElementById('radio__ozone').checked;
+            payload['stormwatch__enabled'] = document.getElementById('radio__stormwatch').checked;
 
             // Gather dynamic inputs
             const dynamicInputs = document.querySelectorAll("#configForm input, #configForm select");
