@@ -305,13 +305,14 @@ followed by a prediction cone showing where the storm might go next.
 This area is quite fascinating as it covers the entire planet. The data is sourced
 from https://nomads.ncep.noaa.gov/ which contains a staggering amount of publicly
 available data. Currently we are just dipping our toes in those waters and providing
-Sea Surface Temperature, Air/land Temperature, Wave Heights, and Ocean Currents
-data resolved to a 0.25 degree grid (with interpolation/smoothing as required).
+Sea Surface Temperature, Air/land Temperature, Wave Heights, Ocean Currents and
+the Ozone Layer data resolved to a 0.25 degree grid (with interpolation/smoothing
+as required).
 
 Each of those layers is mutually exclusive due to the fact they provide a colourisation
-of the entire planet. If you had more than one you would end up with a useless mashup
-of meaningless colours on screen. In fact use of these layers is best done with just
-about every other layer disabled. That would include Clouds, Isobars and Preciptiation,
+of the entire planet. If you had more than one you might end up with a useless mashup
+of overlapping colours on screen. In fact use of these layers is best done with just
+about every other layer disabled. That would include Clouds, Isobars and Precipitation,
 though for marker elements such as Earthquakes, Shipping etc it isn't so important.
 
 ##### SST
@@ -330,12 +331,22 @@ being viewed right now. So it shows the hot and cool spots in the region.
 ##### Waves
 This one is a colourisation depicting wave height across the planet. It gets quite
 interesting when you watch waves interacting with a storm, or a tsunami eventuates
-from and earthquake.
+from an earthquake.
 
 ##### Ocean Currents
 These are depicted as curves with arrows showing the flows going on in our oceans
 on a real-time basis. This is one layer which could be shown together with others
 such as Isobars, Clouds and Precipitation as it isn't a colouration layer.
+
+##### Ozone Layer
+Another interesting climate layer to have a look at. There are a few palettes to
+choose from but I think the most useful one is `critical` which ties in with a
+setting you can configure called `Critical du`. The `du` stands for "Dobson Units"
+which is what the ozone layer density is measured in. A value of `220.0` is
+considered the threshold for a "hole" in the ozone layer. If you choose the
+`critical` palette any ozone levels above that setting will be rendered
+transparent, and anything below is given a color, so you only see the problem
+areas.
 
 #### Shipping
 If you select `Disc` ship icons there are basically two variants, Cargo and Tanker but
