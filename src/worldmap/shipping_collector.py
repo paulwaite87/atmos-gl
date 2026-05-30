@@ -14,16 +14,16 @@ logger = logging.getLogger("worldmap.shipping_collector")
 # A 10-element shipping density map (Weight x Base Duration)
 # 1.0 is standard, >1.0 spends extra time, <1.0 is a quick pass
 SLICE_DENSITY_MAP = {
-    0: {"label": "Mid-Pacific (East)", "weight": 0.3},       # -180 to -144
-    1: {"label": "Eastern Pacific / Americas West", "weight": 0.5}, # -144 to -108
-    2: {"label": "Americas East / Panama / Caribbean", "weight": 1.5}, # -108 to -72
-    3: {"label": "Western Atlantic", "weight": 0.8},        # -72 to -36
-    4: {"label": "Eastern Atlantic / Gibraltar", "weight": 1.5}, # -36 to 0
-    5: {"label": "Europe / West Africa / Mediterranean", "weight": 2.0}, # 0 to 36
-    6: {"label": "Middle East / Suez / Hormuz / Aden", "weight": 2.0}, # 36 to 72
-    7: {"label": "Indian Ocean / Bay of Bengal", "weight": 1.0}, # 72 to 108
-    8: {"label": "SE Asia / Malacca / South China Sea", "weight": 2.0}, # 108 to 144
-    9: {"label": "Australia / NZ / Japan / West Pacific", "weight": 0.9}, # 144 to 180
+    0: {"label": "Mid-Pacific (East)", "weight": 0.3},  # -180 to -144
+    1: {"label": "Eastern Pacific / Americas West", "weight": 0.5},  # -144 to -108
+    2: {"label": "Americas East / Panama / Caribbean", "weight": 1.5},  # -108 to -72
+    3: {"label": "Western Atlantic", "weight": 0.8},  # -72 to -36
+    4: {"label": "Eastern Atlantic / Gibraltar", "weight": 1.5},  # -36 to 0
+    5: {"label": "Europe / West Africa / Mediterranean", "weight": 2.0},  # 0 to 36
+    6: {"label": "Middle East / Suez / Hormuz / Aden", "weight": 2.0},  # 36 to 72
+    7: {"label": "Indian Ocean / Bay of Bengal", "weight": 1.0},  # 72 to 108
+    8: {"label": "SE Asia / Malacca / South China Sea", "weight": 2.0},  # 108 to 144
+    9: {"label": "Australia / NZ / Japan / West Pacific", "weight": 0.9},  # 144 to 180
 }
 
 
@@ -52,7 +52,6 @@ class ShippingCollector:
         if log_level:
             set_loglevel(log_level)
 
-
     async def collect_ships_in_region(self, bbox, duration, label):
         """Connects to AIS stream and processes messages for a specific bbox."""
 
@@ -68,7 +67,7 @@ class ShippingCollector:
         try:
             # ping_interval and ping_timeout help detect dead connections
             async with websockets.connect(
-                    self.url, ping_interval=20, ping_timeout=20
+                self.url, ping_interval=20, ping_timeout=20
             ) as ws:
                 await ws.send(json.dumps(sub))
                 start_time = asyncio.get_event_loop().time()
@@ -92,14 +91,18 @@ class ShippingCollector:
                         if m_type == "ShipStaticData":
                             body = msg.get("Message", {}).get("ShipStaticData", {})
                             # Offload blocking DB call to a thread to keep loop responsive
-                            await asyncio.to_thread(self.db.update_ship_static_data, mmsi, meta, body)
+                            await asyncio.to_thread(
+                                self.db.update_ship_static_data, mmsi, meta, body
+                            )
                             static_count += 1
 
                         # --- Handle Position Reports ---
                         elif m_type == "PositionReport":
                             body = msg.get("Message", {}).get("PositionReport", {})
                             # Offload blocking DB call to a thread
-                            await asyncio.to_thread(self.db.update_ship_position_data, mmsi, body)
+                            await asyncio.to_thread(
+                                self.db.update_ship_position_data, mmsi, body
+                            )
                             pos_count += 1
 
                     except asyncio.TimeoutError:
@@ -130,7 +133,9 @@ class ShippingCollector:
             self.refresh_settings()
 
             if self.settings.getboolean("enabled", fallback=False):
-                logger.info("Shipping Collector Service: Starting weighted global rotation")
+                logger.info(
+                    "Shipping Collector Service: Starting weighted global rotation"
+                )
 
                 start_total = self.db.get_current_ship_total()
 
@@ -140,7 +145,9 @@ class ShippingCollector:
 
                     # Random starting slice
                     start_offset = random.randrange(num_chunks)
-                    chunk_indices = [(start_offset + i) % num_chunks for i in range(num_chunks)]
+                    chunk_indices = [
+                        (start_offset + i) % num_chunks for i in range(num_chunks)
+                    ]
 
                     for i in chunk_indices:
                         # Get slice metadata
@@ -162,10 +169,14 @@ class ShippingCollector:
                         # Log the specific duration for transparency in journalctl
                         logger.info(f"{chunk_label}")
 
-                        await self.collect_ships_in_region(chunk_bbox, effective_duration, chunk_label)
+                        await self.collect_ships_in_region(
+                            chunk_bbox, effective_duration, chunk_label
+                        )
 
                     end_total = self.db.get_current_ship_total()
-                    logger.info(f"Rotation complete. Added {end_total - start_total} new vessels.")
+                    logger.info(
+                        f"Rotation complete. Added {end_total - start_total} new vessels."
+                    )
 
                 except Exception as e:
                     logger.error(f"Unexpected error in collection loop: {e}")

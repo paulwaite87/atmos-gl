@@ -35,12 +35,13 @@ class CloudUpdater(Updater):
         now_utc = datetime.now(timezone.utc)
 
         # --- Align with GFS baseline if available, but apply the lookback ---
-        baseline = getattr(self.map_data, 'shared_state', {}).get('gfs_baseline')
+        baseline = getattr(self.map_data, "shared_state", {}).get("gfs_baseline")
         if baseline:
             # We must offset from the baseline because GIBS cannot provide "today" in full yet.
-            target_date = baseline['timestamp'] - timedelta(days=cloud_offset)
+            target_date = baseline["timestamp"] - timedelta(days=cloud_offset)
             logger.debug(
-                f"Clouds syncing to Isobar baseline with a -{cloud_offset} day offset: {target_date.strftime('%Y-%m-%d')}")
+                f"Clouds syncing to Isobar baseline with a -{cloud_offset} day offset: {target_date.strftime('%Y-%m-%d')}"
+            )
         else:
             target_date = now_utc - timedelta(days=cloud_offset)
 
@@ -71,19 +72,23 @@ class CloudUpdater(Updater):
         # --- Cache Logic ---
         # Only download if the file does not exist OR the file is older than the expiry limit
         if os.path.exists(self.output_path):
-            file_mtime = datetime.fromtimestamp(os.path.getmtime(self.output_path), tz=timezone.utc)
+            file_mtime = datetime.fromtimestamp(
+                os.path.getmtime(self.output_path), tz=timezone.utc
+            )
             age = now_utc - file_mtime
 
             if age < timedelta(hours=expiry_hours):
                 logger.info(
-                    f"NASA clouds cached file is fresh ({age.total_seconds() / 3600:.1f} hours old). Skipping download.")
+                    f"NASA clouds cached file is fresh ({age.total_seconds() / 3600:.1f} hours old). Skipping download."
+                )
                 return
 
         # --- Execution ---
         try:
             os.makedirs(str(os.path.dirname(self.output_path)), exist_ok=True)
             logger.info(
-                f"Fetching regional NASA GIBS clouds for {time_param} ({self.target_width}x{self.target_height})...")
+                f"Fetching regional NASA GIBS clouds for {time_param} ({self.target_width}x{self.target_height})..."
+            )
 
             req = urllib.request.Request(
                 full_url, headers={"User-Agent": "WorldMap-Cloud-Fetcher/1.0"}
@@ -94,7 +99,9 @@ class CloudUpdater(Updater):
                 with open(self.output_path, "wb") as f:
                     f.write(data)
 
-            logger.debug(f"NASA regional cloud map successfully saved: {self.output_path}")
+            logger.debug(
+                f"NASA regional cloud map successfully saved: {self.output_path}"
+            )
 
         except urllib.error.HTTPError as e:
             logger.error(f"NASA GIBS returned an error: {e.code} {e.reason}")

@@ -152,7 +152,11 @@ class MapBuilder:
                 self.map_updated = False
                 self.composite_layers_updated = False
 
-                if self.starting_up or self.config.has_changed or self.tasks_ready_to_run():
+                if (
+                    self.starting_up
+                    or self.config.has_changed
+                    or self.tasks_ready_to_run()
+                ):
                     logger.info("Map-builder scheduler run started")
 
                     for section, task_class in self.task_registry:

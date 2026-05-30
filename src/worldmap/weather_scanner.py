@@ -59,8 +59,12 @@ class WeatherScanner:
 
     async def fetch_and_store(self, session, lat, lon, start_iso, end_iso):
         params = {
-            "lat": f"{lat:.4f}", "lon": f"{lon:.4f}", "radius": 50,
-            "start_date": start_iso, "end_date": end_iso, "apikey": self.api_key
+            "lat": f"{lat:.4f}",
+            "lon": f"{lon:.4f}",
+            "radius": 50,
+            "start_date": start_iso,
+            "end_date": end_iso,
+            "apikey": self.api_key,
         }
         try:
             async with session.get(self.url, params=params, timeout=12) as resp:
@@ -69,11 +73,11 @@ class WeatherScanner:
                     strikes = data.get("lightnings", [])
                     for s in strikes:
                         self.db.update_lightning_strike(
-                            strike_id=s['id'],
-                            lat=s['lat'],
-                            lon=s['lon'],
-                            quality=s['quality'],
-                            timestamp_iso=s['datetime']
+                            strike_id=s["id"],
+                            lat=s["lat"],
+                            lon=s["lon"],
+                            quality=s["quality"],
+                            timestamp_iso=s["datetime"],
                         )
                     return len(strikes)
                 elif resp.status == 429:
@@ -90,8 +94,11 @@ class WeatherScanner:
 
         # Batch size of 5 to remain stable
         for i in range(0, len(grid), 5):
-            batch = grid[i:i + 5]
-            tasks = [self.fetch_and_store(session, p[0], p[1], start_iso, end_iso) for p in batch]
+            batch = grid[i : i + 5]
+            tasks = [
+                self.fetch_and_store(session, p[0], p[1], start_iso, end_iso)
+                for p in batch
+            ]
             await asyncio.gather(*tasks)
             await asyncio.sleep(0.1)
 
@@ -104,25 +111,31 @@ class WeatherScanner:
 
                 # Time window for scan
                 now = datetime.now(timezone.utc)
-                start_iso = (now - timedelta(minutes=20)).strftime('%Y-%m-%dT%H:%M:%SZ')
-                end_iso = now.strftime('%Y-%m-%dT%H:%M:%SZ')
+                start_iso = (now - timedelta(minutes=20)).strftime("%Y-%m-%dT%H:%M:%SZ")
+                end_iso = now.strftime("%Y-%m-%dT%H:%M:%SZ")
 
                 # Get the ordered list from the DB
                 regions = self.db.get_priority_region_list(self.primary_region_label)
 
                 async with aiohttp.ClientSession() as session:
                     for reg in regions:
-                        label = reg['label']
+                        label = reg["label"]
                         bbox_tuple = (
-                            reg['lon_min'], reg['lat_min'],
-                            reg['lon_max'], reg['lat_max']
+                            reg["lon_min"],
+                            reg["lat_min"],
+                            reg["lon_max"],
+                            reg["lat_max"],
                         )
 
                         # Log if this is the priority region for visibility in logs
-                        prefix = "[PRIORITY] " if label == self.primary_region_label else ""
+                        prefix = (
+                            "[PRIORITY] " if label == self.primary_region_label else ""
+                        )
                         logger.debug(f"{prefix}Starting scan for {label}")
 
-                        await self.scan_region(session, label, bbox_tuple, start_iso, end_iso)
+                        await self.scan_region(
+                            session, label, bbox_tuple, start_iso, end_iso
+                        )
 
                 # Prune old data
                 expiry_hours = self.settings.getint("expiry_hours", fallback=2)

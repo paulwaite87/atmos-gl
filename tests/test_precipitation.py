@@ -7,7 +7,9 @@ import xarray as xr
 from unittest.mock import patch
 
 # Append project root to path to ensure clean internal imports
-sys.path.insert(0, os.path.abspath(str(os.path.join(str(os.path.dirname(__file__)), ".."))))
+sys.path.insert(
+    0, os.path.abspath(str(os.path.join(str(os.path.dirname(__file__)), "..")))
+)
 
 from worldmap.tasks.precipitation import PrecipitationUpdater
 from tests.common import test_env, assert_url_accessible, verify_generated_image
@@ -32,11 +34,11 @@ def generate_mock_precipitation_dataset():
     # Place a tiny localized storm center signature right at Lat -18.5, Lon 160.0
     lat_idx = np.abs(lats - (-18.5)).argmin()
     lon_idx = np.abs(lons - 160.0).argmin()
-    prate_matrix[lat_idx - 2:lat_idx + 2, lon_idx - 2:lon_idx + 2] = 12.5 / 3600.0
+    prate_matrix[lat_idx - 2 : lat_idx + 2, lon_idx - 2 : lon_idx + 2] = 12.5 / 3600.0
 
     dataset = xr.Dataset(
         {"prate": (["latitude", "longitude"], prate_matrix)},
-        coords={"latitude": lats, "longitude": lons}
+        coords={"latitude": lats, "longitude": lons},
     )
     return dataset
 
@@ -63,5 +65,5 @@ def test_precipitation_pipeline(test_env):
     assert verify_generated_image(
         updater.output_path,
         test_env["map_data"].region.target_width,
-        test_env["map_data"].region.target_height
+        test_env["map_data"].region.target_height,
     )

@@ -2,14 +2,12 @@
 import os
 import logging
 import warnings
-import requests
 import numpy as np
 import xarray as xr
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import cartopy.crs as ccrs
 
-from datetime import datetime, timedelta, timezone
 import gc
 
 # Internal imports
@@ -34,7 +32,7 @@ class TemperatureUpdater(Updater):
                 (1.0, 1.0, 1.0),  # 0C: Freezing White
                 (1.0, 0.9, 0.2),  # 15C: Pleasant Yellow
                 (1.0, 0.4, 0.0),  # 30C: Hot Orange
-                (0.6, 0.0, 0.1)   # 45C: Searing Crimson
+                (0.6, 0.0, 0.1),  # 45C: Searing Crimson
             ],
             "extreme_contrast": [
                 (0.7, 0.0, 0.7),  # -40C: Intense Magenta
@@ -44,7 +42,7 @@ class TemperatureUpdater(Updater):
                 (1.0, 1.0, 0.0),  # 18C: Blazing Yellow
                 (1.0, 0.5, 0.0),  # 30C: Safety Orange
                 (1.0, 0.0, 0.0),  # 38C: Pure Red
-                (0.9, 0.7, 1.0)   # 45C: White-Hot Purple
+                (0.9, 0.7, 1.0),  # 45C: White-Hot Purple
             ],
             "twilight_gradient": [
                 (0.1, 0.1, 0.3),  # -40C: Dark Indigo
@@ -52,8 +50,8 @@ class TemperatureUpdater(Updater):
                 (0.5, 0.7, 0.7),  # 0C: Slate
                 (0.8, 0.7, 0.5),  # 15C: Warm Sand
                 (0.8, 0.4, 0.3),  # 30C: Burnt Terracotta
-                (0.5, 0.1, 0.1)   # 45C: Deep Brick
-            ]
+                (0.5, 0.1, 0.1),  # 45C: Deep Brick
+            ],
         }
 
     def plot(self):
@@ -62,23 +60,31 @@ class TemperatureUpdater(Updater):
         """
         from scipy.interpolate import griddata
 
-        logger.debug(f"Plotting Temperature Data for {self.map_data.region.region_identifier}")
+        logger.debug(
+            f"Plotting Temperature Data for {self.map_data.region.region_identifier}"
+        )
 
         alpha_setting = self.settings.getfloat("alpha", fallback=0.75)
         alpha_setting = np.clip(alpha_setting, 0.1, 1.0)
         mode = self.settings.get("mode", fallback="absolute").strip().lower()
 
-        show_freezing_line = self.settings.getboolean("show_freezing_line", fallback=True)
+        show_freezing_line = self.settings.getboolean(
+            "show_freezing_line", fallback=True
+        )
 
         # Key style configurations
-        key_position = self.settings.get("key_position", fallback="bottom-right").strip().lower()
+        key_position = (
+            self.settings.get("key_position", fallback="bottom-right").strip().lower()
+        )
         key_fontsize = self.settings.getint("key_fontsize", fallback=10)
 
         # Open Dataset with cfgrib filtering for 2-meter above ground level
         ds = xr.open_dataset(
             self.grib_path,
             engine="cfgrib",
-            backend_kwargs={'filter_by_keys': {'typeOfLevel': 'heightAboveGround', 'level': 2}}
+            backend_kwargs={
+                "filter_by_keys": {"typeOfLevel": "heightAboveGround", "level": 2}
+            },
         )
 
         lon_raw = ((ds["longitude"].values + 180) % 360) - 180
@@ -122,7 +128,9 @@ class TemperatureUpdater(Updater):
         mesh_lon, mesh_lat = np.meshgrid(grid_lon, grid_lat)
 
         # Absolute temperature grid (always retained for the freezing line overlay)
-        temp_grid = griddata(points, temp_raw_c, (mesh_lon, mesh_lat), method='linear', fill_value=np.nan)
+        temp_grid = griddata(
+            points, temp_raw_c, (mesh_lon, mesh_lat), method="linear", fill_value=np.nan
+        )
 
         # 4. Dynamic Mode Processing (Absolute vs Automated Anomaly)
         if mode == "anomaly":
@@ -136,7 +144,9 @@ class TemperatureUpdater(Updater):
             # Captures 98th percentile of absolute deviations to ignore single extreme outliers
             abs_anomalies = np.abs(display_data)
             calculated_range = float(np.nanpercentile(abs_anomalies, 98))
-            anomaly_range = max(0.5, calculated_range)  # Safety buffer to prevent 0-scale collapse
+            anomaly_range = max(
+                0.5, calculated_range
+            )  # Safety buffer to prevent 0-scale collapse
 
             vmin, vmax = -anomaly_range, anomaly_range
             levels = np.linspace(vmin, vmax, 86)
@@ -144,7 +154,7 @@ class TemperatureUpdater(Updater):
 
             title_text = "Air Temp Regional Anomaly (°C)"
             calculated_ticks = np.linspace(vmin, vmax, 5)
-            tick_format = '%.1f'
+            tick_format = "%.1f"
         else:
             display_data = temp_grid
 
@@ -152,8 +162,12 @@ class TemperatureUpdater(Updater):
             if palette_name not in self.PALETTES:
                 palette_name = "global_thermal"
 
-            custom_rgba_list = [(r, g, b, alpha_setting) for (r, g, b) in self.PALETTES[palette_name]]
-            cmap = mcolors.LinearSegmentedColormap.from_list("surface_temp", custom_rgba_list, N=256)
+            custom_rgba_list = [
+                (r, g, b, alpha_setting) for (r, g, b) in self.PALETTES[palette_name]
+            ]
+            cmap = mcolors.LinearSegmentedColormap.from_list(
+                "surface_temp", custom_rgba_list, N=256
+            )
 
             vmin, vmax = -40.0, 45.0
             levels = np.linspace(vmin, vmax, 86)
@@ -161,7 +175,7 @@ class TemperatureUpdater(Updater):
 
             title_text = "Temperature (°C)"
             calculated_ticks = [-40, -20, 0, 15, 30, 45]
-            tick_format = '%d'
+            tick_format = "%d"
 
         # 5. Initialize Core Canvas
         plot = Plot(self.map_data.region)
@@ -169,75 +183,81 @@ class TemperatureUpdater(Updater):
 
         # 6. Render Heatmap (Using mode-dependent data)
         cf = plot.ax.contourf(
-            grid_lon, grid_lat, display_data,
+            grid_lon,
+            grid_lat,
+            display_data,
             levels=levels,
             cmap=cmap,
             norm=norm,
-            extend='both',
+            extend="both",
             antialiased=True,
             transform=ccrs.PlateCarree(),
-            zorder=2
+            zorder=2,
         )
 
         # 7. Render Freezing Line Isotherm (Always using absolute temp_grid!)
         if show_freezing_line:
             plot.ax.contour(
-                grid_lon, grid_lat, temp_grid,
+                grid_lon,
+                grid_lat,
+                temp_grid,
                 levels=[0.0],
-                colors=['#00FFFF'],
+                colors=["#00FFFF"],
                 linewidths=[1.8],
-                linestyles=['dashed'],
+                linestyles=["dashed"],
                 alpha=0.9,
                 transform=ccrs.PlateCarree(),
-                zorder=4
+                zorder=4,
             )
 
         # 8. ENHANCEMENT: DYNAMIC ADJUSTED COLOR KEY OVERLAY
         position_map = {
-            "top-left":     [0.04, 0.89, 0.28, 0.03],
-            "top-right":    [0.68, 0.89, 0.28, 0.03],
-            "bottom-left":  [0.04, 0.08, 0.28, 0.03],
-            "bottom-right": [0.68, 0.08, 0.28, 0.03]
+            "top-left": [0.04, 0.89, 0.28, 0.03],
+            "top-right": [0.68, 0.89, 0.28, 0.03],
+            "bottom-left": [0.04, 0.08, 0.28, 0.03],
+            "bottom-right": [0.68, 0.08, 0.28, 0.03],
         }
 
         bbox_coords = position_map.get(key_position, position_map["bottom-right"])
         cbar_ax = plot.ax.inset_axes(bbox_coords, transform=plot.ax.transAxes)
 
-        cbar_ax.patch.set_facecolor('#111111')
+        cbar_ax.patch.set_facecolor("#111111")
         cbar_ax.patch.set_alpha(0.4)
 
         cbar = plt.colorbar(
-            cf,
-            cax=cbar_ax,
-            orientation='horizontal',
-            ticks=calculated_ticks
+            cf, cax=cbar_ax, orientation="horizontal", ticks=calculated_ticks
         )
 
         # Style the color scale numbers
-        cbar.ax.xaxis.set_tick_params(color='white', labelsize=key_fontsize, labelcolor='white', pad=3)
+        cbar.ax.xaxis.set_tick_params(
+            color="white", labelsize=key_fontsize, labelcolor="white", pad=3
+        )
         cbar.ax.xaxis.set_major_formatter(plt.FormatStrFormatter(tick_format))
-        cbar.outline.set_edgecolor('white')
+        cbar.outline.set_edgecolor("white")
         cbar.outline.set_linewidth(0.5)
-        cbar.ax.set_title(title_text, color='white', fontsize=key_fontsize, pad=5, weight='bold')
+        cbar.ax.set_title(
+            title_text, color="white", fontsize=key_fontsize, pad=5, weight="bold"
+        )
 
         plot.save_figure(self.output_path)
 
-        plt_close = getattr(plot, 'close', None)
+        plt_close = getattr(plot, "close", None)
         if callable(plt_close):
             plt_close()
 
-        logger.debug(f"Temperature ({mode} mode) plotting sequence completed successfully.")
+        logger.debug(
+            f"Temperature ({mode} mode) plotting sequence completed successfully."
+        )
 
     def run(self):
         self.exit_if_disabled()
         # Get the GFS state for this updater
         self.get_gfs_state()
-        self.grib_path = os.path.join(self.workdir, f"data/gfs_temp_{self.forecast_hour_str}.grib2")
+        self.grib_path = os.path.join(
+            self.workdir, f"data/gfs_temp_{self.forecast_hour_str}.grib2"
+        )
 
         url = f"{self.base_url}/gfs.{self.gfs_date_str}/{self.gfs_run}/atmos/gfs.t{self.gfs_run}z.pgrb2.0p25.f{self.forecast_hour_str}"
-        if self.remote_data_updated(
-                remote_url=url,
-                cache_file_path=self.grib_path
-        ):
+        if self.remote_data_updated(remote_url=url, cache_file_path=self.grib_path):
             logger.info("Generating Temperature plot...")
             self.plot()

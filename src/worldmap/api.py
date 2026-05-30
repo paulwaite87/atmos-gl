@@ -44,6 +44,7 @@ def get_regions():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @app.get("/api/config")
 def get_config():
     worldmap_config = load_config()
@@ -55,13 +56,13 @@ def get_config():
             value = worldmap_config.config.get(section, option)
 
             # Type casting logic parsing ...
-            if value.lower() in ['true', 'yes', 'on']:
+            if value.lower() in ["true", "yes", "on"]:
                 flat_data[key] = True
-            elif value.lower() in ['false', 'no', 'off']:
+            elif value.lower() in ["false", "no", "off"]:
                 flat_data[key] = False
             else:
                 try:
-                    flat_data[key] = float(value) if '.' in value else int(value)
+                    flat_data[key] = float(value) if "." in value else int(value)
                 except ValueError:
                     flat_data[key] = value
 

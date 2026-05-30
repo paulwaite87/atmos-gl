@@ -11,7 +11,9 @@ class NASAGIBSDownloader:
     def __init__(self):
         self.base_url = "https://gibs.earthdata.nasa.gov/wms/epsg4326/best/wms.cgi"
 
-    def download_region_map(self, bbox, target_width, target_height, outfile, is_night=False):
+    def download_region_map(
+        self, bbox, target_width, target_height, outfile, is_night=False
+    ):
         """
         Downloads and stitches regional maps to handle Date Line crossings.
         bbox: [lon_min, lat_min, lon_max, lat_max]
@@ -39,11 +41,15 @@ class NASAGIBSDownloader:
             bbox2 = [-180.0, lat_min, -180.0 + span_east, lat_max]
 
             # 4. Fetch tiles
-            img1 = self._fetch_wms_image(bbox1, is_night, width=width_west, height=target_height)
-            img2 = self._fetch_wms_image(bbox2, is_night, width=width_east, height=target_height)
+            img1 = self._fetch_wms_image(
+                bbox1, is_night, width=width_west, height=target_height
+            )
+            img2 = self._fetch_wms_image(
+                bbox2, is_night, width=width_east, height=target_height
+            )
 
             if img1 and img2:
-                combined = Image.new('RGB', (target_width, target_height))
+                combined = Image.new("RGB", (target_width, target_height))
                 # Paste in correct geographical order: West on Left, East on Right
                 combined.paste(img1, (0, 0))
                 combined.paste(img2, (width_west, 0))
@@ -53,7 +59,9 @@ class NASAGIBSDownloader:
                 success = True
         else:
             # Standard single-tile download for regions NOT crossing 180
-            img = self._fetch_wms_image(bbox, is_night, width=target_width, height=target_height)
+            img = self._fetch_wms_image(
+                bbox, is_night, width=target_width, height=target_height
+            )
             if img:
                 os.makedirs(os.path.dirname(outfile), exist_ok=True)
                 img.save(outfile, "JPEG", quality=90)
@@ -62,7 +70,9 @@ class NASAGIBSDownloader:
         return success
 
     def _fetch_wms_image(self, bbox, is_night, width, height):
-        layer = "VIIRS_Black_Marble" if is_night else "BlueMarble_ShadedRelief_Bathymetry"
+        layer = (
+            "VIIRS_Black_Marble" if is_night else "BlueMarble_ShadedRelief_Bathymetry"
+        )
         bbox_str = f"{bbox[0]},{bbox[1]},{bbox[2]},{bbox[3]}"
 
         params = {
@@ -76,7 +86,7 @@ class NASAGIBSDownloader:
             "srs": "EPSG:4326",
             "width": str(width),
             "height": str(height),
-            "bbox": bbox_str
+            "bbox": bbox_str,
         }
 
         try:

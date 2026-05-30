@@ -27,7 +27,9 @@ class QuakeUpdater(Updater):
         marker_symbol_old = self.settings.get("marker_symbol_old")
         label_size = self.settings.get("label_fontsize", fallback="12")
         min_mag = self.settings.getfloat("min_mag", fallback=5.0)
-        recent_activity_hours = self.settings.getint("recent_activity_hours", fallback=3)
+        recent_activity_hours = self.settings.getint(
+            "recent_activity_hours", fallback=3
+        )
         expiry_hours = self.settings.getint("expiry_hours", fallback=24)
 
         try:
@@ -71,7 +73,9 @@ class QuakeUpdater(Updater):
                     )
                     f.write(line)
 
-            logger.debug(f"Earthquake update complete. Updated {len(filtered_df)} quakes.")
+            logger.debug(
+                f"Earthquake update complete. Updated {len(filtered_df)} quakes."
+            )
 
         except requests.RequestException as e:
             logger.error(f"Error fetching quakes: {e}")

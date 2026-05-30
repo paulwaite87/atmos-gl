@@ -44,7 +44,9 @@ class WindUpdater(Updater):
         ds = xr.open_dataset(
             self.grib_path,
             engine="cfgrib",
-            backend_kwargs={"filter_by_keys": {"typeOfLevel": "heightAboveGround", "level": 10}},
+            backend_kwargs={
+                "filter_by_keys": {"typeOfLevel": "heightAboveGround", "level": 10}
+            },
         )
 
         # Coordinate Standardization
@@ -65,7 +67,7 @@ class WindUpdater(Updater):
         lats_flat = lat2d[::density_step, ::density_step].flatten()
         u_flat = u[::density_step, ::density_step].flatten()
         v_flat = v[::density_step, ::density_step].flatten()
-        speed_kph = np.sqrt(u_flat ** 2 + v_flat ** 2) * 3.6
+        speed_kph = np.sqrt(u_flat**2 + v_flat**2) * 3.6
 
         # Setup Figure to match target canvas exactly
         plot = Plot(self.map_data.region)
@@ -76,7 +78,7 @@ class WindUpdater(Updater):
             (20, 40, base_len + len_step),
             (40, 60, base_len + len_step * 2),
             (60, 80, base_len + len_step * 3),
-            (80, 999, base_len + len_step * 4)
+            (80, 999, base_len + len_step * 4),
         ]
 
         for s_min, s_max, current_length in speed_bins:
@@ -85,11 +87,14 @@ class WindUpdater(Updater):
                 continue
 
             plot.ax.barbs(
-                lons_flat[mask], lats_flat[mask], u_flat[mask], v_flat[mask],
+                lons_flat[mask],
+                lats_flat[mask],
+                u_flat[mask],
+                v_flat[mask],
                 length=current_length,
                 linewidth=0.6,
                 color=vector_color,
-                transform=ccrs.PlateCarree()
+                transform=ccrs.PlateCarree(),
             )
 
         plot.save_figure(self.output_path)
@@ -100,13 +105,15 @@ class WindUpdater(Updater):
         self.exit_if_disabled()
         # Get the GFS state for this updater
         self.get_gfs_state()
-        self.grib_path = os.path.join(self.workdir, f"data/gfs_wind_{self.forecast_hour_str}.grib2")
+        self.grib_path = os.path.join(
+            self.workdir, f"data/gfs_wind_{self.forecast_hour_str}.grib2"
+        )
 
         url = f"{self.base_url}/gfs.{self.gfs_date_str}/{self.gfs_run}/atmos/gfs.t{self.gfs_run}z.pgrb2.0p25.f{self.forecast_hour_str}"
         if self.remote_data_updated(
-                remote_url=url,
-                cache_file_path=self.grib_path,
-                grib_targets=[":UGRD:10 m above ground:", ":VGRD:10 m above ground:"]
+            remote_url=url,
+            cache_file_path=self.grib_path,
+            grib_targets=[":UGRD:10 m above ground:", ":VGRD:10 m above ground:"],
         ):
             logger.info("Generating Wind Vectors plot...")
             self.plot()

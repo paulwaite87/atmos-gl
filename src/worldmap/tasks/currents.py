@@ -29,23 +29,23 @@ class CurrentsUpdater(Updater):
                 (0.65, 0.0, 0.0),  # Crimson (Slow)
                 (1.0, 0.25, 0.0),  # Vivid Orange (Medium)
                 (1.0, 0.85, 0.0),  # Neon Yellow (Fast)
-                (1.0, 1.0, 1.0)   # Blinding White (Ultra-Fast)
+                (1.0, 1.0, 1.0),  # Blinding White (Ultra-Fast)
             ],
             "electric_blue": [
                 (0.0, 0.35, 0.55),  # Deep Cyan (Slow)
                 (0.0, 0.85, 1.0),  # Electric Teal (Medium)
-                (0.75, 1.0, 1.0)   # Ice White (Fast)
+                (0.75, 1.0, 1.0),  # Ice White (Fast)
             ],
             "toxic_neon": [
                 (0.0, 0.45, 0.15),  # Dark Lime (Slow)
                 (0.25, 1.0, 0.0),  # Neon Green (Medium)
-                (0.95, 1.0, 0.3)   # Sulfur Yellow (Fast)
+                (0.95, 1.0, 0.3),  # Sulfur Yellow (Fast)
             ],
             "cyberpunk": [
                 (0.45, 0.0, 0.45),  # Deep Magenta (Slow)
                 (1.0, 0.0, 0.55),  # Hot Pink (Medium)
-                (0.0, 1.0, 0.75)   # Electric Turquoise (Fast)
-            ]
+                (0.0, 1.0, 0.75),  # Electric Turquoise (Fast)
+            ],
         }
 
     def plot(self):
@@ -55,7 +55,9 @@ class CurrentsUpdater(Updater):
         import matplotlib.pyplot as plt
         from scipy.interpolate import griddata, NearestNDInterpolator
 
-        logger.debug(f"Plotting Ocean Currents for {self.map_data.region.region_identifier}")
+        logger.debug(
+            f"Plotting Ocean Currents for {self.map_data.region.region_identifier}"
+        )
 
         palette_name = self.settings.get("palette", fallback="thermal_red")
         if palette_name not in self.PALETTES:
@@ -69,7 +71,9 @@ class CurrentsUpdater(Updater):
         width_factor = self.settings.getfloat("width_factor", fallback=1.0)
         width_factor = max(0.1, width_factor)  # Prevent flat zero or negative scales
 
-        key_position = self.settings.get("key_position", fallback="bottom-right").strip().lower()
+        key_position = (
+            self.settings.get("key_position", fallback="bottom-right").strip().lower()
+        )
         key_fontsize = self.settings.getint("key_fontsize", fallback=10)
 
         # 1. Load Dataset
@@ -82,8 +86,10 @@ class CurrentsUpdater(Updater):
 
         # 2. Extract index bounds via mask
         mask = (
-                (lon_raw >= lon_min - buf) & (lon_raw <= lon_max + buf) &
-                (lat_raw >= lat_min - buf) & (lat_raw <= lat_max + buf)
+            (lon_raw >= lon_min - buf)
+            & (lon_raw <= lon_max + buf)
+            & (lat_raw >= lat_min - buf)
+            & (lat_raw <= lat_max + buf)
         )
 
         if not np.any(mask):
@@ -125,8 +131,12 @@ class CurrentsUpdater(Updater):
         grid_lat = np.linspace(lat_min, lat_max, 200)
         mesh_lon, mesh_lat = np.meshgrid(grid_lon, grid_lat)
 
-        u_grid = griddata(points, u_points, (mesh_lon, mesh_lat), method='linear', fill_value=np.nan)
-        v_grid = griddata(points, v_points, (mesh_lon, mesh_lat), method='linear', fill_value=np.nan)
+        u_grid = griddata(
+            points, u_points, (mesh_lon, mesh_lat), method="linear", fill_value=np.nan
+        )
+        v_grid = griddata(
+            points, v_points, (mesh_lon, mesh_lat), method="linear", fill_value=np.nan
+        )
 
         # --- LAND MASK FIX ENGINE ---
         raw_land_mask = np.isnan(u_raw)
@@ -140,7 +150,7 @@ class CurrentsUpdater(Updater):
         v_grid[grid_land_mask] = np.nan
         # ----------------------------
 
-        speed_grid = np.sqrt(u_grid ** 2 + v_grid ** 2)
+        speed_grid = np.sqrt(u_grid**2 + v_grid**2)
 
         # 5. Dynamic Color Normalization Range
         vmax_dynamic = max(1.5, float(np.nanpercentile(speed_grid, 95)))
@@ -189,54 +199,66 @@ class CurrentsUpdater(Updater):
         )
 
         # 8. Render Streamlines with transparency injector
-        custom_rgba_list = [(r, g, b, alpha_setting) for (r, g, b) in self.PALETTES[palette_name]]
-        cmap = mcolors.LinearSegmentedColormap.from_list("current_speed", custom_rgba_list, N=256)
+        custom_rgba_list = [
+            (r, g, b, alpha_setting) for (r, g, b) in self.PALETTES[palette_name]
+        ]
+        cmap = mcolors.LinearSegmentedColormap.from_list(
+            "current_speed", custom_rgba_list, N=256
+        )
 
         strm = plot.ax.streamplot(
-            grid_lon, grid_lat, u_grid, v_grid,
+            grid_lon,
+            grid_lat,
+            u_grid,
+            v_grid,
             color=speed_grid,
             cmap=cmap,
             norm=norm,
             linewidth=calculated_linewidth,
             density=calculated_density,
-            arrowstyle='->',
+            arrowstyle="->",
             arrowsize=calculated_arrowsize,
             transform=ccrs.PlateCarree(),
-            zorder=3
+            zorder=3,
         )
 
         # 9. TEXT-SAFE PADDED INSET COLOR KEY
         position_map = {
-            "top-left":     [0.04, 0.89, 0.28, 0.03],
-            "top-right":    [0.68, 0.89, 0.28, 0.03],
-            "bottom-left":  [0.04, 0.08, 0.28, 0.03],
-            "bottom-right": [0.68, 0.08, 0.28, 0.03]
+            "top-left": [0.04, 0.89, 0.28, 0.03],
+            "top-right": [0.68, 0.89, 0.28, 0.03],
+            "bottom-left": [0.04, 0.08, 0.28, 0.03],
+            "bottom-right": [0.68, 0.08, 0.28, 0.03],
         }
 
         bbox_coords = position_map.get(key_position, position_map["bottom-right"])
         cbar_ax = plot.ax.inset_axes(bbox_coords, transform=plot.ax.transAxes)
 
-        cbar_ax.patch.set_facecolor('#111111')
+        cbar_ax.patch.set_facecolor("#111111")
         cbar_ax.patch.set_alpha(0.4)
 
         calculated_ticks = np.linspace(0.0, vmax_dynamic, 4)
 
         cbar = plt.colorbar(
-            strm.lines,
-            cax=cbar_ax,
-            orientation='horizontal',
-            ticks=calculated_ticks
+            strm.lines, cax=cbar_ax, orientation="horizontal", ticks=calculated_ticks
         )
 
-        cbar.ax.xaxis.set_tick_params(color='white', labelsize=key_fontsize, labelcolor='white', pad=3)
-        cbar.ax.xaxis.set_major_formatter(plt.FormatStrFormatter('%.1f'))
-        cbar.outline.set_edgecolor('white')
+        cbar.ax.xaxis.set_tick_params(
+            color="white", labelsize=key_fontsize, labelcolor="white", pad=3
+        )
+        cbar.ax.xaxis.set_major_formatter(plt.FormatStrFormatter("%.1f"))
+        cbar.outline.set_edgecolor("white")
         cbar.outline.set_linewidth(0.5)
-        cbar.ax.set_title("Current Speed (m/sec)", color='white', fontsize=key_fontsize, pad=5, weight='bold')
+        cbar.ax.set_title(
+            "Current Speed (m/sec)",
+            color="white",
+            fontsize=key_fontsize,
+            pad=5,
+            weight="bold",
+        )
 
         plot.save_figure(self.output_path)
 
-        plt_close = getattr(plot, 'close', None)
+        plt_close = getattr(plot, "close", None)
         if callable(plt_close):
             plt_close()
 
@@ -246,15 +268,19 @@ class CurrentsUpdater(Updater):
         self.exit_if_disabled()
         # Get the GFS state for this updater
         self.get_gfs_state()
-        self.nc_path = os.path.join(self.workdir, f"data/rtofs_currents_{self.forecast_hour_str}.nc")
+        self.nc_path = os.path.join(
+            self.workdir, f"data/rtofs_currents_{self.forecast_hour_str}.nc"
+        )
 
         urls_to_try = [
             f"{self.base_url}/rtofs.{self.gfs_date_str}/rtofs_glo_2ds_f{self.forecast_hour_str}_prog.nc",
-            f"{self.base_url}/rtofs.{self.gfs_date_str}/rtofs_glo_2ds_n000_prog.nc"
+            f"{self.base_url}/rtofs.{self.gfs_date_str}/rtofs_glo_2ds_n000_prog.nc",
         ]
 
         # Try above urls, and break on first successful cache download
         for remote_url in urls_to_try:
-            if self.remote_data_updated(remote_url=remote_url, cache_file_path=self.nc_path):
+            if self.remote_data_updated(
+                remote_url=remote_url, cache_file_path=self.nc_path
+            ):
                 logger.info("Generating Currents plot...")
                 self.plot()

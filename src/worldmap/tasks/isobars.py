@@ -35,7 +35,9 @@ class IsobarUpdater(Updater):
         ds = xr.open_dataset(
             self.grib_path,
             engine="cfgrib",
-            backend_kwargs={"filter_by_keys": {"typeOfLevel": "meanSea", "shortName": "prmsl"}},
+            backend_kwargs={
+                "filter_by_keys": {"typeOfLevel": "meanSea", "shortName": "prmsl"}
+            },
         )
 
         # Convert Pa to hPa and smooth
@@ -66,19 +68,21 @@ class IsobarUpdater(Updater):
         # High-contrast effects for visibility over dark ocean
         # We scale the stroke thickness based on the configured line thickness
         # and scale the shadow's alpha based on the overall configured alpha
-        line_effect = [patheffects.withStroke(
-            linewidth=thickness + 1.0,
-            foreground="black",
-            alpha=alpha_val * 0.4
-        )]
+        line_effect = [
+            patheffects.withStroke(
+                linewidth=thickness + 1.0, foreground="black", alpha=alpha_val * 0.4
+            )
+        ]
 
         cs = plot.ax.contour(
-            lons, lats, p_smooth,
+            lons,
+            lats,
+            p_smooth,
             levels=levels,
             colors=color,
             linewidths=thickness,
             alpha=alpha_val,
-            transform=ccrs.PlateCarree()
+            transform=ccrs.PlateCarree(),
         )
 
         # Apply effects to lines
@@ -96,19 +100,20 @@ class IsobarUpdater(Updater):
         ds.close()
         logger.debug("Finished Isobars plot...saving")
 
-
     def run(self):
         self.exit_if_disabled()
         # Get the GFS state for this updater
         self.get_gfs_state()
 
-        self.grib_path = os.path.join(self.workdir, f"data/gfs_isobars_{self.forecast_hour_str}.grib2")
+        self.grib_path = os.path.join(
+            self.workdir, f"data/gfs_isobars_{self.forecast_hour_str}.grib2"
+        )
 
         url = f"{self.base_url}/gfs.{self.gfs_date_str}/{self.gfs_run}/atmos/gfs.t{self.gfs_run}z.pgrb2.0p25.f{self.forecast_hour_str}"
         if self.remote_data_updated(
-                remote_url=url,
-                cache_file_path=self.grib_path,
-                grib_targets=[":PRMSL:mean sea level:"]
+            remote_url=url,
+            cache_file_path=self.grib_path,
+            grib_targets=[":PRMSL:mean sea level:"],
         ):
             logger.info("Generating Isobars plot...")
             self.plot()

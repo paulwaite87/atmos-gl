@@ -14,13 +14,36 @@ class MockStormUpdater(StormUpdater):
         sid, name = "TEST_9999", "CYBER_STORM"
         for hours_ago in range(48, 0, -6):
             mock_data.append(
-                {"SID": sid, "NAME": name, "LAT": lat + (hours_ago * 0.08), "LON": lon - (hours_ago * 0.12),
-                 "TYPE": "PAST", "TAU": 0})
-        mock_data.append({"SID": sid, "NAME": name, "LAT": lat, "LON": lon, "TYPE": "CURRENT", "TAU": 0})
+                {
+                    "SID": sid,
+                    "NAME": name,
+                    "LAT": lat + (hours_ago * 0.08),
+                    "LON": lon - (hours_ago * 0.12),
+                    "TYPE": "PAST",
+                    "TAU": 0,
+                }
+            )
+        mock_data.append(
+            {
+                "SID": sid,
+                "NAME": name,
+                "LAT": lat,
+                "LON": lon,
+                "TYPE": "CURRENT",
+                "TAU": 0,
+            }
+        )
         for tau in [12, 24, 36, 48, 72, 96, 120]:
             mock_data.append(
-                {"SID": sid, "NAME": name, "LAT": lat - (tau * 0.10), "LON": lon + (tau * 0.05) + ((tau ** 2) * 0.0005),
-                 "TYPE": "FORECAST", "TAU": tau})
+                {
+                    "SID": sid,
+                    "NAME": name,
+                    "LAT": lat - (tau * 0.10),
+                    "LON": lon + (tau * 0.05) + ((tau**2) * 0.0005),
+                    "TYPE": "FORECAST",
+                    "TAU": tau,
+                }
+            )
 
         self.plot_storms(pd.DataFrame(mock_data))
 
@@ -45,15 +68,19 @@ def test_storm_pipeline(test_env):
     # 2. BeautifulSoup Directory Layout Extraction Validation
     # Verifies the parser reads the remote HTML indexing structures without crash
     jtwc_files = updater._get_file_list(jtwc_url.strip())
-    assert isinstance(jtwc_files, list), "Failed to extract directory listing array from JTWC"
+    assert isinstance(jtwc_files, list), (
+        "Failed to extract directory listing array from JTWC"
+    )
 
     nhc_files = updater._get_file_list(nhc_btk_url)
-    assert isinstance(nhc_files, list), "Failed to extract directory listing array from NHC Best Track"
+    assert isinstance(nhc_files, list), (
+        "Failed to extract directory listing array from NHC Best Track"
+    )
 
     # 3. Graphics Processing Engine Assertion
     updater.generate_and_render_mock(-18.5, 160.0)
     assert verify_generated_image(
         updater.output_path,
         test_env["map_data"].region.target_width,
-        test_env["map_data"].region.target_height
+        test_env["map_data"].region.target_height,
     )

@@ -33,7 +33,7 @@ class PrecipitationUpdater(Updater):
                 (1.0, 1.0, 0.0),
                 (1.0, 0.5, 0.0),
                 (1.0, 0.0, 0.0),
-                (1.0, 0.0, 1.0)
+                (1.0, 0.0, 1.0),
             ],
             "ocean_blue": [
                 (0.8, 0.9, 1.0),
@@ -42,7 +42,7 @@ class PrecipitationUpdater(Updater):
                 (0.2, 0.4, 1.0),
                 (0.0, 0.2, 0.8),
                 (0.0, 0.0, 0.6),
-                (0.0, 0.0, 0.4)
+                (0.0, 0.0, 0.4),
             ],
             "high_contrast": [
                 (0.0, 0.9, 0.0),
@@ -51,8 +51,8 @@ class PrecipitationUpdater(Updater):
                 (1.0, 0.6, 0.0),
                 (1.0, 0.0, 0.0),
                 (0.7, 0.0, 0.0),
-                (1.0, 0.0, 1.0)
-            ]
+                (1.0, 0.0, 1.0),
+            ],
         }
 
     def plot(self):
@@ -61,14 +61,18 @@ class PrecipitationUpdater(Updater):
         from scipy.interpolate import RegularGridInterpolator
         import gc  # Garbage collector
 
-        logger.debug(f"Plotting precipitation for {self.map_data.region.region_identifier}")
+        logger.debug(
+            f"Plotting precipitation for {self.map_data.region.region_identifier}"
+        )
 
         min_rate = self.settings.getfloat("min_mm_hr", fallback=0.1)
         alpha = self.settings.getfloat("alpha", fallback=0.5)
         palette_name = self.settings.get("palette", fallback="standard")
 
         # Parse key layout configurations
-        key_position = self.settings.get("key_position", fallback="bottom-right").strip().lower()
+        key_position = (
+            self.settings.get("key_position", fallback="bottom-right").strip().lower()
+        )
         key_fontsize = self.settings.getint("key_fontsize", fallback=10)
 
         # 1. Load Dataset and Clip Immediately
@@ -85,7 +89,7 @@ class PrecipitationUpdater(Updater):
         # SLICE EARLY: This is the primary memory-saving step
         ds_clipped = ds.sel(
             latitude=slice(lat_max + buf, lat_min - buf),
-            longitude=slice(lon_min - buf, lon_max + buf)
+            longitude=slice(lon_min - buf, lon_max + buf),
         )
 
         prate = ds_clipped["prate"].values.squeeze() * 3600.0
@@ -107,7 +111,8 @@ class PrecipitationUpdater(Updater):
         # If the region spans more than 90 deg longitude or 45 deg latitude (~0.25 of world area)
         if lon_span > 180.0 or lat_span > 90.0:
             logger.info(
-                f"Large region detected ({lon_span:.1f}°x{lat_span:.1f}°). Using resource-friendly global grid settings.")
+                f"Large region detected ({lon_span:.1f}°x{lat_span:.1f}°). Using resource-friendly global grid settings."
+            )
             step = 0.15  # Drops a global mesh grid size from 162M points down to ~2.8M points
             filter_sigma = 0.8  # Adjusted for the coarser grid spacing
         else:
@@ -124,13 +129,10 @@ class PrecipitationUpdater(Updater):
             lats_inc, prate_inc = lats, prate
 
         fn = RegularGridInterpolator(
-            (lats_inc, lons),
-            prate_inc,
-            bounds_error=False,
-            fill_value=0
+            (lats_inc, lons), prate_inc, bounds_error=False, fill_value=0
         )
 
-        mesh_lats, mesh_lons = np.meshgrid(new_lats, new_lons, indexing='ij')
+        mesh_lats, mesh_lons = np.meshgrid(new_lats, new_lons, indexing="ij")
         prate_smooth = fn((mesh_lats, mesh_lons))
 
         # 3. Setup Plotting
@@ -141,20 +143,24 @@ class PrecipitationUpdater(Updater):
         base_colors = self.PALETTES.get(palette_name, self.PALETTES["standard"])
         rgba_colors = [(*c, alpha) for c in base_colors]
 
-        cmap = mcolors.LinearSegmentedColormap.from_list("smooth_precip", rgba_colors, N=256)
+        cmap = mcolors.LinearSegmentedColormap.from_list(
+            "smooth_precip", rgba_colors, N=256
+        )
         norm = mcolors.BoundaryNorm(levels, cmap.N)
 
         # 4. Render Heatmap Contour
         prate_smooth = gaussian_filter(prate_smooth, sigma=filter_sigma)
         cf = plot.ax.contourf(
-            new_lons, new_lats, prate_smooth,
+            new_lons,
+            new_lats,
+            prate_smooth,
             levels=levels,
             cmap=cmap,
             norm=norm,
             transform=ccrs.PlateCarree(),
-            extend='max',
+            extend="max",
             antialiased=True,
-            zorder=2
+            zorder=2,
         )
 
         # 5. ENHANCEMENT: DYNAMIC ADJUSTED COLOR KEY OVERLAY
@@ -162,32 +168,35 @@ class PrecipitationUpdater(Updater):
             "top-left": [0.04, 0.89, 0.28, 0.03],
             "top-right": [0.68, 0.89, 0.28, 0.03],
             "bottom-left": [0.04, 0.08, 0.28, 0.03],
-            "bottom-right": [0.68, 0.08, 0.28, 0.03]
+            "bottom-right": [0.68, 0.08, 0.28, 0.03],
         }
 
         bbox_coords = position_map.get(key_position, position_map["bottom-right"])
         cbar_ax = plot.ax.inset_axes(bbox_coords, transform=plot.ax.transAxes)
 
-        cbar_ax.patch.set_facecolor('#111111')
+        cbar_ax.patch.set_facecolor("#111111")
         cbar_ax.patch.set_alpha(0.4)
 
         key_ticks = [0.1, 1.0, 5.0, 15.0, 50.0, 100.0]
 
-        cbar = plt.colorbar(
-            cf,
-            cax=cbar_ax,
-            orientation='horizontal',
-            ticks=key_ticks
-        )
+        cbar = plt.colorbar(cf, cax=cbar_ax, orientation="horizontal", ticks=key_ticks)
 
-        cbar.ax.xaxis.set_tick_params(color='white', labelsize=key_fontsize, labelcolor='white', pad=3)
-        cbar.outline.set_edgecolor('white')
+        cbar.ax.xaxis.set_tick_params(
+            color="white", labelsize=key_fontsize, labelcolor="white", pad=3
+        )
+        cbar.outline.set_edgecolor("white")
         cbar.outline.set_linewidth(0.5)
-        cbar.ax.set_title("Precipitation (mm/hr)", color='white', fontsize=key_fontsize, pad=5, weight='bold')
+        cbar.ax.set_title(
+            "Precipitation (mm/hr)",
+            color="white",
+            fontsize=key_fontsize,
+            pad=5,
+            weight="bold",
+        )
 
         plot.save_figure(self.output_path)
 
-        plt_close = getattr(plot, 'close', None)
+        plt_close = getattr(plot, "close", None)
         if callable(plt_close):
             plt_close()
 
@@ -197,14 +206,15 @@ class PrecipitationUpdater(Updater):
         self.exit_if_disabled()
         # Get the GFS state for this updater
         self.get_gfs_state()
-        self.grib_path = os.path.join(self.workdir, f"data/gfs_precip_{self.forecast_hour_str}.grib2")
+        self.grib_path = os.path.join(
+            self.workdir, f"data/gfs_precip_{self.forecast_hour_str}.grib2"
+        )
 
         url = f"{self.base_url}/gfs.{self.gfs_date_str}/{self.gfs_run}/atmos/gfs.t{self.gfs_run}z.pgrb2.0p25.f{self.forecast_hour_str}"
         if self.remote_data_updated(
-                remote_url=url,
-                cache_file_path=self.grib_path,
-                grib_targets=[":PRATE:surface:"]
+            remote_url=url,
+            cache_file_path=self.grib_path,
+            grib_targets=[":PRATE:surface:"],
         ):
             logger.info("Generating Precipitation plot...")
             self.plot()
-

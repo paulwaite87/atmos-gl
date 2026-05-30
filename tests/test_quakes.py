@@ -6,7 +6,9 @@ import requests
 from unittest.mock import patch, MagicMock
 
 # Append project root to path to ensure clean internal imports
-sys.path.insert(0, os.path.abspath(str(os.path.join(str(os.path.dirname(__file__)), ".."))))
+sys.path.insert(
+    0, os.path.abspath(str(os.path.join(str(os.path.dirname(__file__)), "..")))
+)
 
 from worldmap.tasks.quakes import QuakeUpdater
 from tests.common import test_env, assert_url_accessible
@@ -14,6 +16,7 @@ from tests.common import test_env, assert_url_accessible
 
 class MockConfigSection:
     """Duck-types a configparser section to support .get() and .getfloat()"""
+
     def __init__(self, dictionary):
         self.data = dictionary
 
@@ -26,6 +29,7 @@ class MockConfigSection:
 
 class MockQuakeUpdater(QuakeUpdater):
     """Subclass of production QuakeUpdater that isolates execution for testing."""
+
     def __init__(self, config, map_data):
         super().__init__(config, map_data)
         self.set_output_path()
@@ -34,19 +38,20 @@ class MockQuakeUpdater(QuakeUpdater):
         """Bypass the enabled/disabled check during unit testing."""
         pass
 
+
 def test_quake_url_inaccessible(test_env, caplog):
     """Test that the QuakeUpdater cleanly handles and logs an inaccessible URL."""
     updater = MockQuakeUpdater(test_env["config"], test_env["map_data"])
 
     url = "http://example.com/nonexistent"
-    updater.settings = MockConfigSection({
-        "url": url
-    })
+    updater.settings = MockConfigSection({"url": url})
 
     # 1. Mock the network request to fail deterministically
     with patch("worldmap.tasks.quakes.requests.get") as mock_get:
         mock_resp = MagicMock()
-        mock_resp.raise_for_status.side_effect = requests.exceptions.HTTPError("404 Client Error")
+        mock_resp.raise_for_status.side_effect = requests.exceptions.HTTPError(
+            "404 Client Error"
+        )
         mock_get.return_value = mock_resp
 
         # 2. Capture the log output and run
@@ -54,20 +59,26 @@ def test_quake_url_inaccessible(test_env, caplog):
             updater.run()
 
     # 3. Assert that the expected error was captured by the logging framework
-    assert any("Error fetching quakes: 404 Client Error" in record.message for record in caplog.records)
+    assert any(
+        "Error fetching quakes: 404 Client Error" in record.message
+        for record in caplog.records
+    )
+
 
 def test_quake_pipeline(test_env):
     updater = MockQuakeUpdater(test_env["config"], test_env["map_data"])
 
     # 1. Force the configuration to guarantee specific execution paths
     # We explicitly test the magnitude float parsing and fallback defaults.
-    updater.settings = MockConfigSection({
-        "url": updater.settings.get("url"),
-        "marker_color": "red",
-        "marker_symbol": "quake.png",
-        "label_fontsize": "14",
-        "min_mag": "5.0"
-    })
+    updater.settings = MockConfigSection(
+        {
+            "url": updater.settings.get("url"),
+            "marker_color": "red",
+            "marker_symbol": "quake.png",
+            "label_fontsize": "14",
+            "min_mag": "5.0",
+        }
+    )
 
     # 2. Base URL Reachability Assertion
     # Verifies the live USGS feed endpoint is actually online.
@@ -93,13 +104,17 @@ def test_quake_pipeline(test_env):
         updater.run()
 
     # 4. Output Logic Validations
-    assert os.path.exists(updater.output_path), "Quake text output file was not generated."
+    assert os.path.exists(updater.output_path), (
+        "Quake text output file was not generated."
+    )
 
     with open(updater.output_path, "r") as f:
         output_lines = f.readlines()
 
     # Verify Pandas Filtering Logic: The 4.2 magnitude quake should be dropped by min_mag=5.0
-    assert len(output_lines) == 2, f"Expected exactly 2 quakes to pass the filter, but got {len(output_lines)}."
+    assert len(output_lines) == 2, (
+        f"Expected exactly 2 quakes to pass the filter, but got {len(output_lines)}."
+    )
 
     # Verify XPlanet Marker Syntax Formatting
     first_quake = output_lines[0]
@@ -114,7 +129,9 @@ def test_quake_pipeline(test_env):
     assert '"M5.1 22km"' in second_quake, "Incorrect label combination formatting."
 
     # Final safety check to ensure the weak quake is nowhere in the file
-    assert not any("M4.2" in line for line in output_lines), "Quake below min_mag threshold was leaked into output!"
+    assert not any("M4.2" in line for line in output_lines), (
+        "Quake below min_mag threshold was leaked into output!"
+    )
 
     # Clean up dummy test file
     if os.path.exists(updater.output_path):

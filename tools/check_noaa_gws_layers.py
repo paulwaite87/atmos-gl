@@ -18,7 +18,9 @@ def list_nasa_layers():
                 r"<Layer[^>]*>.*?<Name>(.*?)</Name>", content, re.DOTALL
             )
 
-            pressure_layers = [layer for layer in layers if "Pressure" in layer or "MSLP" in layer]
+            pressure_layers = [
+                layer for layer in layers if "Pressure" in layer or "MSLP" in layer
+            ]
 
             if not pressure_layers:
                 print("No pressure layers found. Here are the first 10 general layers:")

@@ -32,12 +32,7 @@ VESSEL_CLASSES = {
     9: "Other",
 }
 
-VESSEL_SUBCLASSES = {
-    1: " HazA",
-    2: " HazB",
-    3: " HazC",
-    4: " HazD"
-}
+VESSEL_SUBCLASSES = {1: " HazA", 2: " HazB", 3: " HazC", 4: " HazD"}
 
 
 class Ship:
@@ -56,10 +51,12 @@ class Ship:
 
         # class
         if self.vessel_type in SPECIAL_VESSEL_TYPES:
-            self.vessel_class =  SPECIAL_VESSEL_TYPES[self.vessel_type]
+            self.vessel_class = SPECIAL_VESSEL_TYPES[self.vessel_type]
         else:
             class_digit = int(self.vessel_type // 10)
-            self.vessel_class = VESSEL_CLASSES.get(class_digit, f"Vessel (Type {self.vessel_type})")
+            self.vessel_class = VESSEL_CLASSES.get(
+                class_digit, f"Vessel (Type {self.vessel_type})"
+            )
 
         # subclass
         sub_digit = self.vessel_type % 10
@@ -102,7 +99,7 @@ class Ship:
             elif length > 50:
                 return "Ferry"  # Small / Large Ferry
             else:
-                return self. vessel_class
+                return self.vessel_class
 
         return self.vessel_class
 
@@ -126,8 +123,10 @@ class Ship:
     def get_vessel_position(self):
         lat = self.vessel.get("lat")
         lon = self.vessel.get("lon")
-        return (float(lat) if lat is not None else None,
-                float(lon) if lon is not None else None)
+        return (
+            float(lat) if lat is not None else None,
+            float(lon) if lon is not None else None,
+        )
 
     def get_vessel_heading_str(self):
         """
@@ -139,7 +138,7 @@ class Ship:
         cog = cog % 360
 
         # Define the 8 cardinal directions in order
-        directions = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW']
+        directions = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]
 
         # Each sector is 45 degrees. We add 22.5 to 'center' the
         # first sector (North) around 0 degrees.
@@ -204,7 +203,7 @@ class Ship:
         """Determine whether a ship has been unloaded partially or fully"""
         current_draught = float(self.vessel.get("draught") or 0.0)
         draught_threshold = float(self.vessel.get("prev_draught") or 0.0) * 0.9
-        return  0.0 < current_draught < draught_threshold > 0.0
+        return 0.0 < current_draught < draught_threshold > 0.0
 
     def is_underway(self) -> bool:
         """

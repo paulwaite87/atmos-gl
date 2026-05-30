@@ -28,24 +28,24 @@ class WavesUpdater(Updater):
                 (0.0, 0.6, 0.3),  # Low: Emerald Teal
                 (0.9, 0.7, 0.0),  # Moderate: Amber Yellow
                 (0.8, 0.2, 0.0),  # Heavy: Crimson Red
-                (0.9, 0.9, 0.9)   # Extreme: Foam White
+                (0.9, 0.9, 0.9),  # Extreme: Foam White
             ],
             "neon_surge": [
                 (0.0, 0.8, 1.0),  # 0m+: Electric Cyan
-                (0.0, 0.95, 0.4), # Low Swell: Neon Green
+                (0.0, 0.95, 0.4),  # Low Swell: Neon Green
                 (1.0, 0.9, 0.0),  # Moderate: Vivid Yellow
                 (1.0, 0.3, 0.0),  # Heavy: Bright Orange
                 (0.9, 0.0, 0.5),  # Violent: Hot Magenta
-                (0.6, 0.0, 0.7)   # Extreme: Deep Purple
+                (0.6, 0.0, 0.7),  # Extreme: Deep Purple
             ],
             "solar_flare": [
                 (0.6, 1.0, 0.9),  # 0m+: Soft, glowing cyan (Calm)
                 (0.0, 1.0, 0.0),  # Low Swell: Electric Lime
                 (1.0, 1.0, 0.0),  # Light Seas: Pure, Blazing Yellow
-                (1.0, 0.65, 0.0), # Moderate: Pierce Orange
+                (1.0, 0.65, 0.0),  # Moderate: Pierce Orange
                 (1.0, 0.2, 0.1),  # Heavy: Safety Red
-                (1.0, 0.0, 1.0)   # Extreme: Hot Magenta/Pink
-            ]
+                (1.0, 0.0, 1.0),  # Extreme: Hot Magenta/Pink
+            ],
         }
 
     def plot(self):
@@ -55,7 +55,9 @@ class WavesUpdater(Updater):
         import matplotlib.pyplot as plt
         from scipy.interpolate import griddata, NearestNDInterpolator
 
-        logger.debug(f"Plotting Sea Conditions for {self.map_data.region.region_identifier}")
+        logger.debug(
+            f"Plotting Sea Conditions for {self.map_data.region.region_identifier}"
+        )
 
         palette_name = self.settings.get("palette", fallback="ocean_storm")
         if palette_name not in self.PALETTES:
@@ -70,14 +72,16 @@ class WavesUpdater(Updater):
         arrow_scale_mod = self.settings.getfloat("arrow_scale", fallback=1.0)
         arrow_scale_mod = max(0.1, arrow_scale_mod)
 
-        key_position = self.settings.get("key_position", fallback="bottom-right").strip().lower()
+        key_position = (
+            self.settings.get("key_position", fallback="bottom-right").strip().lower()
+        )
         key_fontsize = self.settings.getint("key_fontsize", fallback=10)
 
         # 1. Open Dataset with cfgrib engine backend
         ds = xr.open_dataset(
             self.grib_path,
             engine="cfgrib",
-            backend_kwargs={'filter_by_keys': {'typeOfLevel': 'surface'}}
+            backend_kwargs={"filter_by_keys": {"typeOfLevel": "surface"}},
         )
 
         lon_raw = ((ds["longitude"].values + 180) % 360) - 180
@@ -129,7 +133,13 @@ class WavesUpdater(Updater):
         v_points = np.cos(rad_angles)
 
         combined_values = np.column_stack((swh_points, u_points, v_points))
-        combined_grid = griddata(points, combined_values, (mesh_lon, mesh_lat), method='linear', fill_value=np.nan)
+        combined_grid = griddata(
+            points,
+            combined_values,
+            (mesh_lon, mesh_lat),
+            method="linear",
+            fill_value=np.nan,
+        )
 
         swh_grid = combined_grid[:, :, 0]
         u_grid = combined_grid[:, :, 1]
@@ -153,21 +163,27 @@ class WavesUpdater(Updater):
         plot.get_figure()
 
         # 5. Render Wave Height Contour Heatmap
-        custom_rgba_list = [(r, g, b, alpha_setting) for (r, g, b) in self.PALETTES[palette_name]]
-        cmap = mcolors.LinearSegmentedColormap.from_list("wave_height", custom_rgba_list, N=256)
+        custom_rgba_list = [
+            (r, g, b, alpha_setting) for (r, g, b) in self.PALETTES[palette_name]
+        ]
+        cmap = mcolors.LinearSegmentedColormap.from_list(
+            "wave_height", custom_rgba_list, N=256
+        )
 
         levels = np.linspace(0.0, 8.0, 17)
         norm = mcolors.Normalize(vmin=0.0, vmax=8.0)
 
         cf = plot.ax.contourf(
-            grid_lon, grid_lat, swh_grid,
+            grid_lon,
+            grid_lat,
+            swh_grid,
             levels=levels,
             cmap=cmap,
             norm=norm,
-            extend='max',
+            extend="max",
             antialiased=True,
             transform=ccrs.PlateCarree(),
-            zorder=2
+            zorder=2,
         )
 
         # 6. ENHANCEMENT: CONDITIONAL ARROW OVERLAY PROJECTION
@@ -209,10 +225,13 @@ class WavesUpdater(Updater):
 
             if np.any(q_valid):
                 plot.ax.quiver(
-                    q_lon[q_valid], q_lat[q_valid], q_u[q_valid], q_v[q_valid],
-                    pivot='middle',
-                    color='white',
-                    edgecolor='black',
+                    q_lon[q_valid],
+                    q_lat[q_valid],
+                    q_u[q_valid],
+                    q_v[q_valid],
+                    pivot="middle",
+                    color="white",
+                    edgecolor="black",
                     linewidth=0.6,
                     scale=final_q_scale,
                     width=0.0022 * max(1.0, arrow_scale_mod * 0.75),
@@ -221,40 +240,47 @@ class WavesUpdater(Updater):
                     headaxislength=3.0,
                     minshaft=1.5,
                     transform=ccrs.PlateCarree(),
-                    zorder=4
+                    zorder=4,
                 )
         else:
-            logger.debug("Wave vector rendering skipped by user configuration settings.")
+            logger.debug(
+                "Wave vector rendering skipped by user configuration settings."
+            )
 
         # 7. ENHANCEMENT: DYNAMIC ADJUSTED COLOR KEY OVERLAY
         position_map = {
-            "top-left":     [0.04, 0.89, 0.28, 0.03],
-            "top-right":    [0.68, 0.89, 0.28, 0.03],
-            "bottom-left":  [0.04, 0.08, 0.28, 0.03],
-            "bottom-right": [0.68, 0.08, 0.28, 0.03]
+            "top-left": [0.04, 0.89, 0.28, 0.03],
+            "top-right": [0.68, 0.89, 0.28, 0.03],
+            "bottom-left": [0.04, 0.08, 0.28, 0.03],
+            "bottom-right": [0.68, 0.08, 0.28, 0.03],
         }
 
         bbox_coords = position_map.get(key_position, position_map["bottom-right"])
         cbar_ax = plot.ax.inset_axes(bbox_coords, transform=plot.ax.transAxes)
 
-        cbar_ax.patch.set_facecolor('#111111')
+        cbar_ax.patch.set_facecolor("#111111")
         cbar_ax.patch.set_alpha(0.4)
 
         cbar = plt.colorbar(
-            cf,
-            cax=cbar_ax,
-            orientation='horizontal',
-            ticks=[0, 2, 4, 6, 8]
+            cf, cax=cbar_ax, orientation="horizontal", ticks=[0, 2, 4, 6, 8]
         )
 
-        cbar.ax.xaxis.set_tick_params(color='white', labelsize=key_fontsize, labelcolor='white', pad=3)
-        cbar.outline.set_edgecolor('white')
+        cbar.ax.xaxis.set_tick_params(
+            color="white", labelsize=key_fontsize, labelcolor="white", pad=3
+        )
+        cbar.outline.set_edgecolor("white")
         cbar.outline.set_linewidth(0.5)
-        cbar.ax.set_title("Wave Height (m)", color='white', fontsize=key_fontsize, pad=5, weight='bold')
+        cbar.ax.set_title(
+            "Wave Height (m)",
+            color="white",
+            fontsize=key_fontsize,
+            pad=5,
+            weight="bold",
+        )
 
         plot.save_figure(self.output_path)
 
-        plt_close = getattr(plot, 'close', None)
+        plt_close = getattr(plot, "close", None)
         if callable(plt_close):
             plt_close()
 
@@ -264,12 +290,11 @@ class WavesUpdater(Updater):
         self.exit_if_disabled()
         # Get the GFS state for this updater
         self.get_gfs_state()
-        self.grib_path = os.path.join(self.workdir, f"data/gfs_waves_{self.forecast_hour_str}.grib2")
+        self.grib_path = os.path.join(
+            self.workdir, f"data/gfs_waves_{self.forecast_hour_str}.grib2"
+        )
 
         url = f"{self.base_url}/gfs.{self.gfs_date_str}/{self.gfs_run}/wave/gridded/gfswave.t{self.gfs_run}z.global.0p25.f{self.forecast_hour_str}.grib2"
-        if self.remote_data_updated(
-                remote_url=url,
-                cache_file_path=self.grib_path
-        ):
+        if self.remote_data_updated(remote_url=url, cache_file_path=self.grib_path):
             logger.info("Generating Waves plot...")
             self.plot()
