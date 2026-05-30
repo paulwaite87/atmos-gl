@@ -7,7 +7,9 @@ import xarray as xr
 from unittest.mock import patch
 
 # Append project root to path to ensure clean internal imports
-sys.path.insert(0, os.path.abspath(str(os.path.join(str(os.path.dirname(__file__)), ".."))))
+sys.path.insert(
+    0, os.path.abspath(str(os.path.join(str(os.path.dirname(__file__)), "..")))
+)
 
 from worldmap.tasks.waves import WavesUpdater
 from tests.common import test_env, assert_url_accessible, verify_generated_image
@@ -38,16 +40,16 @@ def generate_mock_wave_dataset():
     lon_idx = np.abs(lons - 170.0).argmin()
 
     # Inject the extreme sea state anomaly
-    swh_matrix[lat_idx - 8:lat_idx + 8, lon_idx - 8:lon_idx + 8] = 6.5
+    swh_matrix[lat_idx - 8 : lat_idx + 8, lon_idx - 8 : lon_idx + 8] = 6.5
     # Shift wave direction in the storm center to 45 degrees (North-East)
-    dirpw_matrix[lat_idx - 8:lat_idx + 8, lon_idx - 8:lon_idx + 8] = 45.0
+    dirpw_matrix[lat_idx - 8 : lat_idx + 8, lon_idx - 8 : lon_idx + 8] = 45.0
 
     dataset = xr.Dataset(
         {
             "swh": (["latitude", "longitude"], swh_matrix),
-            "dirpw": (["latitude", "longitude"], dirpw_matrix)
+            "dirpw": (["latitude", "longitude"], dirpw_matrix),
         },
-        coords={"latitude": lats, "longitude": lons}
+        coords={"latitude": lats, "longitude": lons},
     )
     return dataset
 
@@ -57,7 +59,7 @@ def test_waves_pipeline(test_env):
     # Zooming into a window tracking our simulated Southern Ocean storm matrix anomaly
     test_env["map_data"].region.bbox = [160.0, -55.0, 180.0, -35.0]
 
-#    test_output_png = os.path.join(test_env["project_root"], "data", "test_waves_output.png")
+    #    test_output_png = os.path.join(test_env["project_root"], "data", "test_waves_output.png")
     updater = MockWavesUpdater(test_env["config"], test_env["map_data"])
 
     # 1. Base URL Reachability Assertion
@@ -74,5 +76,5 @@ def test_waves_pipeline(test_env):
     assert verify_generated_image(
         updater.output_path,
         test_env["map_data"].region.target_width,
-        test_env["map_data"].region.target_height
+        test_env["map_data"].region.target_height,
     )

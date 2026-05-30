@@ -10,6 +10,7 @@ from worldmap.lib.logging import set_loglevel
 logger = logging.getLogger(__name__)
 set_loglevel("INFO")
 
+
 class WorldMapConfig:
     def __init__(self, config_path):
         self.config_path = config_path
@@ -48,10 +49,10 @@ class WorldMapConfig:
             for key in self.config[section]:
                 if key.endswith("_list"):
                     value = self.get_setting(section, key)
-                    if value and not value.startswith('['):
-                        new_value = str([item.strip() for item in value.split(',')])
+                    if value and not value.startswith("["):
+                        new_value = str([item.strip() for item in value.split(",")])
                     else:
-                        new_value = '[]'
+                        new_value = "[]"
                     self.update_setting(section, key, new_value)
 
     def de_listify_values(self):
@@ -59,12 +60,12 @@ class WorldMapConfig:
         for section in self.config.sections():
             for key in self.config[section]:
                 if key.endswith("_list"):
-                    value = self.get_setting(section, key, default='')
-                    if value and value.startswith('['):
+                    value = self.get_setting(section, key, default="")
+                    if value and value.startswith("["):
                         as_list = ast.literal_eval(value)
                         new_value = ", ".join(as_list)
                     else:
-                        new_value = ''
+                        new_value = ""
                     self.update_setting(section, key, new_value)
 
     def load(self):
@@ -117,7 +118,7 @@ class WorldMapConfig:
     def get_section(self, section):
         if self.config.has_section(section):
             return self.config[section]
-        return self.config['DEFAULT']
+        return self.config["DEFAULT"]
 
     def section_enabled(self, section):
         if self.config.has_section(section):
@@ -156,8 +157,10 @@ class WorldMapConfig:
                 self.update_setting(
                     section,
                     "outfile",
-                    str(os.path.join(
-                        original_path.parent,
-                        f"test_{original_path.stem}{original_path.suffix}"
-                    ))
+                    str(
+                        os.path.join(
+                            original_path.parent,
+                            f"test_{original_path.stem}{original_path.suffix}",
+                        )
+                    ),
                 )

@@ -7,7 +7,9 @@ import xarray as xr
 from unittest.mock import patch
 
 # Append project root to path to ensure clean internal imports
-sys.path.insert(0, os.path.abspath(str(os.path.join(str(os.path.dirname(__file__)), ".."))))
+sys.path.insert(
+    0, os.path.abspath(str(os.path.join(str(os.path.dirname(__file__)), "..")))
+)
 
 from worldmap.tasks.currents import CurrentsUpdater
 from tests.common import test_env, assert_url_accessible, verify_generated_image
@@ -30,8 +32,7 @@ def generate_mock_currents_dataset():
 
     # Create a localized coordinate mesh covering -50 to +50 degrees
     lons, lats = np.meshgrid(
-        np.linspace(-50.0, 50.0, grid_size),
-        np.linspace(-50.0, 50.0, grid_size)
+        np.linspace(-50.0, 50.0, grid_size), np.linspace(-50.0, 50.0, grid_size)
     )
 
     # Base velocities: 1.0 m/s eastward, 0.5 m/s northward
@@ -50,7 +51,7 @@ def generate_mock_currents_dataset():
             "u_velocity": (["Y", "X"], u_vel),
             "v_velocity": (["Y", "X"], v_vel),
         },
-        coords={"Y": y, "X": x}
+        coords={"Y": y, "X": x},
     )
     return dataset
 
@@ -87,5 +88,5 @@ def test_currents_pipeline(test_env):
     assert verify_generated_image(
         updater.output_path,
         test_env["map_data"].region.target_width,
-        test_env["map_data"].region.target_height
+        test_env["map_data"].region.target_height,
     ), "Ocean Currents PNG failed structural verification!"

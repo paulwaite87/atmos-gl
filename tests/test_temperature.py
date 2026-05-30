@@ -7,7 +7,9 @@ import xarray as xr
 from unittest.mock import patch
 
 # Append project root to path to ensure clean internal imports
-sys.path.insert(0, os.path.abspath(str(os.path.join(str(os.path.dirname(__file__)), ".."))))
+sys.path.insert(
+    0, os.path.abspath(str(os.path.join(str(os.path.dirname(__file__)), "..")))
+)
 
 from worldmap.tasks.temperature import TemperatureUpdater
 from tests.common import test_env, assert_url_accessible, verify_generated_image
@@ -38,11 +40,11 @@ def generate_mock_temperature_dataset():
     lat_idx = np.abs(lats - (-18.5)).argmin()
     lon_idx = np.abs(lons - 160.0).argmin()
     # Drops the temperature cells around this coordinate index to near freezing (273.15K)
-    t2m_matrix[lat_idx - 5:lat_idx + 5, lon_idx - 5:lon_idx + 5] = 273.15
+    t2m_matrix[lat_idx - 5 : lat_idx + 5, lon_idx - 5 : lon_idx + 5] = 273.15
 
     dataset = xr.Dataset(
         {"t2m": (["latitude", "longitude"], t2m_matrix)},
-        coords={"latitude": lats, "longitude": lons}
+        coords={"latitude": lats, "longitude": lons},
     )
     return dataset
 
@@ -53,11 +55,15 @@ def test_temperature_pipeline(test_env, temp_mode):
     # Zooming into a crisp 8x8 degree window tracking our simulated matrix anomaly.
     test_env["map_data"].region.bbox = [156.0, -22.0, 164.0, -14.0]
 
-    updater = MockTemperatureUpdater(test_env["config"], test_env["map_data"], temp_mode)
+    updater = MockTemperatureUpdater(
+        test_env["config"], test_env["map_data"], temp_mode
+    )
 
     # 1. Base URL Reachability Assertion
     base_url = updater.settings.get("url").strip('"').rstrip("/")
-    assert_url_accessible(base_url.strip(), "NOAA NOMADS GFS Hub Server for Air Temperature")
+    assert_url_accessible(
+        base_url.strip(), "NOAA NOMADS GFS Hub Server for Air Temperature"
+    )
 
     # 2. Graphics Generation Engine Execution via Context Injection
     mock_ds = generate_mock_temperature_dataset()
@@ -69,6 +75,5 @@ def test_temperature_pipeline(test_env, temp_mode):
     assert verify_generated_image(
         updater.output_path,
         test_env["map_data"].region.target_width,
-        test_env["map_data"].region.target_height
+        test_env["map_data"].region.target_height,
     )
-    

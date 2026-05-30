@@ -5,7 +5,9 @@ import pytest
 from unittest.mock import patch, MagicMock
 
 # Append project root to path to ensure clean internal imports
-sys.path.insert(0, os.path.abspath(str(os.path.join(str(os.path.dirname(__file__)), ".."))))
+sys.path.insert(
+    0, os.path.abspath(str(os.path.join(str(os.path.dirname(__file__)), "..")))
+)
 
 from worldmap.tasks.shipping import ShippingUpdater
 from tests.common import test_env
@@ -52,7 +54,7 @@ def generate_mock_fleet():
             "lon": 160.0,
             "cog": 90.0,
             "sog": 12.5,  # Moving > 1 knot
-            "nav_status": 0  # Underway using engine
+            "nav_status": 0,  # Underway using engine
         },
         {
             # INVALID: Fails 'show_ships_min_length' filter (10m < 50m).
@@ -65,7 +67,7 @@ def generate_mock_fleet():
             "lon": 160.1,
             "cog": 0.0,
             "sog": 8.0,
-            "nav_status": 0
+            "nav_status": 0,
         },
         {
             # INVALID: Fails 'is_underway' filter (nav_status 1 = anchored, sog 0).
@@ -78,8 +80,8 @@ def generate_mock_fleet():
             "lon": 160.2,
             "cog": 0.0,
             "sog": 0.0,
-            "nav_status": 1  # Anchored
-        }
+            "nav_status": 1,  # Anchored
+        },
     ]
 
 
@@ -88,7 +90,7 @@ def generate_mock_track():
     return [
         {"lat": -18.05, "lon": 159.95},
         {"lat": -18.10, "lon": 159.90},
-        {"lat": -18.15, "lon": 159.85}
+        {"lat": -18.15, "lon": 159.85},
     ]
 
 
@@ -97,24 +99,30 @@ async def test_shipping_pipeline(test_env):
     updater = MockShippingUpdater(test_env["config"], test_env["map_data"])
 
     # 1. Force the configuration using our MockConfigSection
-    updater.settings = MockConfigSection({
-        "expiry_days": "7",
-        "show_tracks": "True",
-        "track_min_distance_km": "2.0",
-        "track_max_points": "5",
-        "show_ships_underway": "True",
-        "show_ship_icons": "Arrows",
-        "filter_show_ship_classes": 'Tanker, Cargo',
-        "filter_show_names_for_classes": 'Tanker',
-        "filter_show_ships_by_name": '',
-        "filter_ships_minimum_length": "50",
-        "label_fontsize": "12",
-        "marker_color": "red"
-    })
+    updater.settings = MockConfigSection(
+        {
+            "expiry_days": "7",
+            "show_tracks": "True",
+            "track_min_distance_km": "2.0",
+            "track_max_points": "5",
+            "show_ships_underway": "True",
+            "show_ship_icons": "Arrows",
+            "filter_show_ship_classes": "Tanker, Cargo",
+            "filter_show_names_for_classes": "Tanker",
+            "filter_show_ships_by_name": "",
+            "filter_ships_minimum_length": "50",
+            "label_fontsize": "12",
+            "marker_color": "red",
+        }
+    )
 
     # 2. Dependency Injection / Mocking
-    with patch("worldmap.tasks.shipping.Database") as MockDB, \
-            patch.object(updater, "get_cached_rotated_icon", return_value="mock_red_ship_090.png"):
+    with (
+        patch("worldmap.tasks.shipping.Database") as MockDB,
+        patch.object(
+            updater, "get_cached_rotated_icon", return_value="mock_red_ship_090.png"
+        ),
+    ):
         mock_db_instance = MockDB.return_value
         mock_db_instance.get_fleet.return_value = generate_mock_fleet()
         mock_db_instance.get_ship_track.return_value = generate_mock_track()
@@ -122,7 +130,9 @@ async def test_shipping_pipeline(test_env):
         await updater.run()
 
     # 3. Output Validation
-    assert os.path.exists(updater.output_path), "Shipping text output file was not generated."
+    assert os.path.exists(updater.output_path), (
+        "Shipping text output file was not generated."
+    )
 
     with open(updater.output_path, "r") as f:
         output_lines = f.readlines()
@@ -137,12 +147,22 @@ async def test_shipping_pipeline(test_env):
     assert "-18.0 160.0" in main_marker, "Incorrect coordinate placement."
     assert "TEST TANKER Tanker" in main_marker, "Vessel description generation failed."
     assert "fontsize=19" in main_marker, "VLCC size multiplier (12 * 1.6) failed."
-    assert "image=mock_red_ship_090.png" in main_marker, "Icon rotation reference missing."
+    assert "image=mock_red_ship_090.png" in main_marker, (
+        "Icon rotation reference missing."
+    )
 
     # Verify rejection criteria (These ships should NOT be in the file)
-    assert not any("TINY TUGBOAT" in line for line in output_lines), "Length filter failed."
-    assert not any("ANCHORED CARGO" in line for line in output_lines), "Underway filter failed."
+    assert not any("TINY TUGBOAT" in line for line in output_lines), (
+        "Length filter failed."
+    )
+    assert not any("ANCHORED CARGO" in line for line in output_lines), (
+        "Underway filter failed."
+    )
 
     # Verify track generation (Should see plain coordinates written for the track history)
-    track_lines = [line for line in output_lines if "color=red" in line and "TEST TANKER" not in line]
+    track_lines = [
+        line
+        for line in output_lines
+        if "color=red" in line and "TEST TANKER" not in line
+    ]
     assert len(track_lines) > 0, "Ship tracks were not written to the output."

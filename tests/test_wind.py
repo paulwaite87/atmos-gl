@@ -6,7 +6,9 @@ import xarray as xr
 from unittest.mock import patch
 
 # Append project root to path to ensure clean internal imports
-sys.path.insert(0, os.path.abspath(str(os.path.join(str(os.path.dirname(__file__)), ".."))))
+sys.path.insert(
+    0, os.path.abspath(str(os.path.join(str(os.path.dirname(__file__)), "..")))
+)
 
 from worldmap.tasks.wind import WindUpdater
 from tests.common import test_env, assert_url_accessible, verify_generated_image
@@ -36,15 +38,15 @@ def generate_mock_wind_dataset():
     lon_idx = np.abs(lons - 160.0).argmin()
 
     # Set localized gale force winds: U=20 m/s, V=15 m/s (Total speed ~25 m/s or 90 km/h)
-    u10_matrix[lat_idx - 5:lat_idx + 5, lon_idx - 5:lon_idx + 5] = 20.0
-    v10_matrix[lat_idx - 5:lat_idx + 5, lon_idx - 5:lon_idx + 5] = 15.0
+    u10_matrix[lat_idx - 5 : lat_idx + 5, lon_idx - 5 : lon_idx + 5] = 20.0
+    v10_matrix[lat_idx - 5 : lat_idx + 5, lon_idx - 5 : lon_idx + 5] = 15.0
 
     dataset = xr.Dataset(
         {
             "u10": (["latitude", "longitude"], u10_matrix),
-            "v10": (["latitude", "longitude"], v10_matrix)
+            "v10": (["latitude", "longitude"], v10_matrix),
         },
-        coords={"latitude": lats, "longitude": lons}
+        coords={"latitude": lats, "longitude": lons},
     )
     return dataset
 
@@ -54,7 +56,9 @@ def test_wind_pipeline(test_env):
     # Zooming into a crisp 8x8 degree window tracking our simulated gale anomaly.
     test_env["map_data"].region.bbox = [156.0, -22.0, 164.0, -14.0]
 
-    test_output_png = os.path.join(test_env["project_root"], "data", "test_wind_output.png")
+    test_output_png = os.path.join(
+        test_env["project_root"], "data", "test_wind_output.png"
+    )
     updater = MockWindUpdater(test_env["config"], test_env["map_data"], test_output_png)
 
     # 1. Base URL Reachability Assertion
@@ -71,5 +75,5 @@ def test_wind_pipeline(test_env):
     assert verify_generated_image(
         updater.output_path,
         test_env["map_data"].region.target_width,
-        test_env["map_data"].region.target_height
+        test_env["map_data"].region.target_height,
     )

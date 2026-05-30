@@ -7,7 +7,9 @@ from unittest.mock import patch, MagicMock
 from PIL import Image
 
 # Append project root to path to ensure clean internal imports
-sys.path.insert(0, os.path.abspath(str(os.path.join(str(os.path.dirname(__file__)), ".."))))
+sys.path.insert(
+    0, os.path.abspath(str(os.path.join(str(os.path.dirname(__file__)), "..")))
+)
 
 from worldmap.tasks.clouds import CloudUpdater
 from tests.common import test_env, assert_url_accessible, verify_generated_image
@@ -38,7 +40,7 @@ def test_clouds_pipeline(test_env):
     # 2. Mocking the HTTP response
     dummy_jpeg_data = generate_dummy_jpeg_bytes(
         test_env["map_data"].region.target_width,
-        test_env["map_data"].region.target_height
+        test_env["map_data"].region.target_height,
     )
 
     mock_response = MagicMock()
@@ -74,5 +76,5 @@ def test_clouds_pipeline(test_env):
         updater.output_path,
         test_env["map_data"].region.target_width,
         test_env["map_data"].region.target_height,
-        expected_format="JPEG"
+        expected_format="JPEG",
     ), "Clouds JPEG failed verification!"

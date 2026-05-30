@@ -2,14 +2,12 @@
 import os
 import logging
 import warnings
-import requests
 import numpy as np
 import xarray as xr
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import cartopy.crs as ccrs
 
-from datetime import datetime, timedelta, timezone
 import gc
 
 # Internal imports
@@ -24,7 +22,6 @@ class TemperatureUpdater(Updater):
     def __init__(self, config: WorldMapConfig, map_data: MapData):
         super().__init__(config, "Temperature", map_data)
         self.set_output_path()
-        self.grib_path = os.path.join(self.workdir, "data/gfs_temp.grib2")
 
         # DESIGNED GRADIENTS FOR AIR TEMPERATURE (-40C to +45C)
         self.PALETTES = {
@@ -35,7 +32,7 @@ class TemperatureUpdater(Updater):
                 (1.0, 1.0, 1.0),  # 0C: Freezing White
                 (1.0, 0.9, 0.2),  # 15C: Pleasant Yellow
                 (1.0, 0.4, 0.0),  # 30C: Hot Orange
-                (0.6, 0.0, 0.1)   # 45C: Searing Crimson
+                (0.6, 0.0, 0.1),  # 45C: Searing Crimson
             ],
             "extreme_contrast": [
                 (0.7, 0.0, 0.7),  # -40C: Intense Magenta
@@ -45,7 +42,7 @@ class TemperatureUpdater(Updater):
                 (1.0, 1.0, 0.0),  # 18C: Blazing Yellow
                 (1.0, 0.5, 0.0),  # 30C: Safety Orange
                 (1.0, 0.0, 0.0),  # 38C: Pure Red
-                (0.9, 0.7, 1.0)   # 45C: White-Hot Purple
+                (0.9, 0.7, 1.0),  # 45C: White-Hot Purple
             ],
             "twilight_gradient": [
                 (0.1, 0.1, 0.3),  # -40C: Dark Indigo
@@ -53,72 +50,9 @@ class TemperatureUpdater(Updater):
                 (0.5, 0.7, 0.7),  # 0C: Slate
                 (0.8, 0.7, 0.5),  # 15C: Warm Sand
                 (0.8, 0.4, 0.3),  # 30C: Burnt Terracotta
-                (0.5, 0.1, 0.1)   # 45C: Deep Brick
-            ]
+                (0.5, 0.1, 0.1),  # 45C: Deep Brick
+            ],
         }
-
-    def check_remote_freshness(self):
-        """Finds the most recent available GFS Atmospheric GRIB2 cycle run on NOMADS."""
-        base_url = self.get_base_url()
-        forecast_hour = self.settings.get("forecast_hour", fallback="024").zfill(3)
-        now = datetime.now(timezone.utc)
-
-        cycles_to_try = ["18", "12", "06", "00"]
-
-        for day_offset in range(4):
-            date_str = (now - timedelta(days=day_offset)).strftime("%Y%m%d")
-
-            for cycle in cycles_to_try:
-                if day_offset == 0 and int(cycle) > now.hour:
-                    continue
-
-                url = f"{base_url}/gfs.{date_str}/{cycle}/atmos/gfs.t{cycle}z.pgrb2.0p25.f{forecast_hour}"
-
-                try:
-                    logger.debug(f"Probing GFS-Atmos availability: {date_str} Cycle {cycle}z...")
-                    response = requests.head(url, timeout=7)
-
-                    if response.status_code == 200:
-                        remote_mtime_str = response.headers.get('Last-Modified')
-                        if remote_mtime_str:
-                            remote_mtime = datetime.strptime(
-                                remote_mtime_str, '%a, %d %b %Y %H:%M:%S %Z'
-                            ).replace(tzinfo=timezone.utc)
-
-                            if os.path.exists(self.grib_path):
-                                local_mtime = datetime.fromtimestamp(os.path.getmtime(self.grib_path), tz=timezone.utc)
-                                if remote_mtime <= local_mtime:
-                                    logger.info(f"Local temperature cache is fresh ({date_str} {cycle}z).")
-                                    return url, False
-
-                        logger.info(f"Found newer atmospheric dataset: {date_str} Run {cycle}z.")
-                        return url, True
-
-                except requests.RequestException:
-                    continue
-
-        if os.path.exists(self.grib_path):
-            logger.warning("Could not contact NOMADS for updates, reverting to existing local file.")
-            return None, False
-
-        raise RuntimeError("Critical: Could not locate any valid GFS Atmospheric cycles on NOMADS.")
-
-    def download_data(self, url):
-        """Downloads the GRIB2 file via streaming chunks."""
-        idx_path = f"{self.grib_path}.idx"
-        if os.path.exists(idx_path):
-            try:
-                os.remove(idx_path)
-            except OSError:
-                pass
-
-        r = requests.get(url, timeout=120, stream=True)
-        r.raise_for_status()
-
-        os.makedirs(os.path.dirname(self.grib_path), exist_ok=True)
-        with open(self.grib_path, "wb") as f:
-            for chunk in r.iter_content(chunk_size=1024 * 1024):
-                f.write(chunk)
 
     def plot(self):
         """Plots an underlying 2-meter surface temperature heatmap
@@ -126,23 +60,31 @@ class TemperatureUpdater(Updater):
         """
         from scipy.interpolate import griddata
 
-        logger.debug(f"Plotting Temperature Data for {self.map_data.region.region_identifier}")
+        logger.debug(
+            f"Plotting Temperature Data for {self.map_data.region.region_identifier}"
+        )
 
         alpha_setting = self.settings.getfloat("alpha", fallback=0.75)
         alpha_setting = np.clip(alpha_setting, 0.1, 1.0)
         mode = self.settings.get("mode", fallback="absolute").strip().lower()
 
-        show_freezing_line = self.settings.getboolean("show_freezing_line", fallback=True)
+        show_freezing_line = self.settings.getboolean(
+            "show_freezing_line", fallback=True
+        )
 
         # Key style configurations
-        key_position = self.settings.get("key_position", fallback="bottom-right").strip().lower()
+        key_position = (
+            self.settings.get("key_position", fallback="bottom-right").strip().lower()
+        )
         key_fontsize = self.settings.getint("key_fontsize", fallback=10)
 
         # Open Dataset with cfgrib filtering for 2-meter above ground level
         ds = xr.open_dataset(
             self.grib_path,
             engine="cfgrib",
-            backend_kwargs={'filter_by_keys': {'typeOfLevel': 'heightAboveGround', 'level': 2}}
+            backend_kwargs={
+                "filter_by_keys": {"typeOfLevel": "heightAboveGround", "level": 2}
+            },
         )
 
         lon_raw = ((ds["longitude"].values + 180) % 360) - 180
@@ -186,7 +128,9 @@ class TemperatureUpdater(Updater):
         mesh_lon, mesh_lat = np.meshgrid(grid_lon, grid_lat)
 
         # Absolute temperature grid (always retained for the freezing line overlay)
-        temp_grid = griddata(points, temp_raw_c, (mesh_lon, mesh_lat), method='linear', fill_value=np.nan)
+        temp_grid = griddata(
+            points, temp_raw_c, (mesh_lon, mesh_lat), method="linear", fill_value=np.nan
+        )
 
         # 4. Dynamic Mode Processing (Absolute vs Automated Anomaly)
         if mode == "anomaly":
@@ -200,7 +144,9 @@ class TemperatureUpdater(Updater):
             # Captures 98th percentile of absolute deviations to ignore single extreme outliers
             abs_anomalies = np.abs(display_data)
             calculated_range = float(np.nanpercentile(abs_anomalies, 98))
-            anomaly_range = max(0.5, calculated_range)  # Safety buffer to prevent 0-scale collapse
+            anomaly_range = max(
+                0.5, calculated_range
+            )  # Safety buffer to prevent 0-scale collapse
 
             vmin, vmax = -anomaly_range, anomaly_range
             levels = np.linspace(vmin, vmax, 86)
@@ -208,7 +154,7 @@ class TemperatureUpdater(Updater):
 
             title_text = "Air Temp Regional Anomaly (°C)"
             calculated_ticks = np.linspace(vmin, vmax, 5)
-            tick_format = '%.1f'
+            tick_format = "%.1f"
         else:
             display_data = temp_grid
 
@@ -216,8 +162,12 @@ class TemperatureUpdater(Updater):
             if palette_name not in self.PALETTES:
                 palette_name = "global_thermal"
 
-            custom_rgba_list = [(r, g, b, alpha_setting) for (r, g, b) in self.PALETTES[palette_name]]
-            cmap = mcolors.LinearSegmentedColormap.from_list("surface_temp", custom_rgba_list, N=256)
+            custom_rgba_list = [
+                (r, g, b, alpha_setting) for (r, g, b) in self.PALETTES[palette_name]
+            ]
+            cmap = mcolors.LinearSegmentedColormap.from_list(
+                "surface_temp", custom_rgba_list, N=256
+            )
 
             vmin, vmax = -40.0, 45.0
             levels = np.linspace(vmin, vmax, 86)
@@ -225,7 +175,7 @@ class TemperatureUpdater(Updater):
 
             title_text = "Temperature (°C)"
             calculated_ticks = [-40, -20, 0, 15, 30, 45]
-            tick_format = '%d'
+            tick_format = "%d"
 
         # 5. Initialize Core Canvas
         plot = Plot(self.map_data.region)
@@ -233,75 +183,81 @@ class TemperatureUpdater(Updater):
 
         # 6. Render Heatmap (Using mode-dependent data)
         cf = plot.ax.contourf(
-            grid_lon, grid_lat, display_data,
+            grid_lon,
+            grid_lat,
+            display_data,
             levels=levels,
             cmap=cmap,
             norm=norm,
-            extend='both',
+            extend="both",
             antialiased=True,
             transform=ccrs.PlateCarree(),
-            zorder=2
+            zorder=2,
         )
 
         # 7. Render Freezing Line Isotherm (Always using absolute temp_grid!)
         if show_freezing_line:
             plot.ax.contour(
-                grid_lon, grid_lat, temp_grid,
+                grid_lon,
+                grid_lat,
+                temp_grid,
                 levels=[0.0],
-                colors=['#00FFFF'],
+                colors=["#00FFFF"],
                 linewidths=[1.8],
-                linestyles=['dashed'],
+                linestyles=["dashed"],
                 alpha=0.9,
                 transform=ccrs.PlateCarree(),
-                zorder=4
+                zorder=4,
             )
 
         # 8. ENHANCEMENT: DYNAMIC ADJUSTED COLOR KEY OVERLAY
         position_map = {
-            "top-left":     [0.04, 0.89, 0.28, 0.03],
-            "top-right":    [0.68, 0.89, 0.28, 0.03],
-            "bottom-left":  [0.04, 0.08, 0.28, 0.03],
-            "bottom-right": [0.68, 0.08, 0.28, 0.03]
+            "top-left": [0.04, 0.89, 0.28, 0.03],
+            "top-right": [0.68, 0.89, 0.28, 0.03],
+            "bottom-left": [0.04, 0.08, 0.28, 0.03],
+            "bottom-right": [0.68, 0.08, 0.28, 0.03],
         }
 
         bbox_coords = position_map.get(key_position, position_map["bottom-right"])
         cbar_ax = plot.ax.inset_axes(bbox_coords, transform=plot.ax.transAxes)
 
-        cbar_ax.patch.set_facecolor('#111111')
+        cbar_ax.patch.set_facecolor("#111111")
         cbar_ax.patch.set_alpha(0.4)
 
         cbar = plt.colorbar(
-            cf,
-            cax=cbar_ax,
-            orientation='horizontal',
-            ticks=calculated_ticks
+            cf, cax=cbar_ax, orientation="horizontal", ticks=calculated_ticks
         )
 
         # Style the color scale numbers
-        cbar.ax.xaxis.set_tick_params(color='white', labelsize=key_fontsize, labelcolor='white', pad=3)
+        cbar.ax.xaxis.set_tick_params(
+            color="white", labelsize=key_fontsize, labelcolor="white", pad=3
+        )
         cbar.ax.xaxis.set_major_formatter(plt.FormatStrFormatter(tick_format))
-        cbar.outline.set_edgecolor('white')
+        cbar.outline.set_edgecolor("white")
         cbar.outline.set_linewidth(0.5)
-        cbar.ax.set_title(title_text, color='white', fontsize=key_fontsize, pad=5, weight='bold')
+        cbar.ax.set_title(
+            title_text, color="white", fontsize=key_fontsize, pad=5, weight="bold"
+        )
 
         plot.save_figure(self.output_path)
 
-        plt_close = getattr(plot, 'close', None)
+        plt_close = getattr(plot, "close", None)
         if callable(plt_close):
             plt_close()
 
-        logger.debug(f"Temperature ({mode} mode) plotting sequence completed successfully.")
+        logger.debug(
+            f"Temperature ({mode} mode) plotting sequence completed successfully."
+        )
 
     def run(self):
         self.exit_if_disabled()
-        try:
-            url, needs_download = self.check_remote_freshness()
-            if needs_download:
-                logger.info(f"Downloading active GFS-Atmos temp data from {url}...")
-                self.download_data(url)
+        # Get the GFS state for this updater
+        self.get_gfs_state()
+        self.grib_path = os.path.join(
+            self.workdir, f"data/gfs_temp_{self.forecast_hour_str}.grib2"
+        )
 
-            if needs_download or not os.path.exists(self.output_path) or self.config.has_changed:
-                logger.info("Generating Surface Temperature layer...")
-                self.plot()
-        except Exception as e:
-            logger.exception(f"Temperature layer update encountered an error: {e}")
+        url = f"{self.base_url}/gfs.{self.gfs_date_str}/{self.gfs_run}/atmos/gfs.t{self.gfs_run}z.pgrb2.0p25.f{self.forecast_hour_str}"
+        if self.remote_data_updated(remote_url=url, cache_file_path=self.grib_path):
+            logger.info("Generating Temperature plot...")
+            self.plot()

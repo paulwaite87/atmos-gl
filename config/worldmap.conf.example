@@ -17,6 +17,10 @@
 # NZ, NZ_Aus, Suez_Canal, English_Channel, Strait_of_Hormuz, Singapore,
 # Saudi_Arabia, Mediterranean, Panama_Canal, Ukraine, Europe
 region = NZ
+# Hours ahead to forecast. A zero here means we just show the 'now'
+# picture. Not everything is forecast-able of course, but where it
+# is applicable you will see a difference when altering this.
+forecast_hour = 0
 # Set to the geometry (graphics resolution) of your desktop. The
 # final render of the map image will use this.
 desktop_geometry = 1920x1200
@@ -136,7 +140,6 @@ runs_per_day = 2
 enabled = False
 url = https://nomads.ncep.noaa.gov/pub/data/nccf/com/rtofs/prod/
 outfile = data/currents.png
-forecast_hour = 0
 # Options: thermal_red, electric_blue, toxic_neon, cyberpunk
 palette = thermal_red
 # Overall transparency (0.0 to 1.0)
@@ -155,7 +158,6 @@ runs_per_day = 2
 enabled = False
 url = https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod
 outfile = data/waves.png
-forecast_hour = 24
 # Options: ocean_storm, neon_surge, solar_flare
 palette = solar_flare
 # Overall transparency (0.0 to 1.0)
@@ -183,7 +185,6 @@ outfile = data/temperature.png
 mode = absolute
 # Options: global_thermal, extreme_contrast, twilight_gradient
 palette = extreme_contrast
-forecast_hour = 0
 # Overall transparency (0.0 to 1.0)
 alpha = 1.0
 show_freezing_line = True

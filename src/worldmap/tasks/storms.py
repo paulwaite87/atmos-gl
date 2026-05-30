@@ -31,7 +31,11 @@ class StormUpdater(Updater):
             if r.status_code != 200:
                 return []
             soup = BeautifulSoup(r.text, "html.parser")
-            return [link['href'] for link in soup.find_all('a', href=True) if link['href'].endswith(('.dat', '.fst'))]
+            return [
+                link["href"]
+                for link in soup.find_all("a", href=True)
+                if link["href"].endswith((".dat", ".fst"))
+            ]
         except Exception as e:
             logger.debug(f"Failed to list directory {directory_url}: {e}")
             return []
@@ -56,18 +60,20 @@ class StormUpdater(Updater):
             storm_name = None
 
             # Extract SID from filename (e.g., bsh122026.dat -> SH122026)
-            filename = url.split('/')[-1]
+            filename = url.split("/")[-1]
             sid = filename[1:9].upper()
 
             for line in lines:
-                parts = [p.strip() for p in line.split(',')]
+                parts = [p.strip() for p in line.split(",")]
                 if len(parts) < 10:
                     continue
 
                 # Filter for Best Track lines
                 if parts[4] == "BEST":
                     dt_str = parts[2]  # YYYYMMDDHH
-                    dt = datetime.strptime(dt_str, "%Y%m%d%H").replace(tzinfo=timezone.utc)
+                    dt = datetime.strptime(dt_str, "%Y%m%d%H").replace(
+                        tzinfo=timezone.utc
+                    )
                     lat, lon = self._parse_latlon(parts[6], parts[7])
 
                     # ATCF puts the storm name in column 27, if it exists
@@ -76,15 +82,17 @@ class StormUpdater(Updater):
                         if name not in ["NONAME", "INVEST", "DB", "LO", "EX"]:
                             storm_name = name
 
-                    pts.append({
-                        "SID": sid,
-                        "NAME": storm_name or sid,
-                        "LAT": lat,
-                        "LON": lon,
-                        "TIME": dt,
-                        "TYPE": "PAST",
-                        "TAU": 0
-                    })
+                    pts.append(
+                        {
+                            "SID": sid,
+                            "NAME": storm_name or sid,
+                            "LAT": lat,
+                            "LON": lon,
+                            "TIME": dt,
+                            "TYPE": "PAST",
+                            "TAU": 0,
+                        }
+                    )
 
             if not pts:
                 return []
@@ -118,7 +126,7 @@ class StormUpdater(Updater):
             valid_lines = []
 
             for line in lines:
-                parts = [p.strip() for p in line.split(',')]
+                parts = [p.strip() for p in line.split(",")]
                 if len(parts) < 10:
                     continue
                 # We only want the official forecast models
@@ -147,15 +155,17 @@ class StormUpdater(Updater):
                 seen_taus.add(tau)
                 lat, lon = self._parse_latlon(parts[6], parts[7])
 
-                pts.append({
-                    "SID": sid,
-                    "NAME": sid,  # Name handled by SID grouping later
-                    "LAT": lat,
-                    "LON": lon,
-                    "TIME": None,
-                    "TYPE": "FORECAST",
-                    "TAU": tau
-                })
+                pts.append(
+                    {
+                        "SID": sid,
+                        "NAME": sid,  # Name handled by SID grouping later
+                        "LAT": lat,
+                        "LON": lon,
+                        "TIME": None,
+                        "TYPE": "FORECAST",
+                        "TAU": tau,
+                    }
+                )
 
             return pts
         except Exception as e:
@@ -201,8 +211,10 @@ class StormUpdater(Updater):
         track_color = self.settings.get("track_color", fallback="red")
 
         marker_zoom = self.settings.getfloat("marker_zoom", fallback=0.5)
-        marker_path = self.settings.get("marker_image",
-                                        fallback=os.path.join(self.workdir, "images", "storm_symbol.png"))
+        marker_path = self.settings.get(
+            "marker_image",
+            fallback=os.path.join(self.workdir, "images", "storm_symbol.png"),
+        )
 
         storm_icon = None
         if os.path.exists(marker_path):
@@ -215,7 +227,9 @@ class StormUpdater(Updater):
         plot.get_figure()
 
         for sid, storm_df in df.groupby("SID"):
-            storm_df = storm_df.sort_values(["TYPE", "TAU" if "TAU" in storm_df.columns else "LAT"])
+            storm_df = storm_df.sort_values(
+                ["TYPE", "TAU" if "TAU" in storm_df.columns else "LAT"]
+            )
 
             # Grab the best name available from the PAST/CURRENT points
             named_rows = storm_df[storm_df["NAME"] != sid]
@@ -227,20 +241,36 @@ class StormUpdater(Updater):
             if len(future_track) >= 2:
                 cone_vertices = self._build_cone_polygons(future_track)
                 polygon_patch = patches.Polygon(
-                    cone_vertices, closed=True, transform=ccrs.PlateCarree(),
-                    facecolor=cone_color, edgecolor=cone_color, linewidth=1.0, linestyle="--",
-                    alpha=alpha_cone, zorder=3
+                    cone_vertices,
+                    closed=True,
+                    transform=ccrs.PlateCarree(),
+                    facecolor=cone_color,
+                    edgecolor=cone_color,
+                    linewidth=1.0,
+                    linestyle="--",
+                    alpha=alpha_cone,
+                    zorder=3,
                 )
                 plot.ax.add_patch(polygon_patch)
 
             plot.ax.plot(
-                past_track["LON"].values, past_track["LAT"].values,
-                transform=ccrs.PlateCarree(), color=track_color, linewidth=2.0, linestyle="-", zorder=4
+                past_track["LON"].values,
+                past_track["LAT"].values,
+                transform=ccrs.PlateCarree(),
+                color=track_color,
+                linewidth=2.0,
+                linestyle="-",
+                zorder=4,
             )
             if len(future_track) > 1:
                 plot.ax.plot(
-                    future_track["LON"].values, future_track["LAT"].values,
-                    transform=ccrs.PlateCarree(), color=track_color, linewidth=1.5, linestyle=":", zorder=4
+                    future_track["LON"].values,
+                    future_track["LAT"].values,
+                    transform=ccrs.PlateCarree(),
+                    color=track_color,
+                    linewidth=1.5,
+                    linestyle=":",
+                    zorder=4,
                 )
 
             current_pt = storm_df[storm_df["TYPE"] == "CURRENT"]
@@ -249,19 +279,43 @@ class StormUpdater(Updater):
                 lon_pt, lat_pt = curr_row["LON"], curr_row["LAT"]
 
                 if storm_icon is not None:
-                    mapped_coords = plot.ax.projection.transform_point(lon_pt, lat_pt, src_crs=ccrs.PlateCarree())
+                    mapped_coords = plot.ax.projection.transform_point(
+                        lon_pt, lat_pt, src_crs=ccrs.PlateCarree()
+                    )
                     imagebox = OffsetImage(storm_icon, zoom=marker_zoom)
-                    ab = AnnotationBbox(imagebox, (mapped_coords[0], mapped_coords[1]), frameon=False, zorder=6)
+                    ab = AnnotationBbox(
+                        imagebox,
+                        (mapped_coords[0], mapped_coords[1]),
+                        frameon=False,
+                        zorder=6,
+                    )
                     plot.ax.add_artist(ab)
                 else:
-                    plot.ax.plot(lon_pt, lat_pt, transform=ccrs.PlateCarree(), marker='o', color=track_color,
-                                 markersize=7, zorder=5)
+                    plot.ax.plot(
+                        lon_pt,
+                        lat_pt,
+                        transform=ccrs.PlateCarree(),
+                        marker="o",
+                        color=track_color,
+                        markersize=7,
+                        zorder=5,
+                    )
 
                 plot.ax.text(
-                    lon_pt + 0.5, lat_pt + 0.5, f"{storm_name}", transform=ccrs.PlateCarree(),
-                    color="white", fontsize=10, weight="bold",
-                    bbox=dict(facecolor='#111111', alpha=0.6, boxstyle='round,pad=0.2', edgecolor='none'),
-                    zorder=7
+                    lon_pt + 0.5,
+                    lat_pt + 0.5,
+                    f"{storm_name}",
+                    transform=ccrs.PlateCarree(),
+                    color="white",
+                    fontsize=10,
+                    weight="bold",
+                    bbox=dict(
+                        facecolor="#111111",
+                        alpha=0.6,
+                        boxstyle="round,pad=0.2",
+                        edgecolor="none",
+                    ),
+                    zorder=7,
                 )
 
         plot.save_figure(self.output_path)
@@ -281,8 +335,8 @@ class StormUpdater(Updater):
         for url in [jtwc, nhc_btk]:
             files = self._get_file_list(url)
             for f in files:
-                if f.lower().startswith('b') and f.lower().endswith('.dat'):
-                    b_decks.append(url.rstrip('/') + '/' + f)
+                if f.lower().startswith("b") and f.lower().endswith(".dat"):
+                    b_decks.append(url.rstrip("/") + "/" + f)
 
         now_utc = datetime.now(timezone.utc)
         expiry_days = self.settings.getint("expiry_days", fallback=4)
@@ -295,24 +349,24 @@ class StormUpdater(Updater):
             track_pts = self._parse_b_deck(b_url, now_utc, expiry_days)
             if track_pts:
                 processed_data.extend(track_pts)
-                sid = track_pts[0]['SID']
+                sid = track_pts[0]["SID"]
                 active_sids.append((sid, b_url))
 
         if not active_sids:
             logger.info("No ACTIVE storms found within expiry window. Clearing layer.")
             if os.path.exists(self.output_path):
-                open(self.output_path, 'w').close()  # Create empty file to wipe layer
+                open(self.output_path, "w").close()  # Create empty file to wipe layer
             return
 
         # 3. For every active storm, hunt down its corresponding A-Deck forecast
         for sid, b_url in active_sids:
-            filename = b_url.split('/')[-1]
+            filename = b_url.split("/")[-1]
             core_id = filename[1:].replace(".dat", "")
 
             # Potential matching forecast file URLs
             a_deck_urls = [
-                jtwc.rstrip('/') + '/a' + core_id + '.dat',
-                nhc_fst.rstrip('/') + '/' + core_id + '.fst'
+                jtwc.rstrip("/") + "/a" + core_id + ".dat",
+                nhc_fst.rstrip("/") + "/" + core_id + ".fst",
             ]
 
             for a_url in a_deck_urls:

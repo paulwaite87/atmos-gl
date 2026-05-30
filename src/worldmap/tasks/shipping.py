@@ -21,8 +21,10 @@ def get_distance_km(lat1, lon1, lat2, lon2):
     phi1, phi2 = math.radians(lat1), math.radians(lat2)
     dphi = math.radians(lat2 - lat1)
     dlambda = math.radians(lon2 - lon1)
-    a = math.sin(dphi / 2) ** 2 + \
-        math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2) ** 2
+    a = (
+        math.sin(dphi / 2) ** 2
+        + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2) ** 2
+    )
     return 2 * R * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
 
@@ -55,7 +57,9 @@ class ShippingUpdater(Updater):
             with Image.open(base_path) as img:
                 # Expand=True ensures the corners aren't cut off during rotation
                 # Rotate is counter-clockwise in PIL, so use -angle for clockwise
-                rotated = img.rotate(-angle, resample=Image.Resampling.BICUBIC, expand=False)
+                rotated = img.rotate(
+                    -angle, resample=Image.Resampling.BICUBIC, expand=False
+                )
                 rotated.save(icon_path)
 
         self.icon_cache[cache_key] = icon_filename
@@ -77,12 +81,22 @@ class ShippingUpdater(Updater):
         label_color_default = self.settings.get("marker_color", fallback="red")
 
         # Ship filtering
-        show_ships_underway = self.settings.getboolean("show_ships_underway", fallback=False)
+        show_ships_underway = self.settings.getboolean(
+            "show_ships_underway", fallback=False
+        )
         show_ship_icons = self.settings.get("show_ship_icons", fallback=None)
-        show_ship_classes = listify(self.settings.get("filter_show_ship_classes", fallback='Tanker, Cargo'))
-        show_names_classes = listify(self.settings.get("filter_show_names_for_classes", fallback=''))
-        show_ships_by_name = listify(self.settings.get("filter_show_ships_by_name", fallback=''))
-        show_ships_min_length = self.settings.getint("filter_ships_minimum_length", fallback=0)
+        show_ship_classes = listify(
+            self.settings.get("filter_show_ship_classes", fallback="Tanker, Cargo")
+        )
+        show_names_classes = listify(
+            self.settings.get("filter_show_names_for_classes", fallback="")
+        )
+        show_ships_by_name = listify(
+            self.settings.get("filter_show_ships_by_name", fallback="")
+        )
+        show_ships_min_length = self.settings.getint(
+            "filter_ships_minimum_length", fallback=0
+        )
 
         fleet = ship_db.get_fleet(map_region_name, expiry_days=expiry)
         written_count = 0
@@ -152,7 +166,9 @@ class ShippingUpdater(Updater):
                     marker_color = f" color={ship_color}"
 
                 # --- Write the Primary Ship Marker ---
-                f.write(f'{ship_latitude} {ship_longitude} "{ship_label}"{fontsize}{marker_color}{marker_image}\n')
+                f.write(
+                    f'{ship_latitude} {ship_longitude} "{ship_label}"{fontsize}{marker_color}{marker_image}\n'
+                )
                 written_count += 1
 
                 # --- Track Normalization ---
@@ -165,15 +181,19 @@ class ShippingUpdater(Updater):
                         if points_placed >= track_max_points:
                             break
 
-                        h_lat = float(pos['lat'])
-                        h_lon = float(pos['lon'])
+                        h_lat = float(pos["lat"])
+                        h_lon = float(pos["lon"])
 
                         dist = get_distance_km(last_lat, last_lon, h_lat, h_lon)
                         if dist >= track_min_dist:
                             # Only write track points if they are within our bbox
                             if self.map_data.region.is_in_region(h_lat, h_lon):
-                                f.write(f"{h_lat} {h_lon} color={label_color_default}\n")
+                                f.write(
+                                    f"{h_lat} {h_lon} color={label_color_default}\n"
+                                )
                                 last_lat, last_lon = h_lat, h_lon
                                 points_placed += 1
 
-        logger.info(f"Shipping update complete. Placed {written_count} ships in region.")
+        logger.info(
+            f"Shipping update complete. Placed {written_count} ships in region."
+        )

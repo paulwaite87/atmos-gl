@@ -29,9 +29,11 @@ class SatelliteUpdater(Updater):
         marker_color = self.settings.get("marker_color", fallback="White")
         marker_fontsize = self.settings.getint("marker_fontsize", fallback=10)
         trail_minutes = self.settings.getint("trail_minutes", fallback=5)
-        degrees_above_horizon = self.settings.getint("degrees_above_horizon", fallback=45)
+        degrees_above_horizon = self.settings.getint(
+            "degrees_above_horizon", fallback=45
+        )
         target_names = listify(self.settings.get("sat_names", fallback=""))
-        target_names += listify(self.settings.get("extra_satellite_names", fallback=''))
+        target_names += listify(self.settings.get("extra_satellite_names", fallback=""))
 
         if not target_names:
             logger.debug("No satellites configured in names list. Skipping.")
@@ -55,13 +57,17 @@ class SatelliteUpdater(Updater):
             if os.path.exists(cache_file):
                 file_age_seconds = time.time() - os.path.getmtime(cache_file)
                 if file_age_seconds < 86400:  # 24 hours in seconds
-                    logger.debug(f"Using fresh cached TLE data for '{group}' ({int(file_age_seconds / 3600)}h old).")
+                    logger.debug(
+                        f"Using fresh cached TLE data for '{group}' ({int(file_age_seconds / 3600)}h old)."
+                    )
                     should_download = False
 
             if should_download:
                 query_url = f"{base_url}/gp.php?GROUP={group}&FORMAT=tle"
                 try:
-                    logger.info(f"Cache expired or missing. Fetching satellite data from {query_url}...")
+                    logger.info(
+                        f"Cache expired or missing. Fetching satellite data from {query_url}..."
+                    )
                     r = requests.get(query_url, timeout=15)
                     r.raise_for_status()
 
@@ -72,7 +78,9 @@ class SatelliteUpdater(Updater):
                 except Exception as e:
                     logger.error(f"Failed to refresh satellite group '{group}': {e}")
                     if not os.path.exists(cache_file):
-                        logger.error(f"No cached file available as fallback for group '{group}'. Skipping.")
+                        logger.error(
+                            f"No cached file available as fallback for group '{group}'. Skipping."
+                        )
                         continue
                     logger.warning(f"Falling back to stale cache for group '{group}'.")
 
@@ -103,8 +111,10 @@ class SatelliteUpdater(Updater):
                     line2 = all_tle_lines[i + 2].strip()
 
                     # Ensure case-insensitive, whitespace-agnostic matching
-                    if any(name.strip().upper() in name_line.upper() for name in target_names):
-
+                    if any(
+                        name.strip().upper() in name_line.upper()
+                        for name in target_names
+                    ):
                         # Extract NORAD ID from line 2 (cols 2-7)
                         try:
                             sat_id = line2[2:7].strip()
@@ -113,7 +123,7 @@ class SatelliteUpdater(Updater):
                             mean_motion = float(line2[52:63].strip())
                             n = (mean_motion * 2 * math.pi) / 86400.0
                             mu = 3.986004418e14
-                            a_meters = (mu / (n ** 2)) ** (1 / 3)
+                            a_meters = (mu / (n**2)) ** (1 / 3)
                             altitude = int((a_meters / 1000.0) - 6371.0)
                             display_name = f"{name_line} [{altitude} km]"
                         except (ValueError, IndexError):
@@ -121,10 +131,15 @@ class SatelliteUpdater(Updater):
                             display_name = name_line
 
                         # Write styling
-                        f_marker.write(f'{sat_id} "{display_name}" color={marker_color} fontsize={marker_fontsize}\n')
                         f_marker.write(
-                            f'{sat_id} "" image=none altcirc={degrees_above_horizon} trail={{orbit,-{trail_minutes},0,1}} color=Yellow\n')
-                        f_marker.write(f'{sat_id} "" image=none trail={{orbit,{trail_minutes},0,1}} color=Red\n')
+                            f'{sat_id} "{display_name}" color={marker_color} fontsize={marker_fontsize}\n'
+                        )
+                        f_marker.write(
+                            f'{sat_id} "" image=none altcirc={degrees_above_horizon} trail={{orbit,-{trail_minutes},0,1}} color=Yellow\n'
+                        )
+                        f_marker.write(
+                            f'{sat_id} "" image=none trail={{orbit,{trail_minutes},0,1}} color=Red\n'
+                        )
 
                         # --- 2. Write raw orbital math to the .tle file ---
                         f_tle.write(f"{name_line}\n")
@@ -133,15 +148,19 @@ class SatelliteUpdater(Updater):
 
                         found_sats += 1
 
-            logger.info(f"Satellite update complete. Tracked {found_sats}/{len(target_names)} objects.")
+            logger.info(
+                f"Satellite update complete. Tracked {found_sats}/{len(target_names)} objects."
+            )
 
             if found_sats < len(target_names):
                 missing = len(target_names) - found_sats
                 logger.warning(
-                    f"Could not find TLE data for {missing} configured satellite(s). Check spelling in config.")
+                    f"Could not find TLE data for {missing} configured satellite(s). Check spelling in config."
+                )
 
             logger.debug(
-                f"Post-run marker size: {os.path.getsize(marker_file)}, TLE size: {os.path.getsize(tle_file)}")
+                f"Post-run marker size: {os.path.getsize(marker_file)}, TLE size: {os.path.getsize(tle_file)}"
+            )
 
         except OSError as e:
             logger.error(f"Failed to write satellite marker and TLE files: {e}")

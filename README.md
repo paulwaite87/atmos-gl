@@ -244,6 +244,7 @@ The full list is:
 * Wave height & direction
 * Air temperature (absolute or anomaly)
 * Ozone layer density
+* Storm watch
 * Lightning strikes
 * Active storms
 * Earthquakes
@@ -352,6 +353,17 @@ considered the threshold for a "hole" in the ozone layer. If you choose the
 `critical` palette any ozone levels above that setting will be rendered
 transparent, and anything below is given a color, so you only see the problem
 areas.
+
+##### Storm Watch
+This layer shows where there is a likelihood of a storm forming. It uses the CAPE
+measurement (Convective Available Potential Energy) which, as the name suggests is
+a value which expresses how much energy is available in the atmosphere, but it
+also looks at the CIN (Convective Inhibition) measurement. CIN represents the
+amount of energy required to overcome the negatively buoyant, stable "cap" or
+"lid" in the lower atmosphere. It is essentially the barrier that a rising air
+parcel must break through before it can tap into the CAPE (Convective Available
+Potential Energy) above it. Combining both gives us a reasonable idea of the
+actual potential for storm formation.
 
 #### Shipping
 If you select `Disc` ship icons there are basically two variants, Cargo and Tanker but

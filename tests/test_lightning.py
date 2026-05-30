@@ -6,7 +6,9 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
 # Append project root to path to ensure clean internal imports
-sys.path.insert(0, os.path.abspath(str(os.path.join(str(os.path.dirname(__file__)), ".."))))
+sys.path.insert(
+    0, os.path.abspath(str(os.path.join(str(os.path.dirname(__file__)), "..")))
+)
 
 from worldmap.tasks.lightning import LightningUpdater
 from tests.common import test_env
@@ -34,11 +36,11 @@ async def test_lightning_pipeline(test_env):
     # Create mock strikes at different ages to trigger all three icon conditions
     mock_strikes = [
         # < 5 mins old -> Should map to bolt_white.png
-        {'lat': -40.1, 'lon': 170.1, 'timestamp': now - timedelta(minutes=2)},
+        {"lat": -40.1, "lon": 170.1, "timestamp": now - timedelta(minutes=2)},
         # 5-20 mins old -> Should map to bolt_yellow.png
-        {'lat': -40.2, 'lon': 170.2, 'timestamp': now - timedelta(minutes=10)},
+        {"lat": -40.2, "lon": 170.2, "timestamp": now - timedelta(minutes=10)},
         # > 20 mins old -> Should map to bolt_red.png
-        {'lat': -40.3, 'lon': 170.3, 'timestamp': now - timedelta(minutes=30)}
+        {"lat": -40.3, "lon": 170.3, "timestamp": now - timedelta(minutes=30)},
     ]
 
     # Patch the database so we don't attempt a real SQLite/Postgres connection
@@ -56,7 +58,9 @@ async def test_lightning_pipeline(test_env):
         )
 
     # File Generation & Format Verification
-    assert os.path.exists(updater.output_path), "Lightning output text file was not generated!"
+    assert os.path.exists(updater.output_path), (
+        "Lightning output text file was not generated!"
+    )
 
     with open(updater.output_path, "r") as f:
         lines = f.readlines()
@@ -65,6 +69,12 @@ async def test_lightning_pipeline(test_env):
     assert len(lines) == 3, f"Expected 3 lightning strikes, but got {len(lines)}."
 
     # Verify the formatting and aging logic is strictly applied
-    assert lines[0].strip() == '-40.1 170.1 image=bolt_white.png', "White bolt logic failed!"
-    assert lines[1].strip() == '-40.2 170.2 image=bolt_yellow.png', "Yellow bolt logic failed!"
-    assert lines[2].strip() == '-40.3 170.3 image=bolt_red.png', "Red bolt logic failed!"
+    assert lines[0].strip() == "-40.1 170.1 image=bolt_white.png", (
+        "White bolt logic failed!"
+    )
+    assert lines[1].strip() == "-40.2 170.2 image=bolt_yellow.png", (
+        "Yellow bolt logic failed!"
+    )
+    assert lines[2].strip() == "-40.3 170.3 image=bolt_red.png", (
+        "Red bolt logic failed!"
+    )

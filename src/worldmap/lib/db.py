@@ -22,7 +22,7 @@ class Database:
                 dbname=db_name,
                 host=db_host,
                 port=db_port,
-                cursor_factory=RealDictCursor
+                cursor_factory=RealDictCursor,
             )
             self.conn.autocommit = True
         except Exception as e:
@@ -61,7 +61,9 @@ class Database:
                 beam = EXCLUDED.beam; \
               """
         with self.conn.cursor() as cur:
-            cur.execute(sql, (str(mmsi), name, v_type, imo, callsign, draught, length, beam))
+            cur.execute(
+                sql, (str(mmsi), name, v_type, imo, callsign, draught, length, beam)
+            )
 
     def update_ship_position_data(self, mmsi, body):
         lat = body.get("Latitude")
@@ -101,10 +103,14 @@ class Database:
                 cur.execute(sql_ensure_ship, (str(mmsi),))
 
                 # Step 2: Update live position
-                cur.execute(sql_live, (lat, lon, lon, lat, nav_status, cog, sog, str(mmsi)))
+                cur.execute(
+                    sql_live, (lat, lon, lon, lat, nav_status, cog, sog, str(mmsi))
+                )
 
                 # Step 3: Record history (now safe from FK errors)
-                cur.execute(sql_history, (str(mmsi), lat, lon, lon, lat, sog, cog, nav_status))
+                cur.execute(
+                    sql_history, (str(mmsi), lat, lon, lon, lat, sog, cog, nav_status)
+                )
         except Exception as e:
             logger.error(f"Database error updating position for {mmsi}: {e}")
 
@@ -128,7 +134,7 @@ class Database:
         with self.conn.cursor() as cur:
             cur.execute(sql)
             result = cur.fetchone()
-            return result['total'] if result else 0
+            return result["total"] if result else 0
 
     def get_fleet(self, map_region_name=None, expiry_days=3):
         """
@@ -176,7 +182,7 @@ class Database:
             return cur.fetchone() is not None
 
     def __del__(self):
-        if hasattr(self, 'conn'):
+        if hasattr(self, "conn"):
             self.conn.close()
 
     def get_ship_track(self, mmsi, limit=100):
@@ -231,11 +237,15 @@ class Database:
               """
         try:
             with self.conn.cursor() as cur:
-                cur.execute(sql, (strike_id, lat, lon, lon, lat, quality, timestamp_iso))
+                cur.execute(
+                    sql, (strike_id, lat, lon, lon, lat, quality, timestamp_iso)
+                )
         except Exception as e:
             logger.error(f"Error saving lightning strike {strike_id}: {e}")
 
-    def get_lightning_in_region(self, lon_min, lat_min, lon_max, lat_max, age_minutes=60):
+    def get_lightning_in_region(
+        self, lon_min, lat_min, lon_max, lat_max, age_minutes=60
+    ):
         """Retrieves strikes within a specific bbox and time window."""
         sql = """
               SELECT lat, lon, acquired_at as timestamp

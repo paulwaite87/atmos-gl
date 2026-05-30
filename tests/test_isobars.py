@@ -7,7 +7,9 @@ import xarray as xr
 from unittest.mock import patch
 
 # Append project root to path to ensure clean internal imports
-sys.path.insert(0, os.path.abspath(str(os.path.join(str(os.path.dirname(__file__)), ".."))))
+sys.path.insert(
+    0, os.path.abspath(str(os.path.join(str(os.path.dirname(__file__)), "..")))
+)
 
 from worldmap.tasks.isobars import IsobarUpdater
 from tests.common import test_env, assert_url_accessible, verify_generated_image
@@ -34,11 +36,11 @@ def generate_mock_isobar_dataset():
     # Add a distinct low-pressure system (950 hPa / 95000 Pa) at Lat -30.0, Lon 100.0
     lat_idx = np.abs(lats - (-30.0)).argmin()
     lon_idx = np.abs(lons - 100.0).argmin()
-    prmsl_matrix[lat_idx - 5:lat_idx + 5, lon_idx - 5:lon_idx + 5] = 95000.0
+    prmsl_matrix[lat_idx - 5 : lat_idx + 5, lon_idx - 5 : lon_idx + 5] = 95000.0
 
     dataset = xr.Dataset(
         {"prmsl": (["latitude", "longitude"], prmsl_matrix)},
-        coords={"latitude": lats, "longitude": lons}
+        coords={"latitude": lats, "longitude": lons},
     )
     return dataset
 
@@ -64,5 +66,5 @@ def test_isobar_pipeline(test_env):
     assert verify_generated_image(
         updater.output_path,
         test_env["map_data"].region.target_width,
-        test_env["map_data"].region.target_height
+        test_env["map_data"].region.target_height,
     )

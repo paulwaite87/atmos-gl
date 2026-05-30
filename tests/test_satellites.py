@@ -5,7 +5,9 @@ import pytest
 from unittest.mock import patch, MagicMock
 
 # Append project root to path to ensure clean internal imports
-sys.path.insert(0, os.path.abspath(str(os.path.join(str(os.path.dirname(__file__)), ".."))))
+sys.path.insert(
+    0, os.path.abspath(str(os.path.join(str(os.path.dirname(__file__)), "..")))
+)
 
 from worldmap.tasks.satellites import SatelliteUpdater
 from tests.common import test_env, assert_url_accessible
@@ -16,8 +18,12 @@ class MockSatelliteUpdater(SatelliteUpdater):
         super().__init__(config, map_data)
         # Force config values for predictable testing (Must strictly match lowercase section in worldmap.conf)
         self.config.update_setting("satellites", "enabled", "True")
-        self.config.update_setting("satellites", "sat_names", "ISS (ZARYA), CSS (TIANHE)")
-        self.config.update_setting("satellites", "url", "https://celestrak.org/NORAD/elements")
+        self.config.update_setting(
+            "satellites", "sat_names", "ISS (ZARYA), CSS (TIANHE)"
+        )
+        self.config.update_setting(
+            "satellites", "url", "https://celestrak.org/NORAD/elements"
+        )
         self.config.update_setting("satellites", "degrees_above_horizon", "45")
         self.config.update_setting("satellites", "trail_minutes", "5")
 
@@ -26,7 +32,11 @@ class MockSatelliteUpdater(SatelliteUpdater):
 
     def get_base_url(self):
         # Gracefully extract base url similar to production logic
-        return self.settings.get("url", "https://celestrak.org/NORAD/elements").strip('"').rstrip("/")
+        return (
+            self.settings.get("url", "https://celestrak.org/NORAD/elements")
+            .strip('"')
+            .rstrip("/")
+        )
 
 
 # Dummy TLE payload containing the ISS and Chinese Space Station (CSS)
@@ -75,11 +85,17 @@ def test_satellites_pipeline(test_env):
 
         # 4. Request Parameter Verification
         # Because we deleted the local text caches, it should have triggered HTTP requests
-        assert mock_get.call_count >= 1, "Updater failed to execute HTTP requests after cache clearance"
+        assert mock_get.call_count >= 1, (
+            "Updater failed to execute HTTP requests after cache clearance"
+        )
 
     # 5. Output File Verification
-    assert os.path.exists(updater.output_path), "Marker file 'sat_file' was not created!"
-    assert os.path.exists(f"{updater.output_path}.tle"), "TLE file 'sat_file.tle' was not created!"
+    assert os.path.exists(updater.output_path), (
+        "Marker file 'sat_file' was not created!"
+    )
+    assert os.path.exists(f"{updater.output_path}.tle"), (
+        "TLE file 'sat_file.tle' was not created!"
+    )
 
     # 6. Orbital Math and Formatting Verification
     with open(updater.output_path, "r") as f_marker:
@@ -91,14 +107,22 @@ def test_satellites_pipeline(test_env):
 
         # Altitude Math checks (Mean Motion -> Altitude conversion)
         # ISS: 15.49842404 mean motion = ~424 km altitude
-        assert "[424 km]" in marker_content, "Orbital altitude calculation failed or changed for ISS"
+        assert "[424 km]" in marker_content, (
+            "Orbital altitude calculation failed or changed for ISS"
+        )
         # CSS: 15.60000000 mean motion = ~394 km altitude
-        assert "[394 km]" in marker_content, "Orbital altitude calculation failed or changed for CSS"
+        assert "[394 km]" in marker_content, (
+            "Orbital altitude calculation failed or changed for CSS"
+        )
 
         # Xplanet configuration attribute checks
         assert "image=none" in marker_content, "Missing 'image=none' declaration"
-        assert "altcirc=" in marker_content, "Missing 'altcirc' (Degrees above horizon) declaration"
-        assert "trail={orbit" in marker_content, "Missing 'trail' orbit projection declaration"
+        assert "altcirc=" in marker_content, (
+            "Missing 'altcirc' (Degrees above horizon) declaration"
+        )
+        assert "trail={orbit" in marker_content, (
+            "Missing 'trail' orbit projection declaration"
+        )
 
     with open(f"{updater.output_path}.tle", "r") as f_tle:
         tle_content = f_tle.read()

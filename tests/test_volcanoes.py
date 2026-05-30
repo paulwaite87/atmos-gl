@@ -6,7 +6,9 @@ import json
 from unittest.mock import patch, MagicMock
 
 # Append project root to path to ensure clean internal imports
-sys.path.insert(0, os.path.abspath(str(os.path.join(str(os.path.dirname(__file__)), ".."))))
+sys.path.insert(
+    0, os.path.abspath(str(os.path.join(str(os.path.dirname(__file__)), "..")))
+)
 
 from worldmap.tasks.volcanoes import VolcanoUpdater
 from tests.common import test_env, assert_url_accessible
@@ -31,7 +33,7 @@ def generate_mock_volcano_response():
                 "longitude": 105.423,
                 "significant": True,
                 "timeErupt": "D1",  # Valid Holocene date code
-                "vei": 6  # Valid VEI
+                "vei": 6,  # Valid VEI
             },
             {
                 "name": "Yellowstone",
@@ -39,7 +41,7 @@ def generate_mock_volcano_response():
                 "longitude": -110.67,
                 "significant": True,
                 "timeErupt": "U",  # INVALID: Unknown/ancient eruption date
-                "vei": 8
+                "vei": 8,
             },
             {
                 "name": "Small Cone",
@@ -47,9 +49,9 @@ def generate_mock_volcano_response():
                 "longitude": 20.0,
                 "significant": False,
                 "timeErupt": "D1",
-                "vei": 2  # INVALID: VEI too low (below 5)
-            }
-        ]
+                "vei": 2,  # INVALID: VEI too low (below 5)
+            },
+        ],
     }
 
 
@@ -70,7 +72,9 @@ def test_volcano_pipeline(test_env):
     # 2. Mocking the HTTP request
     # Create a mock response object that mimics urlopen's context manager interface
     mock_response = MagicMock()
-    mock_response.read.return_value = json.dumps(generate_mock_volcano_response()).encode("utf-8")
+    mock_response.read.return_value = json.dumps(
+        generate_mock_volcano_response()
+    ).encode("utf-8")
     mock_response.__enter__.return_value = mock_response
 
     # Execute the pipeline with the mocked HTTP payload
@@ -79,7 +83,9 @@ def test_volcano_pipeline(test_env):
         updater.run()
 
     # 3. File Generation & Format Verification
-    assert os.path.exists(updater.output_path), "Volcano output text file was not generated!"
+    assert os.path.exists(updater.output_path), (
+        "Volcano output text file was not generated!"
+    )
 
     with open(updater.output_path, "r") as f:
         lines = f.readlines()

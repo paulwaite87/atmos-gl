@@ -21,7 +21,9 @@ class LightningUpdater(Updater):
         lon_min, lat_min, lon_max, lat_max = self.map_region_bbox
 
         # Fetch from DB (much faster than API tiling)
-        strikes = db.get_lightning_in_region(lon_min, lat_min, lon_max, lat_max, age_minutes=self.age_minutes)
+        strikes = db.get_lightning_in_region(
+            lon_min, lat_min, lon_max, lat_max, age_minutes=self.age_minutes
+        )
 
         written_count = 0
         now = datetime.now(timezone.utc)
@@ -29,7 +31,7 @@ class LightningUpdater(Updater):
         with open(self.output_path, "w") as f:
             for s in strikes:
                 # Calculate age for icon logic
-                age_mins = (now - s['timestamp']).total_seconds() / 60
+                age_mins = (now - s["timestamp"]).total_seconds() / 60
 
                 if age_mins < 5:
                     icon = "bolt_white.png"

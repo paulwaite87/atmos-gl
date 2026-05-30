@@ -298,7 +298,7 @@
             });
 
             // Bind Climate mutually exclusive radios
-            ['sst', 'currents', 'waves', 'temperature'].forEach(layer => {
+            ['sst', 'currents', 'waves', 'temperature', "ozone", "stormwatch"].forEach(layer => {
                 const el = document.getElementById(`radio__${layer}`);
                 if (el) el.addEventListener('change', toggleSectionVisibility);
             });
@@ -307,6 +307,8 @@
             else if (data['currents__enabled'] === true) document.getElementById('radio__currents').checked = true;
             else if (data['waves__enabled'] === true) document.getElementById('radio__waves').checked = true;
             else if (data['temperature__enabled'] === true) document.getElementById('radio__temperature').checked = true;
+            else if (data['ozone__enabled'] === true) document.getElementById('radio__ozone').checked = true;
+            else if (data['stormwatch__enabled'] === true) document.getElementById('radio__stormwatch').checked = true;
 
             // Bind Background process toggles
             const aisEnabled = document.getElementById('shipping_collector__enabled');
@@ -404,7 +406,7 @@
                                 optionsHTML += `<option value="${r.label}" ${item.value === r.label ? 'selected' : ''}>${r.label}</option>`;
                             });
                             col.innerHTML = `
-                                <label class="form-label small text-white-50 fw-bold mb-1">${customLabelText}</label>
+                                <label class="form-label small text-white-50 fw-bold mb-1">Region to View</label>
                                 <select class="form-select bg-dark text-light border-secondary" id="${item.flatKey}">
                                     ${optionsHTML}
                                 </select>
@@ -437,14 +439,64 @@
                                        oninput="document.getElementById('badge-${item.flatKey}').innerText = parseInt(this.value) + 'h'">
                             `;
                         } else if (item.option === 'expiry_days') {
-                            const initialDays = parseInt(item.value) || 2;
+                            const initialDays = parseInt(item.value) || 3;
                             col.innerHTML = `
                                 <div class="d-flex justify-content-between align-items-center mb-1">
                                     <label class="form-label small text-white-50 fw-bold mb-0">${customLabelText}</label>
                                     <span class="badge bg-warning text-dark fw-bold" id="badge-${item.flatKey}">${initialDays} days expiry</span>
                                 </div>
-                                <input type="range" class="form-range" id="${item.flatKey}" min="1" max="7" step="1" value="${initialDays}"
+                                <input type="range" class="form-range" id="${item.flatKey}" min="1" max="30" step="1" value="${initialDays}"
                                        oninput="document.getElementById('badge-${item.flatKey}').innerText = parseInt(this.value) + ' days expiry'">
+                            `;
+                        } else if (item.option === 'barb_density') {
+                            const initialDensity = parseInt(item.value) || 30;
+                            col.innerHTML = `
+                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                    <label class="form-label small text-white-50 fw-bold mb-0">${customLabelText}</label>
+                                    <span class="badge bg-warning text-dark fw-bold" id="badge-${item.flatKey}">${initialDensity}</span>
+                                </div>
+                                <input type="range" class="form-range" id="${item.flatKey}" min="10" max="100" step="10" value="${initialDensity}"
+                                       oninput="document.getElementById('badge-${item.flatKey}').innerText = parseInt(this.value)">
+                            `;
+                        } else if (item.option === 'barb_length_base') {
+                            const initialBaseLength = parseFloat(item.value) !== undefined ? parseFloat(item.value) : 4.5;
+                            col.innerHTML = `
+                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                    <label class="form-label small text-white-50 fw-bold mb-0">${customLabelText}</label>
+                                    <span class="badge text-light fw-bold" style="background-color: #0dcaf0; color: #000 !important;" id="badge-${item.flatKey}">${initialBaseLength.toFixed(1)}</span>
+                                </div>
+                                <input type="range" class="form-range" id="${item.flatKey}" min="2.0" max="10.0" step="0.1" value="${initialBaseLength}"
+                                       oninput="document.getElementById('badge-${item.flatKey}').innerText = parseFloat(this.value).toFixed(1)">
+                            `;
+                        } else if (item.option === 'barb_length_step') {
+                            const initialStep = parseFloat(item.value) !== undefined ? parseFloat(item.value) : 0.8;
+                            col.innerHTML = `
+                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                    <label class="form-label small text-white-50 fw-bold mb-0">${customLabelText}</label>
+                                    <span class="badge text-light fw-bold" style="background-color: #0dcaf0; color: #000 !important;" id="badge-${item.flatKey}">${initialStep.toFixed(1)}</span>
+                                </div>
+                                <input type="range" class="form-range" id="${item.flatKey}" min="0.1" max="1.5" step="0.1" value="${initialStep}"
+                                       oninput="document.getElementById('badge-${item.flatKey}').innerText = parseFloat(this.value).toFixed(1)">
+                            `;
+                        } else if (item.option === 'track_min_dist') {
+                            const initialDist = parseInt(item.value) || 25;
+                            col.innerHTML = `
+                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                    <label class="form-label small text-white-50 fw-bold mb-0">Minimum Distance Between Track Points</label>
+                                    <span class="badge bg-warning text-dark fw-bold" id="badge-${item.flatKey}">${initialDist} km</span>
+                                </div>
+                                <input type="range" class="form-range" id="${item.flatKey}" min="10" max="250" step="10" value="${initialDist}"
+                                       oninput="document.getElementById('badge-${item.flatKey}').innerText = parseInt(this.value) + ' km'">
+                            `;
+                        } else if (item.option === 'track_max_points') {
+                            const initialMaxTP = parseInt(item.value) || 15;
+                            col.innerHTML = `
+                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                    <label class="form-label small text-white-50 fw-bold mb-0">Maximum Number of Track Points</label>
+                                    <span class="badge bg-warning text-dark fw-bold" id="badge-${item.flatKey}">${initialMaxTP}</span>
+                                </div>
+                                <input type="range" class="form-range" id="${item.flatKey}" min="5" max="100" step="5" value="${initialMaxTP}"
+                                       oninput="document.getElementById('badge-${item.flatKey}').innerText = parseInt(this.value)">
                             `;
                         } else if (item.option === 'storm_icon_zoom') {
                             const initialZoom = parseFloat(item.value) !== undefined ? parseFloat(item.value) : 1.0;
@@ -470,7 +522,7 @@
                         } else if (item.option.includes('vei')) {
                             const currentVei = parseInt(item.value) || 0;
                             col.innerHTML = `
-                                <label class="form-label small text-white-50 fw-bold mb-1">${customLabelText}</label>
+                                <label class="form-label small text-white-50 fw-bold mb-1">Volcanic Explosivity Index</label>
                                 <select class="form-select bg-dark text-light border-secondary" id="${item.flatKey}">
                                     <option value="0" ${currentVei === 0 ? 'selected' : ''}>0 - Non-explosive</option>
                                     <option value="1" ${currentVei === 1 ? 'selected' : ''}>1 - Small</option>
@@ -506,7 +558,7 @@
                             const initialMag = parseFloat(item.value) !== undefined ? parseFloat(item.value) : 4.5;
                             col.innerHTML = `
                                 <div class="d-flex justify-content-between align-items-center mb-1">
-                                    <label class="form-label small text-white-50 fw-bold mb-0">${customLabelText}</label>
+                                    <label class="form-label small text-white-50 fw-bold mb-0">Minimum Magnitude</label>
                                     <span class="badge bg-danger text-light fw-bold" id="badge-${item.flatKey}">M ${initialMag.toFixed(1)}</span>
                                 </div>
                                 <input type="range" class="form-range" id="${item.flatKey}" min="0" max="10" step="0.1" value="${initialMag}"
@@ -552,6 +604,16 @@
                                 <input type="range" class="form-range" id="${item.flatKey}" min="6" max="64" step="1" value="${initialSize}"
                                        oninput="document.getElementById('badge-${item.flatKey}').innerText = this.value + 'px'">
                             `;
+                        } else if (item.option.includes('forecast_hour')) {
+                            const initialOffset = parseInt(item.value) || 1;
+                            col.innerHTML = `
+                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                    <label class="form-label small text-white-50 fw-bold mb-0">Forecast Hours Ahead (0 = Now)</label>
+                                    <span class="badge bg-success text-dark fw-bold" id="badge-${item.flatKey}">${initialOffset}h</span>
+                                </div>
+                                <input type="range" class="form-range" id="${item.flatKey}" min="0" max="192" step="1" value="${initialOffset}"
+                                       oninput="document.getElementById('badge-${item.flatKey}').innerText = this.value + 'h'">
+                            `;
                         } else if (item.option.includes('linewidth')) {
                             const initialWidth = parseFloat(item.value) !== undefined ? parseFloat(item.value) : 1.0;
                             col.innerHTML = `
@@ -576,7 +638,7 @@
                             const initialAlpha = parseFloat(item.value) !== undefined ? parseFloat(item.value) : 1.0;
                             col.innerHTML = `
                                 <div class="d-flex justify-content-between align-items-center mb-1">
-                                    <label class="form-label small text-white-50 fw-bold mb-0">${customLabelText}</label>
+                                    <label class="form-label small text-white-50 fw-bold mb-0">Minimum mm/hour</label>
                                     <span class="badge bg-warning text-dark fw-bold" id="badge-${item.flatKey}">${initialAlpha.toFixed(1)}</span>
                                 </div>
                                 <input type="range" class="form-range" id="${item.flatKey}" min="0.0" max="10.0" step="0.1" value="${initialAlpha}"
@@ -586,7 +648,7 @@
                             const initialAlpha = parseFloat(item.value) !== undefined ? parseFloat(item.value) : 1.0;
                             col.innerHTML = `
                                 <div class="d-flex justify-content-between align-items-center mb-1">
-                                    <label class="form-label small text-white-50 fw-bold mb-0">${customLabelText}</label>
+                                    <label class="form-label small text-white-50 fw-bold mb-0">Critical Dobson Units</label>
                                     <span class="badge bg-warning text-dark fw-bold" id="badge-${item.flatKey}">${initialAlpha.toFixed(1)}</span>
                                 </div>
                                 <input type="range" class="form-range" id="${item.flatKey}" min="150.0" max="450.0" step="10.0" value="${initialAlpha}"

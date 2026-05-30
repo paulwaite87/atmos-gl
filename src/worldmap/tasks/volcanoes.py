@@ -51,7 +51,9 @@ class VolcanoUpdater(Updater):
         marker_color = self.settings.get("marker_color", fallback="red")
         marker_symbol = self.settings.get("marker_symbol")
         significant_only = self.settings.getboolean("significant_only", fallback=False)
-        show_volcanoes_by_name = listify(self.settings.get("filter_show_volcanoes_by_name", fallback=''))
+        show_volcanoes_by_name = listify(
+            self.settings.get("filter_show_volcanoes_by_name", fallback="")
+        )
         vei_min = self.settings.getint("vei_min", fallback=5)
         # Load date codes (e.g., ["D1"] for Holocene)
         try:

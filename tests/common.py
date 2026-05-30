@@ -8,7 +8,9 @@ from urllib.parse import urlparse
 from PIL import Image
 
 # Append project root to path to ensure clean internal imports
-sys.path.insert(0, os.path.abspath(str(os.path.join(str(os.path.dirname(__file__)), ".."))))
+sys.path.insert(
+    0, os.path.abspath(str(os.path.join(str(os.path.dirname(__file__)), "..")))
+)
 from worldmap.lib.config import WorldMapConfig
 from worldmap.tasks.common import MapRegion
 
@@ -31,7 +33,9 @@ class MockMapData:
 
 
 def check_url_accessibility(url, name):
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+    }
     try:
         response = requests.head(url, timeout=10, allow_redirects=True, headers=headers)
         if response.status_code in [404, 405]:
@@ -41,13 +45,16 @@ def check_url_accessibility(url, name):
         if response.status_code == 403:
             parsed_url = urlparse(url)
             root_url = f"{parsed_url.scheme}://{parsed_url.netloc}/"
-            root_resp = requests.head(root_url, timeout=10, allow_redirects=True, headers=headers)
+            root_resp = requests.head(
+                root_url, timeout=10, allow_redirects=True, headers=headers
+            )
             if root_resp.status_code < 400:
                 return True
 
         return response.status_code < 400
     except requests.RequestException:
         return False
+
 
 def assert_url_accessible(url, label):
     """Assertion helper that provides a clear, human-readable error message."""
@@ -58,7 +65,10 @@ def assert_url_accessible(url, label):
         "Please verify your internet connection or the status of the remote server."
     )
 
-def verify_generated_image(file_path, expected_width, expected_height, expected_format="PNG"):
+
+def verify_generated_image(
+    file_path, expected_width, expected_height, expected_format="PNG"
+):
     if not os.path.exists(file_path):
         return False
     try:
@@ -68,7 +78,10 @@ def verify_generated_image(file_path, expected_width, expected_height, expected_
 
         # Re-open to check attributes (verify() can sometimes leave the file pointer in an unusable state)
         with Image.open(file_path) as img:
-            return img.format == expected_format and img.size == (expected_width, expected_height)
+            return img.format == expected_format and img.size == (
+                expected_width,
+                expected_height,
+            )
     except Exception as e:
         logger.error(f"Image verification failed for {file_path}: {e}")
         return False
@@ -77,7 +90,9 @@ def verify_generated_image(file_path, expected_width, expected_height, expected_
 @pytest.fixture
 def test_env():
     """Shared fixture that manages paths, configurations, and common canvas contexts."""
-    project_root = os.path.abspath(str(os.path.join(str(os.path.dirname(__file__)), "..")))
+    project_root = os.path.abspath(
+        str(os.path.join(str(os.path.dirname(__file__)), ".."))
+    )
     config_path = os.path.join(project_root, "config", "worldmap.conf")
 
     if not os.path.exists(config_path):

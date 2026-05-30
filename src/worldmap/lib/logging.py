@@ -3,7 +3,7 @@ import sys
 import logging
 
 # Get the level from environment, default to INFO if not set
-log_level_str = os.environ.get('LOG_LEVEL', 'INFO').upper()
+log_level_str = os.environ.get("LOG_LEVEL", "INFO").upper()
 
 # Map string to logging constants
 log_level = getattr(logging, log_level_str, logging.INFO)
@@ -15,6 +15,7 @@ def setup_logging(level=log_level):
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
         handlers=[logging.StreamHandler(sys.stdout)],
     )
+
 
 def set_loglevel(level):
     """

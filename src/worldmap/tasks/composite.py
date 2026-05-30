@@ -56,21 +56,29 @@ class CompositeUpdater(Updater):
 
             # Define expected paths for the regional cache
             cloud_filename = f"clouds_{self.map_data.region.region_identifier}_{self.target_width}x{self.target_height}.jpg"
-            cloud_map_path = os.path.join(self.workdir, "data", "regions", cloud_filename)
+            cloud_map_path = os.path.join(
+                self.workdir, "data", "regions", cloud_filename
+            )
 
-            regional_cloud_map = str(os.path.join(
-                self.workdir,
-                "data",
-                "regions",
-                f"clouds_transparent_{self.map_data.region.region_identifier}_{self.target_width}x{self.target_height}.png"
-            ))
+            regional_cloud_map = str(
+                os.path.join(
+                    self.workdir,
+                    "data",
+                    "regions",
+                    f"clouds_transparent_{self.map_data.region.region_identifier}_{self.target_width}x{self.target_height}.png",
+                )
+            )
 
             # Prepare the cloud base if enabled and the cached region file exists
             if self.config.section_enabled("clouds") and os.path.exists(cloud_map_path):
                 # We skip self.get_regional_image() because the file is already regional
                 with Image.open(cloud_map_path) as raw_clouds_image:
-                    transparent_clouds = self._apply_cloud_transparency(raw_clouds_image)
-                    logger.debug(f"Saving transparent regional cloud map in {regional_cloud_map}")
+                    transparent_clouds = self._apply_cloud_transparency(
+                        raw_clouds_image
+                    )
+                    logger.debug(
+                        f"Saving transparent regional cloud map in {regional_cloud_map}"
+                    )
                     transparent_clouds.save(regional_cloud_map, "PNG")
 
         except (AttributeError, KeyError) as e:
@@ -115,7 +123,9 @@ class CompositeUpdater(Updater):
 
                     # Resize to match the global project dimensions using high-quality resampling
                     if overlay_img.size != target_size:
-                        overlay_img = overlay_img.resize(target_size, Image.Resampling.LANCZOS)
+                        overlay_img = overlay_img.resize(
+                            target_size, Image.Resampling.LANCZOS
+                        )
 
                     # Paste layer using its own alpha channel as the mask
                     bg_img.paste(overlay_img, (0, 0), mask=overlay_img)
