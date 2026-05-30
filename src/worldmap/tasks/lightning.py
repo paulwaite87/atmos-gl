@@ -6,6 +6,9 @@ from .common import Updater
 
 logger = logging.getLogger(__name__)
 
+ACTIVE_STRIKE_MINS = 15
+OLDER_STRIKE_MINS = 120
+
 
 class LightningUpdater(Updater):
     def __init__(self, config, map_data):
@@ -33,9 +36,9 @@ class LightningUpdater(Updater):
                 # Calculate age for icon logic
                 age_mins = (now - s["timestamp"]).total_seconds() / 60
 
-                if age_mins < 5:
+                if age_mins < ACTIVE_STRIKE_MINS:
                     icon = "bolt_white.png"
-                elif age_mins < 20:
+                elif age_mins < OLDER_STRIKE_MINS:
                     icon = "bolt_yellow.png"
                 else:
                     icon = "bolt_red.png"

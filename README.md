@@ -331,7 +331,38 @@ site will simply stop updating a storm if it loses strength and becomes a tropic
 or similar. This expiry stops it hanging around too long once the updates stop.
 
 A storm is depicted as a track history followed by a prediction cone showing where
-the storm might go next according to the computational models.
+the storm might go next according to the computational models. The current position
+of the storm is shown with this icon:
+![Storm icon](images/storm_symbol.png)
+
+To get the data we scan two sources:
+* NHC (National Hurricane Center)
+    Responsible for tracking storms in the North Atlantic (AL) and Eastern North
+    Pacific (EP). Their servers also typically host data for the Central North 
+    Pacific (CP), which is technically handled by the CPHC in Hawaii.  
+
+* JTWC (Joint Typhoon Warning Center): This is a joint U.S. Navy and Air Force 
+    command responsible for tracking tropical cyclones everywhere else on Earth
+    including the Western North Pacific (typhoons), the Indian Ocean, and the 
+    Southern Hemisphere.
+
+The major advantage of the ATCF (Automated Tropical Cyclone Forecast) system is
+that it's a shared standard. Even though the NHC and JTWC are entirely different 
+organizations with different jurisdictions, they both output their data using 
+the same comma-delimited columns.
+
+There are a lot of configurable items on the panel for storms, so you can get
+these looking how you like to see them.
+
+#### Lightning
+Lightning strikes are of course very brief, so we need a shorter expiry for them to
+avoid them building up and obliterating parts of the map. You have an `Expiry hours`
+slider in the configuration panel for these to let you tune that. Having them show
+for a few hours is good to see how clusters of them are forming in stormy weather.
+We also have a colour code to give an idea of timing:
+* ![Bolt New](images/bolt_white.png) Strikes within the last 15 minutes
+* ![Bolt New](images/bolt_yellow.png) Within the last hour
+* ![Bolt New](images/bolt_red.png) Older than an hour (but not yet expired)
 
 #### Climate
 This area is quite fascinating as it covers the entire planet. The data is sourced

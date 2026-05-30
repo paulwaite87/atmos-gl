@@ -22,7 +22,6 @@ class StormUpdater(Updater):
     def __init__(self, config: WorldMapConfig, map_data: MapData):
         super().__init__(config, "storms", map_data)
         self.set_output_path()
-        # We no longer need the massive IBTrACS CSV cache
 
     def _get_file_list(self, directory_url):
         """Scrapes a generic HTTP directory for file links."""
@@ -210,16 +209,16 @@ class StormUpdater(Updater):
         cone_color = self.settings.get("cone_color", fallback="white")
         track_color = self.settings.get("track_color", fallback="red")
 
-        marker_zoom = self.settings.getfloat("marker_zoom", fallback=0.5)
-        marker_path = self.settings.get(
-            "marker_image",
+        storm_icon_zoom = self.settings.getfloat("storm_icon_zoom", fallback=0.5)
+        storm_icon_path = self.settings.get(
+            "storm_icon",
             fallback=os.path.join(self.workdir, "images", "storm_symbol.png"),
         )
 
         storm_icon = None
-        if os.path.exists(marker_path):
+        if os.path.exists(storm_icon_path):
             try:
-                storm_icon = mpimg.imread(marker_path)
+                storm_icon = mpimg.imread(storm_icon_path)
             except Exception as e:
                 logger.warning(f"Could not load custom storm icon: {e}")
 
@@ -282,7 +281,7 @@ class StormUpdater(Updater):
                     mapped_coords = plot.ax.projection.transform_point(
                         lon_pt, lat_pt, src_crs=ccrs.PlateCarree()
                     )
-                    imagebox = OffsetImage(storm_icon, zoom=marker_zoom)
+                    imagebox = OffsetImage(storm_icon, zoom=storm_icon_zoom)
                     ab = AnnotationBbox(
                         imagebox,
                         (mapped_coords[0], mapped_coords[1]),
@@ -346,6 +345,19 @@ class StormUpdater(Updater):
 
         # 2. Parse B-Decks to find ACTIVE storms
         for b_url in b_decks:
+            filename = b_url.split("/")[-1]
+
+            # --- NEW: Filter out NOAA internal training storms (80-89) ---
+            try:
+                # ATCF format: b<basin><storm-number><YYYY>.dat
+                # e.g., 'bal122026.dat' -> indices 3:5 are '12'
+                storm_num = int(filename[3:5])
+                if 80 <= storm_num <= 89:
+                    logger.debug(f"Ignoring NOAA training storm: {filename}")
+                    continue
+            except ValueError:
+                pass  # Safely ignore if the filename is highly anomalous
+
             track_pts = self._parse_b_deck(b_url, now_utc, expiry_days)
             if track_pts:
                 processed_data.extend(track_pts)

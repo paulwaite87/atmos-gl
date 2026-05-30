@@ -428,6 +428,16 @@
                                            oninput="const mappedName = findNearestNamedColor(this.value); document.getElementById('badge-${item.flatKey}').innerText = mappedName;">
                                 </div>
                             `;
+                        } else if (item.option === 'expiry_hours' && section === 'lightning') {
+                            const initialExpHours = parseInt(item.value) || 2;
+                            col.innerHTML = `
+                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                    <label class="form-label small text-white-50 fw-bold mb-0">${customLabelText}</label>
+                                    <span class="badge bg-primary text-light fw-bold" id="badge-${item.flatKey}">${initialExpHours}h</span>
+                                </div>
+                                <input type="range" class="form-range" id="${item.flatKey}" min="2" max="24" step="1" value="${initialExpHours}"
+                                       oninput="document.getElementById('badge-${item.flatKey}').innerText = parseInt(this.value) + 'h'">
+                            `;
                         } else if (item.option.endsWith('_hours')) {
                             const initialHours = parseInt(item.value) || 3;
                             col.innerHTML = `

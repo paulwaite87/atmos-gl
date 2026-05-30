@@ -228,9 +228,7 @@ runs_per_day = 2
 
 [storms]
 enabled = False
-# The main storm tracking site; storm name and current and past locations
-ibtracs_url = https://www.ncei.noaa.gov/data/international-best-track-archive-for-climate-stewardship-ibtracs/v04r01/access/csv/
-# Two alternatives for storm track forecasting
+# Storm track forecasting - two alternates
 jtwc_url = https://www.ssd.noaa.gov/PS/TROP/DATA/ATCF/JTWC/
 nhc_url = https://ftp.nhc.noaa.gov/atcf/fst/
 outfile = data/storms.png
