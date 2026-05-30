@@ -2,13 +2,10 @@
 import os
 import logging
 import warnings
-import requests
 import numpy as np
 import xarray as xr
 import matplotlib.colors as mcolors
 import cartopy.crs as ccrs
-
-from datetime import datetime, timedelta, timezone
 import gc
 
 # Internal imports
@@ -23,10 +20,10 @@ class CurrentsUpdater(Updater):
     def __init__(self, config: WorldMapConfig, map_data: MapData):
         super().__init__(config, "Currents", map_data)
         self.set_output_path()
-        self.nc_path = os.path.join(self.workdir, f"data/rtofs_currents_{self.forecast_hour_str}.nc")
 
-        # REWORKED HIGH-VISIBILITY BASE COLORS (RGB formats only)
-        # Alpha channels are dynamically attached during rendering based on settings!
+        # HIGH-VISIBILITY BASE COLORS (RGB formats only)
+        # Alpha channels are dynamically attached during rendering
+        # based on settings!
         self.PALETTES = {
             "thermal_red": [
                 (0.65, 0.0, 0.0),  # Crimson (Slow)
@@ -50,49 +47,6 @@ class CurrentsUpdater(Updater):
                 (0.0, 1.0, 0.75)   # Electric Turquoise (Fast)
             ]
         }
-
-    def check_remote_freshness(self):
-        """Finds the most recent RTOFS NetCDF run and checks if it's newer than local cache."""
-        base_url = self.get_base_url()
-        now = datetime.now(timezone.utc)
-
-        for day_offset in range(3):
-            date_str = (now - timedelta(days=day_offset)).strftime("%Y%m%d")
-            urls_to_try = [
-                f"{base_url}/rtofs.{date_str}/rtofs_glo_2ds_f{self.forecast_hour_str}_prog.nc",
-                f"{base_url}/rtofs.{date_str}/rtofs_glo_2ds_n000_prog.nc"
-            ]
-
-            for url in urls_to_try:
-                try:
-                    response = requests.head(url, timeout=10)
-                    if response.status_code == 200:
-                        remote_mtime_str = response.headers.get('Last-Modified')
-                        if remote_mtime_str:
-                            remote_mtime = datetime.strptime(remote_mtime_str, '%a, %d %b %Y %H:%M:%S %Z').replace(
-                                tzinfo=timezone.utc)
-
-                            if os.path.exists(self.nc_path):
-                                local_mtime = datetime.fromtimestamp(os.path.getmtime(self.nc_path), tz=timezone.utc)
-                                if remote_mtime <= local_mtime:
-                                    return url, False
-                        return url, True
-                except requests.RequestException:
-                    continue
-
-        if os.path.exists(self.nc_path):
-            return None, False
-        raise RuntimeError("Could not find RTOFS NetCDF data on NOMADS.")
-
-    def download_data(self, url):
-        """Downloads the NetCDF file via streaming chunks."""
-        r = requests.get(url, timeout=120, stream=True)
-        r.raise_for_status()
-
-        os.makedirs(os.path.dirname(self.nc_path), exist_ok=True)
-        with open(self.nc_path, "wb") as f:
-            for chunk in r.iter_content(chunk_size=1024 * 1024):
-                f.write(chunk)
 
     def plot(self):
         """Renders ocean currents with adaptive density, dynamic line widths,
@@ -290,14 +244,17 @@ class CurrentsUpdater(Updater):
 
     def run(self):
         self.exit_if_disabled()
-        try:
-            url, needs_download = self.check_remote_freshness()
-            if needs_download:
-                logger.info("Downloading fresh RTOFS currents data...")
-                self.download_data(url)
+        # Get the GFS state for this updater
+        self.get_gfs_state()
+        self.nc_path = os.path.join(self.workdir, f"data/rtofs_currents_{self.forecast_hour_str}.nc")
 
-            if needs_download or not os.path.exists(self.output_path) or self.config.has_changed:
+        urls_to_try = [
+            f"{self.base_url}/rtofs.{self.gfs_date_str}/rtofs_glo_2ds_f{self.forecast_hour_str}_prog.nc",
+            f"{self.base_url}/rtofs.{self.gfs_date_str}/rtofs_glo_2ds_n000_prog.nc"
+        ]
+
+        # Try above urls, and break on first successful cache download
+        for remote_url in urls_to_try:
+            if self.remote_data_updated(remote_url=remote_url, cache_file_path=self.nc_path):
                 logger.info("Generating Currents plot...")
                 self.plot()
-        except Exception as e:
-            logger.exception(f"Currents update failed: {e}")

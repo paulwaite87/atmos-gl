@@ -2,14 +2,12 @@
 import os
 import logging
 import warnings
-import requests
 import numpy as np
 import xarray as xr
 import matplotlib.colors as mcolors
 import cartopy.crs as ccrs
 
 from scipy.ndimage import gaussian_filter
-from datetime import datetime, timedelta, timezone
 
 # Internal imports
 from worldmap.lib.config import WorldMapConfig
@@ -26,7 +24,6 @@ class PrecipitationUpdater(Updater):
     def __init__(self, config: WorldMapConfig, map_data: MapData):
         super().__init__(config, "Precipitation", map_data)
         self.set_output_path()
-        self.grib_path = os.path.join(self.workdir, f"data/gfs_precip_{self.forecast_hour_str}.grib2")
 
         self.PALETTES = {
             "standard": [
@@ -57,96 +54,6 @@ class PrecipitationUpdater(Updater):
                 (1.0, 0.0, 1.0)
             ]
         }
-
-    def check_remote_freshness(self):
-        """Checks for a shared baseline first, otherwise falls back to current time logic."""
-        base_url = self.get_base_url()
-
-        # --- Check for baseline set by Isobars ---
-        baseline = getattr(self.map_data, 'shared_state', {}).get('gfs_baseline')
-
-        if baseline:
-            date_str = baseline['date_str']
-            run = baseline['run']
-            # Using forecast hour to offset the data
-            url = f"{base_url}/gfs.{date_str}/{run}/atmos/gfs.t{run}z.pgrb2.0p25.f{self.forecast_hour_str}"
-
-            try:
-                response = requests.head(url, timeout=10)
-                if response.status_code == 200:
-                    remote_mtime_str = response.headers.get('Last-Modified')
-                    if remote_mtime_str:
-                        remote_mtime = datetime.strptime(remote_mtime_str, '%a, %d %b %Y %H:%M:%S %Z').replace(
-                            tzinfo=timezone.utc)
-                        if os.path.exists(self.grib_path):
-                            local_mtime = datetime.fromtimestamp(os.path.getmtime(self.grib_path), tz=timezone.utc)
-                            if remote_mtime <= local_mtime:
-                                return url, False
-                    return url, True
-            except requests.RequestException:
-                pass
-            logger.warning("Failed to reach baseline GFS precip data. Falling back to dynamic search.")
-
-        # --- Standard Fallback Logic ---
-        now = datetime.now(timezone.utc)
-        for day_offset in range(3):
-            target_date = now - timedelta(days=day_offset)
-            date_str = target_date.strftime("%Y%m%d")
-
-            for run in ["18", "12", "06", "00"]:
-                run_dt = target_date.replace(hour=int(run), minute=0, second=0, microsecond=0)
-                if run_dt > now:
-                    continue
-
-                delta_hours = int(round((now - run_dt).total_seconds() / 3600.0))
-                if delta_hours == 0:
-                    delta_hours = 1
-
-                current_forecast_hour = str(delta_hours).zfill(3)
-                url = f"{base_url}/gfs.{date_str}/{run}/atmos/gfs.t{run}z.pgrb2.0p25.f{current_forecast_hour}"
-
-                try:
-                    response = requests.head(url, timeout=10)
-                    if response.status_code == 200:
-                        remote_mtime_str = response.headers.get('Last-Modified')
-                        if remote_mtime_str:
-                            remote_mtime = datetime.strptime(remote_mtime_str, '%a, %d %b %Y %H:%M:%S %Z').replace(
-                                tzinfo=timezone.utc)
-                            if os.path.exists(self.grib_path):
-                                local_mtime = datetime.fromtimestamp(os.path.getmtime(self.grib_path), tz=timezone.utc)
-                                if remote_mtime <= local_mtime:
-                                    return url, False
-                        return url, True
-                except requests.RequestException:
-                    continue
-
-        if os.path.exists(self.grib_path):
-            return None, False
-        raise RuntimeError("Could not find valid GFS data on NOMADS.")
-
-    def _get_precip_range(self, grib_url):
-        r = requests.get(grib_url + ".idx", timeout=30)
-        r.raise_for_status()
-        lines = r.text.strip().split("\n")
-        for i, line in enumerate(lines):
-            if ":PRATE:surface:" in line:
-                start_byte = int(line.split(":")[1])
-                end_byte = int(lines[i + 1].split(":")[1]) - 1 if i + 1 < len(lines) else ""
-                return start_byte, end_byte
-        raise RuntimeError("PRATE (Precipitation) not found in GFS index.")
-
-    def download_data(self, url):
-        """Performs a partial byte-range download of the PRATE layer."""
-        start, end = self._get_precip_range(url)
-        headers = {"Range": f"bytes={start}-{end}"}
-
-        r = requests.get(url, headers=headers, timeout=120, stream=True)
-        r.raise_for_status()
-
-        os.makedirs(os.path.dirname(self.grib_path), exist_ok=True)
-        with open(self.grib_path, "wb") as f:
-            for chunk in r.iter_content(chunk_size=1024 * 1024):
-                f.write(chunk)
 
     def plot(self):
         """Renders precipitation with early clipping to prevent memory exhaustion."""
@@ -198,7 +105,7 @@ class PrecipitationUpdater(Updater):
         lat_span = abs(lat_max - lat_min)
 
         # If the region spans more than 90 deg longitude or 45 deg latitude (~0.25 of world area)
-        if lon_span > 90.0 or lat_span > 45.0:
+        if lon_span > 180.0 or lat_span > 90.0:
             logger.info(
                 f"Large region detected ({lon_span:.1f}°x{lat_span:.1f}°). Using resource-friendly global grid settings.")
             step = 0.15  # Drops a global mesh grid size from 162M points down to ~2.8M points
@@ -288,14 +195,16 @@ class PrecipitationUpdater(Updater):
 
     def run(self):
         self.exit_if_disabled()
-        try:
-            url, needs_download = self.check_remote_freshness()
-            if needs_download:
-                logger.info(f"Downloading fresh precipitation data from: {url}")
-                self.download_data(url)
+        # Get the GFS state for this updater
+        self.get_gfs_state()
+        self.grib_path = os.path.join(self.workdir, f"data/gfs_precip_{self.forecast_hour_str}.grib2")
 
-            if needs_download or not os.path.exists(self.output_path) or self.config.has_changed:
-                logger.info("Generating Precipitation plot...")
-                self.plot()
-        except Exception as e:
-            logger.error(f"Precipitation update failed: {e}")
+        url = f"{self.base_url}/gfs.{self.gfs_date_str}/{self.gfs_run}/atmos/gfs.t{self.gfs_run}z.pgrb2.0p25.f{self.forecast_hour_str}"
+        if self.remote_data_updated(
+                remote_url=url,
+                cache_file_path=self.grib_path,
+                grib_targets=[":PRATE:surface:"]
+        ):
+            logger.info("Generating Precipitation plot...")
+            self.plot()
+

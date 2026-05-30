@@ -25,18 +25,6 @@ class SSTUpdater(Updater):
         # Parse operational mode
         self.mode = self.settings.get("mode", fallback="absolute").strip().lower()
 
-        # Extract base URL from config file with a clean trailing slash strip
-        base_url = self.get_base_url()
-
-        # Construct paths and target endpoints using the common base_url
-        current_year = datetime.now().year
-        if self.mode == "anomaly":
-            self.nc_path = os.path.join(self.workdir, "data/noaa_oisst_anomaly.nc")
-            self.target_url = f"{base_url}/sst.day.anom.{current_year}.nc"
-        else:
-            self.nc_path = os.path.join(self.workdir, "data/noaa_oisst_mean.nc")
-            self.target_url = f"{base_url}/sst.day.mean.{current_year}.nc"
-
     def download_data(self):
         """
         Downloads the appropriate yearly NOAA OISST v2 High-Res dataset using the generated target URL.
@@ -188,6 +176,15 @@ class SSTUpdater(Updater):
 
     def run(self):
         self.exit_if_disabled()
+        # Construct paths and target endpoints using the common base_url
+        current_year = datetime.now().year
+        if self.mode == "anomaly":
+            self.nc_path = os.path.join(self.workdir, "data/noaa_oisst_anomaly.nc")
+            self.target_url = f"{self.base_url}/sst.day.anom.{current_year}.nc"
+        else:
+            self.nc_path = os.path.join(self.workdir, "data/noaa_oisst_mean.nc")
+            self.target_url = f"{self.base_url}/sst.day.mean.{current_year}.nc"
+
         try:
             data_updated = self.download_data()
             if data_updated or not os.path.exists(self.output_path) or self.config.has_changed:

@@ -2,13 +2,12 @@
 import os
 import logging
 import warnings
-import requests
 import numpy as np
 import xarray as xr
 import matplotlib.pyplot as plt
 import cartopy.crs as ccrs
 import scipy.ndimage as ndimage
-from datetime import datetime, timedelta, timezone
+
 from matplotlib import patheffects
 
 # Internal imports
@@ -27,71 +26,6 @@ class IsobarUpdater(Updater):
     def __init__(self, config: WorldMapConfig, map_data: MapData):
         super().__init__(config, "Isobars", map_data)
         self.set_output_path()
-        self.grib_path = os.path.join(self.workdir, f"data/gfs_isobars_{self.forecast_hour_str}.grib2")
-
-    def check_remote_freshness(self):
-        """Finds the most recent GFS run, sets it as the baseline, and checks local cache."""
-        base_url = self.get_base_url()
-        now = datetime.now(timezone.utc)
-
-        for day_offset in range(3):
-            target_date = now - timedelta(days=day_offset)
-            date_str = target_date.strftime("%Y%m%d")
-
-            for run in ["18", "12", "06", "00"]:
-                url = f"{base_url}/gfs.{date_str}/{run}/atmos/gfs.t{run}z.pgrb2.0p25.f{self.forecast_hour_str}"
-                try:
-                    response = requests.head(url, timeout=10)
-                    if response.status_code == 200:
-
-                        # --- NEW: Set the baseline for other updaters ---
-                        run_timestamp = target_date.replace(hour=int(run), minute=0, second=0, microsecond=0)
-                        self.map_data.shared_state['gfs_baseline'] = {
-                            'date_str': date_str,
-                            'run': run,
-                            'timestamp': run_timestamp
-                        }
-
-                        remote_mtime_str = response.headers.get('Last-Modified')
-                        if remote_mtime_str:
-                            remote_mtime = datetime.strptime(remote_mtime_str, '%a, %d %b %Y %H:%M:%S %Z').replace(
-                                tzinfo=timezone.utc)
-                            if os.path.exists(self.grib_path):
-                                local_mtime = datetime.fromtimestamp(os.path.getmtime(self.grib_path), tz=timezone.utc)
-                                if remote_mtime <= local_mtime:
-                                    return url, False
-
-                        return url, True
-                except requests.RequestException:
-                    continue
-
-        if os.path.exists(self.grib_path):
-            return None, False
-        raise RuntimeError("Could not find recent GFS isobar data on NOMADS.")
-
-    def _get_mslp_range(self, grib_url):
-        r = requests.get(grib_url + ".idx", timeout=30)
-        r.raise_for_status()
-        lines = r.text.strip().split("\n")
-        for i, line in enumerate(lines):
-            if ":PRMSL:mean sea level:" in line:
-                start = int(line.split(":")[1])
-                # End is the start of the next record minus 1
-                end = int(lines[i + 1].split(":")[1]) - 1 if i + 1 < len(lines) else ""
-                return start, end
-        raise RuntimeError("PRMSL field not found in GFS index.")
-
-    def download_data(self, url):
-        """Downloads only the MSLP portion via byte-range."""
-        start, end = self._get_mslp_range(url)
-        headers = {"Range": f"bytes={start}-{end}"}
-        r = requests.get(url, headers=headers, timeout=120, stream=True)
-        r.raise_for_status()
-
-        os.makedirs(os.path.dirname(self.grib_path), exist_ok=True)
-        with open(self.grib_path, "wb") as f:
-            for chunk in r.iter_content(chunk_size=1024 * 1024):
-                f.write(chunk)
 
     def plot(self):
         """Renders the isobar transparent PNG with registration fixes."""
@@ -165,14 +99,16 @@ class IsobarUpdater(Updater):
 
     def run(self):
         self.exit_if_disabled()
-        try:
-            url, needs_download = self.check_remote_freshness()
-            if needs_download:
-                logger.info("Downloading fresh isobar data...")
-                self.download_data(url)
+        # Get the GFS state for this updater
+        self.get_gfs_state()
 
-            if needs_download or not os.path.exists(self.output_path) or self.config.has_changed:
-                logger.info("Generating Isobar plot...")
-                self.plot()
-        except Exception as e:
-            logger.error(f"Isobar update failed: {e}")
+        self.grib_path = os.path.join(self.workdir, f"data/gfs_isobars_{self.forecast_hour_str}.grib2")
+
+        url = f"{self.base_url}/gfs.{self.gfs_date_str}/{self.gfs_run}/atmos/gfs.t{self.gfs_run}z.pgrb2.0p25.f{self.forecast_hour_str}"
+        if self.remote_data_updated(
+                remote_url=url,
+                cache_file_path=self.grib_path,
+                grib_targets=[":PRMSL:mean sea level:"]
+        ):
+            logger.info("Generating Isobars plot...")
+            self.plot()

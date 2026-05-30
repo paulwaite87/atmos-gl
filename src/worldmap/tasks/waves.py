@@ -2,13 +2,10 @@
 import os
 import logging
 import warnings
-import requests
 import numpy as np
 import xarray as xr
 import matplotlib.colors as mcolors
 import cartopy.crs as ccrs
-
-from datetime import datetime, timedelta, timezone
 import gc
 
 # Internal imports
@@ -23,7 +20,6 @@ class WavesUpdater(Updater):
     def __init__(self, config: WorldMapConfig, map_data: MapData):
         super().__init__(config, "Waves", map_data)
         self.set_output_path()
-        self.grib_path = os.path.join(self.workdir, f"data/gfs_waves_{self.forecast_hour_str}.grib2")
 
         # DESIGNED GRADIENTS FOR WAVE HEIGHT INTENSITY
         self.PALETTES = {
@@ -51,72 +47,6 @@ class WavesUpdater(Updater):
                 (1.0, 0.0, 1.0)   # Extreme: Hot Magenta/Pink
             ]
         }
-
-    def check_remote_freshness(self):
-        """Finds the most recent available GFS-Wave GRIB2 cycle run on NOMADS,
-        automatically backing off cycle-by-cycle and day-by-day if files
-        are not yet published. Pulls base URL from config settings.
-        """
-        base_url = self.get_base_url()
-        now = datetime.now(timezone.utc)
-
-        cycles_to_try = ["18", "12", "06", "00"]
-
-        for day_offset in range(4):
-            date_str = (now - timedelta(days=day_offset)).strftime("%Y%m%d")
-
-            for cycle in cycles_to_try:
-                if day_offset == 0 and int(cycle) > now.hour:
-                    continue
-
-                url = f"{base_url}/gfs.{date_str}/{cycle}/wave/gridded/gfswave.t{cycle}z.global.0p25.f{self.forecast_hour_str}.grib2"
-
-                try:
-                    logger.debug(f"Probing GFS-Wave availability: {date_str} Cycle {cycle}z...")
-                    response = requests.head(url, timeout=7)
-
-                    if response.status_code == 200:
-                        remote_mtime_str = response.headers.get('Last-Modified')
-                        if remote_mtime_str:
-                            remote_mtime = datetime.strptime(
-                                remote_mtime_str, '%a, %d %b %Y %H:%M:%S %Z'
-                            ).replace(tzinfo=timezone.utc)
-
-                            if os.path.exists(self.grib_path):
-                                local_mtime = datetime.fromtimestamp(os.path.getmtime(self.grib_path), tz=timezone.utc)
-                                if remote_mtime <= local_mtime:
-                                    logger.info(f"Local wave cache is fresh ({date_str} {cycle}z).")
-                                    return url, False
-
-                        logger.info(f"Found newer complete dataset: {date_str} Run {cycle}z.")
-                        return url, True
-
-                except requests.RequestException:
-                    continue
-
-        if os.path.exists(self.grib_path):
-            logger.warning("Could not contact NOMADS for updates, reverting to existing local file.")
-            return None, False
-
-        raise RuntimeError("Critical: Could not locate any valid historical or live GFS-Wave cycles on NOMADS.")
-
-    def download_data(self, url):
-        """Downloads the GRIB2 file via streaming chunks and cleans up stale cache indices."""
-        idx_path = f"{self.grib_path}.idx"
-        if os.path.exists(idx_path):
-            try:
-                os.remove(idx_path)
-                logger.debug("Cleared stale cfgrib index file.")
-            except OSError:
-                pass
-
-        r = requests.get(url, timeout=120, stream=True)
-        r.raise_for_status()
-
-        os.makedirs(os.path.dirname(self.grib_path), exist_ok=True)
-        with open(self.grib_path, "wb") as f:
-            for chunk in r.iter_content(chunk_size=1024 * 1024):
-                f.write(chunk)
 
     def plot(self):
         """Plots an underlying significant wave height contour heatmap
@@ -332,14 +262,14 @@ class WavesUpdater(Updater):
 
     def run(self):
         self.exit_if_disabled()
-        try:
-            url, needs_download = self.check_remote_freshness()
-            if needs_download:
-                logger.info(f"Downloading active GFS-Wave data matrix from {url}...")
-                self.download_data(url)
+        # Get the GFS state for this updater
+        self.get_gfs_state()
+        self.grib_path = os.path.join(self.workdir, f"data/gfs_waves_{self.forecast_hour_str}.grib2")
 
-            if needs_download or not os.path.exists(self.output_path) or self.config.has_changed:
-                logger.info("Generating Waves and Sea Conditions layer...")
-                self.plot()
-        except Exception as e:
-            logger.exception(f"Waves layer update encountered an error: {e}")
+        url = f"{self.base_url}/gfs.{self.gfs_date_str}/{self.gfs_run}/wave/gridded/gfswave.t{self.gfs_run}z.global.0p25.f{self.forecast_hour_str}.grib2"
+        if self.remote_data_updated(
+                remote_url=url,
+                cache_file_path=self.grib_path
+        ):
+            logger.info("Generating Waves plot...")
+            self.plot()

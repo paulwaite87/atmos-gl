@@ -2,14 +2,12 @@
 import os
 import logging
 import warnings
-import requests
 import numpy as np
 import xarray as xr
 import matplotlib.colors as mcolors
 import cartopy.crs as ccrs
 
 from scipy.ndimage import gaussian_filter
-from datetime import datetime, timedelta, timezone
 
 # Internal imports
 from worldmap.lib.config import WorldMapConfig
@@ -26,94 +24,6 @@ class StormwatchUpdater(Updater):
     def __init__(self, config: WorldMapConfig, map_data: MapData):
         super().__init__(config, "Stormwatch", map_data)
         self.set_output_path()
-        self.grib_path = os.path.join(self.workdir, f"data/gfs_cape_{self.forecast_hour_str}.grib2")
-
-    def check_remote_freshness(self):
-        """Syncs with the shared GFS baseline to ensure timeline consistency."""
-        base_url = self.get_base_url()
-        baseline = getattr(self.map_data, 'shared_state', {}).get('gfs_baseline')
-
-        if baseline:
-            date_str = baseline['date_str']
-            run = baseline['run']
-            # CAPE is a state variable, usually available at f000
-            url = f"{base_url}/gfs.{date_str}/{run}/atmos/gfs.t{run}z.pgrb2.0p25.f000"
-
-            try:
-                response = requests.head(url, timeout=10)
-                if response.status_code == 200:
-                    remote_mtime_str = response.headers.get('Last-Modified')
-                    if remote_mtime_str:
-                        remote_mtime = datetime.strptime(remote_mtime_str, '%a, %d %b %Y %H:%M:%S %Z').replace(
-                            tzinfo=timezone.utc)
-                        if os.path.exists(self.grib_path):
-                            local_mtime = datetime.fromtimestamp(os.path.getmtime(self.grib_path), tz=timezone.utc)
-                            if remote_mtime <= local_mtime:
-                                return url, False
-                    return url, True
-            except requests.RequestException:
-                pass
-            logger.warning("Failed to reach baseline GFS CAPE data. Falling back.")
-
-        # Standard Fallback Logic
-        now = datetime.now(timezone.utc)
-        for day_offset in range(3):
-            target_date = now - timedelta(days=day_offset)
-            date_str = target_date.strftime("%Y%m%d")
-
-            for run in ["18", "12", "06", "00"]:
-                run_dt = target_date.replace(hour=int(run), minute=0, second=0, microsecond=0)
-                if run_dt > now:
-                    continue
-
-                url = f"{base_url}/gfs.{date_str}/{run}/atmos/gfs.t{run}z.pgrb2.0p25.f{self.forecast_hour_str}"
-                try:
-                    response = requests.head(url, timeout=10)
-                    if response.status_code == 200:
-                        return url, True
-                except requests.RequestException:
-                    continue
-
-        if os.path.exists(self.grib_path):
-            return None, False
-        raise RuntimeError("Could not find valid GFS CAPE data.")
-
-    def _get_grib_ranges(self, grib_url):
-        """Finds the byte ranges for both CAPE and CIN in the GFS index."""
-        r = requests.get(grib_url + ".idx", timeout=30)
-        r.raise_for_status()
-        lines = r.text.strip().split("\n")
-
-        ranges = []
-        targets = [":CAPE:surface:", ":CIN:surface:"]
-
-        for target in targets:
-            for i, line in enumerate(lines):
-                if target in line:
-                    start_byte = int(line.split(":")[1])
-                    end_byte = int(lines[i + 1].split(":")[1]) - 1 if i + 1 < len(lines) else ""
-                    ranges.append((start_byte, end_byte))
-                    break
-
-        if len(ranges) != 2:
-            raise RuntimeError("Could not find both CAPE and CIN in the GFS index.")
-
-        return ranges
-
-    def download_data(self, url):
-        """Downloads the necessary layers and concatenates them into a single GRIB file."""
-        ranges = self._get_grib_ranges(url)
-        os.makedirs(os.path.dirname(self.grib_path), exist_ok=True)
-
-        # Open in 'wb' mode to overwrite any old data, then we'll append the chunks
-        with open(self.grib_path, "wb") as f:
-            for start, end in ranges:
-                headers = {"Range": f"bytes={start}-{end}"}
-                r = requests.get(url, headers=headers, timeout=120, stream=True)
-                r.raise_for_status()
-
-                for chunk in r.iter_content(chunk_size=1024 * 1024):
-                    f.write(chunk)
 
     def plot(self):
         import matplotlib.pyplot as plt
@@ -257,14 +167,15 @@ class StormwatchUpdater(Updater):
 
     def run(self):
         self.exit_if_disabled()
-        try:
-            url, needs_download = self.check_remote_freshness()
-            if needs_download:
-                logger.info(f"Downloading fresh Stormwatch data from: {url}")
-                self.download_data(url)
+        # Get the GFS state for this updater
+        self.get_gfs_state()
+        self.grib_path = os.path.join(self.workdir, f"data/gfs_cape_{self.forecast_hour_str}.grib2")
 
-            if needs_download or not os.path.exists(self.output_path) or self.config.has_changed:
-                logger.info("Generating Stormwatch plot...")
-                self.plot()
-        except Exception as e:
-            logger.error(f"Stormwatch update failed: {e}")
+        url = f"{self.base_url}/gfs.{self.gfs_date_str}/{self.gfs_run}/atmos/gfs.t{self.gfs_run}z.pgrb2.0p25.f000"
+        if self.remote_data_updated(
+                remote_url=url,
+                cache_file_path=self.grib_path,
+                grib_targets=[":CAPE:surface:", ":CIN:surface:"]
+        ):
+            logger.info("Generating Stormwatch plot...")
+            self.plot()

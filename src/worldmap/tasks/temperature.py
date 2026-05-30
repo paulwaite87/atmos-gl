@@ -24,7 +24,6 @@ class TemperatureUpdater(Updater):
     def __init__(self, config: WorldMapConfig, map_data: MapData):
         super().__init__(config, "Temperature", map_data)
         self.set_output_path()
-        self.grib_path = os.path.join(self.workdir, f"data/gfs_temp_{self.forecast_hour_str}.grib2")
 
         # DESIGNED GRADIENTS FOR AIR TEMPERATURE (-40C to +45C)
         self.PALETTES = {
@@ -56,68 +55,6 @@ class TemperatureUpdater(Updater):
                 (0.5, 0.1, 0.1)   # 45C: Deep Brick
             ]
         }
-
-    def check_remote_freshness(self):
-        """Finds the most recent available GFS Atmospheric GRIB2 cycle run on NOMADS."""
-        base_url = self.get_base_url()
-        now = datetime.now(timezone.utc)
-
-        cycles_to_try = ["18", "12", "06", "00"]
-
-        for day_offset in range(4):
-            date_str = (now - timedelta(days=day_offset)).strftime("%Y%m%d")
-
-            for cycle in cycles_to_try:
-                if day_offset == 0 and int(cycle) > now.hour:
-                    continue
-
-                url = f"{base_url}/gfs.{date_str}/{cycle}/atmos/gfs.t{cycle}z.pgrb2.0p25.f{self.forecast_hour_str}"
-
-                try:
-                    logger.debug(f"Probing GFS-Atmos availability: {date_str} Cycle {cycle}z...")
-                    response = requests.head(url, timeout=7)
-
-                    if response.status_code == 200:
-                        remote_mtime_str = response.headers.get('Last-Modified')
-                        if remote_mtime_str:
-                            remote_mtime = datetime.strptime(
-                                remote_mtime_str, '%a, %d %b %Y %H:%M:%S %Z'
-                            ).replace(tzinfo=timezone.utc)
-
-                            if os.path.exists(self.grib_path):
-                                local_mtime = datetime.fromtimestamp(os.path.getmtime(self.grib_path), tz=timezone.utc)
-                                if remote_mtime <= local_mtime:
-                                    logger.info(f"Local temperature cache is fresh ({date_str} {cycle}z).")
-                                    return url, False
-
-                        logger.info(f"Found newer atmospheric dataset: {date_str} Run {cycle}z.")
-                        return url, True
-
-                except requests.RequestException:
-                    continue
-
-        if os.path.exists(self.grib_path):
-            logger.warning("Could not contact NOMADS for updates, reverting to existing local file.")
-            return None, False
-
-        raise RuntimeError("Critical: Could not locate any valid GFS Atmospheric cycles on NOMADS.")
-
-    def download_data(self, url):
-        """Downloads the GRIB2 file via streaming chunks."""
-        idx_path = f"{self.grib_path}.idx"
-        if os.path.exists(idx_path):
-            try:
-                os.remove(idx_path)
-            except OSError:
-                pass
-
-        r = requests.get(url, timeout=120, stream=True)
-        r.raise_for_status()
-
-        os.makedirs(os.path.dirname(self.grib_path), exist_ok=True)
-        with open(self.grib_path, "wb") as f:
-            for chunk in r.iter_content(chunk_size=1024 * 1024):
-                f.write(chunk)
 
     def plot(self):
         """Plots an underlying 2-meter surface temperature heatmap
@@ -293,14 +230,14 @@ class TemperatureUpdater(Updater):
 
     def run(self):
         self.exit_if_disabled()
-        try:
-            url, needs_download = self.check_remote_freshness()
-            if needs_download:
-                logger.info(f"Downloading active GFS-Atmos temp data from {url}...")
-                self.download_data(url)
+        # Get the GFS state for this updater
+        self.get_gfs_state()
+        self.grib_path = os.path.join(self.workdir, f"data/gfs_temp_{self.forecast_hour_str}.grib2")
 
-            if needs_download or not os.path.exists(self.output_path) or self.config.has_changed:
-                logger.info("Generating Surface Temperature layer...")
-                self.plot()
-        except Exception as e:
-            logger.exception(f"Temperature layer update encountered an error: {e}")
+        url = f"{self.base_url}/gfs.{self.gfs_date_str}/{self.gfs_run}/atmos/gfs.t{self.gfs_run}z.pgrb2.0p25.f{self.forecast_hour_str}"
+        if self.remote_data_updated(
+                remote_url=url,
+                cache_file_path=self.grib_path
+        ):
+            logger.info("Generating Temperature plot...")
+            self.plot()
