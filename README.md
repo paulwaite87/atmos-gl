@@ -294,6 +294,18 @@ for some reason you want to refresh the regional maps then `sudo rm data/regions
 
 ### Some further notes
 
+#### Precipitation
+Often mis-labelled as rainfall, even though that's what it mostly is, it does also
+cover snow, sleet, hail etc. It's probably one of the most interesting layers from
+the point of view of the amateur meteorologist given it often affects our daily plans
+in life! Given it can be displayed forecasted, it's quite useful in that regard.
+
+#### Isobars
+The cornerstone of meteorology it shows what the pressure is doing in the atmosphere
+and hence how the air masses are moving. Coupled with wind barbs and precipitation
+layers it really does show you how the weather is shaping up. Once again it can be
+forecasted which makes it very useful.
+
 #### Volcanoes
 Volcanoes are pretty much static day-to-day and can end up just cluttering up the map, 
 so I generally don't display them. There are also a lot of them, depending on which
@@ -318,8 +330,8 @@ Storms will drop off the map when the `Expiry days` is exceeded. Quite often the
 site will simply stop updating a storm if it loses strength and becomes a tropical low
 or similar. This expiry stops it hanging around too long once the updates stop.
 
-A storm is depicted as a track history then a symbol ![Storm](images/storm_symbol.png)
-followed by a prediction cone showing where the storm might go next.
+A storm is depicted as a track history followed by a prediction cone showing where
+the storm might go next according to the computational models.
 
 #### Climate
 This area is quite fascinating as it covers the entire planet. The data is sourced
@@ -378,6 +390,11 @@ amount of energy required to overcome the negatively buoyant, stable "cap" or
 parcel must break through before it can tap into the CAPE (Convective Available
 Potential Energy) above it. Combining both gives us a reasonable idea of the
 actual potential for storm formation.
+
+#### Wind
+Wind is depicted as a grid of 'barbs' where the length is proportional to the
+wind speed, and the direction is indicated by the angle. This layer is quite good
+paired with isobars where you can see the effect of differing air pressure.
 
 #### Shipping
 If you select `Disc` ship icons there are basically two variants, Cargo and Tanker but
