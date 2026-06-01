@@ -100,6 +100,19 @@ is concerned. They are built up over 24 hours as 14 photo swathes by the polar
 orbiting NOAA satellites, so are not computed out into the future like the above
 datasets.
 
+#### Day and Night
+Xplanet will shade your view with a nice transition at the terminator between day
+and night on your map, showing areas which are enjoying their night time in a
+shaded render. This is good for a realistic view of what's happening on the planet
+however sometimes you might just want to clearly see elements on the map. There is
+a checkbox labelled `Night shade` which allows you to select which mode you want
+it to display the map in.
+
+It should be noted that if you select one of the climate layers, such as SST,
+Waves, Temperature, Ozone, or Stormwatch then the map will be rendered without
+any shading automatically. That's because these layers paint the whole region
+being viewed and shade will just make it hard to see the climate detail.
+
 ### Control
 There is a control script for managing things.
 

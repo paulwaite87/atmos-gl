@@ -244,7 +244,7 @@ class Database:
             logger.error(f"Error saving lightning strike {strike_id}: {e}")
 
     def get_lightning_in_region(
-        self, lon_min, lat_min, lon_max, lat_max, age_minutes=60
+        self, lon_min, lat_min, lon_max, lat_max, expiry_minutes=60
     ):
         """Retrieves strikes within a specific bbox and time window."""
         sql = """
@@ -260,13 +260,13 @@ class Database:
               """
         try:
             with self.conn.cursor() as cur:
-                cur.execute(sql, (lon_min, lat_min, lon_max, lat_max, age_minutes))
+                cur.execute(sql, (lon_min, lat_min, lon_max, lat_max, expiry_minutes))
                 return cur.fetchall()
         except Exception as e:
             logger.error(f"Error fetching lightning for region: {e}")
             return []
 
-    def prune_lightning(self, expiry_hours=2):
+    def prune_lightning(self, expiry_hours=24):
         """Deletes old lightning data to keep the table performant."""
         sql = "DELETE FROM lightning_strikes WHERE acquired_at < NOW() - (INTERVAL '1 hour' * %s);"
         try:

@@ -33,8 +33,8 @@ def test_composite_pipeline(test_env):
     updater.config.update_setting("clouds", "enabled", "True")
 
     # Configure the cloud transparency LUT parameters
-    updater.clouds_settings["threshold"] = "10"
-    updater.clouds_settings["gamma"] = "1.5"
+    updater.config.update_setting("clouds","threshold", "10")
+    updater.config.update_setting("clouds","gamma", "1.5")
 
     # 2. Generate dummy input layers on disk
     os.makedirs(os.path.join(updater.workdir, "data", "regions"), exist_ok=True)

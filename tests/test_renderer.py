@@ -41,7 +41,7 @@ def test_xplanet_renderer_pipeline(test_env):
     test_env["config"].update_setting(
         "common", "extra_marker_files", "dummy1.txt, dummy2.txt"
     )
-    test_env["config"].update_setting("xplanet", "base_filename", "testmap.jpg")
+    test_env["config"].update_setting("common", "base_filename", "testmap.jpg")
 
     # 2. Patch External Dependencies
     with (
@@ -76,7 +76,7 @@ def test_xplanet_renderer_pipeline(test_env):
     # Validate essential configuration keys were injected correctly
     assert "[earth]" in conf_content, "Missing earth section header[cite: 14]."
     assert "map=" in conf_content, "Missing day map assignment[cite: 14]."
-    assert "night_map=" in conf_content, "Missing night map assignment[cite: 14]."
+    assert "night_map=" not in conf_content, "The night map should not be included[cite: 14]."
     assert "cloud_map=/dummy/composite.png" in conf_content, (
         "Composite cloud_map not injected[cite: 14]."
     )

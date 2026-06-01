@@ -20,7 +20,7 @@ region = NZ
 # Hours ahead to forecast. A zero here means we just show the 'now'
 # picture. Not everything is forecast-able of course, but where it
 # is applicable you will see a difference when altering this.
-forecast_hour = 0
+forecast_hour = 1
 # Set to the geometry (graphics resolution) of your desktop. The
 # final render of the map image will use this.
 desktop_geometry = 1920x1200
@@ -29,15 +29,19 @@ desktop_geometry = 1920x1200
 # Depending on the source only a few options may be available. The
 # default is 2048x1024 which is fairly universal. Setting this to higher
 # values has benefits when you display a zoomed-in region and will
-# result in sharper maps, clouds etc.
-#target_geometry = 2048x1024
-target_geometry = 4096x2048
+# result in sharper maps, clouds etc. at the expense of more disk space.
+target_geometry = 2048x1024
 # This color is used when XPlanet can't fill an area with an image
 # such as when a bounding box extends beyond 180 longitude
 # #04040e is a deep blue to match NASA blue marble seas
 # NB: Specific both as hex, or Xplanet might not know the color
 fill_default_color = #04040e
-# This is the final map image we generate
+# Whether to show night as shaded on the map. If this is false the
+# map is rendered as if the whole planet is in sunlight. For a
+# 'realistic' feel set this True to show darkened regions.
+night_shade = True
+# The base filename of the final map image. This will be prefixed
+# with a unix timestamp for each run
 base_filename = regionmap.jpg
 marker_default_color = #ffffff
 marker_default_fontsize = 12
@@ -251,7 +255,12 @@ outfile = data/composite_layer.png
 # hence disabled until you get an API Key for it.
 enabled = False
 outfile = markers/lightning.txt
-expiry_hours = 4
+# Very recent lightning strikes
+strike_recent_minutes = 15
+# Time to keep less recent lightning strikes on the map
+strike_keep_minutes = 60
+# Strikes older than this are removed from the map
+strike_expiry_hours = 2
 runs_per_day = 12
 
 [quakes]
@@ -310,6 +319,9 @@ runs_per_day = 1
 
 [satellites]
 enabled = False
+# For satellites this path should NOT be changed as Xplanet
+# is a bit OCD about this location; DO NOT CHANGE.
+outfile = satellites/sat_file
 url = https://celestrak.org/NORAD/elements
 # Color of the satellite marker and name
 marker_color = White
@@ -409,6 +421,3 @@ log_level = INFO
 [xplanet]
 enabled = True
 projection = rectangular
-# The base filename of the final map image. This will be prefixed
-# with a unix timestamp for each run
-base_filename = regionmap.jpg

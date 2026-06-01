@@ -15,15 +15,11 @@ logger = logging.getLogger(__name__)
 class SatelliteUpdater(Updater):
     def __init__(self, config: WorldMapConfig, map_data: MapData):
         super().__init__(config, "Satellites", map_data)
-        # Deal with xplanet hard-wiring of satellite file location
-        self.outfile = "sat_file"
-        self.output_path = os.path.join(self.workdir, "satellites", self.outfile)
-        os.makedirs(os.path.dirname(self.output_path), exist_ok=True)
+        self.set_output_path()
 
     def run(self):
         """Fetches CelesTrak TLE data with localized 24-hour group file caching."""
-        if self.settings.getboolean("enabled", fallback=False) is False:
-            return
+        self.exit_if_disabled()
 
         base_url = self.get_base_url()
         marker_color = self.settings.get("marker_color", fallback="White")

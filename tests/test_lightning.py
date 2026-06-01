@@ -28,19 +28,20 @@ async def test_lightning_pipeline(test_env):
     updater = MockLightningUpdater(test_env["config"], test_env["map_data"])
 
     # Force specific configuration parameters for the test
-    updater.settings["expiry_hours"] = "1"
-    updater.age_minutes = 60
+    updater.strike_recent_minutes = 15
+    updater.strike_keep_minutes = 60
+    updater.strike_expiry_minutes = 2 * 60
 
     now = datetime.now(timezone.utc)
 
     # Create mock strikes at different ages to trigger all three icon conditions
     mock_strikes = [
-        # < 5 mins old -> Should map to bolt_white.png
-        {"lat": -40.1, "lon": 170.1, "timestamp": now - timedelta(minutes=2)},
-        # 5-20 mins old -> Should map to bolt_yellow.png
-        {"lat": -40.2, "lon": 170.2, "timestamp": now - timedelta(minutes=10)},
-        # > 20 mins old -> Should map to bolt_red.png
-        {"lat": -40.3, "lon": 170.3, "timestamp": now - timedelta(minutes=30)},
+        # < 15 mins old ; Should map to bolt_white.png
+        {"lat": -40.1, "lon": 170.1, "timestamp": now - timedelta(minutes=5)},
+        # 15-60 mins old ; Should map to bolt_yellow.png
+        {"lat": -40.2, "lon": 170.2, "timestamp": now - timedelta(minutes=30)},
+        # >60 mins old and < 2h ; Should map to bolt_red.png
+        {"lat": -40.3, "lon": 170.3, "timestamp": now - timedelta(minutes=90)},
     ]
 
     # Patch the database so we don't attempt a real SQLite/Postgres connection
@@ -54,7 +55,7 @@ async def test_lightning_pipeline(test_env):
         # Verify the database query was executed with the exact bounding box and age limits
         lon_min, lat_min, lon_max, lat_max = updater.map_region_bbox
         mock_db_instance.get_lightning_in_region.assert_called_once_with(
-            lon_min, lat_min, lon_max, lat_max, age_minutes=60
+            lon_min, lat_min, lon_max, lat_max, expiry_minutes=120
         )
 
     # File Generation & Format Verification

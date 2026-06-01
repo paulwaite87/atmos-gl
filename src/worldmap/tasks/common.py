@@ -7,7 +7,7 @@ import requests
 import matplotlib.pyplot as plt
 import cartopy.crs as ccrs
 import cartopy.mpl.geoaxes as geoaxes
-from typing import cast
+from typing import cast, Any
 from datetime import datetime, timezone, timedelta
 
 from pathlib import Path
@@ -291,6 +291,40 @@ class Updater:
         self.centre_latitude = map_data.region.centre_latitude
         self.map_region_bbox = map_data.region.bbox
 
+    def get_output_path(self):
+        return str(os.path.join(self.common.get("workdir", "."), self.outfile))
+
+    def set_output_path(self):
+        self.output_path = self.get_output_path()
+        file_path = Path(self.output_path)
+        # Safely verify directories exist for non-image files
+        if file_path.suffix not in [".png", ".jpg", ".jpeg"]:
+            os.makedirs(os.path.dirname(self.output_path), exist_ok=True)
+            # Use append mode ('a') to touch/create the file if missing,
+            # which keeps your existing data completely safe during re-initialization!
+            with open(self.output_path, "a") as _:
+                pass
+
+    def get_output_path_if_exists(self, section=None):
+        """Returns an output path for the given section, but only if the file exists"""
+        outfile = self.config.get_setting(
+            section if section else self.section, "outfile"
+        )
+        if outfile:
+            output_path = str(os.path.join(self.common.get("workdir", "."), outfile))
+            if os.path.exists(output_path):
+                return output_path
+        return None
+
+    def get_base_url(self):
+        return self.settings.get("url", "").rstrip("/")
+
+    def remove_output_file(self):
+        """Clears the output file of this updater if it exists"""
+        output_path = self.get_output_path()
+        if output_path and os.path.exists(output_path) and os.path.isfile(output_path):
+            os.remove(output_path)
+
     def exit_if_disabled(self):
         if not self.enabled:
             logger.info(f"{self.section} task disabled; skipping")
@@ -374,68 +408,13 @@ class Updater:
             f"Section {self.section} get_gfs_state: forecast hour {f_hour_str}; date_str {self.gfs_date_str}; run {self.gfs_run}"
         )
 
-    def remote_data_updated(
-        self, remote_url, cache_file_path, grib_targets: list[str] = None
-    ) -> bool:
-        """
-        Check remote url for newer data, and checks existence of local cache file.
-        If remote is newer, or local cache file is missing we download it.
-        We return two boolean statuses: cache is present, cache_was_updated.
-        """
-        # First ascertain cache status
-        cache_exists = os.path.exists(cache_file_path)
-
-        # Next, query the remote url
-        cache_needs_update = not cache_exists
-        cache_was_updated = False
-        try:
-            response = requests.head(remote_url, timeout=10)
-            if response.status_code == 200:
-                remote_mtime_str = response.headers.get("Last-Modified")
-                if remote_mtime_str:
-                    remote_mtime = datetime.strptime(
-                        remote_mtime_str, "%a, %d %b %Y %H:%M:%S %Z"
-                    ).replace(tzinfo=timezone.utc)
-                    if cache_exists:
-                        local_mtime = datetime.fromtimestamp(
-                            os.path.getmtime(cache_file_path), tz=timezone.utc
-                        )
-                        if remote_mtime > local_mtime:
-                            # cache exists and is out of date
-                            cache_needs_update = True
-                            logger.debug(
-                                f"Cache file {cache_file_path} is up to date for {self.section}"
-                            )
-
-                # try to download new cache file
-                if cache_needs_update:
-                    logger.info(
-                        f"Downloading fresh {self.section} data from {remote_url}"
-                    )
-                    cache_was_updated = self.download_raw_data(
-                        remote_url=remote_url,
-                        output_path=cache_file_path,
-                        ranges=self.get_gfs_ranges(remote_url, grib_targets)
-                        if grib_targets
-                        else None,
-                    )
-        except requests.RequestException:
-            pass
-
-        # Return a composite status reflecting cache file availability derived
-        # from the presence (or otherwise) of the cache itself and whether it
-        # was updated plus two other updater statuses: whether the final output
-        # path is present and whether World Map configuration has changed.
-        cache_exists = os.path.exists(cache_file_path)
-        return cache_exists and (
-            cache_was_updated
-            or not os.path.exists(self.output_path)
-            or self.config.has_changed
-        )
-
     def get_gfs_ranges(
         self, grib_url: str, grib_targets: list[str]
-    ) -> list[tuple[int, int]]:
+    ) -> list[Any] | None:
+
+        if not grib_targets:
+            return None
+
         """Finds the byte ranges for both CAPE and CIN in the GFS index."""
         r = requests.get(grib_url + ".idx", timeout=30)
         r.raise_for_status()
@@ -467,14 +446,19 @@ class Updater:
         timeout: int = 120,
     ):
         """
-        Download data from (usually) GFS datasets some of which allow
-        you to specify byte range(s) so the whole dataset doesn't get
-        downloaded. The ranges are a list of (start, end) integer tuples
-        from which we construct the 'Range' header. If more than one
-        range is provided in the 'ranges' list, we will do multiple
-        downloads, one for each Range, and build a single file from them.
-        If no 'ranges' are provided we just do a vanilla download.
+        1) If ranges is left unspecified:
+        If no 'ranges' are provided we just do a vanilla download, so this
+        method is apt for standard non-GFS datasets.
+
+        2) If ranges is specified:
+        Download data from GFS datasets some of which allow you to specify
+        byte range(s) so the whole dataset doesn't get downloaded. The ranges
+        are a list of (start, end) integer tuples from which we construct
+        the 'Range' header. If more than one range is provided in the 'ranges'
+        list, we will do multiple downloads, one for each Range, and build
+        a single file from them.
         """
+        # Cater for GFS dataset which has an associated index file
         idx_path = f"{output_path}.idx"
         if os.path.exists(idx_path):
             try:
@@ -514,39 +498,69 @@ class Updater:
 
         return True
 
-    def get_output_path(self):
-        return str(os.path.join(self.common.get("workdir", "."), self.outfile))
+    def remote_data_update(
+        self, remote_url, cache_file_path, grib_targets: list[str] = None
+    ) -> bool:
+        """
+        Check remote url for newer data, and checks existence of local cache file.
+        If remote is newer, or local cache file is missing we download it.
+        We return two boolean statuses: cache is present, cache_was_updated.
+        The grib_targets parameter is specific to GFS remote data and allows
+        headers to be specified to download particular layer of the dataset. If
+        unspecified, the download is just generic, ie. the whole file.
+        """
+        # First ascertain cache status
+        cache_exists = os.path.exists(cache_file_path)
 
-    def set_output_path(self):
-        self.output_path = self.get_output_path()
-        file_path = Path(self.output_path)
-        # Safely verify directories exist for non-image files
-        if file_path.suffix not in [".png", ".jpg", ".jpeg"]:
-            os.makedirs(os.path.dirname(self.output_path), exist_ok=True)
-            # Use append mode ('a') to touch/create the file if missing,
-            # which keeps your existing data completely safe during re-initialization!
-            with open(self.output_path, "a") as _:
-                pass
+        # Next, query the remote url
+        cache_needs_update = not cache_exists
+        cache_was_updated = False
+        try:
+            response = requests.head(remote_url, timeout=10)
+            if response.status_code == 200:
+                remote_mtime_str = response.headers.get("Last-Modified")
+                if remote_mtime_str:
+                    remote_mtime = datetime.strptime(
+                        remote_mtime_str, "%a, %d %b %Y %H:%M:%S %Z"
+                    ).replace(tzinfo=timezone.utc)
+                    if cache_exists:
+                        local_mtime = datetime.fromtimestamp(
+                            os.path.getmtime(cache_file_path), tz=timezone.utc
+                        )
+                        if remote_mtime > local_mtime:
+                            # cache exists and is out of date
+                            cache_needs_update = True
+                            logger.debug(
+                                f"Cache file {cache_file_path} is up to date for {self.section}"
+                            )
 
-    def get_output_path_if_exists(self, section=None):
-        """Returns an output path for the given section, but only if the file exists"""
-        outfile = self.config.get_setting(
-            section if section else self.section, "outfile"
+                # try to download new cache file
+                if cache_needs_update:
+                    logger.info(
+                        f"Downloading fresh {self.section} data from {remote_url}"
+                    )
+                    cache_was_updated = self.download_raw_data(
+                        remote_url=remote_url,
+                        output_path=cache_file_path,
+                        ranges=self.get_gfs_ranges(remote_url, grib_targets)
+                        if grib_targets
+                        else None
+                        if grib_targets
+                        else None,
+                    )
+        except requests.RequestException:
+            pass
+
+        # Return a composite status reflecting cache file availability derived
+        # from the presence (or otherwise) of the cache itself and whether it
+        # was updated plus two other updater statuses: whether the final output
+        # path is present and whether World Map configuration has changed.
+        cache_exists = os.path.exists(cache_file_path)
+        return cache_exists and (
+            cache_was_updated
+            or not os.path.exists(self.output_path)
+            or self.config.has_changed
         )
-        if outfile:
-            output_path = str(os.path.join(self.common.get("workdir", "."), outfile))
-            if os.path.exists(output_path):
-                return output_path
-        return None
-
-    def get_base_url(self):
-        return self.settings.get("url", "").rstrip("/")
-
-    def remove_output_file(self):
-        """Clears the output file of this updater if it exists"""
-        output_path = self.get_output_path()
-        if output_path and os.path.exists(output_path) and os.path.isfile(output_path):
-            os.remove(output_path)
 
     def get_regional_image(self, input_path: str = None) -> Image.Image | None:
         """Returns an image object which is cropped to the active region"""

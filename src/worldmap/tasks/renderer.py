@@ -17,6 +17,16 @@ class XPlanetRenderer(Updater):
         super().__init__(config, "XPlanet", map_data)
         self.downloader = NASAGIBSDownloader()
 
+        # This is the base file name for the final image which will be the
+        # desktop wallpaper. It will be prefixed with a unix timestamp so
+        # that the wallpaper updater watching the folder this is put in
+        # will consider it a changed file and update it.
+        self.base_filename = self.common.get("base_filename", fallback="regionmap.jpg")
+
+        # Whether to show the night-time shading. If false then the
+        # whole map will be rendered as if it is in full daylight.
+        self.night_shade = self.common.getboolean("night_shade", fallback=True)
+
         # This is the default color Xplanet will use when it has no map image
         # Used when we specify a bbox extending beyond 180 longitude, and
         # avoids the default white being used.
@@ -81,7 +91,6 @@ class XPlanetRenderer(Updater):
 
         # Setup paths and base settings
         data_dir = os.path.join(self.workdir, "data")
-        base_name = self.settings.get("base_filename", fallback="regionmap.jpg")
 
         # Acquire the maps
         day_map, night_map = self.get_regional_maps()
@@ -93,11 +102,12 @@ class XPlanetRenderer(Updater):
             f.write('"Earth"\n')
             f.write(f"color={self.fix_color(self.fill_default_color)}\n")
             f.write(f"map={day_map}\n")
-            if self.climate_layer_is_active():
+            if self.climate_layer_is_active() or not self.night_shade:
                 f.write("shade=100\n")
             else:
                 f.write(f"night_map={night_map}\n")
-            # Xplanet mapbounds={NorthWest_Lat, NorthWest_Lon, SouthEast_Lat, SouthEast_Lon}
+            # Xplanet
+            # mapbounds={NorthWest_Lat, NorthWest_Lon, SouthEast_Lat, SouthEast_Lon}
             # bbox order from maps.py: [lon_min, lat_min, lon_max, lat_max]
             # Therefore: {lat_max, lon_min, lat_min, lon_max}
             f.write(
@@ -110,9 +120,11 @@ class XPlanetRenderer(Updater):
                 f.write(
                     f"cloud_map={self.config.get_section('composite').get('outfile')}\n"
                 )
+                # Handled by cloud layer, so max them out here
                 f.write("cloud_threshold=0\n")
                 f.write("cloud_gamma=1.0\n")
 
+            # Map overlays handled as XPlanet markers
             # Show lightning activity
             if self.config.section_enabled("lightning"):
                 f.write(f"marker_file={self.config.get_section_outfile('lightning')}\n")
@@ -126,7 +138,7 @@ class XPlanetRenderer(Updater):
                 f.write(f"marker_file={self.config.get_section_outfile('volcanoes')}\n")
 
             # Show satellites - these are always in the 'satellites' folder
-            # and the filename is always 'sat_file'.
+            # and the filename is also always hard-coded
             if self.config.section_enabled("satellites"):
                 f.write("satellite_file=sat_file\n")
 
@@ -136,12 +148,15 @@ class XPlanetRenderer(Updater):
 
             # Base marker files. These are either global (low number of markers)
             # or regional (high number) to scale density of markers appropriately
+            # and avoid having too many cluttering up the wider views.
             base_markers = (
                 "base_markers_global" if self.world_view else "base_markers_regional"
             )
             f.write(f"marker_file={base_markers}.txt\n")
 
-            # Additional marker files from a list in the config
+            # Additional marker files from a list in the config. These are
+            # provided for enthusiasts who have their own marker files and
+            # put them in the 'markers' folder.
             extra_marker_files = listify(
                 self.common.get("extra_marker_files", fallback="")
             )
@@ -149,14 +164,14 @@ class XPlanetRenderer(Updater):
                 f.write(f"marker_file={marker_file}\n")
 
             # Default style for markers if not specified
-            marker_color = self.common.get("marker_default_color", "cyan")
+            marker_color = self.common.get("marker_default_color", "White")
             f.write(f"marker_color={self.fix_color(marker_color)}\n")
             f.write(
                 f"marker_fontsize={self.common.getint('marker_default_fontsize', 12)}\n"
             )
 
         # Cleanup old map files
-        search_pattern = os.path.join(data_dir, f"*-{base_name}")
+        search_pattern = os.path.join(data_dir, f"*-{self.base_filename}")
         for old_file in glob.glob(search_pattern):
             try:
                 os.remove(old_file)
@@ -165,7 +180,7 @@ class XPlanetRenderer(Updater):
 
         # 5. Build and Run Command
         timestamp = int(time.time())
-        output_path = os.path.join(data_dir, f"{timestamp}-{base_name}")
+        output_path = os.path.join(data_dir, f"{timestamp}-{self.base_filename}")
 
         # This matches the clouds, isobars data which we download
         projection = "rectangular"

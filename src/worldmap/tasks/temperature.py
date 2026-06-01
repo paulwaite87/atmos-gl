@@ -258,6 +258,6 @@ class TemperatureUpdater(Updater):
         )
 
         url = f"{self.base_url}/gfs.{self.gfs_date_str}/{self.gfs_run}/atmos/gfs.t{self.gfs_run}z.pgrb2.0p25.f{self.forecast_hour_str}"
-        if self.remote_data_updated(remote_url=url, cache_file_path=self.grib_path):
+        if self.remote_data_update(remote_url=url, cache_file_path=self.grib_path):
             logger.info("Generating Temperature plot...")
             self.plot()

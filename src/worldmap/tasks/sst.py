@@ -2,13 +2,12 @@
 import os
 import logging
 import gc
-import requests
 import numpy as np
 import xarray as xr
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import cartopy.crs as ccrs
-from datetime import datetime, timezone
+from datetime import datetime
 
 # Internal imports
 from worldmap.lib.config import WorldMapConfig
@@ -21,58 +20,7 @@ class SSTUpdater(Updater):
     def __init__(self, config: WorldMapConfig, map_data: MapData):
         super().__init__(config, "sst", map_data)
         self.set_output_path()
-
-        # Parse operational mode
         self.mode = self.settings.get("mode", fallback="absolute").strip().lower()
-
-    def download_data(self):
-        """
-        Downloads the appropriate yearly NOAA OISST v2 High-Res dataset using the generated target URL.
-        """
-        url = self.target_url
-
-        try:
-            logger.debug(
-                f"Checking freshness of remote NOAA Dataset ({self.mode}): {url}"
-            )
-            response = requests.head(url, timeout=10)
-
-            if response.status_code == 200:
-                if os.path.exists(self.nc_path):
-                    remote_mtime_str = response.headers.get("Last-Modified")
-                    if remote_mtime_str:
-                        remote_mtime = datetime.strptime(
-                            remote_mtime_str, "%a, %d %b %Y %H:%M:%S %Z"
-                        ).replace(tzinfo=timezone.utc)
-                        local_mtime = datetime.fromtimestamp(
-                            os.path.getmtime(self.nc_path), tz=timezone.utc
-                        )
-                        if remote_mtime <= local_mtime:
-                            logger.info(
-                                f"Local NOAA SST {self.mode} cache is up to date."
-                            )
-                            return False
-
-                logger.info(f"Downloading NOAA SST {self.mode} dataset...")
-                os.makedirs(os.path.dirname(self.nc_path), exist_ok=True)
-
-                with requests.get(url, stream=True, timeout=300) as r:
-                    r.raise_for_status()
-                    with open(self.nc_path, "wb") as f:
-                        for chunk in r.iter_content(chunk_size=1024 * 1024):
-                            f.write(chunk)
-                return True
-
-        except Exception as e:
-            logger.warning(f"Failed to download live NOAA dataset: {e}")
-
-        if os.path.exists(self.nc_path):
-            logger.info(f"Falling back to existing local NOAA {self.mode} netCDF file.")
-            return False
-
-        raise RuntimeError(
-            f"Critical Error: Missing local and remote access to NOAA SST {self.mode} dataset."
-        )
 
     def plot(self):
         alpha = self.settings.getfloat("alpha", fallback=0.4)
@@ -213,13 +161,8 @@ class SSTUpdater(Updater):
             self.nc_path = os.path.join(self.workdir, "data/noaa_oisst_mean.nc")
             self.target_url = f"{self.base_url}/sst.day.mean.{current_year}.nc"
 
-        try:
-            data_updated = self.download_data()
-            if (
-                data_updated
-                or not os.path.exists(self.output_path)
-                or self.config.has_changed
-            ):
-                self.plot()
-        except Exception as e:
-            logger.exception(f"SST update execution failure: {e}")
+        if self.remote_data_update(
+            remote_url=self.target_url, cache_file_path=self.nc_path
+        ):
+            logger.info(f"Generating SST {self.mode} plot...")
+            self.plot()

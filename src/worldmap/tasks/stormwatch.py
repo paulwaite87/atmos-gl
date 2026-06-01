@@ -193,7 +193,7 @@ class StormwatchUpdater(Updater):
         )
 
         url = f"{self.base_url}/gfs.{self.gfs_date_str}/{self.gfs_run}/atmos/gfs.t{self.gfs_run}z.pgrb2.0p25.f000"
-        if self.remote_data_updated(
+        if self.remote_data_update(
             remote_url=url,
             cache_file_path=self.grib_path,
             grib_targets=[":CAPE:surface:", ":CIN:surface:"],

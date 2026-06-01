@@ -147,6 +147,9 @@ class WorldMapConfig:
         # Clears any user-created marker files from config for testing
         self.update_setting("common", "extra_marker_files", "")
 
+        # Set night shade mode True
+        self.update_setting("common", "night_shade", "True")
+
         # Go through each section enabling it for testing, and also
         # set the output path to a suitable file for test output
         for section in self.config.sections():

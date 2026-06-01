@@ -40,7 +40,7 @@ class QuakeUpdater(Updater):
             # Load CSV data into Pandas
             df = pd.read_csv(io.StringIO(r.text))
 
-            # --- NEW: Parse the time column into timezone-aware datetimes ---
+            # Parse the time column into timezone-aware datetimes ---
             df["time"] = pd.to_datetime(df["time"])
 
             # Filter by magnitude
@@ -55,12 +55,12 @@ class QuakeUpdater(Updater):
                     depth = int(row["depth"])
                     quake_time = row["time"]
 
-                    # --- NEW: Calculate age and assign the correct symbol ---
+                    # Calculate age and assign the correct symbol
                     age_hours = int((now_utc - quake_time).total_seconds() / 3600.0)
 
                     if age_hours >= expiry_hours:
                         continue
-                    elif age_hours < recent_activity_hours:
+                    elif age_hours <= recent_activity_hours:
                         marker_symbol = marker_symbol_new
                     else:
                         marker_symbol = marker_symbol_old

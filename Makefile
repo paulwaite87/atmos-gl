@@ -53,12 +53,21 @@ bash:
 lint:
 	@echo "Ensuring $(MAP_BUILDER_SERVICE) container environment is active..."
 	docker compose up $(MAP_BUILDER_SERVICE) -d
+	@echo "Checking for any issues - without fixing"
 	docker compose exec $(MAP_BUILDER_SERVICE) uv run ruff check src
 
-## lint-fix: Run the linter across the code and fix issues
-lint-fix:
+## lint-format: Run the linter across the code and format to standard
+lint-format:
 	@echo "Ensuring $(MAP_BUILDER_SERVICE) container environment is active..."
 	docker compose up $(MAP_BUILDER_SERVICE) -d
+	@echo "Formatting code to consistent standard"
+	docker compose exec $(MAP_BUILDER_SERVICE) uv run ruff format src
+
+## lint-fix: Run the linter across the code and fix issues
+lint-fix: lint-format
+	@echo "Ensuring $(MAP_BUILDER_SERVICE) container environment is active..."
+	docker compose up $(MAP_BUILDER_SERVICE) -d
+	@echo "Fixing issues.."
 	docker compose exec $(MAP_BUILDER_SERVICE) uv run ruff check --fix src
 
 ## backup: Backup database to local worldmap-dump.sql file

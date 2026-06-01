@@ -106,6 +106,9 @@ class MapBuilder:
         # If the updater is disabled, make it remove any output, then skip
         if not updater.enabled:
             if clear_output:
+                logger.debug(
+                    f"Clearing {updater.section} output file {updater.output_path}"
+                )
                 updater.remove_output_file()
             return False
 

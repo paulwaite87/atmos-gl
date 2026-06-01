@@ -279,7 +279,7 @@ class CurrentsUpdater(Updater):
 
         # Try above urls, and break on first successful cache download
         for remote_url in urls_to_try:
-            if self.remote_data_updated(
+            if self.remote_data_update(
                 remote_url=remote_url, cache_file_path=self.nc_path
             ):
                 logger.info("Generating Currents plot...")

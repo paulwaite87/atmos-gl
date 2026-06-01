@@ -411,6 +411,26 @@
                                     ${optionsHTML}
                                 </select>
                             `;
+                        } else if (item.option.endsWith('_length')) {
+                            const initialDegC = parseInt(item.value) || 0;
+                            col.innerHTML = `
+                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                    <label class="form-label small text-white-50 fw-bold mb-0">${customLabelText}</label>
+                                    <span class="badge bg-primary text-light fw-bold" id="badge-${item.flatKey}">${initialDegC}m</span>
+                                </div>
+                                <input type="range" class="form-range" id="${item.flatKey}" min="0" max="400" step="10" value="${initialDegC}"
+                                       oninput="document.getElementById('badge-${item.flatKey}').innerText = parseInt(this.value) + 'm'">
+                            `;
+                        } else if (item.option.endsWith('_c')) {
+                            const initialDegC = parseInt(item.value) || 20;
+                            col.innerHTML = `
+                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                    <label class="form-label small text-white-50 fw-bold mb-0">${customLabelText}</label>
+                                    <span class="badge bg-primary text-light fw-bold" id="badge-${item.flatKey}">${initialDegC}C</span>
+                                </div>
+                                <input type="range" class="form-range" id="${item.flatKey}" min="0" max="100" step="1" value="${initialDegC}"
+                                       oninput="document.getElementById('badge-${item.flatKey}').innerText = parseInt(this.value) + 'C'">
+                            `;
                         } else if (item.option.endsWith('_color')) {
                             const rawColorStr = String(item.value).toLowerCase().trim();
                             const initialHex = rawColorStr.startsWith('#') ? rawColorStr : COLOR_MAP[rawColorStr] || "#ffffff";
@@ -437,6 +457,16 @@
                                 </div>
                                 <input type="range" class="form-range" id="${item.flatKey}" min="2" max="24" step="1" value="${initialExpHours}"
                                        oninput="document.getElementById('badge-${item.flatKey}').innerText = parseInt(this.value) + 'h'">
+                            `;
+                        } else if (item.option.endsWith('_minutes')) {
+                            const initialMinutes = parseInt(item.value) || 3;
+                            col.innerHTML = `
+                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                    <label class="form-label small text-white-50 fw-bold mb-0">${customLabelText}</label>
+                                    <span class="badge bg-primary text-light fw-bold" id="badge-${item.flatKey}">${initialMinutes}min</span>
+                                </div>
+                                <input type="range" class="form-range" id="${item.flatKey}" min="5" max="120" step="5" value="${initialMinutes}"
+                                       oninput="document.getElementById('badge-${item.flatKey}').innerText = parseInt(this.value) + 'min'">
                             `;
                         } else if (item.option.endsWith('_hours')) {
                             const initialHours = parseInt(item.value) || 3;
@@ -843,18 +873,20 @@
                             const valStr = String(item.value);
                             const isLong = valStr.length > 35 || item.option.includes('url');
                             const isApiKey = item.option.includes('api_key');
+                            const isSatfile = item.option === 'outfile' && section === 'satellites';
 
                             if (isLong) col.className = 'col-12';
 
                             // Add readonly attribute and a muted background class if it's an API key
-                            const readOnlyAttr = isApiKey ? 'readonly' : '';
-                            const readOnlyClass = isApiKey ? 'bg-secondary text-muted' : 'bg-dark text-light';
+                            const readOnlyAttr = (isApiKey || isSatfile) ? 'readonly' : '';
+                            const readOnlyClass = (isApiKey || isSatfile) ? 'bg-secondary text-muted' : 'bg-dark text-light';
 
                             // Append a small lock icon or note to the label for clarity
-                            const labelExtra = isApiKey ? ' 🔒 <span class="text-warning fw-normal">(Managed in Environment)</span>' : '';
+                            const labelMngEnv = isApiKey ? ' 🔒 <span class="text-warning fw-normal">(Managed in Environment)</span>' : '';
+                            const labelHardPath = isSatfile ? ' 🔒 <span class="text-warning fw-normal">(Hard-coded path)</span>' : '';
 
                             col.innerHTML = `
-                                <label class="form-label small text-white-50 fw-bold mb-1">${customLabelText}${labelExtra}</label>
+                                <label class="form-label small text-white-50 fw-bold mb-1">${customLabelText}${labelMngEnv}${labelHardPath}</label>
                                 <input type="${typeof item.value === 'number' ? 'number' : 'text'}"
                                        step="any" class="form-control ${readOnlyClass} border-secondary"
                                        id="${item.flatKey}" value="${safeValue}" ${readOnlyAttr}>
