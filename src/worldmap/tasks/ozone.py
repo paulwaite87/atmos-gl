@@ -26,7 +26,6 @@ logger = logging.getLogger(__name__)
 class OzoneUpdater(Updater):
     def __init__(self, config: WorldMapConfig, map_data: MapData):
         super().__init__(config, "Ozone", map_data)
-        self.set_output_path()
 
     def plot(self):
         """Renders the ozone layer as a direct geographical color mesh."""

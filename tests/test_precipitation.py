@@ -20,7 +20,6 @@ class MockPrecipitationUpdater(PrecipitationUpdater):
 
     def __init__(self, config, map_data):
         super().__init__(config, map_data)
-        self.set_output_path()
         self.grib_path = "dummy_gfs_precip.grib2"
 
 

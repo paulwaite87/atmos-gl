@@ -21,78 +21,18 @@ class CompositeUpdater(Updater):
 
     def __init__(self, config: WorldMapConfig, map_data: MapData):
         super().__init__(config, "Composite", map_data)
-        self.set_output_path()
-
-    def _apply_cloud_transparency(self, cloud_img: Image.Image) -> Image.Image:
-        """
-        Applies threshold and gamma corrections to the cloud mask
-        to prevent 'white-out' and control wispy-ness.
-        """
-        threshold = int(self.config.get_setting("clouds", "threshold", 0))
-        gamma = float(self.config.get_setting("clouds", "gamma", 1.0))
-        cloud_mask = cloud_img.convert("L")
-
-        lut = [
-            int(pow(i / 255.0, 1.0 / gamma) * 255.0) if i >= threshold else 0
-            for i in range(256)
-        ]
-        cloud_mask = cloud_mask.point(lut)
-
-        # Fully transparent base
-        base = Image.new("RGBA", cloud_img.size, (0, 0, 0, 0))
-        white_clouds = Image.new("RGBA", cloud_img.size, (255, 255, 255, 255))
-        base.paste(white_clouds, (0, 0), mask=cloud_mask)
-
-        return base
 
     def run(self):
         """Combines the enabled weather layers onto the map background."""
         self.exit_if_disabled()
 
         logger.debug("Starting composite updater")
-
-        try:
-            logger.debug(f"Creating weather map image => {self.output_path}")
-
-            # Define expected paths for the regional cache
-            cloud_filename = f"clouds_{self.map_data.region.region_identifier}_{self.target_width}x{self.target_height}.jpg"
-            cloud_map_path = os.path.join(self.workdir, "data", cloud_filename)
-            regional_cloud_map = str(
-                os.path.join(
-                    self.workdir,
-                    "data",
-                    f"clouds_transparent_{self.map_data.region.region_identifier}_{self.target_width}x{self.target_height}.png",
-                )
-            )
-
-            # Prepare the cloud base if enabled and the cached region file exists
-            if self.config.section_enabled("clouds") and os.path.exists(cloud_map_path):
-                # We skip self.get_regional_image() because the file is already regional
-                with Image.open(cloud_map_path) as raw_clouds_image:
-                    transparent_clouds = self._apply_cloud_transparency(
-                        raw_clouds_image
-                    )
-                    logger.debug(
-                        f"Saving transparent regional cloud map in {regional_cloud_map}"
-                    )
-                    transparent_clouds.save(regional_cloud_map, "PNG")
-
-        except (AttributeError, KeyError) as e:
-            logger.error(f"Missing required config keys for composite: {e}")
-            sys.exit(1)
-
-        # --- Dynamic Compositing Logic ---
         layers = []
         for section in COMPOSITE_SECTIONS:
             if self.config.section_enabled(section):
-                # Inject our specialized regional cloud path if processing clouds
-                if section == "clouds":
-                    if os.path.exists(regional_cloud_map):
-                        layers.append((section, regional_cloud_map))
-                else:
-                    section_image_path = self.get_output_path_if_exists(section)
-                    if section_image_path:
-                        layers.append((section, section_image_path))
+                section_image_path = self.get_output_path_if_exists(section)
+                if section_image_path:
+                    layers.append((section, section_image_path))
 
         if not layers:
             logger.debug("No composite layers enabled. Skipping.")

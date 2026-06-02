@@ -21,7 +21,6 @@ logger = logging.getLogger(__name__)
 class TemperatureUpdater(Updater):
     def __init__(self, config: WorldMapConfig, map_data: MapData):
         super().__init__(config, "Temperature", map_data)
-        self.set_output_path()
 
         # DESIGNED GRADIENTS FOR AIR TEMPERATURE (-40C to +45C)
         self.PALETTES = {

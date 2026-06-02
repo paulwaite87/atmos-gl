@@ -7,7 +7,6 @@ from tests.common import test_env, assert_url_accessible, verify_generated_image
 class MockStormUpdater(StormUpdater):
     def __init__(self, config, map_data):
         super().__init__(config, map_data)
-        self.set_output_path()
 
     def generate_and_render_mock(self, lat, lon):
         mock_data = []

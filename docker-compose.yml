@@ -121,6 +121,7 @@ services:
       - PGUSER=wmap
       - PGPASSWORD=wmap
       - CONFIG_PATH=/opt/project/config/worldmap.json
+      - MAPTILER_API_KEY=${MAPTILER_API_KEY}
     restart: unless-stopped
     depends_on:
       worldmap_db:

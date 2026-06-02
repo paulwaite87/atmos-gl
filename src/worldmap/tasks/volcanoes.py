@@ -14,7 +14,6 @@ logger = logging.getLogger(__name__)
 class VolcanoUpdater(Updater):
     def __init__(self, config: WorldMapConfig, map_data: MapData):
         super().__init__(config, "Volcanoes", map_data)
-        self.set_output_path()
 
     def _fetch_volcano_data(self, base_url, page_size=200):
         """Fetch all records from the NOAA HazEL API with pagination."""

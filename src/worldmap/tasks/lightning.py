@@ -13,7 +13,6 @@ OLDER_STRIKE_MINS = 120
 class LightningUpdater(Updater):
     def __init__(self, config, map_data):
         super().__init__(config, "Lightning", map_data)
-        self.set_output_path()
         self.strike_recent_minutes = self.settings.get("strike_recent_minutes", 15)
         self.strike_keep_minutes = self.settings.get("strike_keep_minutes", 60)
         self.strike_expiry_minutes = (self.settings.get("strike_expiry_hours", 1) * 60)

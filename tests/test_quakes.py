@@ -30,7 +30,6 @@ class MockQuakeUpdater(QuakeUpdater):
 
     def __init__(self, config, map_data):
         super().__init__(config, map_data)
-        self.set_output_path()
 
     def exit_if_disabled(self):
         """Bypass the enabled/disabled check during unit testing."""

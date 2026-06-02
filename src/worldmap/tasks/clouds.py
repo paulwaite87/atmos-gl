@@ -5,6 +5,7 @@ import logging
 import urllib.error
 import urllib.request
 from datetime import datetime, timedelta, timezone
+from PIL import Image
 
 # Internal library import
 from worldmap.lib.config import WorldMapConfig
@@ -18,8 +19,31 @@ class CloudUpdater(Updater):
         super().__init__(config, "Clouds", map_data)
 
         # Override default output path to save directly to the regional cache
-        filename = f"clouds_{self.map_data.region.region_identifier}_{self.target_width}x{self.target_height}.jpg"
-        self.output_path = os.path.join(self.workdir, "data", filename)
+        cache_filename = f"clouds_{self.map_data.region.region_identifier}_{self.target_width}x{self.target_height}.jpg"
+        self.cache_output_path = os.path.join(self.workdir, "data", cache_filename)
+
+    def save_cache_as_transparent(self):
+        """
+        Applies threshold and gamma corrections to the cloud mask
+        to prevent 'white-out' and control wispy-ness.
+        """
+        threshold = self.settings.get("threshold", 0)
+        gamma = self.settings.get("gamma", 1.0)
+
+        with Image.open(self.cache_output_path) as raw_clouds_image:
+            cloud_mask = raw_clouds_image.convert("L")
+            lut = [
+                int(pow(i / 255.0, 1.0 / gamma) * 255.0) if i >= threshold else 0
+                for i in range(256)
+            ]
+            cloud_mask = cloud_mask.point(lut)
+            transparent_clouds_image = Image.new("RGBA", raw_clouds_image.size, (0, 0, 0, 0))
+            white_clouds = Image.new("RGBA", raw_clouds_image.size, (255, 255, 255, 255))
+            transparent_clouds_image.paste(white_clouds, (0, 0), mask=cloud_mask)
+
+        # Save it
+        logger.debug(f"Saving transparent cloud map in {self.output_path}")
+        transparent_clouds_image.save(self.output_path, "PNG")
 
     def run(self):
         """Downloads the regional cloud layer from NASA GIBS with a baseline lookback."""
@@ -28,19 +52,19 @@ class CloudUpdater(Updater):
         base_url = self.get_base_url()
         expiry_hours = self.settings.get("expiry_hours", 3)
 
-        # --- NEW: Configurable lookback to prevent incomplete satellite swaths ---
+        # Configurable lookback to prevent incomplete satellite swaths
         # Default to 1 day back, but can be set to 2 in worldmap.json if needed
         cloud_offset = self.settings.get("offset_days", 1)
 
         now_utc = datetime.now(timezone.utc)
 
-        # --- Align with GFS baseline if available, but apply the lookback ---
+        # Align with GFS baseline if available, but apply the lookback
         baseline = getattr(self.map_data, "shared_state", {}).get("gfs_baseline")
         if baseline:
             # We must offset from the baseline because GIBS cannot provide "today" in full yet.
             target_date = baseline["timestamp"] - timedelta(days=cloud_offset)
             logger.debug(
-                f"Clouds syncing to Isobar baseline with a -{cloud_offset} day offset: {target_date.strftime('%Y-%m-%d')}"
+                f"Clouds syncing to baseline with a -{cloud_offset} day offset: {target_date.strftime('%Y-%m-%d')}"
             )
         else:
             target_date = now_utc - timedelta(days=cloud_offset)
@@ -71,21 +95,21 @@ class CloudUpdater(Updater):
 
         # --- Cache Logic ---
         # Only download if the file does not exist OR the file is older than the expiry limit
-        if os.path.exists(self.output_path):
+        if os.path.exists(self.cache_output_path):
             file_mtime = datetime.fromtimestamp(
-                os.path.getmtime(self.output_path), tz=timezone.utc
+                os.path.getmtime(self.cache_output_path), tz=timezone.utc
             )
             age = now_utc - file_mtime
 
             if age < timedelta(hours=expiry_hours):
-                logger.info(
-                    f"NASA clouds cached file is fresh ({age.total_seconds() / 3600:.1f} hours old). Skipping download."
-                )
+                logger.info(f"NASA clouds cache is fresh ({age.total_seconds() / 3600:.1f} hours old). Skipping download.")
+                if not os.path.exists(self.output_path):
+                    self.save_cache_as_transparent()
                 return
 
-        # --- Execution ---
+        # Download raw clouds image
         try:
-            os.makedirs(str(os.path.dirname(self.output_path)), exist_ok=True)
+            os.makedirs(str(os.path.dirname(self.cache_output_path)), exist_ok=True)
             logger.info(
                 f"Fetching regional NASA GIBS clouds for {time_param} ({self.target_width}x{self.target_height})..."
             )
@@ -95,13 +119,12 @@ class CloudUpdater(Updater):
             )
 
             with urllib.request.urlopen(req, timeout=60) as response:
-                data = response.read()
-                with open(self.output_path, "wb") as f:
-                    f.write(data)
-
-            logger.debug(
-                f"NASA regional cloud map successfully saved: {self.output_path}"
-            )
+                raw_clouds_image = response.read()
+                with open(self.cache_output_path, "wb") as f:
+                    f.write(raw_clouds_image)
+            logger.debug(f"NASA cloud map downloaded into {self.cache_output_path}")
+            # Save the newly cached clouds
+            self.save_cache_as_transparent()
 
         except urllib.error.HTTPError as e:
             logger.error(f"NASA GIBS returned an error: {e.code} {e.reason}")

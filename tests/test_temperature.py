@@ -20,7 +20,6 @@ class MockTemperatureUpdater(TemperatureUpdater):
 
     def __init__(self, config, map_data, mode_override):
         super().__init__(config, map_data)
-        self.set_output_path()
         self.grib_path = "dummy_gfs_temp.grib2"
 
         # Override dynamic configuration modes at runtime

@@ -23,7 +23,6 @@ logger = logging.getLogger(__name__)
 class WindUpdater(Updater):
     def __init__(self, config: WorldMapConfig, map_data: MapData):
         super().__init__(config, "Wind", map_data)
-        self.set_output_path()
 
     def plot(self):
         """Renders wind vectors with registration and type-hint fixes."""

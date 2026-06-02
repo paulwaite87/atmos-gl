@@ -19,7 +19,6 @@ logger = logging.getLogger(__name__)
 class SSTUpdater(Updater):
     def __init__(self, config: WorldMapConfig, map_data: MapData):
         super().__init__(config, "sst", map_data)
-        self.set_output_path()
         self.mode = self.settings.get("mode", "absolute").strip().lower()
 
     def plot(self):

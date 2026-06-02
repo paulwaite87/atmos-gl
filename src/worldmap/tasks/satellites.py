@@ -15,7 +15,6 @@ logger = logging.getLogger(__name__)
 class SatelliteUpdater(Updater):
     def __init__(self, config: WorldMapConfig, map_data: MapData):
         super().__init__(config, "Satellites", map_data)
-        self.set_output_path()
 
     def run(self):
         """Fetches CelesTrak TLE data with localized 24-hour group file caching."""

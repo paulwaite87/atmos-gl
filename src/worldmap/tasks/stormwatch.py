@@ -23,7 +23,6 @@ logger = logging.getLogger(__name__)
 class StormwatchUpdater(Updater):
     def __init__(self, config: WorldMapConfig, map_data: MapData):
         super().__init__(config, "Stormwatch", map_data)
-        self.set_output_path()
 
     def plot(self):
         import matplotlib.pyplot as plt

@@ -284,10 +284,8 @@ class Updater:
         self.common = config.get_section("common")
         self.workdir = self.common.get("workdir", ".")
         self.outfile = self.settings.get("outfile", "")
-        self.output_path = ""
         self.enabled = self.settings.get("enabled", False)
         self.forecast_hour = max(self.common.get("forecast_hour", 1), 1)
-        self.base_url = self.get_base_url()
 
         # Copy map data up to this class for convenience
         self.target_width = map_data.region.target_width
@@ -298,6 +296,10 @@ class Updater:
         self.centre_latitude = map_data.region.centre_latitude
         self.map_region_bbox = map_data.region.bbox
 
+        # Always set these, which can be over-ridden later if required
+        self.set_output_path()
+        self.base_url = self.get_base_url()
+
     def get_output_path(self):
         return str(os.path.join(self.common.get("workdir", "."), self.outfile))
 
@@ -307,8 +309,7 @@ class Updater:
         # Safely verify directories exist for non-image files
         if file_path.suffix not in [".png", ".jpg", ".jpeg"]:
             os.makedirs(os.path.dirname(self.output_path), exist_ok=True)
-            # Use append mode ('a') to touch/create the file if missing,
-            # which keeps your existing data completely safe during re-initialization!
+            # Use append mode ('a') to touch/create the file if missing
             with open(self.output_path, "a") as _:
                 pass
 

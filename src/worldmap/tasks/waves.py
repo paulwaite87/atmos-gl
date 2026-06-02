@@ -19,7 +19,6 @@ logger = logging.getLogger(__name__)
 class WavesUpdater(Updater):
     def __init__(self, config: WorldMapConfig, map_data: MapData):
         super().__init__(config, "Waves", map_data)
-        self.set_output_path()
 
         # DESIGNED GRADIENTS FOR WAVE HEIGHT INTENSITY
         self.PALETTES = {

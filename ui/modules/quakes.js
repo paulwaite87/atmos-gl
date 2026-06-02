@@ -1,9 +1,10 @@
 // ui/modules/quakes.js
 
 export function loadLayer(world, config) {
-    fetch('http://localhost:9000/' + config.outfile)
+    fetch('http://localhost:9000/' + config.outfile + '?t=' + Date.now())
         .then(res => res.json())
         .then(quakes => {
+            console.log("=== RAW QUAKES DATA FETCHED ===", quakes);
             world
                 .htmlElementsData(quakes)
                 .htmlLat('lat')

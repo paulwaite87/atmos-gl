@@ -23,7 +23,8 @@ logger = logging.getLogger(__name__)
 class PrecipitationUpdater(Updater):
     def __init__(self, config: WorldMapConfig, map_data: MapData):
         super().__init__(config, "Precipitation", map_data)
-        self.set_output_path()
+        self.level_of_detail = self.settings.get("level_of_detail", 1)
+        self.lod_desc = None
 
         self.PALETTES = {
             "standard": [
@@ -104,20 +105,19 @@ class PrecipitationUpdater(Updater):
         del ds
         gc.collect()
 
-        # 2. DYNAMIC RESAMPLING: Scale step size based on bounding box area to prevent OOM
-        lon_span = abs(lon_max - lon_min)
-        lat_span = abs(lat_max - lat_min)
-
-        # If the region spans more than 90 deg longitude or 45 deg latitude (~0.25 of world area)
-        # if lon_span > 180.0 or lat_span > 90.0:
-        #     logger.info(
-        #         f"Large region detected ({lon_span:.1f}°x{lat_span:.1f}°). Using resource-friendly global grid settings."
-        #     )
-        #     step = 0.15  # Drops a global mesh grid size from 162M points down to ~2.8M points
-        #     filter_sigma = 0.8  # Adjusted for the coarser grid spacing
-        # else:
-        step = 0.08  # Maintain your ultra-high resolution for regional mapping
-        filter_sigma = 1.0
+        # Sampling sizes according to user setting
+        if self.level_of_detail == 1:
+            step = 0.10  # High resolution; ~162M points
+            filter_sigma = 1.0
+            self.lod_desc = "high"
+        elif self.level_of_detail == 2:
+            step = 0.125  # Medium resolution
+            filter_sigma = 0.9
+            self.lod_desc = "medium"
+        else:
+            step = 0.15  # Low resolution; ~2.8M points
+            filter_sigma = 0.8
+            self.lod_desc = "low"
 
         new_lats = np.arange(lats.min(), lats.max() + step, step)
         new_lons = np.arange(lons.min(), lons.max() + step, step)
@@ -216,5 +216,5 @@ class PrecipitationUpdater(Updater):
             cache_file_path=self.grib_path,
             grib_targets=[":PRATE:surface:"],
         ):
-            logger.info("Generating Precipitation plot...")
             self.plot()
+            logger.info(f"Generated precipitation plot ({self.lod_desc} resolution)...")

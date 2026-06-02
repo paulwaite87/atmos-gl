@@ -9,12 +9,12 @@
     "marker_default_color": "#ffffff",
     "marker_default_fontsize": 12,
     "workdir": ".",
-    "log_level": "INFO"
+    "log_level": "DEBUG"
   },
   "clouds": {
     "enabled": true,
     "url": "https://gibs.earthdata.nasa.gov/wms/epsg4326/best/wms.cgi",
-    "outfile": "data/cloud_map.jpg",
+    "outfile": "data/cloud_map.png",
     "threshold": 168,
     "gamma": 0.5,
     "expiry_hours": 3,
@@ -25,9 +25,9 @@
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
     "outfile": "data/isobars.png",
     "isobar_color": "White",
-    "linewidth": 1.5,
+    "linewidth": 1,
     "alpha": 1,
-    "label_fontsize": 14,
+    "label_fontsize": 10,
     "label_outline": false,
     "runs_per_day": 24
   },
@@ -45,6 +45,7 @@
     "enabled": true,
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
     "outfile": "data/precipitation.png",
+    "level_of_detail": "2",
     "min_mm_hr": 0.2,
     "alpha": 0.9,
     "palette": "standard",
@@ -177,11 +178,11 @@
     "runs_per_day": 1
   },
   "shipping": {
-    "enabled": false,
+    "enabled": true,
     "outfile": "data/ship_markers.txt",
     "marker_color": "Cyan",
     "label_fontsize": 12,
-    "show_ship_icons": "default",
+    "show_ship_icons": "Arrows",
     "filter_ships_underway": true,
     "filter_show_ship_classes": [],
     "filter_show_names_for_classes": [],

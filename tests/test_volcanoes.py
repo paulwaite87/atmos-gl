@@ -19,7 +19,6 @@ class MockVolcanoUpdater(VolcanoUpdater):
 
     def __init__(self, config, map_data):
         super().__init__(config, map_data)
-        self.set_output_path()
 
 
 def generate_mock_volcano_response():

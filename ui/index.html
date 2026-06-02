@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Worldmap Live</title>
+    <link href="https://unpkg.com/maplibre-gl@^5.0.0/dist/maplibre-gl.css" rel="stylesheet" />
     <style>
         body { margin: 0; padding: 0; overflow: hidden; background-color: #04040e; }
         #globeViz { width: 100vw; height: 100vh; }
@@ -28,86 +29,101 @@
             background: rgba(255, 255, 255, 0.3);
         }
     </style>
-    <script type="importmap">
-        {
-            "imports": {
-                "three": "https://esm.sh/three",
-                "three/": "https://esm.sh/three/",
-                "globe.gl": "https://esm.sh/globe.gl"
-            }
-        }
-    </script>
+    <script src="https://unpkg.com/maplibre-gl@^5.0.0/dist/maplibre-gl.js"></script>
 </head>
 <body>
-    <a href="/config/" id="settingsBtn">⚙️ Settings</a>
+    <a href="/config/" id="settingsBtn" target="_blank">Configuration Control</a>
+
     <div id="globeViz"></div>
 
     <script type="module">
-        import * as THREE from 'three';
-        import Globe from 'globe.gl';
-
-        const response = await fetch('http://localhost:9000/api/get_map_path');
-        const mapData = await response.json();
-        const map_path = mapData.data;
-
-        // Initialize Base Globe
-        const world = Globe()
-            (document.getElementById('globeViz'))
-            .globeImageUrl('http://localhost:9000/' + map_path)
-            .backgroundColor('#04040e');
-
-        // Load the base Composite Map
-        const cacheBuster = "?t=" + new Date().getTime();
-        new THREE.TextureLoader().load('http://localhost:9000/data/composite_layer.png' + cacheBuster, texture => {
-            texture.needsUpdate = true;
-            const weatherSphere = new THREE.Mesh(
-                new THREE.SphereGeometry(100.5, 73, 73),
-                new THREE.MeshBasicMaterial({
-                    map: texture, transparent: true, depthWrite: false, side: THREE.DoubleSide
-                })
-            );
-            weatherSphere.rotation.y = Math.PI / 2;
-            world.scene().add(weatherSphere);
-        });
-
-        // The Dynamic Module Loader
-        async function loadDynamicLayers() {
+        async function bootstrapWorldmap() {
             try {
+                // 1. Fetch live application configuration block from backend API
                 const response = await fetch('http://localhost:9000/api/config');
                 const fullConfig = await response.json();
-
-                // Using the data nested in the JSON response
                 const configData = fullConfig.data;
 
-                // --- NEW: Apply Global Settings ---
-                if (configData.common) {
-                    // Check explicitly for true, fallback to false
-                    world.controls().autoRotate = configData.common.auto_rotate === true;
-                    // Set the speed, falling back to 0.1 if missing
-                    world.controls().autoRotateSpeed = configData.common.auto_rotate_speed || 0.1;
+                // 2. Extract dynamically injected key out of the standard common section
+                const maptilerKey = configData.common?.api_key || '';
+
+                if (configData.common?.RULE__missing_maptiler) {
+                    console.warn("MapTiler API Key missing! Check your host .env configuration.");
                 }
 
-                const frontendLayers = ['quakes', 'shipping', 'satellites', 'volcanoes', 'lightning', 'storms'];
+                // Initialize the map core
+                const map = new maplibregl.Map({
+                    container: 'globeViz', // or whatever your map DIV ID is
+                    style: `https://api.maptiler.com/maps/satellite/style.json?key=${maptilerKey}`,
+                    center: [0, 0],
+                    zoom: 1 // Start zoomed out to see the globe shape immediately
+                });
 
-                for (const moduleName of frontendLayers) {
-                    const moduleConfig = configData[moduleName];
+                // CRITICAL: Wait for the style configuration to finish loading before activating the globe
+                map.on('style.load', () => {
+                    map.setProjection({
+                        type: 'globe'
+                    });
+                });
 
-                    if (moduleConfig && moduleConfig.enabled === true) {
-                        try {
-                            // Import local JS files served by Nginx
-                            const module = await import(`/modules/${moduleName}.js`);
-                            module.loadLayer(world, moduleConfig);
-                        } catch (err) {
-                            console.warn(`Could not load /modules/${moduleName}.js`, err);
+                // 4. Once vector layout stylesheet loads successfully, morph projection into 3D space
+                map.on('style.load', async () => {  // <-- Added 'async' right here!
+                    map.setProjection({ type: 'globe' });
+
+                    // Track user interaction state so auto-rotation doesn't fight map dragging
+                    let isUserInteracting = false;
+                    map.on('movestart', () => { isUserInteracting = true; });
+                    map.on('moveend', () => { isUserInteracting = false; });
+
+                    // Apply Global Auto-Rotation Settings if flagged enabled
+                    if (configData.common && configData.common.auto_rotate === true) {
+                        const rotationSpeed = configData.common.auto_rotate_speed || 0.1;
+
+                        const rotateGlobe = () => {
+                            if (!isUserInteracting) {
+                                const center = map.getCenter();
+                                center.lng = (center.lng + rotationSpeed) % 360;
+                                map.setCenter(center);
+                            }
+                            requestAnimationFrame(rotateGlobe);
+                        };
+                        rotateGlobe();
+                    }
+
+                    // 5. Sequentially initialize backend active feature modules
+                    // Best practice ordering: Base textures first, vector data points on top
+                    const frontendLayers = [
+                        'clouds',       // Bottom layer (wraps over baseline satellite imagery)
+                        'isobars',      // Sits right on top of the clouds
+                        'shipping',     // Vessels render over weather charts
+                        'quakes',       // Points/markers stay perfectly visible on top
+                        'satellites'
+                    ];
+
+                    for (const moduleName of frontendLayers) {
+                        const moduleConfig = configData[moduleName];
+
+                        if (moduleConfig && moduleConfig.enabled === true) {
+                            try {
+                                // Dynamic file import now works perfectly inside this async callback block
+                                const module = await import(`/modules/${moduleName}.js`);
+
+                                // Direct high-performance map context injected into your layer scripts
+                                module.loadLayer(map, moduleConfig);
+                            } catch (err) {
+                                console.warn(`Could not load layer /modules/${moduleName}.js`, err);
+                            }
                         }
                     }
-                }
+                });
+
             } catch (err) {
-                console.error("Failed to fetch configuration", err);
+                console.error("Failed to bootstrap runtime configuration framework:", err);
             }
         }
 
-        loadDynamicLayers();
+        // Initialize execution setup
+        bootstrapWorldmap();
     </script>
 </body>
 </html>

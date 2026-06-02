@@ -16,7 +16,6 @@ logger = logging.getLogger(__name__)
 class QuakeUpdater(Updater):
     def __init__(self, config: WorldMapConfig, map_data: MapData):
         super().__init__(config, "Quakes", map_data)
-        self.set_output_path()
 
     def run(self):
         """Fetches USGS quake data and generates a JSON array for Globe.gl."""

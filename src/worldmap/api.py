@@ -68,9 +68,9 @@ def get_config():
     data = worldmap_config.config.copy()
 
     # ENFORCEMENT RULE: Check host system for environment variables
-    # We inject these rules directly into the relevant dictionary sections
     ais_key = os.getenv("AIS_API_KEY", "").strip()
     owm_key = os.getenv("OPENWEATHER_API_KEY", "").strip()
+    maptiler_key = os.getenv("MAPTILER_API_KEY", "").strip()  # <-- Read host env
 
     if "shipping_collector" in data:
         if not ais_key:
@@ -81,6 +81,11 @@ def get_config():
         if not owm_key:
             data["weather_scanner"]["enabled"] = False
             data["weather_scanner"]["RULE__missing_weather"] = True
+
+    # Mirror your rule structure for the mapping basemap layer
+    if "common" in data:
+        if not maptiler_key:
+            data["common"]["RULE__missing_maptiler"] = True
 
     return {"status": "success", "data": data}
 
@@ -94,6 +99,8 @@ async def update_config(payload: dict):
         payload["shipping_collector"].pop("RULE__missing_ais", None)
     if "weather_scanner" in payload:
         payload["weather_scanner"].pop("RULE__missing_weather", None)
+    if "common" in payload:
+        payload["common"].pop("RULE__missing_maptiler", None)
 
     # Completely overwrite the in-memory config with the UI payload
     worldmap_config.config = payload

@@ -17,8 +17,8 @@ class MockConfigSection:
     def __init__(self, dictionary):
         self.data = dictionary
 
-    def get(self, key, None):
-        return self.data.get(key, fallback)
+    def get(self, key):
+        return self.data.get(key)
 
 
 class MockShippingUpdater(ShippingUpdater):
@@ -26,7 +26,6 @@ class MockShippingUpdater(ShippingUpdater):
 
     def __init__(self, config, map_data):
         super().__init__(config, map_data)
-        self.set_output_path()
 
 
 def generate_mock_fleet():

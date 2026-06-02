@@ -11,7 +11,6 @@ class MockSSTUpdater(SSTUpdater):
     def __init__(self, config, map_data, test_nc_path, mode_override):
         super().__init__(config, map_data)
         self.nc_path = test_nc_path
-        self.set_output_path()
 
         # Override structural modes dynamically at execution runtime
         self.mode = mode_override
