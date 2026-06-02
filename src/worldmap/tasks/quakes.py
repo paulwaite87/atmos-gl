@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import io
+import json
 import logging
 import requests
 import pandas as pd
@@ -18,17 +19,13 @@ class QuakeUpdater(Updater):
         self.set_output_path()
 
     def run(self):
-        """Fetches USGS quake data and generates an XPlanet marker file."""
+        """Fetches USGS quake data and generates a JSON array for Globe.gl."""
         self.exit_if_disabled()
 
         url = self.get_base_url()
-        marker_color = self.settings.get("marker_color", "white")
-        marker_symbol_new = self.settings.get("marker_symbol_new")
-        marker_symbol_old = self.settings.get("marker_symbol_old")
-        label_size = self.settings.get("label_fontsize", "12")
-        min_mag = self.settings.get("min_mag", 5.0)
+        min_mag = self.settings.get("min_mag", 3.5)
         recent_activity_hours = self.settings.get("recent_activity_hours", 3)
-        expiry_hours = self.settings.get("expiry_hours", 24)
+        expiry_hours = self.settings.get("expiry_hours", 12)
 
         try:
             logger.debug(f"Fetching earthquake data from USGS (Min Mag: {min_mag})...")
@@ -38,41 +35,58 @@ class QuakeUpdater(Updater):
             # Load CSV data into Pandas
             df = pd.read_csv(io.StringIO(r.text))
 
-            # Parse the time column into timezone-aware datetimes ---
+            # Parse the time column into timezone-aware datetimes
             df["time"] = pd.to_datetime(df["time"])
 
             # Filter by magnitude
             filtered_df = df[df["mag"] >= min_mag]
 
-            # Establish 'now' in UTC to compare against the USGS 'Z' (Zulu/UTC) timestamps
+            # Establish 'now' in UTC to compare against the USGS timestamps
             now_utc = datetime.now(timezone.utc)
+            quakes_list = []
 
+            for _, row in filtered_df.iterrows():
+                mag = row["mag"]
+                depth = int(row["depth"])
+                quake_time = row["time"]
+
+                # Calculate precise age metrics
+                time_delta = now_utc - quake_time
+                age_minutes = int(time_delta.total_seconds() / 60.0)
+                age_hours = int(age_minutes / 60)
+
+                # Skip if the quake has expired
+                if age_hours >= expiry_hours:
+                    continue
+
+                # Flag recent activity
+                is_recent = age_hours <= recent_activity_hours
+
+                place = row.get("place", "Unknown Location")
+                if pd.isna(place):
+                    place = "Unknown Location"
+
+                # Build the dictionary with fine-grained time data
+                quake_data = {
+                    "lat": row['latitude'],
+                    "lng": row['longitude'],
+                    "mag": mag,
+                    "depth": depth,
+                    "place": place,
+                    "label": f"M {mag:.1f} - {place}",
+                    "age_hours": age_hours,
+                    "age_minutes": age_minutes,  # <-- Added for fine-grained frontend display
+                    "is_recent": is_recent
+                }
+
+                quakes_list.append(quake_data)
+
+            # Dump the entire list of dictionaries directly to a JSON file
             with open(self.output_path, "w") as f:
-                for _, row in filtered_df.iterrows():
-                    mag = row["mag"]
-                    depth = int(row["depth"])
-                    quake_time = row["time"]
-
-                    # Calculate age and assign the correct symbol
-                    age_hours = int((now_utc - quake_time).total_seconds() / 3600.0)
-
-                    if age_hours >= expiry_hours:
-                        continue
-                    elif age_hours <= recent_activity_hours:
-                        marker_symbol = marker_symbol_new
-                    else:
-                        marker_symbol = marker_symbol_old
-
-                    # Format: lat lon "label" color=X fontsize=Y image=Z
-                    line = (
-                        f"{row['latitude']} {row['longitude']} "
-                        f'"M{mag} {depth}km" color={marker_color} '
-                        f"fontsize={label_size} image={marker_symbol}\n"
-                    )
-                    f.write(line)
+                json.dump(quakes_list, f, indent=2)
 
             logger.debug(
-                f"Earthquake update complete. Updated {len(filtered_df)} quakes."
+                f"Earthquake update complete. Wrote {len(quakes_list)} quakes to JSON."
             )
 
         except requests.RequestException as e:

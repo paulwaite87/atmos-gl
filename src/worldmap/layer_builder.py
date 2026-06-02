@@ -2,6 +2,7 @@
 import argparse
 import logging
 import sys
+import os
 import signal
 import asyncio
 from datetime import datetime
@@ -42,6 +43,13 @@ class LayerBuilder:
     def __init__(self, config_path: str):
         self.config = WorldMapConfig(config_path)
         self.map_data = MapData(self.config)
+
+        # Ensure this folder exists
+        data_dir = os.path.join(
+            self.config.get_setting("common", "workdir", "."),
+            "data"
+        )
+        os.makedirs(data_dir, exist_ok=True)
 
         # Initialize a shared state dictionary for inter-updater communication
         self.map_data.shared_state = {}
@@ -119,11 +127,6 @@ class LayerBuilder:
         if updater.section == "composite" and self.composite_layers_updated:
             return True
 
-        # Handle special case of xplanet renderer, which doesn't have a schedule
-        # and updates when either the configuration or the map has changed
-        if updater.section == "xplanet" and self.map_updated:
-            return True
-
         if updater.section == "satellites":
             update_minutes = updater.settings.get("update_minutes", 10)
             runs_per_day = int((24 * 60) / update_minutes)
@@ -158,7 +161,7 @@ class LayerBuilder:
                     or self.config.has_changed
                     or self.tasks_ready_to_run()
                 ):
-                    logger.info("Map-builder scheduler run started")
+                    logger.info("Layer-builder scheduler run started")
 
                     for section, task_class in self.task_registry:
                         logger.debug(f"Updater task '{section}' checking runnable")
@@ -187,16 +190,16 @@ class LayerBuilder:
                                 logger.error(f"Task '{section}' execution failed: {e}")
 
                     self.starting_up = False
-                    logger.info("Map-builder scheduler run finished")
+                    logger.info("Layer-builder scheduler run finished")
             else:
-                logger.info("Map-builder scheduler disabled: skipping")
+                logger.info("Layer-builder scheduler disabled: skipping")
 
             # Heartbeat sleep
             await asyncio.sleep(10)
 
 
 def main():
-    parser = argparse.ArgumentParser(description="WorldMap Builder Scheduler")
+    parser = argparse.ArgumentParser(description="WorldMap Layer Builder Scheduler")
     parser.add_argument("--config", required=True, help="Path to worldmap.json")
     args = parser.parse_args()
 

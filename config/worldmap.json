@@ -1,12 +1,12 @@
 {
   "common": {
-    "target_geometry": "4096x2048",
+    "target_geometry": "8192x4096",
     "forecast_hour": 14,
     "night_shade": false,
     "auto_rotate": false,
-    "auto_rotate_speed": "0.1",
-    "fill_default_color": "Black",
-    "marker_default_color": "White",
+    "auto_rotate_speed": 0.1,
+    "fill_default_color": "#000000",
+    "marker_default_color": "#ffffff",
     "marker_default_fontsize": 12,
     "workdir": ".",
     "log_level": "INFO"
@@ -152,7 +152,7 @@
   "quakes": {
     "enabled": true,
     "url": "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.csv",
-    "outfile": "data/quake_markers.txt",
+    "outfile": "data/quakes.json",
     "marker_color": "Pink",
     "marker_symbol_new": "earthquake_new.png",
     "marker_symbol_old": "earthquake_old.png",
@@ -169,7 +169,7 @@
     "marker_color": "Violet",
     "marker_symbol": "volcano_symbol.png",
     "significant_only": true,
-    "filter_show_volcanoes_by_name": [],
+    "filter_show_volcanoes_by_name": "",
     "vei_min": 5,
     "erupt_date_codes": [
       "D1"
@@ -186,11 +186,11 @@
     "filter_show_ship_classes": [],
     "filter_show_names_for_classes": [],
     "filter_ships_minimum_length": 190,
-    "filter_show_ships_by_name": [],
+    "filter_show_ships_by_name": "",
     "show_tracks": false,
     "track_min_dist": 50,
     "track_max_points": 30,
-    "expiry_days": 30,
+    "expiry_days": 7,
     "runs_per_day": 24
   },
   "satellites": {
@@ -205,7 +205,7 @@
     "update_minutes": 5,
     "trail_minutes": 50,
     "degrees_above_horizon": 45,
-    "extra_satellite_names": []
+    "extra_satellite_names": ""
   },
   "shipping_collector": {
     "enabled": false,

@@ -46,11 +46,14 @@
         import * as THREE from 'three';
         import Globe from 'globe.gl';
 
+        const response = await fetch('http://localhost:9000/api/get_map_path');
+        const mapData = await response.json();
+        const map_path = mapData.data;
+
         // Initialize Base Globe
         const world = Globe()
             (document.getElementById('globeViz'))
-            // Note the absolute path to your FastAPI server for data!
-            .globeImageUrl('http://localhost:9000/data/blue_marble.jpg')
+            .globeImageUrl('http://localhost:9000/' + map_path)
             .backgroundColor('#04040e');
 
         // Load the base Composite Map

@@ -60,7 +60,7 @@
 
                         <div class="grouping-box">
                             <h5>Climate</h5>
-                            <p class="text-muted small mb-3">Select a climate base layer to render across the whole region:</p>
+                            <p class="text-muted small mb-3">Select a climate base layer to render across the globe:</p>
                             <div class="row g-3">
                                 <div class="col-md-3"><div class="form-check"><input class="form-check-input" type="radio" name="exclusive_climate" id="radio__sst"><label class="form-check-label fw-bold ms-1" for="radio__sst">Sea Surface Temp</label></div></div>
                                 <div class="col-md-3"><div class="form-check"><input class="form-check-input" type="radio" name="exclusive_climate" id="radio__currents"><label class="form-check-label fw-bold ms-1" for="radio__currents">Ocean Currents</label></div></div>
@@ -148,7 +148,7 @@
         const COLOR_MAP = {
             "white": "#ffffff", "black": "#000000", "gray": "#808080", "silver": "#c0c0c0",
             "red": "#ff0000", "maroon": "#800000", "pink": "#ffc0cb",
-            "green": "#00ff00", "lime": "#00ff00", "olive": "#809000", "teal": "#008080",
+            "green": "#00ff00", "lime": "#00ff00", "olive": "#808000", "teal": "#008080",
             "blue": "#0000ff", "navy": "#000080", "cyan": "#00ffff", "aqua": "#00ffff",
             "yellow": "#ffff00", "orange": "#ffa500", "gold": "#ffd700",
             "purple": "#800080", "magenta": "#ff00ff", "violet": "#ee82ee"
@@ -195,7 +195,6 @@
         });
 
         function parseExplicitElements(data) {
-            // Master toggles
             ['clouds', 'isobars', 'wind', 'precipitation', 'lightning', 'storms', 'quakes', 'volcanoes', 'satellites', 'shipping'].forEach(layer => {
                 const el = document.getElementById(`${layer}__enabled`);
                 if (el && data[layer]) {
@@ -204,7 +203,6 @@
                 }
             });
 
-            // Climate radios
             ['sst', 'currents', 'waves', 'temperature', "ozone", "stormwatch"].forEach(layer => {
                 const el = document.getElementById(`radio__${layer}`);
                 if (el) {
@@ -213,7 +211,6 @@
                 }
             });
 
-            // Background services
             const aisEnabled = document.getElementById('shipping_collector__enabled');
             if (aisEnabled && data.shipping_collector) {
                 aisEnabled.checked = !!data.shipping_collector.enabled;
@@ -255,7 +252,9 @@
 
                     const fieldsContainer = document.createElement('div');
                     fieldsContainer.id = `fields-section-${section}`;
-                    fieldsContainer.innerHTML = `<h5 class="text-info border-bottom border-secondary pb-2 mb-3">[${section}] Properties</h5>`;
+
+                    const sectionTitle = section === 'common' ? 'Global Settings' : `[${section}] Properties`;
+                    fieldsContainer.innerHTML = `<h5 class="text-info border-bottom border-secondary pb-2 mb-3">${sectionTitle}</h5>`;
 
                     const row = document.createElement('div');
                     row.className = 'row g-3';
@@ -265,10 +264,17 @@
 
                         const col = document.createElement('div');
                         col.className = 'col-md-6';
-                        const domId = `${section}__${option}`; // Used purely for DOM binding
+                        const domId = `${section}__${option}`;
 
-                        const spaced = option.replace(/_/g, ' ');
-                        const customLabelText = spaced.charAt(0).toUpperCase() + spaced.slice(1);
+                        let customLabelText = "";
+                        if (option === "outfile") customLabelText = "Output file";
+                        else if (section === "quakes" && option === "min_mag") customLabelText = "Minimum magnitude";
+                        else if (section === "shipping" && option === "track_min_dist") customLabelText = "Track minimum distance";
+                        else {
+                            const spaced = option.replace(/_/g, ' ');
+                            customLabelText = spaced.charAt(0).toUpperCase() + spaced.slice(1);
+                        }
+
                         const safeValue = typeof value === 'string' ? value.replace(/"/g, '&quot;') : value;
 
                         if (typeof value === "boolean") {
@@ -282,28 +288,184 @@
                             const rawColorStr = String(value).toLowerCase().trim();
                             const initialHex = rawColorStr.startsWith('#') ? rawColorStr : COLOR_MAP[rawColorStr] || "#ffffff";
                             const initialLabel = rawColorStr ? rawColorStr.charAt(0).toUpperCase() + rawColorStr.slice(1) : "White";
+                            const pickerClass = option.includes('_default_') ? "" : "structured-color-name-picker"
+
                             col.innerHTML = `
                                 <div class="d-flex justify-content-between align-items-center mb-1">
                                     <label class="form-label small text-white-50 fw-bold mb-0">${customLabelText}</label>
                                     <span class="badge border border-secondary text-light fw-bold color-label-badge" id="badge-${domId}">${initialLabel}</span>
                                 </div>
-                                <input type="color" class="form-control form-control-color bg-dark border-secondary w-100 dynamic-input structured-color-name-picker"
-                                       id="${domId}" value="${initialHex}" style="max-width: 100%; height: 38px;"
-                                       oninput="document.getElementById('badge-${domId}').innerText = findNearestNamedColor(this.value);">
+                                <div class="input-group">
+                                    <input type="color" class="form-control form-control-color bg-dark border-secondary w-100 dynamic-input ${pickerClass}"
+                                           id="${domId}" value="${initialHex}" style="max-width: 100%; height: 38px;"
+                                           oninput="const mappedName = findNearestNamedColor(this.value); document.getElementById('badge-${domId}').innerText = mappedName;">
+                                </div>
                             `;
-                        } else if (Array.isArray(value)) {
-                            // Render native JSON arrays as multi-selects
-                            let optionsHTML = value.map(v => `<option value="${v}" selected>${v}</option>`).join('');
-                            // Add generic fallback options for ease of use
-                            if (option === "extra_satellite_names") optionsHTML += `<option value="NOAA 15">NOAA 15</option><option value="ISS (ZARYA)">ISS (ZARYA)</option>`;
-
-                            col.className = 'col-12';
+                        } else if (option.includes('_hours')) {
+                            const initialHours = parseInt(value) || 3;
                             col.innerHTML = `
-                                <label class="form-label small text-white-50 fw-bold mb-1">${customLabelText} (Array)</label>
-                                <select class="form-select bg-dark text-light border-secondary dynamic-input array-select" id="${domId}" multiple style="height: 120px;">
-                                    ${optionsHTML}
+                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                    <label class="form-label small text-white-50 fw-bold mb-0">${customLabelText}</label>
+                                    <span class="badge bg-primary text-light fw-bold" id="badge-${domId}">${initialHours}h</span>
+                                </div>
+                                <input type="range" class="form-range dynamic-input" id="${domId}" min="1" max="24" step="1" value="${initialHours}"
+                                       oninput="document.getElementById('badge-${domId}').innerText = parseInt(this.value) + 'h'">
+                            `;
+                        } else if (option === 'expiry_days') {
+                            const initialDays = parseInt(value) || 2;
+                            col.innerHTML = `
+                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                    <label class="form-label small text-white-50 fw-bold mb-0">${customLabelText}</label>
+                                    <span class="badge bg-warning text-dark fw-bold" id="badge-${domId}">${initialDays} days expiry</span>
+                                </div>
+                                <input type="range" class="form-range dynamic-input" id="${domId}" min="1" max="7" step="1" value="${initialDays}"
+                                       oninput="document.getElementById('badge-${domId}').innerText = parseInt(this.value) + ' days expiry'">
+                            `;
+                        } else if (option === 'storm_icon_zoom') {
+                            const initialZoom = parseFloat(value) !== undefined ? parseFloat(value) : 1.0;
+                            col.innerHTML = `
+                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                    <label class="form-label small text-white-50 fw-bold mb-0">${customLabelText}</label>
+                                    <span class="badge text-light fw-bold" style="background-color: #0dcaf0; color: #000 !important;" id="badge-${domId}">${initialZoom.toFixed(1)}x</span>
+                                </div>
+                                <input type="range" class="form-range dynamic-input" id="${domId}" min="0.1" max="5.0" step="0.1" value="${initialZoom}"
+                                       oninput="document.getElementById('badge-${domId}').innerText = parseFloat(this.value).toFixed(1) + 'x'">
+                            `;
+                        } else if (option.includes('threshold') && section === 'clouds') {
+                            const rawByteVal = parseInt(value) !== undefined ? parseInt(value) : 0;
+                            const initialPct = Math.min(100, Math.max(0, Math.round((rawByteVal / 255) * 100)));
+                            col.innerHTML = `
+                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                    <label class="form-label small text-white-50 fw-bold mb-0">${customLabelText}</label>
+                                    <span class="badge bg-secondary text-light fw-bold" id="badge-${domId}">${initialPct}%</span>
+                                </div>
+                                <input type="range" class="form-range dynamic-input cloud-threshold-slider" id="${domId}" min="0" max="100" step="1" value="${initialPct}"
+                                       oninput="document.getElementById('badge-${domId}').innerText = parseInt(this.value) + '%'">
+                            `;
+                        } else if (option.includes('vei')) {
+                            const currentVei = parseInt(value) || 0;
+                            col.innerHTML = `
+                                <label class="form-label small text-white-50 fw-bold mb-1">${customLabelText}</label>
+                                <select class="form-select bg-dark text-light border-secondary dynamic-input" id="${domId}">
+                                    <option value="0" ${currentVei === 0 ? 'selected' : ''}>0 - Non-explosive</option>
+                                    <option value="1" ${currentVei === 1 ? 'selected' : ''}>1 - Small</option>
+                                    <option value="2" ${currentVei === 2 ? 'selected' : ''}>2 - Moderate</option>
+                                    <option value="3" ${currentVei === 3 ? 'selected' : ''}>3 - Moderate-Large</option>
+                                    <option value="4" ${currentVei === 4 ? 'selected' : ''}>4 - Large</option>
+                                    <option value="5" ${currentVei === 5 ? 'selected' : ''}>5 - Very Large</option>
+                                    <option value="6" ${currentVei === 6 ? 'selected' : ''}>6 - Paroxysmal</option>
+                                    <option value="7" ${currentVei === 7 ? 'selected' : ''}>7 - Colossal</option>
+                                    <option value="8" ${currentVei === 8 ? 'selected' : ''}>8 - Super colossal</option>
                                 </select>
-                                <div class="text-white-50" style="font-size: 11px; margin-top: 4px;">💡 Hold Ctrl (or Cmd ⌘) to select/deselect.</div>
+                            `;
+                        } else if (option.includes('target_geometry')) {
+                            col.innerHTML = `
+                                <label class="form-label small text-white-50 fw-bold mb-1">${customLabelText}</label>
+                                <select class="form-select bg-dark text-light border-secondary dynamic-input" id="${domId}">
+                                    <option value="2048x1024" ${value === '2048x1024' ? 'selected' : ''}>2048x1024</option>
+                                    <option value="4096x2048" ${value === '4096x2048' ? 'selected' : ''}>4096x2048</option>
+                                    <option value="8192x4096" ${value === '8192x4096' ? 'selected' : ''}>8192x4096</option>
+                                </select>
+                            `;
+                        } else if (option.includes('gamma')) {
+                            const initialGamma = parseFloat(value) !== undefined ? parseFloat(value) : 1.0;
+                            col.innerHTML = `
+                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                    <label class="form-label small text-white-50 fw-bold mb-0">${customLabelText}</label>
+                                    <span class="badge bg-purple text-light fw-bold" style="background-color: #6f42c1;" id="badge-${domId}">γ ${initialGamma.toFixed(2)}</span>
+                                </div>
+                                <input type="range" class="form-range dynamic-input" id="${domId}" min="0.1" max="3.0" step="0.05" value="${initialGamma}"
+                                       oninput="document.getElementById('badge-${domId}').innerText = 'γ ' + parseFloat(this.value).toFixed(2)">
+                            `;
+                        } else if (option.includes('min_mag')) {
+                            const initialMag = parseFloat(value) !== undefined ? parseFloat(value) : 4.5;
+                            col.innerHTML = `
+                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                    <label class="form-label small text-white-50 fw-bold mb-0">${customLabelText}</label>
+                                    <span class="badge bg-danger text-light fw-bold" id="badge-${domId}">M ${initialMag.toFixed(1)}</span>
+                                </div>
+                                <input type="range" class="form-range dynamic-input" id="${domId}" min="0" max="10" step="0.1" value="${initialMag}"
+                                       oninput="document.getElementById('badge-${domId}').innerText = 'M ' + parseFloat(this.value).toFixed(1)">
+                            `;
+                        } else if (option.includes('update_minutes')) {
+                            const initialMinutes = parseInt(value) || 10;
+                            col.innerHTML = `
+                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                    <label class="form-label small text-white-50 fw-bold mb-0">${customLabelText}</label>
+                                    <span class="badge bg-success text-dark fw-bold" id="badge-${domId}">${initialMinutes}mins</span>
+                                </div>
+                                <input type="range" class="form-range dynamic-input" id="${domId}" min="5" max="60" step="5" value="${initialMinutes}"
+                                       oninput="document.getElementById('badge-${domId}').innerText = this.value + 'mins'">
+                            `;
+                        } else if (option.includes('degrees_above_horizon')) {
+                            const initialDegrees = parseInt(value) || 45;
+                            col.innerHTML = `
+                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                    <label class="form-label small text-white-50 fw-bold mb-0">${customLabelText}</label>
+                                    <span class="badge bg-success text-dark fw-bold" id="badge-${domId}">${initialDegrees}deg</span>
+                                </div>
+                                <input type="range" class="form-range dynamic-input" id="${domId}" min="10" max="60" step="5" value="${initialDegrees}"
+                                       oninput="document.getElementById('badge-${domId}').innerText = this.value + 'deg'">
+                            `;
+                        } else if (option.includes('trail_minutes')) {
+                            const initialTrail = parseInt(value) || 45;
+                            col.innerHTML = `
+                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                    <label class="form-label small text-white-50 fw-bold mb-0">${customLabelText}</label>
+                                    <span class="badge bg-success text-dark fw-bold" id="badge-${domId}">${initialTrail}mins</span>
+                                </div>
+                                <input type="range" class="form-range dynamic-input" id="${domId}" min="5" max="60" step="5" value="${initialTrail}"
+                                       oninput="document.getElementById('badge-${domId}').innerText = this.value + 'mins'">
+                            `;
+                        } else if (option.includes('fontsize')) {
+                            const initialSize = parseInt(value) || 12;
+                            col.innerHTML = `
+                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                    <label class="form-label small text-white-50 fw-bold mb-0">${customLabelText}</label>
+                                    <span class="badge bg-success text-dark fw-bold" id="badge-${domId}">${initialSize}px</span>
+                                </div>
+                                <input type="range" class="form-range dynamic-input" id="${domId}" min="6" max="64" step="1" value="${initialSize}"
+                                       oninput="document.getElementById('badge-${domId}').innerText = this.value + 'px'">
+                            `;
+                        } else if (option.includes('linewidth')) {
+                            const initialWidth = parseFloat(value) !== undefined ? parseFloat(value) : 1.0;
+                            col.innerHTML = `
+                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                    <label class="form-label small text-white-50 fw-bold mb-0">${customLabelText}</label>
+                                    <span class="badge bg-info text-dark fw-bold" id="badge-${domId}">${initialWidth.toFixed(1)}px</span>
+                                </div>
+                                <input type="range" class="form-range dynamic-input" id="${domId}" min="0.1" max="5.0" step="0.1" value="${initialWidth}"
+                                       oninput="document.getElementById('badge-${domId}').innerText = parseFloat(this.value).toFixed(1) + 'px'">
+                            `;
+                        } else if (option.includes('alpha')) {
+                            const initialAlpha = parseFloat(value) !== undefined ? parseFloat(value) : 1.0;
+                            col.innerHTML = `
+                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                    <label class="form-label small text-white-50 fw-bold mb-0">${customLabelText}</label>
+                                    <span class="badge bg-warning text-dark fw-bold" id="badge-${domId}">${initialAlpha.toFixed(1)}</span>
+                                </div>
+                                <input type="range" class="form-range dynamic-input" id="${domId}" min="0.1" max="1.0" step="0.1" value="${initialAlpha}"
+                                       oninput="document.getElementById('badge-${domId}').innerText = parseFloat(this.value).toFixed(1)">
+                            `;
+                        } else if (option.includes('min_mm_hr')) {
+                            const initialAlpha = parseFloat(value) !== undefined ? parseFloat(value) : 1.0;
+                            col.innerHTML = `
+                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                    <label class="form-label small text-white-50 fw-bold mb-0">${customLabelText}</label>
+                                    <span class="badge bg-warning text-dark fw-bold" id="badge-${domId}">${initialAlpha.toFixed(1)}</span>
+                                </div>
+                                <input type="range" class="form-range dynamic-input" id="${domId}" min="0.0" max="10.0" step="0.1" value="${initialAlpha}"
+                                       oninput="document.getElementById('badge-${domId}').innerText = parseFloat(this.value).toFixed(1)">
+                            `;
+                        } else if (option.includes('runs_per_day')) {
+                            const initialVal = parseInt(value) || 4;
+                            col.innerHTML = `
+                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                    <label class="form-label small text-white-50 fw-bold mb-0">${customLabelText}</label>
+                                    <span class="badge bg-info text-dark fw-bold" id="badge-${domId}">${initialVal} runs</span>
+                                </div>
+                                <input type="range" class="form-range dynamic-input" id="${domId}" min="1" max="24" step="1" value="${initialVal}"
+                                       oninput="document.getElementById('badge-${domId}').innerText = this.value + ' runs'">
                             `;
                         } else if (option === 'auto_rotate_speed') {
                             col.innerHTML = `
@@ -314,20 +476,170 @@
                                 <input type="range" class="form-range dynamic-input" id="${domId}" min="0.01" max="1.0" step="0.01" value="${value}"
                                        oninput="document.getElementById('badge-${domId}').innerText = this.value;">
                             `;
-                        } else if (typeof value === "number" || option.endsWith('_hours') || option.endsWith('_minutes')) {
-                            col.innerHTML = `
-                                <div class="d-flex justify-content-between align-items-center mb-1">
-                                    <label class="form-label small text-white-50 fw-bold mb-0">${customLabelText}</label>
-                                    <span class="badge bg-primary text-light fw-bold" id="badge-${domId}">${value}</span>
-                                </div>
-                                <input type="number" step="any" class="form-control bg-dark text-light border-secondary dynamic-input" id="${domId}" value="${value}">
-                            `;
-                        } else {
-                            const isLong = String(value).length > 35 || option.includes('url');
-                            if (isLong) col.className = 'col-12';
+                        } else if (option.includes('log_level')) {
                             col.innerHTML = `
                                 <label class="form-label small text-white-50 fw-bold mb-1">${customLabelText}</label>
-                                <input type="text" class="form-control bg-dark text-light border-secondary dynamic-input" id="${domId}" value="${safeValue}">
+                                <select class="form-select bg-dark text-light border-secondary dynamic-input" id="${domId}">
+                                    <option value="DEBUG" ${value === 'DEBUG' ? 'selected' : ''}>DEBUG</option>
+                                    <option value="INFO" ${value === 'INFO' ? 'selected' : ''}>INFO</option>
+                                    <option value="WARNING" ${value === 'WARNING' ? 'selected' : ''}>WARNING</option>
+                                    <option value="ERROR" ${value === 'ERROR' ? 'selected' : ''}>ERROR</option>
+                                    <option value="CRITICAL" ${value === 'CRITICAL' ? 'selected' : ''}>CRITICAL</option>
+                                </select>
+                            `;
+                        } else if (option.includes('show_ship_icons')) {
+                            col.innerHTML = `
+                                <label class="form-label small text-white-50 fw-bold mb-1">${customLabelText}</label>
+                                <select class="form-select bg-dark text-light border-secondary dynamic-input" id="${domId}">
+                                    <option value="default" ${value === 'default' ? 'selected' : ''}>Default</option>
+                                    <option value="Discs" ${value === 'Discs' ? 'selected' : ''}>Discs</option>
+                                    <option value="Arrows" ${value === 'Arrows' ? 'selected' : ''}>Arrows</option>
+                                </select>
+                            `;
+                        } else if (option.includes('key_position')) {
+                            col.innerHTML = `
+                                <label class="form-label small text-white-50 fw-bold mb-1">${customLabelText}</label>
+                                <select class="form-select bg-dark text-light border-secondary dynamic-input" id="${domId}">
+                                    <option value="top-left" ${value === 'top-left' ? 'selected' : ''}>top-left</option>
+                                    <option value="top-right" ${value === 'top-right' ? 'selected' : ''}>top-right</option>
+                                    <option value="bottom-left" ${value === 'bottom-left' ? 'selected' : ''}>bottom-left</option>
+                                    <option value="bottom-right" ${value === 'bottom-right' ? 'selected' : ''}>bottom-right</option>
+                                </select>
+                            `;
+                        } else if (option.includes('mode')) {
+                            col.innerHTML = `
+                                <label class="form-label small text-white-50 fw-bold mb-1">${customLabelText}</label>
+                                <select class="form-select bg-dark text-light border-secondary dynamic-input" id="${domId}">
+                                    <option value="absolute" ${value === 'absolute' ? 'selected' : ''}>absolute</option>
+                                    <option value="anomaly" ${value === 'anomaly' ? 'selected' : ''}>anomaly</option>
+                                </select>
+                            `;
+                        } else if (option.includes('palette')) {
+                            let optionsHTML = '';
+                            if (section === 'sst') {
+                                optionsHTML = `
+                                    <option value="thermal" ${value === 'thermal' ? 'selected' : ''}>thermal</option>
+                                    <option value="vivid" ${value === 'vivid' ? 'selected' : ''}>vivid</option>
+                                    <option value="deep" ${value === 'deep' ? 'selected' : ''}>deep</option>
+                                    <option value="ocean" ${value === 'ocean' ? 'selected' : ''}>ocean</option>
+                                `;
+                            } else if (section === 'currents') {
+                                optionsHTML = `
+                                    <option value="thermal_red" ${value === 'thermal_red' ? 'selected' : ''}>thermal_red</option>
+                                    <option value="electric_blue" ${value === 'electric_blue' ? 'selected' : ''}>electric_blue</option>
+                                    <option value="toxic_neon" ${value === 'toxic_neon' ? 'selected' : ''}>toxic_neon</option>
+                                    <option value="cyberpunk" ${value === 'cyberpunk' ? 'selected' : ''}>cyberpunk</option>
+                                `;
+                            } else if (section === 'waves') {
+                                optionsHTML = `
+                                    <option value="ocean_storm" ${value === 'ocean_storm' ? 'selected' : ''}>ocean_storm</option>
+                                    <option value="neon_surge" ${value === 'neon_surge' ? 'selected' : ''}>neon_surge</option>
+                                    <option value="solar_flare" ${value === 'solar_flare' ? 'selected' : ''}>solar_flare</option>
+                                `;
+                            } else if (section === 'temperature') {
+                                optionsHTML = `
+                                    <option value="global_thermal" ${value === 'global_thermal' ? 'selected' : ''}>global_thermal</option>
+                                    <option value="extreme_contrast" ${value === 'extreme_contrast' ? 'selected' : ''}>extreme_contrast</option>
+                                    <option value="twilight_gradient" ${value === 'twilight_gradient' ? 'selected' : ''}>twilight_gradient</option>
+                                `;
+                            } else if (section === 'precipitation') {
+                                optionsHTML = `
+                                    <option value="standard" ${value === 'standard' ? 'selected' : ''}>standard</option>
+                                    <option value="ocean_blue" ${value === 'ocean_blue' ? 'selected' : ''}>ocean_blue</option>
+                                    <option value="high_contrast" ${value === 'high_contrast' ? 'selected' : ''}>high_contrast</option>
+                                `;
+                            } else {
+                                optionsHTML = null;
+                            }
+
+                            if (optionsHTML) {
+                                col.innerHTML = `
+                                    <label class="form-label small text-white-50 fw-bold mb-1">${customLabelText}</label>
+                                    <select class="form-select bg-dark text-light border-secondary dynamic-input" id="${domId}">
+                                        ${optionsHTML}
+                                    </select>
+                                `;
+                            } else {
+                                col.innerHTML = `
+                                    <label class="form-label small text-white-50 fw-bold mb-1">${customLabelText}</label>
+                                    <input type="text" class="form-control bg-dark text-light border-secondary dynamic-input" id="${domId}" value="${safeValue}">
+                                `;
+                            }
+                        } else if (option === 'filter_show_ship_classes' || option === 'filter_show_names_for_classes') {
+                            const activeValues = Array.isArray(value) ? value : [];
+                            col.innerHTML = `
+                                <label class="form-label small text-white-50 fw-bold mb-1">${customLabelText}</label>
+                                <select class="form-select bg-dark text-light border-secondary dynamic-input array-select" id="${domId}" multiple style="height: 95px;">
+                                    <option value="Tanker" ${activeValues.includes('Tanker') ? 'selected' : ''}>Tanker</option>
+                                    <option value="Cargo" ${activeValues.includes('Cargo') ? 'selected' : ''}>Cargo</option>
+                                    <option value="Passenger" ${activeValues.includes('Passenger') ? 'selected' : ''}>Passenger</option>
+                                </select>
+                                <div class="text-white-50" style="font-size: 11px; margin-top: 4px;">💡 Hold Ctrl (or Cmd ⌘) to select multiple. Select none to show all.</div>
+                            `;
+                        } else if (option === 'erupt_date_codes') {
+                            const activeCodes = Array.isArray(value) ? value : [];
+                            col.className = 'col-12';
+                            col.innerHTML = `
+                                <label class="form-label small text-white-50 fw-bold mb-1">${customLabelText}</label>
+                                <select class="form-select bg-dark text-light border-secondary dynamic-input array-select" id="${domId}" multiple style="height: 220px;">
+                                    <option value="D1" ${activeCodes.includes('D1') ? 'selected' : ''}>D1 - 1964 or later</option>
+                                    <option value="D2" ${activeCodes.includes('D2') ? 'selected' : ''}>D2 - 1900 to 1963</option>
+                                    <option value="D3" ${activeCodes.includes('D3') ? 'selected' : ''}>D3 - 1800 to 1899</option>
+                                    <option value="D4" ${activeCodes.includes('D4') ? 'selected' : ''}>D4 - 1700 to 1799</option>
+                                    <option value="D5" ${activeCodes.includes('D5') ? 'selected' : ''}>D5 - 1500 to 1699</option>
+                                    <option value="D6" ${activeCodes.includes('D6') ? 'selected' : ''}>D6 - A.D.1 to 1499</option>
+                                    <option value="D7" ${activeCodes.includes('D7') ? 'selected' : ''}>D7 - B.C. (Holocene)</option>
+                                    <option value="U"  ${activeCodes.includes('U')  ? 'selected' : ''}>U  - Undated, prob. Holocene</option>
+                                    <option value="Q"  ${activeCodes.includes('Q')  ? 'selected' : ''}>Q  - Quaternary (very old!)</option>
+                                    <option value="?"  ${activeCodes.includes('?')  ? 'selected' : ''}>?  - Uncertain Holocene</option>
+                                </select>
+                                <div class="text-white-50" style="font-size: 11px; margin-top: 4px;">💡 Hold Ctrl (or Cmd ⌘) to select multiple timelines.</div>
+                            `;
+                        } else if (option === 'sat_names') {
+                            const activeNames = Array.isArray(value) ? value : [];
+                            col.className = 'col-12';
+                            col.innerHTML = `
+                                <label class="form-label small text-white-50 fw-bold mb-1">Satellites to track</label>
+                                <select class="form-select bg-dark text-light border-secondary dynamic-input array-select" id="${domId}" multiple style="height: 220px;">
+                                    <option value="ISS (ZARYA)" ${activeNames.includes('ISS (ZARYA)') ? 'selected' : ''}>ISS (ZARYA) - International Space Station</option>
+                                    <option value="CSS (TIANHE)" ${activeNames.includes('CSS (TIANHE)') ? 'selected' : ''}>CSS (TIANHE)  - Chinese Space Station</option>
+                                    <option value="HST" ${activeNames.includes('HST') ? 'selected' : ''}>HST - Hubble Space Telescope</option>
+                                    <option value="FGRST (GLAST)" ${activeNames.includes('FGRST (GLAST)') ? 'selected' : ''}>FGRST (GLAST) - The Fermi Gamma-ray Space Telescope</option>
+                                    <option value="SWIFT" ${activeNames.includes('SWIFT') ? 'selected' : ''}>SWIFT - The Neil Gehrels Swift Observatory</option>
+                                    <option value="NOAA 15" ${activeNames.includes('NOAA 15') ? 'selected' : ''}>NOAA 15 - The Polar orbiting weather fleet</option>
+                                    <option value="NOAA 18" ${activeNames.includes('NOAA 18') ? 'selected' : ''}>NOAA 18</option>
+                                    <option value="NOAA 19" ${activeNames.includes('NOAA 19') ? 'selected' : ''}>NOAA 19</option>
+                                    <option value="NOAA 20" ${activeNames.includes('NOAA 20') ? 'selected' : ''}>NOAA 20</option>
+                                    <option value="NOAA 21" ${activeNames.includes('NOAA 21') ? 'selected' : ''}>NOAA 21</option>
+                                    <option value="AQUA" ${activeNames.includes('AQUA') ? 'selected' : ''}>AQUA - NASA flagship water-cycle observer.</option>
+                                    <option value="TERRA"  ${activeNames.includes('TERRA') ? 'selected' : ''}>TERRA - Twin to Aqua, tasked with mapping land mass and vegetation</option>
+                                    <option value="LANDSAT 8"  ${activeNames.includes('LANDSAT 8') ? 'selected' : ''}>LANDSAT 8 - Legendary optical and thermal Earth-imaging satellite</option>
+                                    <option value="LANDSAT 9"  ${activeNames.includes('LANDSAT 9') ? 'selected' : ''}>LANDSAT 9 - The newest Landsat satellite</option>
+                                    <option value="SENTINEL-1A"  ${activeNames.includes('SENTINEL-1A') ? 'selected' : ''}>SENTINEL-1A - European Space Agency primary radar imaging satellite</option>
+                                    <option value="GOES 16"  ${activeNames.includes('GOES 16') ? 'selected' : ''}>GOES 16 - Geostationary (Americas/Atlantic)</option>
+                                    <option value="GOES 18"  ${activeNames.includes('GOES 18') ? 'selected' : ''}>GOES 18 - Geostationary (Pacific/Americas)</option>
+                                    <option value="METEOSAT-9"  ${activeNames.includes('METEOSAT-9') ? 'selected' : ''}>METEOSAT-9 - Geostationary (Indian Ocean)</option>
+                                    <option value="METEOSAT-10"  ${activeNames.includes('METEOSAT-10') ? 'selected' : ''}>METEOSAT-10 - Geostationary (Europe/Africa)</option>
+                                    <option value="METEOSAT-11"  ${activeNames.includes('METEOSAT-11') ? 'selected' : ''}>METEOSAT-11 - Geostationary (Prime Meridian)</option>
+                                </select>
+                                <div class="text-white-50" style="font-size: 11px; margin-top: 4px;">💡 Hold Ctrl (or Cmd ⌘) to select multiple timelines.</div>
+                            `;
+                        } else {
+                            const valStr = String(value);
+                            const isLong = valStr.length > 35 || option.includes('url');
+                            const isApiKey = option.includes('api_key');
+
+                            if (isLong) col.className = 'col-12';
+
+                            const readOnlyAttr = isApiKey ? 'readonly' : '';
+                            const readOnlyClass = isApiKey ? 'bg-secondary text-muted' : 'bg-dark text-light';
+                            const labelExtra = isApiKey ? ' 🔒 <span class="text-warning fw-normal">(Managed in Environment)</span>' : '';
+
+                            col.innerHTML = `
+                                <label class="form-label small text-white-50 fw-bold mb-1">${customLabelText}${labelExtra}</label>
+                                <input type="${typeof value === 'number' ? 'number' : 'text'}"
+                                       step="any" class="form-control ${readOnlyClass} border-secondary dynamic-input"
+                                       id="${domId}" value="${safeValue}" ${readOnlyAttr}>
                             `;
                         }
                         row.appendChild(col);
@@ -386,10 +698,8 @@
         }
 
         async function saveActiveConfig() {
-            // Deep copy the original JSON to preserve structure
             const payload = JSON.parse(JSON.stringify(masterConfigCache));
 
-            // Map Explicit Toggles back to specific JSON sections
             ['clouds', 'isobars', 'wind', 'precipitation', 'lightning', 'storms', 'quakes', 'volcanoes', 'satellites', 'shipping', 'shipping_collector', 'weather_scanner'].forEach(layer => {
                 if (payload[layer]) payload[layer].enabled = document.getElementById(`${layer}__enabled`)?.checked || false;
             });
@@ -401,7 +711,6 @@
             if(payload.ozone) payload.ozone.enabled = document.getElementById('radio__ozone').checked;
             if(payload.stormwatch) payload.stormwatch.enabled = document.getElementById('radio__stormwatch').checked;
 
-            // Gather all dynamic inputs and map them back to nested JSON
             document.querySelectorAll(".dynamic-input").forEach(input => {
                 const [section, option] = input.id.split('__');
                 if (!payload[section]) payload[section] = {};
@@ -412,10 +721,19 @@
                     payload[section][option] = findNearestNamedColor(input.value);
                 } else if (input.classList.contains('array-select')) {
                     payload[section][option] = Array.from(input.selectedOptions).map(opt => opt.value);
-                } else if (input.type === "number") {
-                    payload[section][option] = parseFloat(input.value);
+                } else if (input.type === "number" || input.type === "range") {
+                    if (input.classList.contains('cloud-threshold-slider')) {
+                        const pct = parseFloat(input.value);
+                        payload[section][option] = Math.min(255, Math.max(0, Math.round((pct / 100) * 255)));
+                    } else {
+                        payload[section][option] = parseFloat(input.value);
+                    }
                 } else {
-                    payload[section][option] = input.value.trim();
+                    if (option.includes('vei')) {
+                        payload[section][option] = parseInt(input.value) || 0;
+                    } else {
+                        payload[section][option] = input.value.trim();
+                    }
                 }
             });
 

@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from worldmap.lib.db import Database
 from worldmap.lib.config import WorldMapConfig
+from worldmap.tasks.common import MapRegion
 
 
 app = FastAPI(title="WorldMap Configuration API")
@@ -46,6 +47,18 @@ def get_regions():
         return {"status": "success", "data": regions}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/get_map_path")
+def get_map_path():
+    try:
+        # Get the name of the file for the map of Earth we are using
+        worldmap_config = load_config()
+        target_geometry =  worldmap_config.get_setting("common", "target_geometry")
+        region = MapRegion(target_geometry=target_geometry)
+        return {"status": "success", "data": f"{region.earth_map_path}"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.get("/api/config")
 def get_config():

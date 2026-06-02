@@ -56,15 +56,11 @@ class CompositeUpdater(Updater):
 
             # Define expected paths for the regional cache
             cloud_filename = f"clouds_{self.map_data.region.region_identifier}_{self.target_width}x{self.target_height}.jpg"
-            cloud_map_path = os.path.join(
-                self.workdir, "data", "regions", cloud_filename
-            )
-
+            cloud_map_path = os.path.join(self.workdir, "data", cloud_filename)
             regional_cloud_map = str(
                 os.path.join(
                     self.workdir,
                     "data",
-                    "regions",
                     f"clouds_transparent_{self.map_data.region.region_identifier}_{self.target_width}x{self.target_height}.png",
                 )
             )

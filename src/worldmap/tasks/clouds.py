@@ -19,7 +19,7 @@ class CloudUpdater(Updater):
 
         # Override default output path to save directly to the regional cache
         filename = f"clouds_{self.map_data.region.region_identifier}_{self.target_width}x{self.target_height}.jpg"
-        self.output_path = os.path.join(self.workdir, "data", "regions", filename)
+        self.output_path = os.path.join(self.workdir, "data", filename)
 
     def run(self):
         """Downloads the regional cloud layer from NASA GIBS with a baseline lookback."""

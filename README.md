@@ -323,7 +323,7 @@ forecasted which makes it very useful.
 Volcanoes are pretty much static day-to-day and can end up just cluttering up the map, 
 so I generally don't display them. There are also a lot of them, depending on which
 options you set in the configuration. Each volcano will appear on the map
-as this symbol ![Volcano](images/volcano_symbol.png)
+as this symbol ![Volcano](ui/images/volcano_symbol.png)
 
 One useful option for these is the option `Specific volcano by name` if a particular
 volcano on the planet has a big eruption and you want to display it. That field can
@@ -335,8 +335,8 @@ you to visualise clusters of quakes appearing and providing a pattern of activit
 The symbol used comes in two colours, one for a very recent earthquake and one for 
 those older. You can set the `Recent activity hours` which determines this switch in
 the configuration UI. The expiry hours can also be set there. Symbols:
-* ![EQ recent](images/earthquake_new.png) Recent earthquake activity
-* ![EQ older](images/earthquake_old.png) Older earthquakes
+* ![EQ recent](ui/images/earthquake_new.png) Recent earthquake activity
+* ![EQ older](ui/images/earthquake_old.png) Older earthquakes
 
 #### Storms
 Storms will drop off the map when the `Expiry days` is exceeded. Quite often the NOAA
@@ -346,7 +346,7 @@ or similar. This expiry stops it hanging around too long once the updates stop.
 A storm is depicted as a track history followed by a prediction cone showing where
 the storm might go next according to the computational models. The current position
 of the storm is shown with this icon:
-![Storm icon](images/storm_symbol.png)
+![Storm icon](ui/images/storm_symbol.png)
 
 To get the data we scan two sources:
 * NHC (National Hurricane Center)
@@ -373,9 +373,9 @@ avoid them building up and obliterating parts of the map. You have an `Expiry ho
 slider in the configuration panel for these to let you tune that. Having them show
 for a few hours is good to see how clusters of them are forming in stormy weather.
 We also have a colour code to give an idea of timing:
-* ![Bolt New](images/bolt_white.png) Strikes within the last 15 minutes
-* ![Bolt New](images/bolt_yellow.png) Within the last hour
-* ![Bolt New](images/bolt_red.png) Older than an hour (but not yet expired)
+* ![Bolt New](ui/images/bolt_white.png) Strikes within the last 15 minutes
+* ![Bolt New](ui/images/bolt_yellow.png) Within the last hour
+* ![Bolt New](ui/images/bolt_red.png) Older than an hour (but not yet expired)
 
 #### Climate
 This area is quite fascinating as it covers the entire planet. The data is sourced
@@ -445,17 +445,17 @@ If you select `Disc` ship icons there are basically two variants, Cargo and Tank
 with different colours depending on loading state. This setting is really only useful
 when you have things set up such that there is a low density of ships otherwise they
 can overlap too much:
-* ![Cargo](images/ship_cargo.png) Cargo
-* ![Cargo unloaded](images/ship_cargo_empty.png) Cargo (unloaded)
-* ![Tanker](images/ship_tanker.png) Tanker
-* ![Tanker unloaded](images/ship_tanker_empty.png) Tanker (unloaded)
+* ![Cargo](ui/images/ship_cargo.png) Cargo
+* ![Cargo unloaded](ui/images/ship_cargo_empty.png) Cargo (unloaded)
+* ![Tanker](ui/images/ship_tanker.png) Tanker
+* ![Tanker unloaded](ui/images/ship_tanker_empty.png) Tanker (unloaded)
 
 If you select `Arrows` for the ship icons then there is a color code: red for tankers,
 green for cargo, violet for passenger/other. Also the arrows will point in the direction
 that the vessel is heading currently. Examples:
-* ![Tankers](images/red_ship_base.png) Tankers
-* ![Cargo](images/green_ship_base.png) Cargo
-* ![Passenger](images/purple_ship_base.png) Passenger/other
+* ![Tankers](ui/images/red_ship_base.png) Tankers
+* ![Cargo](ui/images/green_ship_base.png) Cargo
+* ![Passenger](ui/images/purple_ship_base.png) Passenger/other
 
 Tip: If you have `filter_ships_underway` set to True, shipping with speeds less than 
 1.0 knots, or flagged as anchored or moored are NOT displayed. This avoids masses of ship

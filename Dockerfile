@@ -41,7 +41,7 @@ RUN uv sync --frozen --no-install-project --no-dev
 # 5. Application Code & Assets
 # Note: Copy the whole src directory to ensure the 'worldmap' package is findable
 COPY src/ ./src/
-COPY images/ ./images/
+COPY ui/images/ ./images/
 COPY markers/ ./markers/
 
 # 6. Final Sync & Script Installation

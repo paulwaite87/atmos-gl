@@ -15,6 +15,7 @@ from pathlib import Path
 # Internal library import
 from worldmap.lib.config import WorldMapConfig
 from worldmap.lib.db import Database
+from worldmap.lib.maps import NASAGIBSDownloader
 from PIL import Image
 
 logger = logging.getLogger(__name__)
@@ -129,19 +130,44 @@ def get_bbox_center(bbox):
 class MapRegion:
     def __init__(
         self,
-        region: str | list[float] | None = None,
-        target_width: int = 2048,
-        target_height: int = 1024,
+        target_geometry: str | None = None,
+        target_width: int | None = None,
+        target_height: int | None = None,
+        region: str | list[float] | None = None
     ):
         self.region = region
         self.region_identifier = "region"
         self.target_width = target_width
         self.target_height = target_height
+        self.region_geometry = target_geometry
+        # Solve inter-dependency of these dimensions; explicit dims get
+        # priority over the composite geometry string
+        if isinstance(target_width, int) and isinstance(target_height, int):
+            self.target_geometry = f"{self.target_width}x{self.target_height}"
+        elif target_geometry and "x" in target_geometry:
+            self.target_width = int(target_geometry.split("x")[0])
+            self.target_height = int(target_geometry.split("x")[1])
         self.bbox = None
         self.world_view = False
+        self.earth_map_path = None
         self.centre_latitude = 0.0
         self.centre_longitude = 0.0
         self.set_map_region_data(region)
+
+    def ensure_map(self):
+        """Ensures we have a map of the right region and geometry downloaded"""
+        downloader = NASAGIBSDownloader()
+        if not os.path.exists(self.earth_map_path):
+            logger.debug(
+                f"Cache miss: Downloading {self.region_geometry} day map for {self.region_identifier}..."
+            )
+            try:
+                downloader.download_region_map(
+                    self.bbox, self.target_width, self.target_height, self.earth_map_path, is_night=False
+                )
+            except Exception as e:
+                logger.error(f"Failed to download {self.region_geometry} day map for {self.region_identifier}")
+                self.earth_map_path = None
 
     def is_in_region(self, lat: float, lon: float):
         return (
@@ -152,6 +178,7 @@ class MapRegion:
         bbox = None
         bbox_prefix = "region_"
         self.world_view = False
+        self.earth_map_path = None
 
         # Handle explicit 'falsy' regions (None, empty string)
         if not region:
@@ -189,10 +216,9 @@ class MapRegion:
         # Apply aspect ratio adjustment and 180-degree safety shift
         if bbox:
             self.bbox = bbox
-            target_ratio = self.target_width / self.target_height
-            bbox = adjust_bbox_for_aspect_ratio(bbox, target_ratio)
             self.region_identifier = f"{bbox_prefix}_{stringify_bbox(bbox)}"
             self.centre_longitude, self.centre_latitude = get_bbox_center(bbox)
+            self.earth_map_path = os.path.join("data", f"{self.region_identifier}_{self.region_geometry}_day.jpg")
 
 
 class MapData:
@@ -207,10 +233,9 @@ class MapData:
         # Acquire the target geometry
         common_settings = self.config.get_section("common")
         target_geometry = common_settings.get("target_geometry", "2048x1024")
-        target_width, target_height = map(int, target_geometry.split("x"))
-        # Hard-code region to None which is 'The World'
-        self.region = MapRegion(None, target_width, target_height
-        )
+        self.region = MapRegion(target_geometry=target_geometry)
+        # Will download the proper map if we don't have it already
+        self.region.ensure_map()
 
 
 class Plot:
