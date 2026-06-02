@@ -93,7 +93,7 @@ def test_env():
     project_root = os.path.abspath(
         str(os.path.join(str(os.path.dirname(__file__)), ".."))
     )
-    config_path = os.path.join(project_root, "config", "worldmap.conf")
+    config_path = os.path.join(project_root, "config", "worldmap.json")
 
     if not os.path.exists(config_path):
         pytest.fail(f"Config file missing at: {config_path}")

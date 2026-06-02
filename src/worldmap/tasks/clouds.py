@@ -26,11 +26,11 @@ class CloudUpdater(Updater):
         self.exit_if_disabled()
 
         base_url = self.get_base_url()
-        expiry_hours = self.settings.getint("expiry_hours", fallback=3)
+        expiry_hours = self.settings.get("expiry_hours", 3)
 
         # --- NEW: Configurable lookback to prevent incomplete satellite swaths ---
-        # Default to 1 day back, but can be set to 2 in worldmap.conf if needed
-        cloud_offset = self.settings.getint("offset_days", fallback=1)
+        # Default to 1 day back, but can be set to 2 in worldmap.json if needed
+        cloud_offset = self.settings.get("offset_days", 1)
 
         now_utc = datetime.now(timezone.utc)
 

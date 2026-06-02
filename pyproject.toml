@@ -51,7 +51,7 @@ dependencies = [
 
 [project.scripts]
 worldmap-harvest = "worldmap.harvest:main"
-worldmap-builder = "worldmap.map_builder:main"
+worldmap-builder = "worldmap.layer_builder:main"
 
 [build-system]
 requires = ["hatchling"]

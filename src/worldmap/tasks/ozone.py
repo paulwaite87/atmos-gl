@@ -32,12 +32,12 @@ class OzoneUpdater(Updater):
         """Renders the ozone layer as a direct geographical color mesh."""
         logger.debug(f"Plotting ozone layer to {self.output_path}...")
 
-        alpha = self.settings.getfloat("alpha", fallback=0.4)
+        alpha = self.settings.get("alpha", 0.4)
         key_position = (
-            self.settings.get("key_position", fallback="bottom-right").strip().lower()
+            self.settings.get("key_position", "bottom-right").strip().lower()
         )
-        key_fontsize = self.settings.getint("key_fontsize", fallback=10)
-        palette_key = self.settings.get("palette", fallback="critical").lower()
+        key_fontsize = self.settings.get("key_fontsize", 10)
+        palette_key = self.settings.get("palette", "critical").lower()
         bbox = self.map_region_bbox
 
         # 1. Load Data
@@ -70,13 +70,13 @@ class OzoneUpdater(Updater):
         gc.collect()
 
         # 4. Mode Styling & Custom Colormaps
-        vmin = self.settings.getint("min_du", fallback=150)
-        vmax = self.settings.getint("max_du", fallback=500)
+        vmin = self.settings.get("min_du", 150)
+        vmax = self.settings.get("max_du", 500)
         norm = mcolors.Normalize(vmin=vmin, vmax=vmax)
 
         if palette_key == "critical":
             # 220 DU is the official definition of an ozone hole
-            critical_du = self.settings.getfloat("critical_du", fallback=220.0)
+            critical_du = self.settings.get("critical_du", 220.0)
 
             # Calculate where the critical threshold falls on the 0.0 to 1.0 color scale
             span = max(1, vmax - vmin)

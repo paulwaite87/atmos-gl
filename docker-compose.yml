@@ -6,7 +6,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    command: python -m worldmap.shipping_collector --config /opt/project/config/worldmap.conf
+    command: python -m worldmap.shipping_collector --config /opt/project/config/worldmap.json
     env_file:
       - .env
     environment:
@@ -38,7 +38,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    command: python -m worldmap.weather_scanner --config /opt/project/config/worldmap.conf
+    command: python -m worldmap.weather_scanner --config /opt/project/config/worldmap.json
     env_file:
       - .env
     environment:
@@ -64,13 +64,13 @@ services:
       - wmap
 
   # Manages map assets and rendering on a schedule
-  map_builder:
-    container_name: map_builder
+  layer_builder:
+    container_name: layer_builder
     image: worldmap:latest
     build:
       context: .
       dockerfile: Dockerfile
-    command: python -m worldmap.map_builder --config /opt/project/config/worldmap.conf
+    command: python -m worldmap.layer_builder --config /opt/project/config/worldmap.json
     env_file:
       - .env
     environment:
@@ -105,9 +105,9 @@ services:
     # Installs API runtime dependencies and targets our new api
     # module with dynamic reload enabled
     command: >
-      bash -c "pip install fastapi uvicorn && uvicorn worldmap.api:app --host 0.0.0.0 --port 8000"
+      bash -c "pip install fastapi uvicorn && uvicorn worldmap.api:app --host 0.0.0.0 --port 9000"
     ports:
-      - "8000:8000"
+      - "9000:9000"
     env_file:
       - .env
     environment:
@@ -120,7 +120,7 @@ services:
       - PGDATABASE=worldmap
       - PGUSER=wmap
       - PGPASSWORD=wmap
-      - CONFIG_PATH=/opt/project/config/worldmap.conf
+      - CONFIG_PATH=/opt/project/config/worldmap.json
     restart: unless-stopped
     depends_on:
       worldmap_db:

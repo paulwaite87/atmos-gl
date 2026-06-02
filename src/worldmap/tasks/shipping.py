@@ -8,7 +8,7 @@ from PIL import Image
 from worldmap.lib.config import WorldMapConfig
 from worldmap.lib.shipping import Ship
 from worldmap.lib.db import Database
-from .common import Updater, listify
+from .common import Updater
 from worldmap.lib.logging import set_loglevel
 
 logger = logging.getLogger(__name__)
@@ -70,33 +70,23 @@ class ShippingUpdater(Updater):
 
         ship_db = Database()
         map_region_name = self.config.get_setting("common", "region")
-        expiry = self.settings.getint("expiry_days", fallback=7)
+        expiry = self.settings.get("expiry_days", 7)
 
         # Setup Filters and Config
-        show_tracks = self.settings.getboolean("show_tracks", fallback=False)
-        track_min_dist = float(self.settings.get("track_min_distance_km", fallback=5.0))
-        track_max_points = self.settings.getint("track_max_points", fallback=10)
+        show_tracks = self.settings.get("show_tracks", False)
+        track_min_dist = self.settings.get("track_min_distance_km", 5.0)
+        track_max_points = self.settings.get("track_max_points", 10)
 
-        base_label_fontsize = float(self.settings.getint("label_fontsize", fallback=12))
-        label_color_default = self.settings.get("marker_color", fallback="red")
+        base_label_fontsize = float(self.settings.get("label_fontsize", 12))
+        label_color_default = self.settings.get("marker_color", "red")
 
         # Ship filtering
-        show_ships_underway = self.settings.getboolean(
-            "show_ships_underway", fallback=False
-        )
-        show_ship_icons = self.settings.get("show_ship_icons", fallback=None)
-        show_ship_classes = listify(
-            self.settings.get("filter_show_ship_classes", fallback="Tanker, Cargo")
-        )
-        show_names_classes = listify(
-            self.settings.get("filter_show_names_for_classes", fallback="")
-        )
-        show_ships_by_name = listify(
-            self.settings.get("filter_show_ships_by_name", fallback="")
-        )
-        show_ships_min_length = self.settings.getint(
-            "filter_ships_minimum_length", fallback=0
-        )
+        show_ships_underway = self.settings.get("show_ships_underway", False)
+        show_ship_icons = self.settings.get("show_ship_icons", None)
+        show_ship_classes = self.settings.get("filter_show_ship_classes", [Tanker, Cargo])
+        show_names_classes = self.settings.get("filter_show_names_for_classes", [])
+        show_ships_by_name = self.settings.get("filter_show_ships_by_name", [])
+        show_ships_min_length = self.settings.get("filter_ships_minimum_length", 0)
 
         fleet = ship_db.get_fleet(map_region_name, expiry_days=expiry)
         written_count = 0

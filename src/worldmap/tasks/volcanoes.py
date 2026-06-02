@@ -6,7 +6,7 @@ import urllib.request
 
 # Internal library import
 from worldmap.lib.config import WorldMapConfig
-from .common import Updater, MapData, listify
+from .common import Updater, MapData
 
 logger = logging.getLogger(__name__)
 
@@ -48,20 +48,12 @@ class VolcanoUpdater(Updater):
         self.exit_if_disabled()
 
         base_url = self.get_base_url()
-        marker_color = self.settings.get("marker_color", fallback="red")
+        marker_color = self.settings.get("marker_color", "red")
         marker_symbol = self.settings.get("marker_symbol")
-        significant_only = self.settings.getboolean("significant_only", fallback=False)
-        show_volcanoes_by_name = listify(
-            self.settings.get("filter_show_volcanoes_by_name", fallback="")
-        )
-        vei_min = self.settings.getint("vei_min", fallback=5)
-        # Load date codes (e.g., ["D1"] for Holocene)
-        try:
-            erupt_codes = json.loads(
-                self.settings.get("erupt_date_codes", fallback='["D1"]')
-            )
-        except json.JSONDecodeError:
-            erupt_codes = ["D1"]
+        significant_only = self.settings.get("significant_only", False)
+        show_volcanoes_by_name = self.settings.get("filter_show_volcanoes_by_name", [])
+        vei_min = self.settings.get("vei_min", 5)
+        erupt_codes = self.settings.get("erupt_date_codes", ["D1"])
 
         logger.debug(f"Fetching volcano data (VEI >= {vei_min})...")
         records = self._fetch_volcano_data(base_url)

@@ -1,4 +1,4 @@
-# Make a copy of this file as 'worldmap.conf' in the same 'config'
+# Make a copy of this file as 'worldmap.json' in the same 'config'
 # folder, and then customize the settings accordingly
 [common]
 # The 'region' variable will determine the map that is displayed. If empty,
@@ -413,7 +413,7 @@ expiry_hours = 24
 # Level for logging: DEBUG, INFO, WARNING, ERROR, CRITICAL
 log_level = INFO
 
-[map_builder]
+[layer_builder]
 enabled = True
 # Level for logging: DEBUG, INFO, WARNING, ERROR, CRITICAL
 log_level = INFO

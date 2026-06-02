@@ -65,15 +65,15 @@ class PrecipitationUpdater(Updater):
             f"Plotting precipitation for {self.map_data.region.region_identifier}"
         )
 
-        min_rate = self.settings.getfloat("min_mm_hr", fallback=0.1)
-        alpha = self.settings.getfloat("alpha", fallback=0.5)
-        palette_name = self.settings.get("palette", fallback="standard")
+        min_rate = self.settings.get("min_mm_hr", 0.1)
+        alpha = self.settings.get("alpha", 0.5)
+        palette_name = self.settings.get("palette", "standard")
 
         # Parse key layout configurations
         key_position = (
-            self.settings.get("key_position", fallback="bottom-right").strip().lower()
+            self.settings.get("key_position", "bottom-right").strip().lower()
         )
-        key_fontsize = self.settings.getint("key_fontsize", fallback=10)
+        key_fontsize = self.settings.get("key_fontsize", 10)
 
         # 1. Load Dataset and Clip Immediately
         ds = xr.open_dataset(self.grib_path, engine="cfgrib")

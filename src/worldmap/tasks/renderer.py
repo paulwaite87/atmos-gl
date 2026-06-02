@@ -7,7 +7,7 @@ import subprocess
 
 from worldmap.lib.config import WorldMapConfig
 from worldmap.lib.maps import NASAGIBSDownloader
-from .common import Updater, COMPOSITE_SECTIONS, listify
+from .common import Updater, COMPOSITE_SECTIONS
 
 logger = logging.getLogger(__name__)
 
@@ -21,18 +21,16 @@ class XPlanetRenderer(Updater):
         # desktop wallpaper. It will be prefixed with a unix timestamp so
         # that the wallpaper updater watching the folder this is put in
         # will consider it a changed file and update it.
-        self.base_filename = self.common.get("base_filename", fallback="regionmap.jpg")
+        self.base_filename = self.common.get("base_filename", "regionmap.jpg")
 
         # Whether to show the night-time shading. If false then the
         # whole map will be rendered as if it is in full daylight.
-        self.night_shade = self.common.getboolean("night_shade", fallback=True)
+        self.night_shade = self.common.get("night_shade", True)
 
         # This is the default color Xplanet will use when it has no map image
         # Used when we specify a bbox extending beyond 180 longitude, and
         # avoids the default white being used.
-        self.fill_default_color = self.common.get(
-            "fill_default_color", fallback="black"
-        )
+        self.fill_default_color = self.common.get("fill_default_color", "black")
 
         # Ensure regional data directory exists for caching
         self.region_dir = os.path.join(self.workdir, "data", "regions")
@@ -157,9 +155,7 @@ class XPlanetRenderer(Updater):
             # Additional marker files from a list in the config. These are
             # provided for enthusiasts who have their own marker files and
             # put them in the 'markers' folder.
-            extra_marker_files = listify(
-                self.common.get("extra_marker_files", fallback="")
-            )
+            extra_marker_files = self.common.get("extra_marker_files", [])
             for marker_file in extra_marker_files:
                 f.write(f"marker_file={marker_file}\n")
 
@@ -167,7 +163,7 @@ class XPlanetRenderer(Updater):
             marker_color = self.common.get("marker_default_color", "White")
             f.write(f"marker_color={self.fix_color(marker_color)}\n")
             f.write(
-                f"marker_fontsize={self.common.getint('marker_default_fontsize', 12)}\n"
+                f"marker_fontsize={self.common.get('marker_default_fontsize', 12)}\n"
             )
 
         # Cleanup old map files

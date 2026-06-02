@@ -43,12 +43,12 @@ class ShippingCollector:
         self.config.load()
         self.settings = self.config.get_section("shipping_collector")
         self.url = self.settings.get("url")
-        self.api_key = self.settings.get("api_key", fallback=None)
+        self.api_key = self.settings.get("api_key", None)
         if not self.api_key:
             logger.error("AIS API key not set")
             sys.exit(1)
         # Adjust log level if changed
-        log_level = self.settings.get("log_level", fallback=None)
+        log_level = self.settings.get("log_level", None)
         if log_level:
             set_loglevel(log_level)
 
@@ -122,9 +122,9 @@ class ShippingCollector:
         import random
 
         # Base duration (e.g., 300s). This will be multiplied by the weight.
-        base_duration = self.settings.getint("listen_duration", fallback=300)
-        sleep_between_runs = self.settings.getint("sleep_interval", fallback=60)
-        track_expiry = self.settings.getint("vessel_track_expiry_days", fallback=30)
+        base_duration = self.settings.get("listen_duration", 300)
+        sleep_between_runs = self.settings.get("sleep_interval", 60)
+        track_expiry = self.settings.get("vessel_track_expiry_days", 30)
 
         num_chunks = 10
         slice_width = 36.0
@@ -132,7 +132,7 @@ class ShippingCollector:
         while True:
             self.refresh_settings()
 
-            if self.settings.getboolean("enabled", fallback=False):
+            if self.settings.get("enabled", False):
                 logger.info(
                     "Shipping Collector Service: Starting weighted global rotation"
                 )

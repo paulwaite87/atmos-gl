@@ -14,22 +14,11 @@ from tests.common import test_env
 
 
 class MockConfigSection:
-    """Duck-types a configparser section to support .get(), .getint(), and .getboolean()"""
-
     def __init__(self, dictionary):
         self.data = dictionary
 
-    def get(self, key, fallback=None):
+    def get(self, key, None):
         return self.data.get(key, fallback)
-
-    def getint(self, key, fallback=0):
-        return int(self.data.get(key, fallback))
-
-    def getboolean(self, key, fallback=False):
-        val = self.data.get(key, fallback)
-        if val is None:
-            return fallback
-        return str(val).lower() in ("yes", "true", "t", "1")
 
 
 class MockShippingUpdater(ShippingUpdater):

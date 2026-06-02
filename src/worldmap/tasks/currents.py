@@ -59,22 +59,22 @@ class CurrentsUpdater(Updater):
             f"Plotting Ocean Currents for {self.map_data.region.region_identifier}"
         )
 
-        palette_name = self.settings.get("palette", fallback="thermal_red")
+        palette_name = self.settings.get("palette", "thermal_red")
         if palette_name not in self.PALETTES:
             palette_name = "thermal_red"
 
         # User configurable opacity ceiling (1.0 = completely solid neon vectors)
-        alpha_setting = self.settings.getfloat("alpha", fallback=1.0)
+        alpha_setting = self.settings.get("alpha", 1.0)
         alpha_setting = np.clip(alpha_setting, 0.1, 1.0)
 
         # User configurable line weight multiplier (e.g. 1.5 = 150% thicker lines)
-        width_factor = self.settings.getfloat("width_factor", fallback=1.0)
+        width_factor = self.settings.get("width_factor", 1.0)
         width_factor = max(0.1, width_factor)  # Prevent flat zero or negative scales
 
         key_position = (
-            self.settings.get("key_position", fallback="bottom-right").strip().lower()
+            self.settings.get("key_position", "bottom-right").strip().lower()
         )
-        key_fontsize = self.settings.getint("key_fontsize", fallback=10)
+        key_fontsize = self.settings.get("key_fontsize", 10)
 
         # 1. Load Dataset
         ds = xr.open_dataset(self.nc_path)

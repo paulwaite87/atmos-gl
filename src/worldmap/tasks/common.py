@@ -39,13 +39,6 @@ COMPOSITE_SECTIONS = [
 CLIMATE_LAYERS = ["sst", "waves", "temperature", "ozone", "stormwatch"]
 
 
-def listify(text: str) -> list:
-    """Convert a comma-separated string into a list of strings"""
-    if not text or text.strip() == "":
-        return []
-    return [item.strip() for item in text.split(",")]
-
-
 def stringify_bbox(bbox):
     """
     Converts a bbox list into a filename-safe string.
@@ -195,12 +188,6 @@ class MapRegion:
 
         # Apply aspect ratio adjustment and 180-degree safety shift
         if bbox:
-            # lon_min is index 0, lon_max is index 2
-            if bbox[2] > 180.0:
-                overflow = bbox[2] - 180.0
-                bbox[2] = 180.0  # Cap East at 180
-                bbox[0] = bbox[0] - overflow  # Shift West by the same amount
-
             self.bbox = bbox
             target_ratio = self.target_width / self.target_height
             bbox = adjust_bbox_for_aspect_ratio(bbox, target_ratio)
@@ -219,16 +206,11 @@ class MapData:
     def refresh(self):
         # Acquire the target geometry
         common_settings = self.config.get_section("common")
-        target_geometry = common_settings.get("target_geometry", fallback="2048x1024")
+        target_geometry = common_settings.get("target_geometry", "2048x1024")
         target_width, target_height = map(int, target_geometry.split("x"))
-        self.region = MapRegion(
-            self.config.get_setting("common", "region"), target_width, target_height
+        # Hard-code region to None which is 'The World'
+        self.region = MapRegion(None, target_width, target_height
         )
-
-        # Override longitude if we are viewing a global region
-        user_longitude = self.config.get_setting("xplanet", "longitude")
-        if user_longitude and self.region.world_view:
-            self.region.centre_longitude = user_longitude
 
 
 class Plot:
@@ -276,10 +258,10 @@ class Updater:
         self.settings = config.get_section(self.section)
         self.common = config.get_section("common")
         self.workdir = self.common.get("workdir", ".")
-        self.outfile = self.settings.get("outfile", fallback="")
+        self.outfile = self.settings.get("outfile", "")
         self.output_path = ""
-        self.enabled = self.settings.getboolean("enabled", False)
-        self.forecast_hour = max(self.common.getint("forecast_hour", fallback=1), 1)
+        self.enabled = self.settings.get("enabled", False)
+        self.forecast_hour = max(self.common.get("forecast_hour", 1), 1)
         self.base_url = self.get_base_url()
 
         # Copy map data up to this class for convenience

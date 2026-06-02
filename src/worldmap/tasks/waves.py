@@ -59,23 +59,23 @@ class WavesUpdater(Updater):
             f"Plotting Sea Conditions for {self.map_data.region.region_identifier}"
         )
 
-        palette_name = self.settings.get("palette", fallback="ocean_storm")
+        palette_name = self.settings.get("palette", "ocean_storm")
         if palette_name not in self.PALETTES:
             palette_name = "ocean_storm"
 
-        alpha_setting = self.settings.getfloat("alpha", fallback=0.75)
+        alpha_setting = self.settings.get("alpha", 0.75)
         alpha_setting = np.clip(alpha_setting, 0.1, 1.0)
 
         # Parse layout configurations
-        show_arrows = self.settings.getboolean("show_arrows", fallback=True)
-        arrow_density_mod = self.settings.getfloat("arrow_density", fallback=1.0)
-        arrow_scale_mod = self.settings.getfloat("arrow_scale", fallback=1.0)
+        show_arrows = self.settings.get("show_arrows", True)
+        arrow_density_mod = self.settings.get("arrow_density", 1.0)
+        arrow_scale_mod = self.settings.get("arrow_scale", 1.0)
         arrow_scale_mod = max(0.1, arrow_scale_mod)
 
         key_position = (
-            self.settings.get("key_position", fallback="bottom-right").strip().lower()
+            self.settings.get("key_position", "bottom-right")
         )
-        key_fontsize = self.settings.getint("key_fontsize", fallback=10)
+        key_fontsize = self.settings.get("key_fontsize", 10)
 
         # 1. Open Dataset with cfgrib engine backend
         ds = xr.open_dataset(

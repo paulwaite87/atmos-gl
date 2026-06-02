@@ -14,15 +14,9 @@ class LightningUpdater(Updater):
     def __init__(self, config, map_data):
         super().__init__(config, "Lightning", map_data)
         self.set_output_path()
-        self.strike_recent_minutes = self.settings.getint(
-            "strike_recent_minutes", fallback=15
-        )
-        self.strike_keep_minutes = self.settings.getint(
-            "strike_keep_minutes", fallback=60
-        )
-        self.strike_expiry_minutes = (
-            self.settings.getint("strike_expiry_hours", fallback=1) * 60
-        )
+        self.strike_recent_minutes = self.settings.get("strike_recent_minutes", 15)
+        self.strike_keep_minutes = self.settings.get("strike_keep_minutes", 60)
+        self.strike_expiry_minutes = (self.settings.get("strike_expiry_hours", 1) * 60)
 
     async def run(self):
         self.exit_if_disabled()

@@ -1,6 +1,6 @@
 # Ignore local data
 data/
-config/worldmap.conf
+config/worldmap.json
 
 # Ignore Python artifacts
 **/__pycache__/

@@ -7,7 +7,7 @@ import math
 
 # Internal library import
 from worldmap.lib.config import WorldMapConfig
-from .common import Updater, MapData, listify
+from .common import Updater, MapData
 
 logger = logging.getLogger(__name__)
 
@@ -22,14 +22,12 @@ class SatelliteUpdater(Updater):
         self.exit_if_disabled()
 
         base_url = self.get_base_url()
-        marker_color = self.settings.get("marker_color", fallback="White")
-        marker_fontsize = self.settings.getint("marker_fontsize", fallback=10)
-        trail_minutes = self.settings.getint("trail_minutes", fallback=5)
-        degrees_above_horizon = self.settings.getint(
-            "degrees_above_horizon", fallback=45
-        )
-        target_names = listify(self.settings.get("sat_names", fallback=""))
-        target_names += listify(self.settings.get("extra_satellite_names", fallback=""))
+        marker_color = self.settings.get("marker_color", "White")
+        marker_fontsize = self.settings.get("marker_fontsize", 10)
+        trail_minutes = self.settings.get("trail_minutes", 5)
+        degrees_above_horizon = self.settings.get("degrees_above_horizon", 45)
+        target_names = self.settings.get("sat_names", [])
+        target_names += self.settings.get("extra_satellite_names", [])
 
         if not target_names:
             logger.debug("No satellites configured in names list. Skipping.")

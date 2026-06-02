@@ -205,14 +205,14 @@ class StormUpdater(Updater):
 
     def plot_storms(self, df):
         """Plots the global tracks, live forecast cones, and PNG symbols directly to the image canvas."""
-        alpha_cone = self.settings.getfloat("cone_alpha", fallback=0.18)
-        cone_color = self.settings.get("cone_color", fallback="white")
-        track_color = self.settings.get("track_color", fallback="red")
+        alpha_cone = self.settings.get("cone_alpha", 0.18)
+        cone_color = self.settings.get("cone_color", "white")
+        track_color = self.settings.get("track_color", "red")
 
-        storm_icon_zoom = self.settings.getfloat("storm_icon_zoom", fallback=0.5)
+        storm_icon_zoom = self.settings.get("storm_icon_zoom", 0.5)
         storm_icon_path = self.settings.get(
             "storm_icon",
-            fallback=os.path.join(self.workdir, "images", "storm_symbol.png"),
+            os.path.join(self.workdir, "images", "storm_symbol.png"),
         )
 
         storm_icon = None
@@ -338,7 +338,7 @@ class StormUpdater(Updater):
                     b_decks.append(url.rstrip("/") + "/" + f)
 
         now_utc = datetime.now(timezone.utc)
-        expiry_days = self.settings.getint("expiry_days", fallback=4)
+        expiry_days = self.settings.get("expiry_days", 4)
 
         processed_data = []
         active_sids = []

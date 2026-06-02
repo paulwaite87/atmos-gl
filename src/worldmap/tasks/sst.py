@@ -20,14 +20,14 @@ class SSTUpdater(Updater):
     def __init__(self, config: WorldMapConfig, map_data: MapData):
         super().__init__(config, "sst", map_data)
         self.set_output_path()
-        self.mode = self.settings.get("mode", fallback="absolute").strip().lower()
+        self.mode = self.settings.get("mode", "absolute").strip().lower()
 
     def plot(self):
-        alpha = self.settings.getfloat("alpha", fallback=0.4)
+        alpha = self.settings.get("alpha", 0.4)
         key_position = (
-            self.settings.get("key_position", fallback="bottom-right").strip().lower()
+            self.settings.get("key_position", "bottom-right").strip().lower()
         )
-        key_fontsize = self.settings.getint("key_fontsize", fallback=10)
+        key_fontsize = self.settings.get("key_fontsize", 10)
         bbox = self.map_region_bbox
 
         # --- Data Loading ---
@@ -80,11 +80,11 @@ class SSTUpdater(Updater):
             tick_format = "%.1f"
         else:
             # Absolute Mode Configurations
-            vmin = self.settings.getint("min_c", fallback=0)
-            vmax = self.settings.getint("max_c", fallback=32)
+            vmin = self.settings.get("min_c", 0)
+            vmax = self.settings.get("max_c", 32)
             norm = mcolors.Normalize(vmin=vmin, vmax=vmax)
 
-            palette_key = self.settings.get("palette", fallback="thermal").lower()
+            palette_key = self.settings.get("palette", "thermal").lower()
             palettes = {
                 "thermal": "magma",
                 "vivid": "turbo",

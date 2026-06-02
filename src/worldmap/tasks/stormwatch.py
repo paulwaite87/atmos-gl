@@ -35,12 +35,12 @@ class StormwatchUpdater(Updater):
         )
 
         # Configuration (Default threshold of 1000 J/kg cuts out stable air)
-        min_cape = self.settings.getint("min_cape", fallback=1000)
-        alpha = self.settings.getfloat("alpha", fallback=0.6)
+        min_cape = self.settings.get("min_cape", 1000)
+        alpha = self.settings.get("alpha", 0.6)
         key_position = (
-            self.settings.get("key_position", fallback="bottom-right").strip().lower()
+            self.settings.get("key_position", "bottom-right").strip().lower()
         )
-        key_fontsize = self.settings.getint("key_fontsize", fallback=10)
+        key_fontsize = self.settings.get("key_fontsize", 10)
 
         # 1. Load Dataset and Clip Immediately
         ds = xr.open_dataset(self.grib_path, engine="cfgrib")

@@ -30,12 +30,12 @@ class WeatherScanner:
         self.primary_region_label = self.config.get_setting("common", "region")
         self.settings = self.config.get_section("weather_scanner")
         self.url = self.settings.get("url")
-        self.api_key = self.settings.get("api_key", fallback=None)
+        self.api_key = self.settings.get("api_key", None)
         if not self.api_key:
             logger.error("OpenWeather API key not set")
             sys.exit(1)
         # Adjust log level if changed
-        log_level = self.settings.get("log_level", fallback=None)
+        log_level = self.settings.get("log_level", None)
         if log_level:
             set_loglevel(log_level)
 
@@ -106,7 +106,7 @@ class WeatherScanner:
         while True:
             self.refresh_settings()
 
-            if self.settings.getboolean("enabled", fallback=False):
+            if self.settings.get("enabled", False):
                 logger.info("Weather Scanner Service: Starting regional scans.")
 
                 # Time window for scan
@@ -138,7 +138,7 @@ class WeatherScanner:
                         )
 
                 # Prune old data
-                expiry_hours = self.settings.getint("expiry_hours", fallback=2)
+                expiry_hours = self.settings.get("expiry_hours", 2)
                 pruned = self.db.prune_lightning(expiry_hours=expiry_hours)
                 if pruned:
                     logger.debug(f"Pruned {pruned} expired strikes.")

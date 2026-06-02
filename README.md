@@ -74,10 +74,10 @@ Either of those will pull the pre-built images and will start everything running
 but most things will be disabled to begin with.
 
 ### Setting it up
-The configuration file is called `worldmap.conf` and it lives in the `config` folder. 
+The configuration file is called `worldmap.json` and it lives in the `config` folder. 
 You can either edit this file directly, or browse to `http://localhost:8180` to use
 the configuration webpage there. If you do use that page, and save some changes they
-will overwrite your `worldmap.conf` obviously. Which is absolutely fine, except
+will overwrite your `worldmap.json` obviously. Which is absolutely fine, except
 the original un-edited version that gets installed for you does have some quite 
 informative comments scattered through it so to preserve those to look at anytime, 
 you could make a backup copy of the file first.
@@ -142,29 +142,29 @@ API keys and enabled them.
 
     shipping_collector  | 2026-05-28 23:06:32,213 [INFO] worldmap.shipping_collector: Shipping Collector Service: Starting weighted global rotation
     weather_scanner     | 2026-05-28 23:06:33,453 [INFO] worldmap.weather_scanner: Weather Scanner Service: Starting regional scans.
-    map_builder         | 2026-05-28 23:06:34,599 [INFO] worldmap.map_builder: Map-builder scheduler run started
-    map_builder         | 2026-05-28 23:06:34,599 [INFO] worldmap.map_builder: Running scheduled task: 'isobars'
-    map_builder         | 2026-05-28 23:06:34,875 [INFO] worldmap.tasks.isobars: Downloading fresh isobar data...
-    map_builder         | 2026-05-28 23:06:35,545 [INFO] worldmap.tasks.isobars: Generating Isobar plot...
-    map_builder         | 2026-05-28 23:06:37,662 [INFO] worldmap.map_builder: Running scheduled task: 'precipitation'
-    map_builder         | 2026-05-28 23:06:38,211 [INFO] worldmap.tasks.precipitation: Downloading fresh precipitation data from: https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod/gfs.20260528/06/atmos/gfs.t06z.pgrb2.0p25.f001
-    map_builder         | 2026-05-28 23:06:38,974 [INFO] worldmap.tasks.precipitation: Generating Precipitation plot...
-    map_builder         | 2026-05-28 23:06:39,108 [INFO] worldmap.tasks.precipitation: Large region detected (127.2°x57.4°). Using resource-friendly global grid settings.
-    map_builder         | 2026-05-28 23:06:39,974 [INFO] worldmap.map_builder: Running scheduled task: 'clouds'
-    map_builder         | 2026-05-28 23:06:39,975 [INFO] worldmap.tasks.clouds: Fetching regional NASA GIBS clouds for 2026-05-27 (4096x2048)...
-    map_builder         | 2026-05-28 23:06:46,066 [INFO] worldmap.map_builder: Running scheduled task: 'composite'
-    map_builder         | 2026-05-28 23:06:50,236 [INFO] worldmap.map_builder: Running scheduled task: 'lightning'
-    map_builder         | 2026-05-28 23:06:50,315 [INFO] worldmap.tasks.lightning: Placed 0 strikes
-    map_builder         | 2026-05-28 23:06:50,315 [INFO] worldmap.map_builder: Running scheduled task: 'quakes'
-    map_builder         | 2026-05-28 23:06:51,149 [INFO] worldmap.map_builder: Running scheduled task: 'satellites'
-    map_builder         | 2026-05-28 23:06:51,154 [INFO] worldmap.tasks.satellites: Satellite update complete. Tracked 1/1 objects.
-    map_builder         | 2026-05-28 23:06:51,155 [INFO] worldmap.map_builder: Running scheduled task: 'shipping'
-    map_builder         | 2026-05-28 23:06:51,233 [INFO] worldmap.tasks.shipping: Shipping update complete. Placed 549 ships in region.
-    map_builder         | 2026-05-28 23:06:51,236 [INFO] worldmap.map_builder: Running scheduled task: 'xplanet'
-    map_builder         | 2026-05-28 23:06:52,024 [INFO] worldmap.tasks.renderer: Successfully generated map: ./data/1779966411-regionmap.jpg
-    map_builder         | 2026-05-28 23:06:52,024 [INFO] worldmap.map_builder: Map-builder scheduler run finished
+    layer_builder         | 2026-05-28 23:06:34,599 [INFO] worldmap.layer_builder: Map-builder scheduler run started
+    layer_builder         | 2026-05-28 23:06:34,599 [INFO] worldmap.layer_builder: Running scheduled task: 'isobars'
+    layer_builder         | 2026-05-28 23:06:34,875 [INFO] worldmap.tasks.isobars: Downloading fresh isobar data...
+    layer_builder         | 2026-05-28 23:06:35,545 [INFO] worldmap.tasks.isobars: Generating Isobar plot...
+    layer_builder         | 2026-05-28 23:06:37,662 [INFO] worldmap.layer_builder: Running scheduled task: 'precipitation'
+    layer_builder         | 2026-05-28 23:06:38,211 [INFO] worldmap.tasks.precipitation: Downloading fresh precipitation data from: https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod/gfs.20260528/06/atmos/gfs.t06z.pgrb2.0p25.f001
+    layer_builder         | 2026-05-28 23:06:38,974 [INFO] worldmap.tasks.precipitation: Generating Precipitation plot...
+    layer_builder         | 2026-05-28 23:06:39,108 [INFO] worldmap.tasks.precipitation: Large region detected (127.2°x57.4°). Using resource-friendly global grid settings.
+    layer_builder         | 2026-05-28 23:06:39,974 [INFO] worldmap.layer_builder: Running scheduled task: 'clouds'
+    layer_builder         | 2026-05-28 23:06:39,975 [INFO] worldmap.tasks.clouds: Fetching regional NASA GIBS clouds for 2026-05-27 (4096x2048)...
+    layer_builder         | 2026-05-28 23:06:46,066 [INFO] worldmap.layer_builder: Running scheduled task: 'composite'
+    layer_builder         | 2026-05-28 23:06:50,236 [INFO] worldmap.layer_builder: Running scheduled task: 'lightning'
+    layer_builder         | 2026-05-28 23:06:50,315 [INFO] worldmap.tasks.lightning: Placed 0 strikes
+    layer_builder         | 2026-05-28 23:06:50,315 [INFO] worldmap.layer_builder: Running scheduled task: 'quakes'
+    layer_builder         | 2026-05-28 23:06:51,149 [INFO] worldmap.layer_builder: Running scheduled task: 'satellites'
+    layer_builder         | 2026-05-28 23:06:51,154 [INFO] worldmap.tasks.satellites: Satellite update complete. Tracked 1/1 objects.
+    layer_builder         | 2026-05-28 23:06:51,155 [INFO] worldmap.layer_builder: Running scheduled task: 'shipping'
+    layer_builder         | 2026-05-28 23:06:51,233 [INFO] worldmap.tasks.shipping: Shipping update complete. Placed 549 ships in region.
+    layer_builder         | 2026-05-28 23:06:51,236 [INFO] worldmap.layer_builder: Running scheduled task: 'xplanet'
+    layer_builder         | 2026-05-28 23:06:52,024 [INFO] worldmap.tasks.renderer: Successfully generated map: ./data/1779966411-regionmap.jpg
+    layer_builder         | 2026-05-28 23:06:52,024 [INFO] worldmap.layer_builder: Map-builder scheduler run finished
 
-The `map_builder` is the main process which puts together all the elements which get displayed 
+The `layer_builder` is the main process which puts together all the elements which get displayed 
 on the map. This process is endlessly repeating, so your map will change through the 
 day as the elements are updated.
 
@@ -247,7 +247,7 @@ If it doesn't find an existing `ships` record it creates a `shadow` record with 
 the ship, basically just the name and the `mmsi` identifier. At some point we would hope to 
 back-fill that data when a `ShipStaticData` is acquired for it.
 
-The `map_builder` (see below) is independent of all this and just displays ships in the database 
+The `layer_builder` (see below) is independent of all this and just displays ships in the database 
 which happen to be in the region(s) you have specified you want to display (or the whole World 
 if you left that list empty).
 

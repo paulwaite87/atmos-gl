@@ -16,19 +16,13 @@ from tests.common import test_env, assert_url_accessible
 
 
 class MockConfigSection:
-    """Duck-types a configparser section to support .get() and .getfloat()"""
+    """Duck-types a configparser section to support .get() and .get()"""
 
     def __init__(self, dictionary):
         self.data = dictionary
 
-    def get(self, key, fallback=None):
-        return self.data.get(key, fallback)
-
-    def getfloat(self, key, fallback=0.0):
-        return float(self.data.get(key, fallback))
-
-    def getint(self, key, fallback=0):
-        return int(self.data.get(key, fallback))
+    def get(self, key):
+        return self.data.get(key, None)
 
 
 class MockQuakeUpdater(QuakeUpdater):

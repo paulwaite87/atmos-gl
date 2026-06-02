@@ -14,8 +14,6 @@ RUN apt-get update -y \
     curl \
     imagemagick \
     ca-certificates \
-    xplanet \
-    xplanet-images \
     libeccodes-dev \
     procps \
     && rm -rf /var/lib/apt/lists/* /var/cache/apt/*
@@ -56,4 +54,4 @@ RUN uv sync --frozen --no-dev --editable \
 ENV PYTHONPATH="/opt/project/src"
 
 # Updated fallback command to use the new 'builder' script entry point
-CMD ["builder", "--config", "config/worldmap.conf"]
+CMD ["builder", "--config", "config/worldmap.json"]

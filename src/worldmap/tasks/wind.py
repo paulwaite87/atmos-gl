@@ -30,13 +30,13 @@ class WindUpdater(Updater):
         logger.debug(f"Plotting wind vectors to {self.output_path}...")
 
         bbox = self.map_region_bbox
-        vector_color = self.settings.get("vector_color", fallback="cyan")
-        base_len = self.settings.getfloat("barb_length_base", fallback=5.0)
-        len_step = self.settings.getfloat("barb_length_step", fallback=1.0)
+        vector_color = self.settings.get("vector_color", "cyan")
+        base_len = self.settings.get("barb_length_base", 5.0)
+        len_step = self.settings.get("barb_length_step", 1.0)
 
         # Spacing logic
         lon_span = abs(bbox[2] - bbox[0]) if bbox else 360
-        calc_spacing = lon_span / self.settings.getfloat("barb_density", fallback=30.0)
+        calc_spacing = lon_span / self.settings.get("barb_density", 30.0)
         spacing_deg = max(0.25, calc_spacing)
         density_step = max(1, int(spacing_deg / 0.25))
 

@@ -16,7 +16,7 @@ from tests.common import test_env, assert_url_accessible
 class MockSatelliteUpdater(SatelliteUpdater):
     def __init__(self, config, map_data):
         super().__init__(config, map_data)
-        # Force config values for predictable testing (Must strictly match lowercase section in worldmap.conf)
+        # Force config values for predictable testing (Must strictly match lowercase section in worldmap.json)
         self.config.update_setting("satellites", "enabled", "True")
         self.config.update_setting(
             "satellites", "sat_names", "ISS (ZARYA), CSS (TIANHE)"

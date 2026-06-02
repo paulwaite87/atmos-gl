@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>WorldMap Config Hub</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .nav-tabs .nav-link { color: #aaa; border: none; }
+        .nav-tabs .nav-link.active { background-color: #495057 !important; color: #fff !important; font-weight: bold; }
+        .card { border-radius: 12px; }
+        .section-block { background-color: #2b3035; border-radius: 8px; padding: 15px; margin-bottom: 20px; }
+        .grouping-box { background-color: #ffffff; color: #212529; border-radius: 8px; padding: 20px; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .grouping-box h5 { color: #0d6efd; border-bottom: 2px solid #dee2e6; padding-bottom: 8px; margin-bottom: 15px; font-weight: bold; }
+        .form-check-input:checked { background-color: #0d6efd; border-color: #0d6efd; }
+    </style>
+</head>
+<body class="bg-dark text-light">
+    <div class="container my-5" style="max-width: 950px;">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2>🌍 WorldMap Control Center</h2>
+            <div>
+                <a href="/" class="btn btn-outline-info btn-sm me-2">🔙 View Live Globe</a>
+                <span class="badge bg-success px-3 py-2">JSON Native Mode</span>
+            </div>
+        </div>
+
+        <ul class="nav nav-tabs mb-3" id="configTabs" role="tablist">
+            <li class="nav-item"><button class="nav-link active" id="global-tab" data-bs-toggle="tab" data-bs-target="#global-pane" type="button">Global</button></li>
+            <li class="nav-item"><button class="nav-link" id="show-tab" data-bs-toggle="tab" data-bs-target="#show-pane" type="button">Show</button></li>
+            <li class="nav-item"><button class="nav-link" id="atmospheric-tab" data-bs-toggle="tab" data-bs-target="#atmospheric-pane" type="button">Atmospheric</button></li>
+            <li class="nav-item"><button class="nav-link" id="climate-tab" data-bs-toggle="tab" data-bs-target="#climate-pane" type="button">Climate</button></li>
+            <li class="nav-item"><button class="nav-link" id="events-tab" data-bs-toggle="tab" data-bs-target="#events-pane" type="button">Events</button></li>
+            <li class="nav-item"><button class="nav-link" id="satellites-tab" data-bs-toggle="tab" data-bs-target="#satellites-pane" type="button">Satellites</button></li>
+            <li class="nav-item"><button class="nav-link" id="shipping-tab" data-bs-toggle="tab" data-bs-target="#shipping-pane" type="button">Shipping</button></li>
+            <li class="nav-item"><button class="nav-link" id="background-tab" data-bs-toggle="tab" data-bs-target="#background-pane" type="button">Background</button></li>
+        </ul>
+
+        <div class="card bg-secondary text-light p-4 shadow">
+            <div id="loading" class="text-center my-3">
+                <div class="spinner-border text-primary" role="status"></div>
+                <div class="mt-2">Loading system configuration...</div>
+            </div>
+
+            <form id="configForm" class="d-none">
+                <div class="tab-content" id="configTabsContent">
+                    <div class="tab-pane fade show active" id="global-pane"><div id="container-global"></div></div>
+
+                    <div class="tab-pane fade" id="show-pane">
+                        <div class="grouping-box">
+                            <h5>Atmospheric</h5>
+                            <div class="row g-3">
+                                <div class="col-md-4"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="clouds__enabled"><label class="form-check-label fw-bold ms-2">Clouds</label></div></div>
+                                <div class="col-md-4"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="isobars__enabled"><label class="form-check-label fw-bold ms-2">Isobars</label></div></div>
+                                <div class="col-md-4"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="wind__enabled"><label class="form-check-label fw-bold ms-2">Wind Vectors</label></div></div>
+                                <div class="col-md-4"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="precipitation__enabled"><label class="form-check-label fw-bold ms-2">Precipitation</label></div></div>
+                                <div class="col-md-4"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="lightning__enabled"><label class="form-check-label fw-bold ms-2">Lightning</label></div></div>
+                                <div class="col-md-4"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="storms__enabled"><label class="form-check-label fw-bold ms-2">Storm Track</label></div></div>
+                            </div>
+                        </div>
+
+                        <div class="grouping-box">
+                            <h5>Climate</h5>
+                            <p class="text-muted small mb-3">Select a climate base layer to render across the whole region:</p>
+                            <div class="row g-3">
+                                <div class="col-md-3"><div class="form-check"><input class="form-check-input" type="radio" name="exclusive_climate" id="radio__sst"><label class="form-check-label fw-bold ms-1" for="radio__sst">Sea Surface Temp</label></div></div>
+                                <div class="col-md-3"><div class="form-check"><input class="form-check-input" type="radio" name="exclusive_climate" id="radio__currents"><label class="form-check-label fw-bold ms-1" for="radio__currents">Ocean Currents</label></div></div>
+                                <div class="col-md-3"><div class="form-check"><input class="form-check-input" type="radio" name="exclusive_climate" id="radio__waves"><label class="form-check-label fw-bold ms-1" for="radio__waves">Wave Heights</label></div></div>
+                                <div class="col-md-3"><div class="form-check"><input class="form-check-input" type="radio" name="exclusive_climate" id="radio__temperature"><label class="form-check-label fw-bold ms-1" for="radio__temperature">Air Temperature</label></div></div>
+                                <div class="col-md-3"><div class="form-check"><input class="form-check-input" type="radio" name="exclusive_climate" id="radio__ozone"><label class="form-check-label fw-bold ms-1" for="radio__ozone">Ozone</label></div></div>
+                                <div class="col-md-3"><div class="form-check"><input class="form-check-input" type="radio" name="exclusive_climate" id="radio__stormwatch"><label class="form-check-label fw-bold ms-1" for="radio__stormwatch">Storm Watch</label></div></div>
+                                <div class="col-12 mt-2"><button type="button" class="btn btn-sm btn-outline-danger" onclick="clearClimateRadio()">None / Disable Climate Base Layer</button></div>
+                            </div>
+                        </div>
+
+                        <div class="grouping-box">
+                            <h5>Events</h5>
+                            <div class="row g-3">
+                                <div class="col-md-6"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="quakes__enabled"><label class="form-check-label fw-bold ms-2">Earthquakes</label></div></div>
+                                <div class="col-md-6"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="volcanoes__enabled"><label class="form-check-label fw-bold ms-2">Volcanoes</label></div></div>
+                            </div>
+                        </div>
+
+                        <div class="grouping-box">
+                            <h5>Satellites</h5>
+                            <div class="row g-3">
+                                <div class="col-md-6"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="satellites__enabled"><label class="form-check-label fw-bold ms-2">Satellites</label></div></div>
+                            </div>
+                        </div>
+
+                        <div class="grouping-box">
+                            <h5>Shipping</h5>
+                            <div class="row g-3">
+                                <div class="col-12"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="shipping__enabled"><label class="form-check-label fw-bold ms-2">Shipping Overlay</label></div></div>
+                            </div>
+                        </div>
+
+                        <div class="grouping-box">
+                            <h5>Background Processes</h5>
+                            <div class="row g-3">
+                                <div class="col-md-6">
+                                    <div class="form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" id="shipping_collector__enabled">
+                                        <label class="form-check-label fw-bold ms-2" for="shipping_collector__enabled">Shipping Collector (AIS Loop)</label>
+                                        <div id="key-warn-ais" class="text-danger small mt-1 d-none">⚠️ Deactivated: Missing AIS_API_KEY.</div>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" id="weather_scanner__enabled">
+                                        <label class="form-check-label fw-bold ms-2" for="weather_scanner__enabled">Weather Scanner Daemon</label>
+                                        <div id="key-warn-weather" class="text-danger small mt-1 d-none">⚠️ Deactivated: Missing OPENWEATHER_API_KEY.</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="tab-pane fade" id="atmospheric-pane"><div id="container-atmospheric"></div></div>
+                    <div class="tab-pane fade" id="climate-pane"><div id="container-climate"></div></div>
+                    <div class="tab-pane fade" id="events-pane"><div id="container-events"></div></div>
+                    <div class="tab-pane fade" id="satellites-pane"><div id="container-satellites"></div></div>
+                    <div class="tab-pane fade" id="shipping-pane"><div id="container-shipping"></div></div>
+                    <div class="tab-pane fade" id="background-pane"><div id="container-background"></div></div>
+                </div>
+
+                <button type="button" class="btn btn-primary w-100 mt-4 py-2 fw-bold shadow-lg" onclick="saveActiveConfig()">
+                    💾 Save & Overwrite System Configuration
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        const API_URL = "http://localhost:9000/api/config";
+        let masterConfigCache = {};
+
+        const TAB_GROUPS = {
+            "global": ["common", "composite", "xplanet", "map_builder", "radio"],
+            "atmospheric": ["clouds", "isobars", "wind", "precipitation", "lightning", "storms"],
+            "climate": ["sst", "currents", "waves", "temperature", "ozone", "stormwatch"],
+            "events": ["quakes", "volcanoes"],
+            "satellites": ["satellites"],
+            "shipping": ["shipping"],
+            "background": ["shipping_collector", "weather_scanner"]
+        };
+
+        const COLOR_MAP = {
+            "white": "#ffffff", "black": "#000000", "gray": "#808080", "silver": "#c0c0c0",
+            "red": "#ff0000", "maroon": "#800000", "pink": "#ffc0cb",
+            "green": "#00ff00", "lime": "#00ff00", "olive": "#809000", "teal": "#008080",
+            "blue": "#0000ff", "navy": "#000080", "cyan": "#00ffff", "aqua": "#00ffff",
+            "yellow": "#ffff00", "orange": "#ffa500", "gold": "#ffd700",
+            "purple": "#800080", "magenta": "#ff00ff", "violet": "#ee82ee"
+        };
+
+        function findNearestNamedColor(hex) {
+            hex = hex.toLowerCase();
+            let closestName = "White";
+            let minDistance = Number.MAX_VALUE;
+            const hexToRgb = (h) => {
+                const num = parseInt(h.replace("#", ""), 16);
+                return { r: (num >> 16) & 255, g: (num >> 8) & 255, b: num & 255 };
+            };
+            const target = hexToRgb(hex);
+            for (const [name, namedHex] of Object.entries(COLOR_MAP)) {
+                const current = hexToRgb(namedHex);
+                const distance = Math.sqrt(
+                    Math.pow(target.r - current.r, 2) + Math.pow(target.g - current.g, 2) + Math.pow(target.b - current.b, 2)
+                );
+                if (distance < minDistance) {
+                    minDistance = distance;
+                    closestName = name.charAt(0).toUpperCase() + name.slice(1);
+                }
+            }
+            return closestName;
+        }
+
+        document.addEventListener("DOMContentLoaded", async () => {
+            try {
+                const response = await fetch(API_URL);
+                const res = await response.json();
+                masterConfigCache = res.data;
+
+                parseExplicitElements(masterConfigCache);
+                renderTabContainers(masterConfigCache);
+                toggleSectionVisibility();
+
+                document.getElementById('loading').remove();
+                document.getElementById('configForm').classList.remove('d-none');
+            } catch (err) {
+                console.error("Initialization Error:", err);
+                document.getElementById('loading').innerHTML = "<span class='text-danger'>❌ Error rendering configuration. Check console for details.</span>";
+            }
+        });
+
+        function parseExplicitElements(data) {
+            // Master toggles
+            ['clouds', 'isobars', 'wind', 'precipitation', 'lightning', 'storms', 'quakes', 'volcanoes', 'satellites', 'shipping'].forEach(layer => {
+                const el = document.getElementById(`${layer}__enabled`);
+                if (el && data[layer]) {
+                    el.checked = !!data[layer].enabled;
+                    el.addEventListener('change', toggleSectionVisibility);
+                }
+            });
+
+            // Climate radios
+            ['sst', 'currents', 'waves', 'temperature', "ozone", "stormwatch"].forEach(layer => {
+                const el = document.getElementById(`radio__${layer}`);
+                if (el) {
+                    el.addEventListener('change', toggleSectionVisibility);
+                    if (data[layer] && data[layer].enabled) el.checked = true;
+                }
+            });
+
+            // Background services
+            const aisEnabled = document.getElementById('shipping_collector__enabled');
+            if (aisEnabled && data.shipping_collector) {
+                aisEnabled.checked = !!data.shipping_collector.enabled;
+                aisEnabled.addEventListener('change', toggleSectionVisibility);
+                if (data.shipping_collector.RULE__missing_ais) {
+                    aisEnabled.disabled = true; aisEnabled.checked = false;
+                    document.getElementById('key-warn-ais').classList.remove('d-none');
+                }
+            }
+
+            const weatherEnabled = document.getElementById('weather_scanner__enabled');
+            if (weatherEnabled && data.weather_scanner) {
+                weatherEnabled.checked = !!data.weather_scanner.enabled;
+                weatherEnabled.addEventListener('change', toggleSectionVisibility);
+                if (data.weather_scanner.RULE__missing_weather) {
+                    weatherEnabled.disabled = true; weatherEnabled.checked = false;
+                    document.getElementById('key-warn-weather').classList.remove('d-none');
+                }
+            }
+        }
+
+        function clearClimateRadio() {
+            document.getElementsByName('exclusive_climate').forEach(r => r.checked = false);
+            toggleSectionVisibility();
+        }
+
+        function renderTabContainers(data) {
+            for (const [groupName, sections] of Object.entries(TAB_GROUPS)) {
+                const container = document.getElementById(`container-${groupName}`);
+                if (!container) continue;
+
+                sections.forEach(section => {
+                    const sectionData = data[section];
+                    if (!sectionData) return;
+
+                    const blockWrapper = document.createElement('div');
+                    blockWrapper.id = `wrapper-section-${section}`;
+                    blockWrapper.className = 'section-block';
+
+                    const fieldsContainer = document.createElement('div');
+                    fieldsContainer.id = `fields-section-${section}`;
+                    fieldsContainer.innerHTML = `<h5 class="text-info border-bottom border-secondary pb-2 mb-3">[${section}] Properties</h5>`;
+
+                    const row = document.createElement('div');
+                    row.className = 'row g-3';
+
+                    for (const [option, value] of Object.entries(sectionData)) {
+                        if (option === 'enabled' || option.startsWith('RULE__')) continue;
+
+                        const col = document.createElement('div');
+                        col.className = 'col-md-6';
+                        const domId = `${section}__${option}`; // Used purely for DOM binding
+
+                        const spaced = option.replace(/_/g, ' ');
+                        const customLabelText = spaced.charAt(0).toUpperCase() + spaced.slice(1);
+                        const safeValue = typeof value === 'string' ? value.replace(/"/g, '&quot;') : value;
+
+                        if (typeof value === "boolean") {
+                            col.className = 'col-md-6 d-flex align-items-center mt-4';
+                            col.innerHTML = `
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input dynamic-input" type="checkbox" id="${domId}" ${value ? 'checked' : ''}>
+                                    <label class="form-check-label fw-bold ms-2">${customLabelText}</label>
+                                </div>`;
+                        } else if (option.endsWith('_color')) {
+                            const rawColorStr = String(value).toLowerCase().trim();
+                            const initialHex = rawColorStr.startsWith('#') ? rawColorStr : COLOR_MAP[rawColorStr] || "#ffffff";
+                            const initialLabel = rawColorStr ? rawColorStr.charAt(0).toUpperCase() + rawColorStr.slice(1) : "White";
+                            col.innerHTML = `
+                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                    <label class="form-label small text-white-50 fw-bold mb-0">${customLabelText}</label>
+                                    <span class="badge border border-secondary text-light fw-bold color-label-badge" id="badge-${domId}">${initialLabel}</span>
+                                </div>
+                                <input type="color" class="form-control form-control-color bg-dark border-secondary w-100 dynamic-input structured-color-name-picker"
+                                       id="${domId}" value="${initialHex}" style="max-width: 100%; height: 38px;"
+                                       oninput="document.getElementById('badge-${domId}').innerText = findNearestNamedColor(this.value);">
+                            `;
+                        } else if (Array.isArray(value)) {
+                            // Render native JSON arrays as multi-selects
+                            let optionsHTML = value.map(v => `<option value="${v}" selected>${v}</option>`).join('');
+                            // Add generic fallback options for ease of use
+                            if (option === "extra_satellite_names") optionsHTML += `<option value="NOAA 15">NOAA 15</option><option value="ISS (ZARYA)">ISS (ZARYA)</option>`;
+
+                            col.className = 'col-12';
+                            col.innerHTML = `
+                                <label class="form-label small text-white-50 fw-bold mb-1">${customLabelText} (Array)</label>
+                                <select class="form-select bg-dark text-light border-secondary dynamic-input array-select" id="${domId}" multiple style="height: 120px;">
+                                    ${optionsHTML}
+                                </select>
+                                <div class="text-white-50" style="font-size: 11px; margin-top: 4px;">💡 Hold Ctrl (or Cmd ⌘) to select/deselect.</div>
+                            `;
+                        } else if (option === 'auto_rotate_speed') {
+                            col.innerHTML = `
+                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                    <label class="form-label small text-white-50 fw-bold mb-0">${customLabelText}</label>
+                                    <span class="badge bg-info text-dark fw-bold" id="badge-${domId}">${value}</span>
+                                </div>
+                                <input type="range" class="form-range dynamic-input" id="${domId}" min="0.01" max="1.0" step="0.01" value="${value}"
+                                       oninput="document.getElementById('badge-${domId}').innerText = this.value;">
+                            `;
+                        } else if (typeof value === "number" || option.endsWith('_hours') || option.endsWith('_minutes')) {
+                            col.innerHTML = `
+                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                    <label class="form-label small text-white-50 fw-bold mb-0">${customLabelText}</label>
+                                    <span class="badge bg-primary text-light fw-bold" id="badge-${domId}">${value}</span>
+                                </div>
+                                <input type="number" step="any" class="form-control bg-dark text-light border-secondary dynamic-input" id="${domId}" value="${value}">
+                            `;
+                        } else {
+                            const isLong = String(value).length > 35 || option.includes('url');
+                            if (isLong) col.className = 'col-12';
+                            col.innerHTML = `
+                                <label class="form-label small text-white-50 fw-bold mb-1">${customLabelText}</label>
+                                <input type="text" class="form-control bg-dark text-light border-secondary dynamic-input" id="${domId}" value="${safeValue}">
+                            `;
+                        }
+                        row.appendChild(col);
+                    }
+
+                    fieldsContainer.appendChild(row);
+                    blockWrapper.appendChild(fieldsContainer);
+
+                    if (!['common', 'composite', 'map_builder', 'radio', 'xplanet'].includes(section)) {
+                        const fallbackMessage = document.createElement('div');
+                        fallbackMessage.id = `fallback-section-${section}`;
+                        fallbackMessage.className = 'text-center p-4 text-white-50 d-none';
+                        fallbackMessage.innerHTML = `
+                            <div class="fs-4 mb-1">🚫 Layer Display Off</div>
+                            <div class="small">Enable <strong>[${section}]</strong> in the Show tab to edit.</div>
+                        `;
+                        blockWrapper.appendChild(fallbackMessage);
+                    }
+                    container.appendChild(blockWrapper);
+                });
+            }
+        }
+
+        function toggleSectionVisibility() {
+            const statusMap = {
+                "clouds": document.getElementById('clouds__enabled')?.checked,
+                "isobars": document.getElementById('isobars__enabled')?.checked,
+                "wind": document.getElementById('wind__enabled')?.checked,
+                "precipitation": document.getElementById('precipitation__enabled')?.checked,
+                "lightning": document.getElementById('lightning__enabled')?.checked,
+                "storms": document.getElementById('storms__enabled')?.checked,
+                "quakes": document.getElementById('quakes__enabled')?.checked,
+                "volcanoes": document.getElementById('volcanoes__enabled')?.checked,
+                "satellites": document.getElementById('satellites__enabled')?.checked,
+                "shipping": document.getElementById('shipping__enabled')?.checked,
+                "sst": document.getElementById('radio__sst')?.checked,
+                "currents": document.getElementById('radio__currents')?.checked,
+                "waves": document.getElementById('radio__waves')?.checked,
+                "temperature": document.getElementById('radio__temperature')?.checked,
+                "ozone": document.getElementById('radio__ozone')?.checked,
+                "stormwatch": document.getElementById('radio__stormwatch')?.checked,
+                "shipping_collector": document.getElementById('shipping_collector__enabled')?.checked,
+                "weather_scanner": document.getElementById('weather_scanner__enabled')?.checked
+            };
+
+            for (const [section, isEnabled] of Object.entries(statusMap)) {
+                const fieldsDiv = document.getElementById(`fields-section-${section}`);
+                const fallbackDiv = document.getElementById(`fallback-section-${section}`);
+                if (!fieldsDiv || !fallbackDiv) continue;
+                if (isEnabled) {
+                    fieldsDiv.classList.remove('d-none'); fallbackDiv.classList.add('d-none');
+                } else {
+                    fieldsDiv.classList.add('d-none'); fallbackDiv.classList.remove('d-none');
+                }
+            }
+        }
+
+        async function saveActiveConfig() {
+            // Deep copy the original JSON to preserve structure
+            const payload = JSON.parse(JSON.stringify(masterConfigCache));
+
+            // Map Explicit Toggles back to specific JSON sections
+            ['clouds', 'isobars', 'wind', 'precipitation', 'lightning', 'storms', 'quakes', 'volcanoes', 'satellites', 'shipping', 'shipping_collector', 'weather_scanner'].forEach(layer => {
+                if (payload[layer]) payload[layer].enabled = document.getElementById(`${layer}__enabled`)?.checked || false;
+            });
+
+            if(payload.sst) payload.sst.enabled = document.getElementById('radio__sst').checked;
+            if(payload.currents) payload.currents.enabled = document.getElementById('radio__currents').checked;
+            if(payload.waves) payload.waves.enabled = document.getElementById('radio__waves').checked;
+            if(payload.temperature) payload.temperature.enabled = document.getElementById('radio__temperature').checked;
+            if(payload.ozone) payload.ozone.enabled = document.getElementById('radio__ozone').checked;
+            if(payload.stormwatch) payload.stormwatch.enabled = document.getElementById('radio__stormwatch').checked;
+
+            // Gather all dynamic inputs and map them back to nested JSON
+            document.querySelectorAll(".dynamic-input").forEach(input => {
+                const [section, option] = input.id.split('__');
+                if (!payload[section]) payload[section] = {};
+
+                if (input.type === "checkbox") {
+                    payload[section][option] = input.checked;
+                } else if (input.classList.contains('structured-color-name-picker')) {
+                    payload[section][option] = findNearestNamedColor(input.value);
+                } else if (input.classList.contains('array-select')) {
+                    payload[section][option] = Array.from(input.selectedOptions).map(opt => opt.value);
+                } else if (input.type === "number") {
+                    payload[section][option] = parseFloat(input.value);
+                } else {
+                    payload[section][option] = input.value.trim();
+                }
+            });
+
+            try {
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const result = await response.json();
+                if (result.status === "success") alert("Configuration saved successfully!");
+            } catch (err) {
+                alert("Error writing configuration to file system matrix.");
+            }
+        }
+    </script>
+</body>
+</html>

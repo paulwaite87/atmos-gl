@@ -56,14 +56,14 @@ class IsobarUpdater(Updater):
         plot.get_figure()
 
         # Contour styling
-        step = self.settings.getint("isobar_step", fallback=4)
+        step = self.settings.get("isobar_step", 4)
         levels = np.arange(940, 1060, step)
-        color = self.settings.get("isobar_color", fallback="white")
-        f_size = self.settings.getint("label_fontsize", fallback=10)
+        color = self.settings.get("isobar_color", "white")
+        f_size = self.settings.get("label_fontsize", 10)
 
         # New Settings: Read thickness and visibility from config
-        thickness = self.settings.getfloat("linewidth", fallback=1.0)
-        alpha_val = self.settings.getfloat("alpha", fallback=1.0)
+        thickness = self.settings.get("linewidth", 1.0)
+        alpha_val = self.settings.get("alpha", 1.0)
 
         # High-contrast effects for visibility over dark ocean
         # We scale the stroke thickness based on the configured line thickness

@@ -64,19 +64,15 @@ class TemperatureUpdater(Updater):
             f"Plotting Temperature Data for {self.map_data.region.region_identifier}"
         )
 
-        alpha_setting = self.settings.getfloat("alpha", fallback=0.75)
+        alpha_setting = self.settings.get("alpha", 0.75)
         alpha_setting = np.clip(alpha_setting, 0.1, 1.0)
-        mode = self.settings.get("mode", fallback="absolute").strip().lower()
+        mode = self.settings.get("mode", "absolute").strip().lower()
 
-        show_freezing_line = self.settings.getboolean(
-            "show_freezing_line", fallback=True
-        )
+        show_freezing_line = self.settings.get("show_freezing_line", True)
 
         # Key style configurations
-        key_position = (
-            self.settings.get("key_position", fallback="bottom-right").strip().lower()
-        )
-        key_fontsize = self.settings.getint("key_fontsize", fallback=10)
+        key_position = self.settings.get("key_position", "bottom-right")
+        key_fontsize = self.settings.get("key_fontsize", 10)
 
         # Open Dataset with cfgrib filtering for 2-meter above ground level
         ds = xr.open_dataset(
@@ -158,7 +154,7 @@ class TemperatureUpdater(Updater):
         else:
             display_data = temp_grid
 
-            palette_name = self.settings.get("palette", fallback="global_thermal")
+            palette_name = self.settings.get("palette", "global_thermal")
             if palette_name not in self.PALETTES:
                 palette_name = "global_thermal"
 

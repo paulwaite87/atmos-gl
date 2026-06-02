@@ -9,7 +9,7 @@ BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
-MAP_SERVICE=map_builder
+MAP_SERVICE=layer_builder
 SHIPPING_SERVICE=shipping_collector
 WEATHER_SERVICE=weather_scanner
 DB_SERVICE=worldmap_db

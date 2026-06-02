@@ -2,7 +2,7 @@
 # Ignore various data files
 data/*
 satellites/*
-/config/worldmap.conf
+/config/worldmap.json
 
 # Ignore environment secrets
 .env

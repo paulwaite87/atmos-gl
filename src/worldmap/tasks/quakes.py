@@ -22,15 +22,13 @@ class QuakeUpdater(Updater):
         self.exit_if_disabled()
 
         url = self.get_base_url()
-        marker_color = self.settings.get("marker_color", fallback="white")
+        marker_color = self.settings.get("marker_color", "white")
         marker_symbol_new = self.settings.get("marker_symbol_new")
         marker_symbol_old = self.settings.get("marker_symbol_old")
-        label_size = self.settings.get("label_fontsize", fallback="12")
-        min_mag = self.settings.getfloat("min_mag", fallback=5.0)
-        recent_activity_hours = self.settings.getint(
-            "recent_activity_hours", fallback=3
-        )
-        expiry_hours = self.settings.getint("expiry_hours", fallback=24)
+        label_size = self.settings.get("label_fontsize", "12")
+        min_mag = self.settings.get("min_mag", 5.0)
+        recent_activity_hours = self.settings.get("recent_activity_hours", 3)
+        expiry_hours = self.settings.get("expiry_hours", 24)
 
         try:
             logger.debug(f"Fetching earthquake data from USGS (Min Mag: {min_mag})...")

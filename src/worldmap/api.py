@@ -2,6 +2,7 @@
 import os
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from worldmap.lib.db import Database
 from worldmap.lib.config import WorldMapConfig
 
@@ -16,9 +17,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# This explicitly tells FastAPI to expose the physical "data" directory to the web
+app.mount("/data", StaticFiles(directory="data"), name="data")
 
 def load_config():
-    config_path = os.getenv("CONFIG_PATH", "./config/worldmap.conf")
+    config_path = os.getenv("CONFIG_PATH", "./config/worldmap.json")
 
     if not os.path.exists(config_path):
         raise HTTPException(status_code=404, detail="Configuration layout unavailable.")
@@ -44,60 +47,43 @@ def get_regions():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-
 @app.get("/api/config")
 def get_config():
     worldmap_config = load_config()
-    flat_data = {}
 
-    for section in worldmap_config.config.sections():
-        for option in worldmap_config.config.options(section):
-            key = f"{section}__{option}"
-            value = worldmap_config.config.get(section, option)
-
-            # Type casting logic parsing ...
-            if value.lower() in ["true", "yes", "on"]:
-                flat_data[key] = True
-            elif value.lower() in ["false", "no", "off"]:
-                flat_data[key] = False
-            else:
-                try:
-                    flat_data[key] = float(value) if "." in value else int(value)
-                except ValueError:
-                    flat_data[key] = value
+    # We can pass the native dictionary straight to the frontend
+    data = worldmap_config.config.copy()
 
     # ENFORCEMENT RULE: Check host system for environment variables
-    # If the key is missing or empty, force the UI state to reflect it
+    # We inject these rules directly into the relevant dictionary sections
     ais_key = os.getenv("AIS_API_KEY", "").strip()
     owm_key = os.getenv("OPENWEATHER_API_KEY", "").strip()
 
-    if not ais_key:
-        flat_data["shipping_collector__enabled"] = False
-        flat_data["RULE__missing_ais"] = True
+    if "shipping_collector" in data:
+        if not ais_key:
+            data["shipping_collector"]["enabled"] = False
+            data["shipping_collector"]["RULE__missing_ais"] = True
 
-    if not owm_key:
-        flat_data["weather_scanner__enabled"] = False
-        flat_data["RULE__missing_weather"] = True
+    if "weather_scanner" in data:
+        if not owm_key:
+            data["weather_scanner"]["enabled"] = False
+            data["weather_scanner"]["RULE__missing_weather"] = True
 
-    return {"status": "success", "data": flat_data}
+    return {"status": "success", "data": data}
 
 
 @app.post("/api/config")
 async def update_config(payload: dict):
     worldmap_config = load_config()
 
-    for flat_key, val in payload.items():
-        # THE FIX: Split strictly at the double underscore
-        if "__" in flat_key:
-            section, option = flat_key.split("__", 1)
-            if not worldmap_config.config.has_section(section):
-                worldmap_config.config.add_section(section)
+    # Strip out the UI-only enforcement rules before saving to disk
+    if "shipping_collector" in payload:
+        payload["shipping_collector"].pop("RULE__missing_ais", None)
+    if "weather_scanner" in payload:
+        payload["weather_scanner"].pop("RULE__missing_weather", None)
 
-            if isinstance(val, bool):
-                worldmap_config.config.set(section, option, "True" if val else "False")
-            else:
-                worldmap_config.config.set(section, option, str(val))
-
+    # Completely overwrite the in-memory config with the UI payload
+    worldmap_config.config = payload
     worldmap_config.save()
 
     return {"status": "success", "message": "Configuration updated successfully."}

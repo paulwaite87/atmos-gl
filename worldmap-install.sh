@@ -30,7 +30,7 @@ mkdir -p config
 
 # Fetch templates from repository
 curl -fsSL ${WORLDMAP_RAW_URL}/docker-compose-prod.yml -o docker-compose.yml
-curl -fsSL ${WORLDMAP_RAW_URL}/config/worldmap.conf.example -o config/worldmap.conf
+curl -fsSL ${WORLDMAP_RAW_URL}/config/worldmap.json.example -o config/worldmap.json
 
 # Fetch and setup .env
 if [ ! -f .env ]; then
@@ -55,7 +55,7 @@ echo -e "${BLUE}Starting World Map...${NC}"
 echo -e "${GREEN}=== Installation Complete! ===${NC}"
 echo "System initialized. Please update your settings:"
 echo "API Keys: ${GREEN}${INSTALL_DIR}/.env${NC}"
-echo "Configuration: ${GREEN}${INSTALL_DIR}/config/worldmap.conf${NC}"
+echo "Configuration: ${GREEN}${INSTALL_DIR}/config/worldmap.json${NC}"
 echo "   Web UI: http://localhost:8180/"
 echo "Use ${GREEN}${INSTALL_DIR}/worldmap.sh${NC} to manage the system."
 echo ""

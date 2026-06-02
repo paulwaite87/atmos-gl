@@ -32,12 +32,11 @@ from worldmap.tasks.quakes import QuakeUpdater
 from worldmap.tasks.satellites import SatelliteUpdater
 from worldmap.tasks.shipping import ShippingUpdater
 from worldmap.tasks.volcanoes import VolcanoUpdater
-from worldmap.tasks.renderer import XPlanetRenderer
 
-logger = logging.getLogger("worldmap.map_builder")
+logger = logging.getLogger("worldmap.layer_builder")
 
 
-class MapBuilder:
+class LayerBuilder:
     enabled = False
 
     def __init__(self, config_path: str):
@@ -73,12 +72,11 @@ class MapBuilder:
             ("satellites", SatelliteUpdater),
             ("shipping", ShippingUpdater),
             ("volcanoes", VolcanoUpdater),
-            ("xplanet", XPlanetRenderer),
         ]
 
     def refresh_settings(self):
         self.config.load()
-        self.enabled = self.config.get_setting("map_builder", "enabled")
+        self.enabled = self.config.get_setting("layer_builder", "enabled")
         # Adjust log level if changed
         log_level = self.config.get_setting("common", "log_level")
         if log_level:
@@ -127,10 +125,10 @@ class MapBuilder:
             return True
 
         if updater.section == "satellites":
-            update_minutes = updater.settings.getint("update_minutes", fallback=10)
+            update_minutes = updater.settings.get("update_minutes", 10)
             runs_per_day = int((24 * 60) / update_minutes)
         else:
-            runs_per_day = int(updater.settings.get("runs_per_day", fallback=0))
+            runs_per_day = int(updater.settings.get("runs_per_day", 0))
 
         if runs_per_day <= 0:
             return False
@@ -199,14 +197,14 @@ class MapBuilder:
 
 def main():
     parser = argparse.ArgumentParser(description="WorldMap Builder Scheduler")
-    parser.add_argument("--config", required=True, help="Path to worldmap.conf")
+    parser.add_argument("--config", required=True, help="Path to worldmap.json")
     args = parser.parse_args()
 
     setup_logging()
-    map_builder = MapBuilder(args.config)
+    layer_builder = LayerBuilder(args.config)
 
     try:
-        asyncio.run(map_builder.start_scheduler())
+        asyncio.run(layer_builder.start_scheduler())
     except KeyboardInterrupt:
         logger.info("Scheduler gracefully stopped.")
         sys.exit(130)
