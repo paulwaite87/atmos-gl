@@ -10,10 +10,10 @@ export function loadLayer(map, config) {
         type: 'image',
         url: `${baseUrl}?t=${Date.now()}`, // Cache-bust the very first load
         coordinates: [
-            [-180, 90],  
-            [180, 90],   
-            [180, -90],  
-            [-180, -90]  
+            [-180, 85.051129],
+            [180, 85.051129],
+            [180, -85.051129],
+            [-180, -85.051129]
         ]
     });
 

@@ -56,7 +56,8 @@
                     container: 'globeViz', // or whatever your map DIV ID is
                     style: `https://api.maptiler.com/maps/satellite/style.json?key=${maptilerKey}`,
                     center: [0, 0],
-                    zoom: 1 // Start zoomed out to see the globe shape immediately
+                    zoom: 1, // Start zoomed out to see the globe shape immediately
+                    projection: 'globe' // Start with a spherical projection
                 });
 
                 // CRITICAL: Wait for the style configuration to finish loading before activating the globe
@@ -93,10 +94,11 @@
                     // 5. Sequentially initialize backend active feature modules
                     // Best practice ordering: Base textures first, vector data points on top
                     const frontendLayers = [
-                        'clouds',       // Bottom layer (wraps over baseline satellite imagery)
-                        'isobars',      // Sits right on top of the clouds
-                        'shipping',     // Vessels render over weather charts
-                        'quakes',       // Points/markers stay perfectly visible on top
+                        'clouds',        // Bottom layer (wraps over baseline satellite imagery)
+                        'precipitation', // Above clouds, below isobars'
+                        'isobars',       // Sits right on top of the clouds
+                        'shipping',      // Vessels render over weather charts
+                        'quakes',        // Points/markers stay perfectly visible on top
                         'satellites'
                     ];
 

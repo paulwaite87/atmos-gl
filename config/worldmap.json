@@ -17,6 +17,7 @@
     "outfile": "data/cloud_map.png",
     "threshold": 168,
     "gamma": 0.5,
+    "offset_days": 2,
     "expiry_hours": 3,
     "runs_per_day": 8
   },
@@ -128,9 +129,9 @@
     "enabled": false,
     "jtwc_url": "https://www.ssd.noaa.gov/PS/TROP/DATA/ATCF/JTWC/",
     "nhc_url": "https://ftp.nhc.noaa.gov/atcf/fst/",
-    "outfile": "data/storms.png",
+    "outfile": "data/storms.json",
     "storm_icon": "images/storm_symbol.png",
-    "storm_icon_zoom": 1.5,
+    "icon_zoom": 1.5,
     "storm_name_fontsize": 18,
     "forecast_cone_alpha": 0.5,
     "forecast_cone_color": "Red",
@@ -144,7 +145,7 @@
   },
   "lightning": {
     "enabled": false,
-    "outfile": "data/lightning.txt",
+    "outfile": "data/lightning.json",
     "strike_recent_minutes": 15,
     "strike_keep_minutes": 60,
     "strike_expiry_hours": 2,
@@ -154,7 +155,7 @@
     "enabled": true,
     "url": "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.csv",
     "outfile": "data/quakes.json",
-    "marker_color": "Pink",
+    "icon_zoom": 0.7,
     "marker_symbol_new": "earthquake_new.png",
     "marker_symbol_old": "earthquake_old.png",
     "recent_activity_hours": 3,
@@ -166,7 +167,7 @@
   "volcanoes": {
     "enabled": false,
     "url": "https://www.ngdc.noaa.gov/hazel/hazard-service/api/v1/volcanoes",
-    "outfile": "data/volcano_markers.txt",
+    "outfile": "data/volcanoes.json",
     "marker_color": "Violet",
     "marker_symbol": "volcano_symbol.png",
     "significant_only": true,
@@ -179,10 +180,8 @@
   },
   "shipping": {
     "enabled": true,
-    "outfile": "data/ship_markers.txt",
-    "marker_color": "Cyan",
-    "label_fontsize": 12,
-    "show_ship_icons": "Arrows",
+    "outfile": "data/ships.json",
+    "icon_zoom": 0.5,
     "filter_ships_underway": true,
     "filter_show_ship_classes": [],
     "filter_show_names_for_classes": [],
@@ -197,7 +196,7 @@
   "satellites": {
     "enabled": false,
     "url": "https://celestrak.org/NORAD/elements",
-    "outfile": "satellites/sat_file",
+    "outfile": "data/satellites.json",
     "marker_color": "Orange",
     "marker_fontsize": 10,
     "sat_names": [

@@ -208,7 +208,7 @@ class StormUpdater(Updater):
         cone_color = self.settings.get("cone_color", "white")
         track_color = self.settings.get("track_color", "red")
 
-        storm_icon_zoom = self.settings.get("storm_icon_zoom", 0.5)
+        storm_icon_zoom = self.settings.get("icon_zoom", 0.5)
         storm_icon_path = self.settings.get(
             "storm_icon",
             os.path.join(self.workdir, "images", "storm_symbol.png"),

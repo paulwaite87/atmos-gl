@@ -321,7 +321,7 @@
                                 <input type="range" class="form-range dynamic-input" id="${domId}" min="1" max="7" step="1" value="${initialDays}"
                                        oninput="document.getElementById('badge-${domId}').innerText = parseInt(this.value) + ' days expiry'">
                             `;
-                        } else if (option === 'storm_icon_zoom') {
+                        } else if (option.includes('icon_zoom')) {
                             const initialZoom = parseFloat(value) !== undefined ? parseFloat(value) : 1.0;
                             col.innerHTML = `
                                 <div class="d-flex justify-content-between align-items-center mb-1">
@@ -494,15 +494,6 @@
                                     <option value="WARNING" ${value === 'WARNING' ? 'selected' : ''}>WARNING</option>
                                     <option value="ERROR" ${value === 'ERROR' ? 'selected' : ''}>ERROR</option>
                                     <option value="CRITICAL" ${value === 'CRITICAL' ? 'selected' : ''}>CRITICAL</option>
-                                </select>
-                            `;
-                        } else if (option.includes('show_ship_icons')) {
-                            col.innerHTML = `
-                                <label class="form-label small text-white-50 fw-bold mb-1">${customLabelText}</label>
-                                <select class="form-select bg-dark text-light border-secondary dynamic-input" id="${domId}">
-                                    <option value="default" ${value === 'default' ? 'selected' : ''}>Default</option>
-                                    <option value="Discs" ${value === 'Discs' ? 'selected' : ''}>Discs</option>
-                                    <option value="Arrows" ${value === 'Arrows' ? 'selected' : ''}>Arrows</option>
                                 </select>
                             `;
                         } else if (option.includes('key_position')) {

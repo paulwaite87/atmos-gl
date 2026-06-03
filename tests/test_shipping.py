@@ -94,7 +94,6 @@ async def test_shipping_pipeline(test_env):
             "track_min_distance_km": "2.0",
             "track_max_points": "5",
             "show_ships_underway": "True",
-            "show_ship_icons": "Arrows",
             "filter_show_ship_classes": "Tanker, Cargo",
             "filter_show_names_for_classes": "Tanker",
             "filter_show_ships_by_name": "",

@@ -1,9 +1,9 @@
 /**
- * Isobars Module - Renders flat pressure contour overlays with automatic background updates
+ * Precipitation Module - Renders rainfall overlays with automatic background updates
  */
 export function loadLayer(map, config) {
     const baseUrl = `http://localhost:9000/${config.outfile}`;
-    const sourceId = 'isobars-source';
+    const sourceId = 'precipitation-source';
 
     // 1. Establish the baseline layer source on startup
     map.addSource(sourceId, {
@@ -18,7 +18,7 @@ export function loadLayer(map, config) {
     });
 
     map.addLayer({
-        id: 'isobars-layer',
+        id: 'precipitation-layer',
         type: 'raster',
         source: sourceId,
         paint: {
@@ -30,7 +30,7 @@ export function loadLayer(map, config) {
     // 2. WHERE TO USE IT: Set up a background heartbeat timer
     // Check your backend for an updated file every 5 minutes (300,000 milliseconds)
     setInterval(() => {
-        console.log("[Refresh] Requesting latest isobar texture map from backend...");
+        console.log("[Refresh] Requesting latest precipitation texture map from backend...");
 
         const source = map.getSource(sourceId);
         if (source) {
