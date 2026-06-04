@@ -95,8 +95,7 @@ async def test_shipping_pipeline(test_env):
             "track_max_points": "5",
             "show_ships_underway": "True",
             "filter_show_ship_classes": "Tanker, Cargo",
-            "filter_show_names_for_classes": "Tanker",
-            "filter_show_ships_by_name": "",
+            "show_ships_by_name": "",
             "filter_ships_minimum_length": "50",
             "label_fontsize": "12",
             "marker_color": "red",
@@ -111,7 +110,7 @@ async def test_shipping_pipeline(test_env):
         ),
     ):
         mock_db_instance = MockDB.return_value
-        mock_db_instance.get_fleet.return_value = generate_mock_fleet()
+        mock_db_instance.get_ships.return_value = generate_mock_fleet()
         mock_db_instance.get_ship_track.return_value = generate_mock_track()
 
         await updater.run()

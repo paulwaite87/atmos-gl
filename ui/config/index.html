@@ -132,11 +132,16 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        const API_URL = "http://localhost:9000/api/config";
+        const API_URL = "http://localhost:9000/api";
+        const CONFIG_API_URL = API_URL + "/config";
+        const REGIONS_API_URL = API_URL + "/regions";
+        const VESSEL_CLASSES_API_URL = API_URL + "/vessel_classes";
         let masterConfigCache = {};
+        let dynamicRegions = {}
+        let dynamicVesselClasses = {}
 
         const TAB_GROUPS = {
-            "global": ["common", "composite", "xplanet", "map_builder", "radio"],
+            "global": ["common", "map_builder"],
             "atmospheric": ["clouds", "isobars", "wind", "precipitation", "lightning", "storms"],
             "climate": ["sst", "currents", "waves", "temperature", "ozone", "stormwatch"],
             "events": ["quakes", "volcanoes"],
@@ -178,9 +183,26 @@
 
         document.addEventListener("DOMContentLoaded", async () => {
             try {
-                const response = await fetch(API_URL);
-                const res = await response.json();
-                masterConfigCache = res.data;
+                // Fetch configuration settings
+                const configResponse = await fetch(CONFIG_API_URL);
+                const configJson = await configResponse.json();
+                if (configJson.status === "success") {
+                    masterConfigCache = configJson.data;
+                }
+
+                // Fetch regions from the database
+                const regionResponse = await fetch(REGIONS_API_URL);
+                const regionJson = await regionResponse.json();
+                if (regionJson.status === "success") {
+                    dynamicRegions = regionJson.data;
+                }
+
+                // Fetch vessel classes from the database
+                const vesselClassesResponse = await fetch(VESSEL_CLASSES_API_URL);
+                const vesselClassesJson = await vesselClassesResponse.json();
+                if (vesselClassesJson.status === "success") {
+                    dynamicVesselClasses = vesselClassesJson.data;
+                }
 
                 parseExplicitElements(masterConfigCache);
                 renderTabContainers(masterConfigCache);
@@ -277,6 +299,7 @@
 
                         const safeValue = typeof value === 'string' ? value.replace(/"/g, '&quot;') : value;
 
+                        // --- NEW: Handle Region dynamically ---
                         if (typeof value === "boolean") {
                             col.className = 'col-md-6 d-flex align-items-center mt-4';
                             col.innerHTML = `
@@ -284,6 +307,17 @@
                                     <input class="form-check-input dynamic-input" type="checkbox" id="${domId}" ${value ? 'checked' : ''}>
                                     <label class="form-check-label fw-bold ms-2">${customLabelText}</label>
                                 </div>`;
+                        } else if (option === 'region') {
+                            let optionsHTML = '<option value="">Whole World</option>';
+                            dynamicRegions.forEach(r => {
+                                optionsHTML += `<option value="${r.label}" ${value === r.label ? 'selected' : ''}>${r.label}</option>`;
+                            });
+                            col.innerHTML = `
+                                <label class="form-label small text-white-50 fw-bold mb-1">Region filter</label>
+                                <select class="form-select bg-dark text-light border-secondary dynamic-input" id="${domId}">
+                                    ${optionsHTML}
+                                </select>
+                            `;
                         } else if (option.endsWith('_color')) {
                             const rawColorStr = String(value).toLowerCase().trim();
                             const initialHex = rawColorStr.startsWith('#') ? rawColorStr : COLOR_MAP[rawColorStr] || "#ffffff";
@@ -300,6 +334,16 @@
                                            id="${domId}" value="${initialHex}" style="max-width: 100%; height: 38px;"
                                            oninput="const mappedName = findNearestNamedColor(this.value); document.getElementById('badge-${domId}').innerText = mappedName;">
                                 </div>
+                            `;
+                        } else if (option === 'forecast_hour') {
+                            const initialFcstHour = parseInt(value) || 0;
+                            col.innerHTML = `
+                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                    <label class="form-label small text-white-50 fw-bold mb-0">${customLabelText}</label>
+                                    <span class="badge bg-primary text-light fw-bold" id="badge-${domId}">${initialFcstHour}h</span>
+                                </div>
+                                <input type="range" class="form-range dynamic-input" id="${domId}" min="0" max="96" step="1" value="${initialFcstHour}"
+                                       oninput="document.getElementById('badge-${domId}').innerText = parseInt(this.value) + 'h'">
                             `;
                         } else if (option.includes('_hours')) {
                             const initialHours = parseInt(value) || 3;
@@ -318,8 +362,18 @@
                                     <label class="form-label small text-white-50 fw-bold mb-0">${customLabelText}</label>
                                     <span class="badge bg-warning text-dark fw-bold" id="badge-${domId}">${initialDays} days expiry</span>
                                 </div>
-                                <input type="range" class="form-range dynamic-input" id="${domId}" min="1" max="7" step="1" value="${initialDays}"
+                                <input type="range" class="form-range dynamic-input" id="${domId}" min="0" max="60" step="1" value="${initialDays}"
                                        oninput="document.getElementById('badge-${domId}').innerText = parseInt(this.value) + ' days expiry'">
+                            `;
+                        } else if (option === 'offset_days') {
+                            const initialDays = parseInt(value) || 0;
+                            col.innerHTML = `
+                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                    <label class="form-label small text-white-50 fw-bold mb-0">${customLabelText}</label>
+                                    <span class="badge bg-warning text-dark fw-bold" id="badge-${domId}">${initialDays} days</span>
+                                </div>
+                                <input type="range" class="form-range dynamic-input" id="${domId}" min="0" max="7" step="1" value="${initialDays}"
+                                       oninput="document.getElementById('badge-${domId}').innerText = parseInt(this.value) + ' days'">
                             `;
                         } else if (option.includes('icon_zoom')) {
                             const initialZoom = parseFloat(value) !== undefined ? parseFloat(value) : 1.0;
@@ -396,16 +450,6 @@
                                 <input type="range" class="form-range dynamic-input" id="${domId}" min="0" max="10" step="0.1" value="${initialMag}"
                                        oninput="document.getElementById('badge-${domId}').innerText = 'M ' + parseFloat(this.value).toFixed(1)">
                             `;
-                        } else if (option.includes('update_minutes')) {
-                            const initialMinutes = parseInt(value) || 10;
-                            col.innerHTML = `
-                                <div class="d-flex justify-content-between align-items-center mb-1">
-                                    <label class="form-label small text-white-50 fw-bold mb-0">${customLabelText}</label>
-                                    <span class="badge bg-success text-dark fw-bold" id="badge-${domId}">${initialMinutes}mins</span>
-                                </div>
-                                <input type="range" class="form-range dynamic-input" id="${domId}" min="5" max="60" step="5" value="${initialMinutes}"
-                                       oninput="document.getElementById('badge-${domId}').innerText = this.value + 'mins'">
-                            `;
                         } else if (option.includes('degrees_above_horizon')) {
                             const initialDegrees = parseInt(value) || 45;
                             col.innerHTML = `
@@ -416,14 +460,14 @@
                                 <input type="range" class="form-range dynamic-input" id="${domId}" min="10" max="60" step="5" value="${initialDegrees}"
                                        oninput="document.getElementById('badge-${domId}').innerText = this.value + 'deg'">
                             `;
-                        } else if (option.includes('trail_minutes')) {
-                            const initialTrail = parseInt(value) || 45;
+                        } else if (option.includes('_minutes')) {
+                            const initialMinutes = parseInt(value) || 15;
                             col.innerHTML = `
                                 <div class="d-flex justify-content-between align-items-center mb-1">
                                     <label class="form-label small text-white-50 fw-bold mb-0">${customLabelText}</label>
-                                    <span class="badge bg-success text-dark fw-bold" id="badge-${domId}">${initialTrail}mins</span>
+                                    <span class="badge bg-success text-dark fw-bold" id="badge-${domId}">${initialMinutes}mins</span>
                                 </div>
-                                <input type="range" class="form-range dynamic-input" id="${domId}" min="5" max="60" step="5" value="${initialTrail}"
+                                <input type="range" class="form-range dynamic-input" id="${domId}" min="0" max="120" step="1" value="${initialMinutes}"
                                        oninput="document.getElementById('badge-${domId}').innerText = this.value + 'mins'">
                             `;
                         } else if (option.includes('fontsize')) {
@@ -565,16 +609,58 @@
                                     <input type="text" class="form-control bg-dark text-light border-secondary dynamic-input" id="${domId}" value="${safeValue}">
                                 `;
                             }
-                        } else if (option === 'filter_show_ship_classes' || option === 'filter_show_names_for_classes') {
-                            const activeValues = Array.isArray(value) ? value : [];
+                        } else if (option === 'filter_ships_minimum_length') {
+                            const initialShipLength = parseInt(value) || 0;
                             col.innerHTML = `
-                                <label class="form-label small text-white-50 fw-bold mb-1">${customLabelText}</label>
-                                <select class="form-select bg-dark text-light border-secondary dynamic-input array-select" id="${domId}" multiple style="height: 95px;">
-                                    <option value="Tanker" ${activeValues.includes('Tanker') ? 'selected' : ''}>Tanker</option>
-                                    <option value="Cargo" ${activeValues.includes('Cargo') ? 'selected' : ''}>Cargo</option>
-                                    <option value="Passenger" ${activeValues.includes('Passenger') ? 'selected' : ''}>Passenger</option>
+                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                    <label class="form-label small text-white-50 fw-bold mb-0">Show only ships longer than this</label>
+                                    <span class="badge bg-success text-dark fw-bold" id="badge-${domId}">${initialShipLength}m</span>
+                                </div>
+                                <input type="range" class="form-range dynamic-input" id="${domId}" min="0" max="500" step="25" value="${initialShipLength}"
+                                       oninput="document.getElementById('badge-${domId}').innerText = this.value + 'm'">
+                            `;
+                        } else if (option === 'filter_show_max_ships') {
+                            const initialMaxShips = parseInt(value) || 5000;
+                            col.innerHTML = `
+                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                    <label class="form-label small text-white-50 fw-bold mb-0">Maximum number of ships to show</label>
+                                    <span class="badge bg-success text-dark fw-bold" id="badge-${domId}">${initialMaxShips}</span>
+                                </div>
+                                <input type="range" class="form-range dynamic-input" id="${domId}" min="100" max="10000" step="100" value="${initialMaxShips}"
+                                       oninput="document.getElementById('badge-${domId}').innerText = this.value">
+                            `;
+                        } else if (option === 'track_max_points') {
+                            const initialNPoints = parseInt(value) || 10;
+                            col.innerHTML = `
+                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                    <label class="form-label small text-white-50 fw-bold mb-0">Track maximum points</label>
+                                    <span class="badge bg-success text-dark fw-bold" id="badge-${domId}">${initialNPoints}</span>
+                                </div>
+                                <input type="range" class="form-range dynamic-input" id="${domId}" min="10" max="100" step="10" value="${initialNPoints}"
+                                       oninput="document.getElementById('badge-${domId}').innerText = this.value">
+                            `;
+                        } else if (option === 'track_min_dist') {
+                            const initialKm = parseInt(value) || 25;
+                            col.innerHTML = `
+                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                    <label class="form-label small text-white-50 fw-bold mb-0">Track minimum distance</label>
+                                    <span class="badge bg-success text-dark fw-bold" id="badge-${domId}">${initialKm}km</span>
+                                </div>
+                                <input type="range" class="form-range dynamic-input" id="${domId}" min="10" max="200" step="10" value="${initialKm}"
+                                       oninput="document.getElementById('badge-${domId}').innerText = this.value + 'km'">
+                            `;
+                        } else if (option === 'filter_show_ship_classes') {
+                            let optionsHTML = '';
+                            const activeValues = Array.isArray(value) ? value : [];
+                            dynamicVesselClasses.forEach(r => {
+                                const isSelected = activeValues.includes(r.label)
+                                optionsHTML += `<option value="${r.label}" ${isSelected ? 'selected' : ''}>${r.label}</option>`;
+                            });
+                            col.innerHTML = `
+                                <label class="form-label small text-white-50 fw-bold mb-1">Select classes of ship to show</label>
+                                <select class="form-select bg-dark text-light border-secondary dynamic-input array-select" id="${domId}" multiple style="height: 220px;">
+                                    ${optionsHTML}
                                 </select>
-                                <div class="text-white-50" style="font-size: 11px; margin-top: 4px;">💡 Hold Ctrl (or Cmd ⌘) to select multiple. Select none to show all.</div>
                             `;
                         } else if (option === 'erupt_date_codes') {
                             const activeCodes = Array.isArray(value) ? value : [];
@@ -648,7 +734,7 @@
                     fieldsContainer.appendChild(row);
                     blockWrapper.appendChild(fieldsContainer);
 
-                    if (!['common', 'composite', 'map_builder', 'radio', 'xplanet'].includes(section)) {
+                    if (!['common', 'composite', 'map_builder', 'radio'].includes(section)) {
                         const fallbackMessage = document.createElement('div');
                         fallbackMessage.id = `fallback-section-${section}`;
                         fallbackMessage.className = 'text-center p-4 text-white-50 d-none';
@@ -738,7 +824,7 @@
             });
 
             try {
-                const response = await fetch(API_URL, {
+                const response = await fetch(CONFIG_API_URL, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)

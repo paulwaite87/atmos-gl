@@ -1,72 +1,104 @@
 // ui/modules/shipping.js
 
-export function loadLayer(map, config) {
-    // Default zoom to 1.0 if not provided
-    const zoom = config.icon_zoom || 1.0;
-    const baseSize = 14;
-    const size = Math.floor(baseSize * zoom);
+export async function loadLayer(map, config) {
+    const geojsonUrl = 'http://localhost:9000/api/ships/geojson';
+    if (map.getSource('ships-source')) return;
 
-    fetch('http://localhost:9000/' + config.outfile + '?t=' + Date.now())
-        .then(res => res.json())
-        .then(ships => {
-            ships.forEach(d => {
-                // 1. Scaled Container
-                const container = document.createElement('div');
-                container.style.width = `${size}px`;
-                container.style.height = `${size}px`;
-                container.style.cursor = 'pointer';
+    // Single persistent popup instance
+    const popup = new maplibregl.Popup({ closeButton: false, closeOnClick: false });
 
-                // 2. Scaled Image
-                const img = document.createElement('img');
-                img.src = `/images/${d.color_base}_ship_base.png`;
-                img.style.width = `${size}px`;
-                img.style.height = `${size}px`;
-                img.style.display = 'block';
-                img.style.transform = `rotate(${d.heading}deg)`;
-                img.style.transition = 'transform 0.15s ease';
+    // 1. Define and Load all 3 Images
+    const shipIcons = [
+        { id: 'ship-red', url: '/images/red_ship_base.png' },
+        { id: 'ship-green', url: '/images/green_ship_base.png' },
+        { id: 'ship-purple', url: '/images/purple_ship_base.png' }
+    ];
 
-                container.appendChild(img);
+    try {
+        await Promise.all(shipIcons.map(async (icon) => {
+            const response = await fetch(`${window.location.origin}${icon.url}`);
+            if (!response.ok) throw new Error(`Could not load ${icon.id}`);
+            const blob = await response.blob();
+            const bitmap = await createImageBitmap(blob);
+            map.addImage(icon.id, bitmap);
+        }));
 
-                // 3. Popup (Remains standard size)
-                const popup = new maplibregl.Popup({
-                    offset: (size / 2), // Adjust offset so popup doesn't overlap the scaled icon
-                    closeButton: false,
-                    className: 'ship-popup'
-                }).setHTML(`
-                    <div style="font-family: sans-serif; font-size: 12px; color: #000; padding: 5px;">
-                        <strong style="font-size: 14px; text-transform: uppercase; color: #000;">${d.name}</strong> 
-                        <span style="color: #666; font-size: 11px; margin-left: 6px;">MMSI: ${d.mmsi}</span>
-                        <hr style="border: 0; border-top: 1px solid #ccc; margin: 6px 0;">
-                        <div style="display: grid; grid-template-columns: 80px 1fr; gap: 4px; line-height: 1.4;">
-                            <span style="color: #666;">Class:</span> <strong>${d.expanded_type || d.type}</strong>
-                            <span style="color: #666;">Status:</span> <strong style="color: ${d.status === 'Underway' ? '#28a745' : '#d9534f'};">${d.status}</strong>
-                            <span style="color: #666;">Heading:</span> <strong>${d.heading}°</strong>
-                            <span style="color: #666;">Dimensions:</span> <strong>${d.length}m x ${d.beam}m</strong>
-                        </div>
-                    </div>
-                `);
+        // 2. Fetch GeoJSON
+        const geoResponse = await fetch(geojsonUrl);
+        const geojsonData = await geoResponse.json();
 
-                // 4. Marker with 'bottom' anchor
-                const marker = new maplibregl.Marker({
-                    element: container,
-                    anchor: 'bottom',
-                    opacityWhenCovered: 0
-                })
-                .setLngLat([d.lng, d.lat])
-                .setPopup(popup)
-                .addTo(map);
+        map.addSource('ships-source', { type: 'geojson', data: geojsonData, tolerance: 0.5 });
 
-                // Interaction
-                container.addEventListener('mouseenter', () => {
-                    marker.togglePopup();
-                    img.style.transform = `rotate(${d.heading}deg) scale(1.4)`;
-                });
+        // 3. Render Symbols with color-coded match expression
+        map.addLayer({
+            id: 'ships-layer',
+            type: 'symbol',
+            source: 'ships-source',
+            minzoom: 3,
+            // DYNAMIC FILTER:
+            // Zooms < 4: Only ships >= 200m
+            // Zooms 4-7: Only ships >= 100m
+            // Zooms > 7: All ships
+            filter: [
+                'all',
+                ['>=', ['get', 'length'],
+                    ['step', ['zoom'],
+                        280, 4,
+                        200, 5,
+                        180, 6,
+                        150, 7,
+                        100, 8,
+                        0
+                    ]
+                ]
+            ],
+            layout: {
+                'icon-image': [
+                    'match',
+                    ['get', 'vessel_type'],
+                    80, 'ship-red', 81, 'ship-red', 82, 'ship-red', 83, 'ship-red', 84, 'ship-red', 85, 'ship-red', 86, 'ship-red', 87, 'ship-red', 88, 'ship-red', 89, 'ship-red',
+                    70, 'ship-green', 71, 'ship-green', 72, 'ship-green', 73, 'ship-green', 74, 'ship-green', 75, 'ship-green', 76, 'ship-green', 77, 'ship-green', 78, 'ship-green', 79, 'ship-green',
+                    'ship-purple'
+                ],
+                'icon-size': 0.6,
+                'icon-rotate': ['get', 'heading'],
+                'icon-rotation-alignment': 'map',
+                'icon-allow-overlap': true,
+                'icon-ignore-placement': true
+            }
+        });
 
-                container.addEventListener('mouseleave', () => {
-                    marker.togglePopup();
-                    img.style.transform = `rotate(${d.heading}deg) scale(1.0)`;
-                });
-            });
-        })
-        .catch(err => console.log("Waiting for " + config.outfile + "...", err));
+        console.log("🗺️ [Shipping] Color-coded icons successfully rendered.");
+
+    } catch (err) {
+        console.error("❌ [Shipping] Error:", err);
+    }
+
+    // 4. Interaction: Hover events (replaces click)
+    map.on('mouseenter', 'ships-layer', (e) => {
+        map.getCanvas().style.cursor = 'pointer';
+        const ship = e.features[0].properties;
+        const coordinates = e.features[0].geometry.coordinates.slice();
+
+        popup.setLngLat(coordinates)
+            .setHTML(`
+                <div style="font-family: sans-serif; font-size: 12px; color: #000; padding: 5px;">
+                    <strong style="color: #007bff; font-size: 14px;">${ship.name}</strong><br>
+                    <span style="color: #666;">Class:</span> ${ship.vessel_class}<br>
+                    <span style="color: #666;">Dest:</span> ${ship.destination}<br>
+                    <hr style="margin: 5px 0;">
+                    <span style="color: #666;">MMSI:</span> ${ship.mmsi} | 
+                    <span style="color: #666;">IMO:</span> ${ship.imo}<br>
+                    <span style="color: #666;">Callsign:</span> ${ship.callsign}<br>
+                    <span style="color: #666;">Draught:</span> ${ship.draught}m | 
+                    <span style="color: #666;">Heading:</span> ${ship.heading}°
+                </div>
+            `)
+            .addTo(map);
+    });
+
+    map.on('mouseleave', 'ships-layer', () => {
+        map.getCanvas().style.cursor = '';
+        popup.remove();
+    });
 }

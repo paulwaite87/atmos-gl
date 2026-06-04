@@ -71,9 +71,7 @@ class WavesUpdater(Updater):
         arrow_scale_mod = self.settings.get("arrow_scale", 1.0)
         arrow_scale_mod = max(0.1, arrow_scale_mod)
 
-        key_position = (
-            self.settings.get("key_position", "bottom-right")
-        )
+        key_position = self.settings.get("key_position", "bottom-right")
         key_fontsize = self.settings.get("key_fontsize", 10)
 
         # 1. Open Dataset with cfgrib engine backend

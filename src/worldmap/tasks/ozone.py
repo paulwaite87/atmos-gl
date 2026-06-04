@@ -32,9 +32,7 @@ class OzoneUpdater(Updater):
         logger.debug(f"Plotting ozone layer to {self.output_path}...")
 
         alpha = self.settings.get("alpha", 0.4)
-        key_position = (
-            self.settings.get("key_position", "bottom-right").strip().lower()
-        )
+        key_position = self.settings.get("key_position", "bottom-right").strip().lower()
         key_fontsize = self.settings.get("key_fontsize", 10)
         palette_key = self.settings.get("palette", "critical").lower()
         bbox = self.map_region_bbox

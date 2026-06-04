@@ -21,16 +21,17 @@ class ShippingUpdater(Updater):
         self.exit_if_disabled()
 
         ship_db = Database()
-        map_region_name = self.config.get_setting("common", "region")
-        expiry = self.settings.get("expiry_days", 7)
+        region_filter = self.settings.get("region", None)
+        expiry = self.settings.get("expiry_days", 14)
 
         # Filters
-        show_ships_underway = self.settings.get("filter_ships_underway", False)
+        show_ships_underway = self.settings.get("show_ships_underway", False)
         show_ship_classes = self.settings.get("filter_show_ship_classes", [])
-        show_ships_by_name = self.settings.get("filter_show_ships_by_name", "")
+        show_ships_by_name = self.settings.get("show_ships_by_name", "")
         show_ships_min_length = self.settings.get("filter_ships_minimum_length", 0)
+        show_max_ships = self.settings.get("filter_show_max_ships", 1000)
 
-        fleet = ship_db.get_fleet(map_region_name, expiry_days=expiry)
+        fleet = ship_db.get_ships(region_filter, expiry_days=expiry)
         ships_list = []
 
         for vessel in fleet:
@@ -56,17 +57,24 @@ class ShippingUpdater(Updater):
                 "lat": raw_lat,
                 "lng": raw_lon,
                 "mmsi": ship.mmsi,
-                "name": ship.vessel_name or "Unknown Vessel",
-                "type": ship.vessel_class or "Unknown",
+                "name": ship.vessel_name,
+                "destination": ship.destination,
+                "type": ship.vessel_class,
                 "expanded_type": ship.get_expanded_vessel_class(),
                 "length": ship_length,
                 "beam": ship_beam,
                 "status": "Underway" if ship.is_underway() else "Moored/Anchored",
                 "color_base": ship.get_vessel_color_name(),
-                "heading": ship.get_vessel_16point_angle()  # Sending the raw angle to the UI
+                "heading": ship.get_vessel_16point_angle(),  # Sending the raw angle to the UI
             }
 
             ships_list.append(ship_data)
+
+            # Limit to the user-defined max ships to show, otherwise
+            # the system will pop due to too much ram being required
+            # eg. if the region is set to World.
+            if len(ships_list) >= show_max_ships:
+                break
 
         # Write the JSON payload
         with open(self.output_path, "w") as f:

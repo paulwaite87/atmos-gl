@@ -23,9 +23,7 @@ class SSTUpdater(Updater):
 
     def plot(self):
         alpha = self.settings.get("alpha", 0.4)
-        key_position = (
-            self.settings.get("key_position", "bottom-right").strip().lower()
-        )
+        key_position = self.settings.get("key_position", "bottom-right").strip().lower()
         key_fontsize = self.settings.get("key_fontsize", 10)
         bbox = self.map_region_bbox
 

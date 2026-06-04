@@ -70,9 +70,7 @@ class CurrentsUpdater(Updater):
         width_factor = self.settings.get("width_factor", 1.0)
         width_factor = max(0.1, width_factor)  # Prevent flat zero or negative scales
 
-        key_position = (
-            self.settings.get("key_position", "bottom-right").strip().lower()
-        )
+        key_position = self.settings.get("key_position", "bottom-right").strip().lower()
         key_fontsize = self.settings.get("key_fontsize", 10)
 
         # 1. Load Dataset

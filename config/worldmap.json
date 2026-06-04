@@ -1,13 +1,10 @@
 {
   "common": {
     "target_geometry": "8192x4096",
-    "forecast_hour": 14,
+    "forecast_hour": 0,
     "night_shade": false,
     "auto_rotate": false,
     "auto_rotate_speed": 0.1,
-    "fill_default_color": "#000000",
-    "marker_default_color": "#ffffff",
-    "marker_default_fontsize": 12,
     "workdir": ".",
     "log_level": "DEBUG"
   },
@@ -17,7 +14,7 @@
     "outfile": "data/cloud_map.png",
     "threshold": 168,
     "gamma": 0.5,
-    "offset_days": 2,
+    "offset_days": 0,
     "expiry_hours": 3,
     "runs_per_day": 8
   },
@@ -50,7 +47,7 @@
     "min_mm_hr": 0.2,
     "alpha": 0.9,
     "palette": "standard",
-    "key_fontsize": 20,
+    "key_fontsize": 10,
     "key_position": "bottom-left",
     "runs_per_day": 24
   },
@@ -144,11 +141,12 @@
     "outfile": "data/composite_layer.png"
   },
   "lightning": {
-    "enabled": false,
+    "enabled": true,
     "outfile": "data/lightning.json",
+    "icon_zoom": 1,
     "strike_recent_minutes": 15,
-    "strike_keep_minutes": 60,
-    "strike_expiry_hours": 2,
+    "strike_keep_minutes": 30,
+    "strike_expiry_hours": 21,
     "runs_per_day": 24
   },
   "quakes": {
@@ -181,16 +179,17 @@
   "shipping": {
     "enabled": true,
     "outfile": "data/ships.json",
-    "icon_zoom": 0.5,
-    "filter_ships_underway": true,
+    "region": "NZ_Aus",
+    "icon_zoom": 0.6,
+    "filter_show_max_ships": 5000,
     "filter_show_ship_classes": [],
-    "filter_show_names_for_classes": [],
-    "filter_ships_minimum_length": 190,
-    "filter_show_ships_by_name": "",
+    "show_ships_by_name": "",
+    "filter_ships_minimum_length": 0,
+    "show_ships_underway": false,
     "show_tracks": false,
     "track_min_dist": 50,
     "track_max_points": 30,
-    "expiry_days": 7,
+    "expiry_days": 14,
     "runs_per_day": 24
   },
   "satellites": {

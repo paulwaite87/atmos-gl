@@ -56,6 +56,39 @@ class PrecipitationUpdater(Updater):
             ],
         }
 
+    def save_precipitation_key(self, output_path):
+        """Generates a standalone key image using a standardized naming strategy."""
+        import matplotlib.pyplot as plt
+        import matplotlib as mpl
+        import os
+
+        # Standardize naming: take base name, add _key, append extension
+        base, ext = os.path.splitext(output_path)
+        key_path = f"{base}_key{ext}"
+
+        fig, ax = plt.subplots(figsize=(4, 0.3))
+        key_ticks = [0.1, 1.0, 5.0, 15.0, 50.0, 100.0]
+
+        # Use your existing colormap logic
+        cmap = mpl.colors.ListedColormap(self.PALETTES['standard'])
+        norm = mpl.colors.BoundaryNorm(key_ticks, cmap.N)
+
+        cbar = fig.colorbar(mpl.cm.ScalarMappable(norm=norm, cmap=cmap),
+                            cax=ax, orientation='horizontal', ticks=key_ticks)
+
+        cbar.ax.set_title(
+            "Precipitation (mm/hr)",
+            color="white",
+            fontsize=self.settings.get("key_fontsize", 8),
+            pad=2
+        )
+        cbar.ax.tick_params(colors="white", labelsize=6)
+
+        # 2. Save key separately
+        fig.savefig(key_path, transparent=True, bbox_inches='tight')
+        plt.close(fig)
+        logger.debug(f"Saved precipitation key to: {key_path}")
+
     def plot(self):
         """Renders precipitation with early clipping to prevent memory exhaustion."""
         import matplotlib.pyplot as plt
@@ -70,13 +103,7 @@ class PrecipitationUpdater(Updater):
         alpha = self.settings.get("alpha", 0.5)
         palette_name = self.settings.get("palette", "standard")
 
-        # Parse key layout configurations
-        key_position = (
-            self.settings.get("key_position", "bottom-right").strip().lower()
-        )
-        key_fontsize = self.settings.get("key_fontsize", 10)
-
-        # 1. Load Dataset and Clip Immediately
+        # Load Dataset and Clip Immediately
         ds = xr.open_dataset(self.grib_path, engine="cfgrib")
 
         # Standardize longitudes to -180..180
@@ -135,7 +162,7 @@ class PrecipitationUpdater(Updater):
         mesh_lats, mesh_lons = np.meshgrid(new_lats, new_lons, indexing="ij")
         prate_smooth = fn((mesh_lats, mesh_lons))
 
-        # 3. Setup Plotting
+        # Setup Plotting
         plot = Plot(self.map_data.region)
         plot.get_figure()
 
@@ -148,7 +175,7 @@ class PrecipitationUpdater(Updater):
         )
         norm = mcolors.BoundaryNorm(levels, cmap.N)
 
-        # 4. Render Heatmap Contour
+        # Render Heatmap Contour
         prate_smooth = gaussian_filter(prate_smooth, sigma=filter_sigma)
         cf = plot.ax.contourf(
             new_lons,
@@ -163,38 +190,9 @@ class PrecipitationUpdater(Updater):
             zorder=2,
         )
 
-        # 5. ENHANCEMENT: DYNAMIC ADJUSTED COLOR KEY OVERLAY
-        position_map = {
-            "top-left": [0.04, 0.89, 0.28, 0.03],
-            "top-right": [0.68, 0.89, 0.28, 0.03],
-            "bottom-left": [0.04, 0.08, 0.28, 0.03],
-            "bottom-right": [0.68, 0.08, 0.28, 0.03],
-        }
-
-        bbox_coords = position_map.get(key_position, position_map["bottom-right"])
-        cbar_ax = plot.ax.inset_axes(bbox_coords, transform=plot.ax.transAxes)
-
-        cbar_ax.patch.set_facecolor("#111111")
-        cbar_ax.patch.set_alpha(0.4)
-
-        key_ticks = [0.1, 1.0, 5.0, 15.0, 50.0, 100.0]
-
-        cbar = plt.colorbar(cf, cax=cbar_ax, orientation="horizontal", ticks=key_ticks)
-
-        cbar.ax.xaxis.set_tick_params(
-            color="white", labelsize=key_fontsize, labelcolor="white", pad=3
-        )
-        cbar.outline.set_edgecolor("white")
-        cbar.outline.set_linewidth(0.5)
-        cbar.ax.set_title(
-            "Precipitation (mm/hr)",
-            color="white",
-            fontsize=key_fontsize,
-            pad=5,
-            weight="bold",
-        )
-
         plot.save_figure(self.output_path)
+
+        self.save_precipitation_key(self.output_path)
 
         plt_close = getattr(plot, "close", None)
         if callable(plt_close):
@@ -218,3 +216,4 @@ class PrecipitationUpdater(Updater):
         ):
             self.plot()
             logger.info(f"Generated precipitation plot ({self.lod_desc} resolution)...")
+

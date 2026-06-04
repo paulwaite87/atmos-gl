@@ -26,12 +26,10 @@ from worldmap.tasks.waves import WavesUpdater
 from worldmap.tasks.temperature import TemperatureUpdater
 from worldmap.tasks.ozone import OzoneUpdater
 from worldmap.tasks.stormwatch import StormwatchUpdater
-from worldmap.tasks.composite import CompositeUpdater
 from worldmap.tasks.storms import StormUpdater
 from worldmap.tasks.lightning import LightningUpdater
 from worldmap.tasks.quakes import QuakeUpdater
 from worldmap.tasks.satellites import SatelliteUpdater
-from worldmap.tasks.shipping import ShippingUpdater
 from worldmap.tasks.volcanoes import VolcanoUpdater
 
 logger = logging.getLogger("worldmap.layer_builder")
@@ -46,8 +44,7 @@ class LayerBuilder:
 
         # Ensure this folder exists
         data_dir = os.path.join(
-            self.config.get_setting("common", "workdir", "."),
-            "data"
+            self.config.get_setting("common", "workdir", "."), "data"
         )
         os.makedirs(data_dir, exist_ok=True)
 
@@ -74,11 +71,9 @@ class LayerBuilder:
             ("ozone", OzoneUpdater),
             ("stormwatch", StormwatchUpdater),
             ("storms", StormUpdater),
-            ("composite", CompositeUpdater),
             ("lightning", LightningUpdater),
             ("quakes", QuakeUpdater),
             ("satellites", SatelliteUpdater),
-            ("shipping", ShippingUpdater),
             ("volcanoes", VolcanoUpdater),
         ]
 

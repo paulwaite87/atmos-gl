@@ -37,8 +37,12 @@ class CloudUpdater(Updater):
                 for i in range(256)
             ]
             cloud_mask = cloud_mask.point(lut)
-            transparent_clouds_image = Image.new("RGBA", raw_clouds_image.size, (0, 0, 0, 0))
-            white_clouds = Image.new("RGBA", raw_clouds_image.size, (255, 255, 255, 255))
+            transparent_clouds_image = Image.new(
+                "RGBA", raw_clouds_image.size, (0, 0, 0, 0)
+            )
+            white_clouds = Image.new(
+                "RGBA", raw_clouds_image.size, (255, 255, 255, 255)
+            )
             transparent_clouds_image.paste(white_clouds, (0, 0), mask=cloud_mask)
 
         # Save it
@@ -102,7 +106,9 @@ class CloudUpdater(Updater):
             age = now_utc - file_mtime
 
             if age < timedelta(hours=expiry_hours):
-                logger.info(f"NASA clouds cache is fresh ({age.total_seconds() / 3600:.1f} hours old). Skipping download.")
+                logger.info(
+                    f"NASA clouds cache is fresh ({age.total_seconds() / 3600:.1f} hours old). Skipping download."
+                )
                 if not os.path.exists(self.output_path):
                     self.save_cache_as_transparent()
                 return
@@ -111,7 +117,7 @@ class CloudUpdater(Updater):
         try:
             os.makedirs(str(os.path.dirname(self.cache_output_path)), exist_ok=True)
             logger.info(
-                f"Fetching regional NASA GIBS clouds for {time_param} ({self.target_width}x{self.target_height})..."
+                f"Fetching NASA GIBS clouds for {time_param} ({self.target_width}x{self.target_height})..."
             )
 
             req = urllib.request.Request(

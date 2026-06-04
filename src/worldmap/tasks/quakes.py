@@ -67,15 +67,15 @@ class QuakeUpdater(Updater):
 
                 # Build the dictionary with fine-grained time data
                 quake_data = {
-                    "lat": row['latitude'],
-                    "lng": row['longitude'],
+                    "lat": row["latitude"],
+                    "lng": row["longitude"],
                     "mag": mag,
                     "depth": depth,
                     "place": place,
                     "label": f"M {mag:.1f} - {place}",
                     "age_hours": age_hours,
                     "age_minutes": age_minutes,  # <-- Added for fine-grained frontend display
-                    "is_recent": is_recent
+                    "is_recent": is_recent,
                 }
 
                 quakes_list.append(quake_data)

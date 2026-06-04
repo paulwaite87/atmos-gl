@@ -159,6 +159,7 @@ services:
     restart: unless-stopped
     volumes:
       - wmap-pgdata:/var/lib/postgresql/data
+      - postgres_logs:/var/log/postgresql
       - ./config/database:/docker-entrypoint-initdb.d
     command: >
       postgres
@@ -166,7 +167,12 @@ services:
       -c min_wal_size=128MB
       -c checkpoint_timeout=15min
       -c log_checkpoints=off
-      -c log_min_messages=warning
+      -c logging_collector=on
+      -c log_destination=stderr
+      -c log_statement=all
+      -c log_directory=/var/log/postgresql
+      -c log_filename='postgresql.log'
+      -c log_rotation_size=10MB
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U wmap -d worldmap"]
       interval: 30s
@@ -186,3 +192,4 @@ networks:
 
 volumes:
   wmap-pgdata:
+  postgres_logs:

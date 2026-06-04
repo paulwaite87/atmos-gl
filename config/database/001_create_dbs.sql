@@ -5,7 +5,9 @@ CREATE EXTENSION IF NOT EXISTS postgis;
 CREATE TABLE IF NOT EXISTS ships (
     mmsi VARCHAR(20) PRIMARY KEY,
     name VARCHAR(255),
+    destination TEXT,
     vessel_type INTEGER DEFAULT 0,
+    vessel_class VARCHAR(50),
     imo INTEGER,
     callsign VARCHAR(50),
     draught NUMERIC(5, 2),

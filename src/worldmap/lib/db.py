@@ -2,6 +2,7 @@ import os
 import psycopg2
 from psycopg2.extras import RealDictCursor
 import logging
+from .shipping import get_vessel_class_from_type
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +33,9 @@ class Database:
     def update_ship_static_data(self, mmsi, metadata, body):
         """Processes ShipStaticData and UPSERTs into the ships table."""
         name = metadata.get("ShipName", "Unknown").strip()
+        destination = body.get("Destination", "").strip()
         v_type = body.get("Type", 0)
+        v_class = get_vessel_class_from_type(v_type)
         imo = body.get("ImoNumber", 0)
         callsign = body.get("CallSign", "").strip()
         draught = float(body.get("MaximumStaticDraught", 0.0))
@@ -43,8 +46,8 @@ class Database:
         beam = int(dim.get("C", 0)) + int(dim.get("D", 0))
 
         sql = """
-              INSERT INTO ships (mmsi, name, vessel_type, imo, callsign, draught, prev_draught, length, beam)
-              VALUES (%s, %s, %s, %s, %s, %s, 0.0, %s, %s) ON CONFLICT (mmsi) DO \
+              INSERT INTO ships (mmsi, name, 'destination', vessel_type, vessel_class, imo, callsign, draught, prev_draught, length, beam)
+              VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 0.0, %s, %s) ON CONFLICT (mmsi) DO \
               UPDATE SET
                   prev_draught = CASE \
                   WHEN ships.draught != EXCLUDED.draught AND EXCLUDED.draught > 0 \
@@ -53,7 +56,9 @@ class Database:
               END \
               ,
                 name = EXCLUDED.name,
+                destination = EXCLUDED.destination,
                 vessel_type = EXCLUDED.vessel_type,
+                vessel_class = EXCLUDED.vessel_class,
                 imo = EXCLUDED.imo,
                 callsign = EXCLUDED.callsign,
                 draught = EXCLUDED.draught,
@@ -62,7 +67,7 @@ class Database:
               """
         with self.conn.cursor() as cur:
             cur.execute(
-                sql, (str(mmsi), name, v_type, imo, callsign, draught, length, beam)
+                sql, (str(mmsi), name, destination, v_type, v_class, imo, callsign, draught, length, beam)
             )
 
     def update_ship_position_data(self, mmsi, body):
@@ -136,7 +141,50 @@ class Database:
             result = cur.fetchone()
             return result["total"] if result else 0
 
-    def get_fleet(self, map_region_name=None, expiry_days=3):
+    def get_fleet_as_geojson(self):
+        sql = """
+            SELECT jsonb_build_object(
+                'type', 'FeatureCollection',
+                'features', COALESCE(
+                    jsonb_agg(
+                        jsonb_build_object(
+                            'type',       'Feature',
+                            'geometry',   ST_AsGeoJSON(geom)::jsonb,
+                            'properties', jsonb_build_object(
+                                'mmsi', mmsi,
+                                'name', name,
+                                'heading', COALESCE(cog, 0.0),
+                                'length', COALESCE(length, 0),
+                                'vessel_type', COALESCE(vessel_type, 0),
+                                'destination', COALESCE(destination, 'Unknown'),
+                                'vessel_class', COALESCE(vessel_class, 'Unknown'),
+                                'imo', COALESCE(imo, 0),
+                                'callsign', COALESCE(callsign, 'N/A'),
+                                'draught', COALESCE(draught, 0.0)
+                            )
+                        )
+                    ),
+                    '[]'::jsonb
+                )
+            )::text AS geojson
+            FROM ships
+            WHERE geom IS NOT NULL;
+        """
+        try:
+            with self.conn.cursor() as cur:
+                cur.execute(sql)
+                result = cur.fetchone()
+
+                # Unpack explicitly by the alias key
+                if result and "geojson" in result:
+                    return result["geojson"]
+                return '{"type":"FeatureCollection","features":[]}'
+
+        except Exception as e:
+            logger.error(f"Error building native fleet GeoJSON layer: {e}")
+            return '{"type":"FeatureCollection","features":[]}'
+
+    def get_ships(self, map_region_name=None, expiry_days=3):
         """
         Retrieves ships updated within expiry_days.
         Filters by spatial region labels if provided, else returns global.

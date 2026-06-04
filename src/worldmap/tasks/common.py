@@ -133,7 +133,7 @@ class MapRegion:
         target_geometry: str | None = None,
         target_width: int | None = None,
         target_height: int | None = None,
-        region: str | list[float] | None = None
+        region: str | list[float] | None = None,
     ):
         self.region = region
         self.region_identifier = "region"
@@ -163,10 +163,16 @@ class MapRegion:
             )
             try:
                 downloader.download_region_map(
-                    self.bbox, self.target_width, self.target_height, self.earth_map_path, is_night=False
+                    self.bbox,
+                    self.target_width,
+                    self.target_height,
+                    self.earth_map_path,
+                    is_night=False,
                 )
             except Exception as e:
-                logger.error(f"Failed to download {self.region_geometry} day map for {self.region_identifier}")
+                logger.error(
+                    f"Failed to download {self.region_geometry} day map for {self.region_identifier} {e}"
+                )
                 self.earth_map_path = None
 
     def is_in_region(self, lat: float, lon: float):
@@ -218,7 +224,9 @@ class MapRegion:
             self.bbox = bbox
             self.region_identifier = f"{bbox_prefix}_{stringify_bbox(bbox)}"
             self.centre_longitude, self.centre_latitude = get_bbox_center(bbox)
-            self.earth_map_path = os.path.join("data", f"{self.region_identifier}_{self.region_geometry}_day.jpg")
+            self.earth_map_path = os.path.join(
+                "data", f"{self.region_identifier}_{self.region_geometry}_day.jpg"
+            )
 
 
 class MapData:
