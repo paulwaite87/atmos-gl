@@ -1,7 +1,7 @@
 // ui/modules/shipping.js
 
 export async function loadLayer(map, config) {
-    const geojsonUrl = 'http://localhost:9000/api/ships/geojson';
+    const geojsonUrl = `${window.WM_API}/ships/geojson`;
     if (map.getSource('ships-source')) return;
 
     // Single persistent popup instance

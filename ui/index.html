@@ -86,20 +86,22 @@
 
                 // Initialize the map core
                 const map = new maplibregl.Map({
-                    container: 'globeViz', // or whatever your map DIV ID is
+                    container: 'globeViz',
                     style: `https://api.maptiler.com/maps/satellite/style.json?key=${maptilerKey}`,
                     center: [0, 0],
-                    zoom: 1, // Start zoomed out to see the globe shape immediately
+                    zoom: 2, // Start zoomed out to see the globe shape immediately
                     projection: 'globe' // Start with a spherical projection
                 });
 
-                // CRITICAL: Wait for the style configuration to finish loading before activating the globe
+                // Wait for the style configuration to finish loading
+                // before activating the globe
                 map.on('style.load', () => {
                     map.setProjection({
                         type: 'globe'
                     });
                 });
 
+                // TODO: Remove zoom when ready
                 const zoomDisplay = document.getElementById('zoomDisplay');
 
                 // Update function
@@ -113,8 +115,9 @@
                 // Also update when the map first loads
                 map.on('load', updateZoom);
 
-                // 4. Once vector layout stylesheet loads successfully, morph projection into 3D space
-                map.on('style.load', async () => {  // <-- Added 'async' right here!
+                // Once vector layout stylesheet loads successfully,
+                // morph projection into 3D space
+                map.on('style.load', async () => {
                     map.setProjection({ type: 'globe' });
 
                     // Track user interaction state so auto-rotation doesn't fight map dragging
@@ -137,16 +140,22 @@
                         rotateGlobe();
                     }
 
-                    // 5. Sequentially initialize backend active feature modules
-                    // Best practice ordering: Base textures first, vector data points on top
+                    // Sequentially initialize backend active feature modules
+                    // Best practice ordering: Base textures first, vector
+                    // data points on top
                     const frontendLayers = [
-                        'clouds',        // Bottom layer (wraps over baseline satellite imagery)
-                        'precipitation', // Above clouds, below isobars'
-                        'isobars',       // Sits right on top of the clouds
-                        'shipping',      // Vessels render over weather charts
-                        'quakes',        // Points/markers stay perfectly visible on top
+                        'clouds',
+                        'precipitation',
+                        'isobars',
+                        'quakes',
+                        'lightning',
+                        'shipping',
                         'satellites'
                     ];
+
+                    // Inject Global UI and API Configuration
+                    window.MAP_UI = "http://localhost:9000";
+                    window.WM_API = "http://localhost:9000/api";
 
                     for (const moduleName of frontendLayers) {
                         const moduleConfig = configData[moduleName];
@@ -154,7 +163,7 @@
                         if (moduleConfig && moduleConfig.enabled === true) {
                             try {
                                 // Dynamic file import now works perfectly inside this async callback block
-                                const module = await import(`/modules/${moduleName}.js`);
+                                const module = await import(`/modules/${moduleName}.js?t=${Date.now()}`);
 
                                 // Direct high-performance map context injected into your layer scripts
                                 module.loadLayer(map, moduleConfig);

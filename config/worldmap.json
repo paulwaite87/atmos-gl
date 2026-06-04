@@ -163,21 +163,21 @@
     "runs_per_day": 24
   },
   "volcanoes": {
-    "enabled": false,
+    "enabled": true,
     "url": "https://www.ngdc.noaa.gov/hazel/hazard-service/api/v1/volcanoes",
     "outfile": "data/volcanoes.json",
     "marker_color": "Violet",
     "marker_symbol": "volcano_symbol.png",
     "significant_only": true,
     "filter_show_volcanoes_by_name": "",
-    "vei_min": 5,
+    "vei_min": 4,
     "erupt_date_codes": [
       "D1"
     ],
     "runs_per_day": 1
   },
   "shipping": {
-    "enabled": true,
+    "enabled": false,
     "outfile": "data/ships.json",
     "region": "NZ_Aus",
     "icon_zoom": 0.6,

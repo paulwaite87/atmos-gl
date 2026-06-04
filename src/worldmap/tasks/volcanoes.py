@@ -6,6 +6,7 @@ import urllib.request
 
 # Internal library import
 from worldmap.lib.config import WorldMapConfig
+from worldmap.lib.db import Database
 from .common import Updater, MapData
 
 logger = logging.getLogger(__name__)
@@ -43,48 +44,19 @@ class VolcanoUpdater(Updater):
             return []
 
     def run(self):
-        """Processes volcano records and generates markers."""
         self.exit_if_disabled()
+        records = self._fetch_volcano_data(self.get_base_url())
+        db = Database()
 
-        base_url = self.get_base_url()
-        marker_color = self.settings.get("marker_color", "red")
-        marker_symbol = self.settings.get("marker_symbol")
-        significant_only = self.settings.get("significant_only", False)
-        show_volcanoes_by_name = self.settings.get("filter_show_volcanoes_by_name", [])
-        vei_min = self.settings.get("vei_min", 5)
-        erupt_codes = self.settings.get("erupt_date_codes", ["D1"])
-
-        logger.debug(f"Fetching volcano data (VEI >= {vei_min})...")
-        records = self._fetch_volcano_data(base_url)
-        if not records:
-            logger.warning("No volcano records retrieved.")
-            return
-
-        count = 0
-        with open(self.output_path, "w") as f:
-            for r in records:
-                name = r.get("name", "Unknown")
-
-                if show_volcanoes_by_name and name not in show_volcanoes_by_name:
-                    continue
-
-                lat = r.get("latitude")
-                lon = r.get("longitude")
-                significant = r.get("significant", False)
-                last_erupt = r.get("timeErupt", "")
-                vei = r.get("vei", 0)
-
-                # Filter logic
-                if (
-                    (significant or not significant_only)
-                    and (last_erupt in erupt_codes)
-                    and (vei >= vei_min)
-                ):
-                    if lat is not None and lon is not None:
-                        # Format: lat lon "label" color=X image=Y
-                        f.write(
-                            f'{lat} {lon} "{name}" color={marker_color} image={marker_symbol}\n'
-                        )
-                        count += 1
-
-        logger.debug(f"Volcanoes update complete. Updated {count} volcanoes.")
+        for r in records:
+            # We use an ID based on name or provided field if available
+            v_id = r.get("id", r.get("name"))
+            db.update_volcano(
+                v_id,
+                r.get("name"),
+                r.get("latitude"),
+                r.get("longitude"),
+                r.get("vei", 0),
+                r.get("significant", False),
+                r.get("timeErupt", "")
+            )

@@ -27,7 +27,6 @@ from worldmap.tasks.temperature import TemperatureUpdater
 from worldmap.tasks.ozone import OzoneUpdater
 from worldmap.tasks.stormwatch import StormwatchUpdater
 from worldmap.tasks.storms import StormUpdater
-from worldmap.tasks.lightning import LightningUpdater
 from worldmap.tasks.quakes import QuakeUpdater
 from worldmap.tasks.satellites import SatelliteUpdater
 from worldmap.tasks.volcanoes import VolcanoUpdater
@@ -71,7 +70,6 @@ class LayerBuilder:
             ("ozone", OzoneUpdater),
             ("stormwatch", StormwatchUpdater),
             ("storms", StormUpdater),
-            ("lightning", LightningUpdater),
             ("quakes", QuakeUpdater),
             ("satellites", SatelliteUpdater),
             ("volcanoes", VolcanoUpdater),

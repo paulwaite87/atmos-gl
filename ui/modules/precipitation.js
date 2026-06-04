@@ -2,7 +2,7 @@
  * Precipitation Module - Renders rainfall overlays with automatic background updates
  */
 export function loadLayer(map, config) {
-    const baseUrl = `http://localhost:9000`;
+    const baseUrl = `${window.MAP_UI}`;;
     const outfile = config.outfile;
 
     // 1. Robust path construction for the key image
