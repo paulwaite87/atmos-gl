@@ -22,17 +22,43 @@ export async function loadLayer(map, config) {
             // Inject Unified Source
             map.addSource(sourceId, { type: 'geojson', data: geojsonData });
 
-            // The Error Cone (Semi-transparent polygon)
-            // Inside bindToMap()
+            // Inside bindToMap() in storms.js
             map.addLayer({
                 id: 'storms-cone',
                 type: 'fill',
                 source: sourceId,
                 filter: ['==', 'feature_type', 'CONE'],
                 paint: {
-                    'fill-color': '#ff4a4a',    // Change to match track red
-                    'fill-opacity': 0.25,       // Bumped up from 0.15
-                    'fill-outline-color': '#ff4a4a'
+                    'fill-color': '#ff4a4a',        // Use your track red
+                    'fill-opacity': 0.2,            // Very light fill
+                    'fill-outline-color': '#ff4a4a' // Solid color for the outline
+                }
+            });
+
+            map.addLayer({
+                id: 'storms-cone-shadow',
+                type: 'line',
+                source: sourceId,
+                filter: ['==', 'feature_type', 'CONE'],
+                paint: {
+                    'line-color': '#000000',
+                    'line-width': 3,
+                    'line-opacity': 0.3,
+                    'line-offset': 1 // Shifts the shadow slightly to the right
+                }
+            }, 'storms-cone');
+
+
+            // A dedicated outline layer for extra "beef"
+            map.addLayer({
+                id: 'storms-cone-outline',
+                type: 'line',
+                source: sourceId,
+                filter: ['==', 'feature_type', 'CONE'],
+                paint: {
+                    'line-color': '#ff4a4a',
+                    'line-width': 2,
+                    'line-opacity': 0.6
                 }
             });
 

@@ -1,5 +1,5 @@
 /**
- * Precipitation Module - Renders rainfall overlays with automatic background updates
+ * Stormwatch Module - Storm formation probability map with automatic background updates
  */
 export function loadLayer(map, config) {
     const baseUrl = `${window.MAP_UI}`;
@@ -12,7 +12,7 @@ export function loadLayer(map, config) {
     const ext = lastDotIndex !== -1 ? outfile.substring(lastDotIndex) : '';
     const keyUrl = `${baseUrl}/${base}_key${ext}`;
 
-    const sourceId = 'precipitation-source';
+    const sourceId = 'stormwatch-source';
 
     // 2. Establish the baseline layer source
     map.addSource(sourceId, {
@@ -27,7 +27,7 @@ export function loadLayer(map, config) {
     });
 
     map.addLayer({
-        id: 'precipitation-layer',
+        id: 'stormwatch-layer',
         type: 'raster',
         source: sourceId,
         paint: {
@@ -40,11 +40,11 @@ export function loadLayer(map, config) {
     const legendStack = document.getElementById('legend-stack');
     if (legendStack) {
         // Remove existing slot if we are re-loading
-        const existingSlot = document.getElementById('precip-legend-slot');
+        const existingSlot = document.getElementById('stormwatch-legend-slot');
         if (existingSlot) existingSlot.remove();
 
         const slot = document.createElement('div');
-        slot.id = 'precip-legend-slot';
+        slot.id = 'stormwatch-legend-slot';
         slot.className = 'legend-slot';
 
         const keyImg = document.createElement('img');

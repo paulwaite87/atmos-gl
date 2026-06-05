@@ -460,6 +460,16 @@
                                 <input type="range" class="form-range dynamic-input" id="${domId}" min="10" max="60" step="5" value="${initialDegrees}"
                                        oninput="document.getElementById('badge-${domId}').innerText = this.value + 'deg'">
                             `;
+                        } else if (option === 'min_cape') {
+                            const initialMinCape = parseInt(value) || 1000;
+                            col.innerHTML = `
+                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                    <label class="form-label small text-white-50 fw-bold mb-0">Minimum CAPE Threshold</label>
+                                    <span class="badge bg-success text-dark fw-bold" id="badge-${domId}">${initialMinCape}J/Kg</span>
+                                </div>
+                                <input type="range" class="form-range dynamic-input" id="${domId}" min="0" max="5000" step="100" value="${initialMinCape}"
+                                       oninput="document.getElementById('badge-${domId}').innerText = this.value + 'J/Kg'">
+                            `;
                         } else if (option.includes('_minutes')) {
                             const initialMinutes = parseInt(value) || 15;
                             col.innerHTML = `
@@ -471,13 +481,13 @@
                                        oninput="document.getElementById('badge-${domId}').innerText = this.value + 'mins'">
                             `;
                         } else if (option.includes('fontsize')) {
-                            const initialSize = parseInt(value) || 12;
+                            const initialSize = parseInt(value) || 10;
                             col.innerHTML = `
                                 <div class="d-flex justify-content-between align-items-center mb-1">
                                     <label class="form-label small text-white-50 fw-bold mb-0">${customLabelText}</label>
                                     <span class="badge bg-success text-dark fw-bold" id="badge-${domId}">${initialSize}px</span>
                                 </div>
-                                <input type="range" class="form-range dynamic-input" id="${domId}" min="6" max="64" step="1" value="${initialSize}"
+                                <input type="range" class="form-range dynamic-input" id="${domId}" min="6" max="24" step="1" value="${initialSize}"
                                        oninput="document.getElementById('badge-${domId}').innerText = this.value + 'px'">
                             `;
                         } else if (option.includes('linewidth')) {
@@ -538,16 +548,6 @@
                                     <option value="WARNING" ${value === 'WARNING' ? 'selected' : ''}>WARNING</option>
                                     <option value="ERROR" ${value === 'ERROR' ? 'selected' : ''}>ERROR</option>
                                     <option value="CRITICAL" ${value === 'CRITICAL' ? 'selected' : ''}>CRITICAL</option>
-                                </select>
-                            `;
-                        } else if (option.includes('key_position')) {
-                            col.innerHTML = `
-                                <label class="form-label small text-white-50 fw-bold mb-1">${customLabelText}</label>
-                                <select class="form-select bg-dark text-light border-secondary dynamic-input" id="${domId}">
-                                    <option value="top-left" ${value === 'top-left' ? 'selected' : ''}>top-left</option>
-                                    <option value="top-right" ${value === 'top-right' ? 'selected' : ''}>top-right</option>
-                                    <option value="bottom-left" ${value === 'bottom-left' ? 'selected' : ''}>bottom-left</option>
-                                    <option value="bottom-right" ${value === 'bottom-right' ? 'selected' : ''}>bottom-right</option>
                                 </select>
                             `;
                         } else if (option.includes('mode')) {

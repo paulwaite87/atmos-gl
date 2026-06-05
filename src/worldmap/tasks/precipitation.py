@@ -91,7 +91,6 @@ class PrecipitationUpdater(Updater):
 
     def plot(self):
         """Renders precipitation with early clipping to prevent memory exhaustion."""
-        import matplotlib.pyplot as plt
         from scipy.interpolate import RegularGridInterpolator
         import gc  # Garbage collector
 

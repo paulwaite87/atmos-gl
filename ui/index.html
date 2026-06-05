@@ -38,14 +38,14 @@
             border-radius: 4px;
             font-family: sans-serif;
             font-size: 12px;
-            pointer-events: none; /* Let clicks pass through to the map */
+            pointer-events: none;
             z-index: 100;
         }
         /* Add this container to hold your keys */
         #legend-stack {
             position: absolute;
-            top: 40px;
-            right: 80px; /* Offset from the settings button */
+            top: 20px;
+            left: 20px;
             display: flex;
             flex-direction: column;
             gap: 10px;
@@ -146,13 +146,14 @@
                     const frontendLayers = [
                         'clouds',
                         'precipitation',
+                        'stormwatch',
                         'isobars',
                         'quakes',
                         'volcanoes',
                         'lightning',
                         'storms',
                         'shipping',
-                        'satellites'
+                        'satellites',
                     ];
 
                     // Inject Global UI and API Configuration

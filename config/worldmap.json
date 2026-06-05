@@ -9,7 +9,7 @@
     "log_level": "DEBUG"
   },
   "clouds": {
-    "enabled": true,
+    "enabled": false,
     "url": "https://gibs.earthdata.nasa.gov/wms/epsg4326/best/wms.cgi",
     "outfile": "data/cloud_map.png",
     "threshold": 168,
@@ -19,7 +19,7 @@
     "runs_per_day": 8
   },
   "isobars": {
-    "enabled": true,
+    "enabled": false,
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
     "outfile": "data/isobars.png",
     "isobar_color": "White",
@@ -47,7 +47,7 @@
     "min_mm_hr": 0.2,
     "alpha": 0.9,
     "palette": "standard",
-    "key_fontsize": 10,
+    "key_fontsize": 8,
     "key_position": "bottom-left",
     "runs_per_day": 24
   },
@@ -55,6 +55,7 @@
     "enabled": false,
     "url": "https://downloads.psl.noaa.gov/Datasets/noaa.oisst.v2.highres",
     "outfile": "data/sst.png",
+    "level_of_detail": "2",
     "mode": "absolute",
     "alpha": 1,
     "palette": "vivid",
@@ -113,19 +114,21 @@
     "stormwatch": true
   },
   "stormwatch": {
-    "enabled": false,
+    "enabled": true,
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
     "outfile": "data/stormwatch.png",
-    "min_cape": 1000,
+    "level_of_detail": "2",
+    "min_cape": 1200,
     "alpha": 1,
-    "key_fontsize": 18,
+    "key_fontsize": 8,
     "key_position": "top-right",
     "runs_per_day": 2
   },
   "storms": {
-    "enabled": true,
+    "enabled": false,
     "jtwc_url": "https://www.ssd.noaa.gov/PS/TROP/DATA/ATCF/JTWC/",
     "nhc_url": "https://ftp.nhc.noaa.gov/atcf/fst/",
+    "outfile": "data/storms.json",
     "storm_icon": "images/storm_symbol.png",
     "icon_zoom": 1.5,
     "storm_name_fontsize": 18,
@@ -135,12 +138,9 @@
     "expiry_days": 4,
     "runs_per_day": 8
   },
-  "composite": {
-    "enabled": true,
-    "outfile": "data/composite_layer.png"
-  },
   "lightning": {
-    "enabled": true,
+    "enabled": false,
+    "outfile": "data/lightning.json",
     "icon_zoom": 1,
     "strike_recent_minutes": 15,
     "strike_keep_minutes": 30,
@@ -148,8 +148,9 @@
     "runs_per_day": 24
   },
   "quakes": {
-    "enabled": false,
+    "enabled": true,
     "url": "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.csv",
+    "outfile": "data/quakes.json",
     "icon_zoom": 0.7,
     "marker_symbol_new": "earthquake_new.png",
     "marker_symbol_old": "earthquake_old.png",
@@ -162,9 +163,10 @@
   "volcanoes": {
     "enabled": false,
     "url": "https://www.ngdc.noaa.gov/hazel/hazard-service/api/v1/volcanoes",
+    "outfile": "data/volcanoes.json",
     "marker_color": "Violet",
     "marker_symbol": "volcano_symbol.png",
-    "significant": true,
+    "significant_only": true,
     "filter_show_volcanoes_by_name": "",
     "vei_min": 4,
     "erupt_date_codes": [
@@ -174,6 +176,7 @@
   },
   "shipping": {
     "enabled": false,
+    "outfile": "data/ships.json",
     "region": "NZ_Aus",
     "icon_zoom": 0.6,
     "filter_show_max_ships": 5000,

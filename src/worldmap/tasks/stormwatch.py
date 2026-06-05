@@ -23,9 +23,45 @@ logger = logging.getLogger(__name__)
 class StormwatchUpdater(Updater):
     def __init__(self, config: WorldMapConfig, map_data: MapData):
         super().__init__(config, "Stormwatch", map_data)
+        self.level_of_detail = self.settings.get("level_of_detail", 1)
+        self.lod_desc = None
+
+    def save_stormwatch_key(self, output_path, levels, rgba_colors):
+        """Generates a standalone key image for the Stormwatch layer."""
+        import matplotlib.pyplot as plt
+        import matplotlib as mpl
+        import os
+
+        # Standardize naming: append _key to the base filename
+        base, ext = os.path.splitext(output_path)
+        key_path = f"{base}_key{ext}"
+
+        fig, ax = plt.subplots(figsize=(4, 0.3))
+
+        # Recreate the colormap and norm for the standalone bar
+        cmap = mcolors.LinearSegmentedColormap.from_list(
+            "storm_risk", rgba_colors, N=256
+        )
+        norm = mpl.colors.BoundaryNorm(levels, cmap.N)
+
+        # Draw the colorbar
+        cbar = fig.colorbar(mpl.cm.ScalarMappable(norm=norm, cmap=cmap),
+                            cax=ax, orientation='horizontal', ticks=levels[:-1])
+
+        cbar.ax.set_title(
+            "Storm Potential (Effective CAPE J/kg)",
+            color="white",
+            fontsize=self.settings.get("key_fontsize", 8),
+            pad=2
+        )
+        cbar.ax.tick_params(colors="white", labelsize=6)
+
+        # Save with transparency
+        fig.savefig(key_path, transparent=True, bbox_inches='tight')
+        plt.close(fig)
+        logger.debug(f"Saved Stormwatch key to: {key_path}")
 
     def plot(self):
-        import matplotlib.pyplot as plt
         from scipy.interpolate import RegularGridInterpolator
         import gc
 
@@ -36,8 +72,6 @@ class StormwatchUpdater(Updater):
         # Configuration (Default threshold of 1000 J/kg cuts out stable air)
         min_cape = self.settings.get("min_cape", 1000)
         alpha = self.settings.get("alpha", 0.6)
-        key_position = self.settings.get("key_position", "bottom-right").strip().lower()
-        key_fontsize = self.settings.get("key_fontsize", 10)
 
         # 1. Load Dataset and Clip Immediately
         ds = xr.open_dataset(self.grib_path, engine="cfgrib")
@@ -72,16 +106,19 @@ class StormwatchUpdater(Updater):
         del ds
         gc.collect()
 
-        # 2. DYNAMIC RESAMPLING to prevent global OOM
-        lon_span = abs(lon_max - lon_min)
-        lat_span = abs(lat_max - lat_min)
-
-        if lon_span > 90.0 or lat_span > 45.0:
-            step = 0.15
-            filter_sigma = 0.8
+        # Sampling sizes according to user setting
+        if self.level_of_detail == 1:
+            step = 0.10  # High resolution; ~162M points
+            filter_sigma = 1.0
+            self.lod_desc = "high"
+        elif self.level_of_detail == 2:
+            step = 0.125  # Medium resolution
+            filter_sigma = 0.9
+            self.lod_desc = "medium"
         else:
-            step = 0.02
-            filter_sigma = 1.2
+            step = 0.15  # Low resolution; ~2.8M points
+            filter_sigma = 0.8
+            self.lod_desc = "low"
 
         new_lats = np.arange(lats.min(), lats.max() + step, step)
         new_lons = np.arange(lons.min(), lons.max() + step, step)
@@ -146,38 +183,16 @@ class StormwatchUpdater(Updater):
             zorder=3,  # Sits slightly higher to render over temperature/SST
         )
 
-        # 4. Draw the Key
-        position_map = {
-            "top-left": [0.04, 0.89, 0.28, 0.03],
-            "top-right": [0.68, 0.89, 0.28, 0.03],
-            "bottom-left": [0.04, 0.08, 0.28, 0.03],
-            "bottom-right": [0.68, 0.08, 0.28, 0.03],
-        }
-
-        bbox_coords = position_map.get(key_position, position_map["bottom-right"])
-        cbar_ax = plot.ax.inset_axes(bbox_coords, transform=plot.ax.transAxes)
-
-        cbar_ax.patch.set_facecolor("#111111")
-        cbar_ax.patch.set_alpha(0.4)
-
-        cbar = plt.colorbar(
-            cf, cax=cbar_ax, orientation="horizontal", ticks=levels[:-1]
-        )
-
-        cbar.ax.xaxis.set_tick_params(
-            color="white", labelsize=key_fontsize, labelcolor="white", pad=3
-        )
-        cbar.outline.set_edgecolor("white")
-        cbar.outline.set_linewidth(0.5)
-        cbar.ax.set_title(
-            "Storm Potential (Effective CAPE J/kg)",
-            color="white",
-            fontsize=key_fontsize,
-            pad=5,
-            weight="bold",
-        )
-
+        # 4. Save the map and the standalone key
         plot.save_figure(self.output_path)
+
+        # Pass the levels and colors down to the key generator
+        self.save_stormwatch_key(self.output_path, levels, rgba_colors)
+
+        # Memory cleanup
+        plt_close = getattr(plot, "close", None)
+        if callable(plt_close):
+            plt_close()
 
         logger.debug("Finished Stormwatch plot. Memory cleared.")
 
@@ -195,5 +210,5 @@ class StormwatchUpdater(Updater):
             cache_file_path=self.grib_path,
             grib_targets=[":CAPE:surface:", ":CIN:surface:"],
         ):
-            logger.info("Generating Stormwatch plot...")
             self.plot()
+            logger.info(f"Generated stormwatch plot ({self.lod_desc} resolution)...")
