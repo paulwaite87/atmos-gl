@@ -88,6 +88,8 @@ restore:
 	   docker compose stop $(SHIP_COLLECTOR_SERVICE) $(WEATHER_SCANNER_SERVICE) $(BUILDER_SERVICE); \
 	   echo "Ensuring worldmap database is running"; \
 	   docker compose up $(DB_SERVICE) -d; \
+	   echo "Dropping any existing database..."; \
+	   docker compose exec $(DB_SERVICE) dropdb -U $(DB_USER) --if-exists $(DB_NAME); \
 	   echo "Restoring database..."; \
 	   cat $(DUMP_FILE) | docker compose exec -T $(DB_SERVICE) pg_restore -U $(DB_USER) -d postgres --clean --create --if-exists; \
 	   echo "Restore complete."; \

@@ -123,10 +123,9 @@
     "runs_per_day": 2
   },
   "storms": {
-    "enabled": false,
+    "enabled": true,
     "jtwc_url": "https://www.ssd.noaa.gov/PS/TROP/DATA/ATCF/JTWC/",
     "nhc_url": "https://ftp.nhc.noaa.gov/atcf/fst/",
-    "outfile": "data/storms.json",
     "storm_icon": "images/storm_symbol.png",
     "icon_zoom": 1.5,
     "storm_name_fontsize": 18,
@@ -142,7 +141,6 @@
   },
   "lightning": {
     "enabled": true,
-    "outfile": "data/lightning.json",
     "icon_zoom": 1,
     "strike_recent_minutes": 15,
     "strike_keep_minutes": 30,
@@ -150,9 +148,8 @@
     "runs_per_day": 24
   },
   "quakes": {
-    "enabled": true,
+    "enabled": false,
     "url": "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.csv",
-    "outfile": "data/quakes.json",
     "icon_zoom": 0.7,
     "marker_symbol_new": "earthquake_new.png",
     "marker_symbol_old": "earthquake_old.png",
@@ -163,12 +160,11 @@
     "runs_per_day": 24
   },
   "volcanoes": {
-    "enabled": true,
+    "enabled": false,
     "url": "https://www.ngdc.noaa.gov/hazel/hazard-service/api/v1/volcanoes",
-    "outfile": "data/volcanoes.json",
     "marker_color": "Violet",
     "marker_symbol": "volcano_symbol.png",
-    "significant_only": true,
+    "significant": true,
     "filter_show_volcanoes_by_name": "",
     "vei_min": 4,
     "erupt_date_codes": [
@@ -178,7 +174,6 @@
   },
   "shipping": {
     "enabled": false,
-    "outfile": "data/ships.json",
     "region": "NZ_Aus",
     "icon_zoom": 0.6,
     "filter_show_max_ships": 5000,

@@ -62,7 +62,7 @@ def test_volcano_pipeline(test_env):
     updater.settings["erupt_date_codes"] = '["D1"]'
     updater.settings["marker_color"] = "red"
     updater.settings["marker_symbol"] = "volcano.png"
-    updater.settings["significant_only"] = "False"
+    updater.settings["significant"] = "False"
 
     # 1. Base URL Reachability Assertion
     base_url = updater.settings.get("url").strip('"').rstrip("/")

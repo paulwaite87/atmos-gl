@@ -2,18 +2,14 @@
 import os
 import logging
 import requests
-import numpy as np
-import pandas as pd
+import math
 from bs4 import BeautifulSoup
-import matplotlib.patches as patches
-import matplotlib.image as mpimg
-from matplotlib.offsetbox import OffsetImage, AnnotationBbox
 from datetime import datetime, timedelta, timezone
-import cartopy.crs as ccrs
 
 # Internal library imports
 from worldmap.lib.config import WorldMapConfig
-from .common import Updater, MapData, Plot
+from worldmap.lib.db import Database
+from .common import Updater, MapData
 
 logger = logging.getLogger(__name__)
 
@@ -153,13 +149,16 @@ class StormUpdater(Updater):
                 seen_taus.add(tau)
                 lat, lon = self._parse_latlon(parts[6], parts[7])
 
+                # Forecast times are derived by adding TAU hours to the run time
+                run_dt = datetime.strptime(latest_run, "%Y%m%d%H").replace(tzinfo=timezone.utc)
+                fcst_dt = run_dt + timedelta(hours=tau)
+
                 pts.append(
                     {
                         "SID": sid,
-                        "NAME": sid,  # Name handled by SID grouping later
                         "LAT": lat,
                         "LON": lon,
-                        "TIME": None,
+                        "TIME": fcst_dt,
                         "TYPE": "FORECAST",
                         "TAU": tau,
                     }
@@ -170,165 +169,83 @@ class StormUpdater(Updater):
             logger.debug(f"Failed to parse A-deck {url}: {e}")
             return []
 
-    def _build_cone_polygons(self, future_track_df):
-        """Calculates geographic error envelopes along a track array to draw the cone geometry."""
+    def _build_cone_polygons(self, future_track):
+        """
+        Calculates geographic error envelopes using a latitude-compensated
+        radius to prevent horizontal distortion.
+        """
+        if len(future_track) < 2:
+            return []
+
+        # Convert to radians for math
+        def to_rad(deg):
+            return math.radians(deg)
+
+        def to_deg(rad):
+            return math.degrees(rad)
+
         left_points = []
         right_points = []
 
-        for idx, (_, row) in enumerate(future_track_df.iterrows()):
+        for idx, row in enumerate(future_track):
             lat, lon = row["LAT"], row["LON"]
-            tau = row.get("TAU", 24)
-            r = 0.4 + (tau * 0.045)
+            # Ensure TAU exists, default to 0 if missing
+            tau = int(row.get("TAU", 0) or 0)
 
-            if idx < len(future_track_df) - 1:
-                next_row = future_track_df.iloc[idx + 1]
+            # Make the radius scale strictly with time.
+            # We enforce a tiny minimum (0.05) so PostGIS doesn't complain about
+            # invalid self-intersecting polygons at the exact tip.
+            r_degrees = max(0.05, tau * 0.045)
+
+            # Apply cosine correction to longitude:
+            # As we move away from the equator, the 'distance' of a degree of longitude
+            # changes, so we scale the radius proportionally.
+            r_lon = r_degrees / math.cos(to_rad(lat))
+            r_lat = r_degrees
+
+            # Determine heading using previous/next point
+            if idx < len(future_track) - 1:
+                next_row = future_track[idx + 1]
                 dlat = next_row["LAT"] - lat
-                dlon = next_row["LON"] - lon
+                dlon = (next_row["LON"] - lon) * math.cos(to_rad(lat))
             else:
-                prev_row = future_track_df.iloc[idx - 1]
+                prev_row = future_track[idx - 1]
                 dlat = lat - prev_row["LAT"]
-                dlon = lon - prev_row["LON"]
+                dlon = (lon - prev_row["LON"]) * math.cos(to_rad(lat))
 
-            heading = np.arctan2(dlat, dlon)
+            heading = math.atan2(dlat, dlon)
 
-            left_lat = lat + r * np.sin(heading + np.pi / 2)
-            left_lon = lon + r * np.cos(heading + np.pi / 2)
-            right_lat = lat + r * np.sin(heading - np.pi / 2)
-            right_lon = lon + r * np.cos(heading - np.pi / 2)
+            # Calculate perpendicular offsets (90 degrees = pi/2)
+            # We use the corrected r_lon/r_lat here
+            left_lat = lat + r_lat * math.sin(heading + math.pi / 2)
+            left_lon = lon + r_lon * math.cos(heading + math.pi / 2)
+
+            right_lat = lat + r_lat * math.sin(heading - math.pi / 2)
+            right_lon = lon + r_lon * math.cos(heading - math.pi / 2)
 
             left_points.append((left_lon, left_lat))
             right_points.append((right_lon, right_lat))
 
-        right_points.reverse()
-        return left_points + right_points
+        # Create a closed polygon loop (start -> end -> reverse back to start)
+        # Ensure the polygon is "closed" by appending the first point to the end
+        full_ring = left_points + right_points[::-1] + [left_points[0]]
 
-    def plot_storms(self, df):
-        """Plots the global tracks, live forecast cones, and PNG symbols directly to the image canvas."""
-        alpha_cone = self.settings.get("cone_alpha", 0.18)
-        cone_color = self.settings.get("cone_color", "white")
-        track_color = self.settings.get("track_color", "red")
-
-        storm_icon_zoom = self.settings.get("icon_zoom", 0.5)
-        storm_icon_path = self.settings.get(
-            "storm_icon",
-            os.path.join(self.workdir, "images", "storm_symbol.png"),
-        )
-
-        storm_icon = None
-        if os.path.exists(storm_icon_path):
-            try:
-                storm_icon = mpimg.imread(storm_icon_path)
-            except Exception as e:
-                logger.warning(f"Could not load custom storm icon: {e}")
-
-        plot = Plot(self.map_data.region)
-        plot.get_figure()
-
-        for sid, storm_df in df.groupby("SID"):
-            storm_df = storm_df.sort_values(
-                ["TYPE", "TAU" if "TAU" in storm_df.columns else "LAT"]
-            )
-
-            # Grab the best name available from the PAST/CURRENT points
-            named_rows = storm_df[storm_df["NAME"] != sid]
-            storm_name = named_rows["NAME"].iloc[0] if not named_rows.empty else sid
-
-            past_track = storm_df[storm_df["TYPE"] != "FORECAST"]
-            future_track = storm_df[storm_df["TYPE"] != "PAST"]
-
-            if len(future_track) >= 2:
-                cone_vertices = self._build_cone_polygons(future_track)
-                polygon_patch = patches.Polygon(
-                    cone_vertices,
-                    closed=True,
-                    transform=ccrs.PlateCarree(),
-                    facecolor=cone_color,
-                    edgecolor=cone_color,
-                    linewidth=1.0,
-                    linestyle="--",
-                    alpha=alpha_cone,
-                    zorder=3,
-                )
-                plot.ax.add_patch(polygon_patch)
-
-            plot.ax.plot(
-                past_track["LON"].values,
-                past_track["LAT"].values,
-                transform=ccrs.PlateCarree(),
-                color=track_color,
-                linewidth=2.0,
-                linestyle="-",
-                zorder=4,
-            )
-            if len(future_track) > 1:
-                plot.ax.plot(
-                    future_track["LON"].values,
-                    future_track["LAT"].values,
-                    transform=ccrs.PlateCarree(),
-                    color=track_color,
-                    linewidth=1.5,
-                    linestyle=":",
-                    zorder=4,
-                )
-
-            current_pt = storm_df[storm_df["TYPE"] == "CURRENT"]
-            if not current_pt.empty:
-                curr_row = current_pt.iloc[0]
-                lon_pt, lat_pt = curr_row["LON"], curr_row["LAT"]
-
-                if storm_icon is not None:
-                    mapped_coords = plot.ax.projection.transform_point(
-                        lon_pt, lat_pt, src_crs=ccrs.PlateCarree()
-                    )
-                    imagebox = OffsetImage(storm_icon, zoom=storm_icon_zoom)
-                    ab = AnnotationBbox(
-                        imagebox,
-                        (mapped_coords[0], mapped_coords[1]),
-                        frameon=False,
-                        zorder=6,
-                    )
-                    plot.ax.add_artist(ab)
-                else:
-                    plot.ax.plot(
-                        lon_pt,
-                        lat_pt,
-                        transform=ccrs.PlateCarree(),
-                        marker="o",
-                        color=track_color,
-                        markersize=7,
-                        zorder=5,
-                    )
-
-                plot.ax.text(
-                    lon_pt + 0.5,
-                    lat_pt + 0.5,
-                    f"{storm_name}",
-                    transform=ccrs.PlateCarree(),
-                    color="white",
-                    fontsize=10,
-                    weight="bold",
-                    bbox=dict(
-                        facecolor="#111111",
-                        alpha=0.6,
-                        boxstyle="round,pad=0.2",
-                        edgecolor="none",
-                    ),
-                    zorder=7,
-                )
-
-        plot.save_figure(self.output_path)
-
-        logger.info("Successfully rendered active storms layer.")
+        return full_ring
 
     def run(self):
         self.exit_if_disabled()
+        db = Database()
 
         jtwc = self.settings.get("jtwc_url").strip()
         nhc_fst = self.settings.get("nhc_url").strip()
-        # Derive the NHC best-track directory dynamically
         nhc_btk = nhc_fst.replace("fst", "btk")
 
-        # 1. Collect all B-Deck files from both agencies
+        expiry_days = self.settings.get("expiry_days", 4)
+
+        # 0. Clean up old storms from the database
+        db.prune_expired_storms(expiry_days)
+
+        # 1. Collect all B-Deck files
         b_decks = []
         for url in [jtwc, nhc_btk]:
             files = self._get_file_list(url)
@@ -337,41 +254,41 @@ class StormUpdater(Updater):
                     b_decks.append(url.rstrip("/") + "/" + f)
 
         now_utc = datetime.now(timezone.utc)
-        expiry_days = self.settings.get("expiry_days", 4)
-
-        processed_data = []
-        active_sids = []
+        active_storms = []
 
         # 2. Parse B-Decks to find ACTIVE storms
         for b_url in b_decks:
             filename = b_url.split("/")[-1]
 
-            # --- NEW: Filter out NOAA internal training storms (80-89) ---
             try:
-                # ATCF format: b<basin><storm-number><YYYY>.dat
-                # e.g., 'bal122026.dat' -> indices 3:5 are '12'
+                # Filter out NOAA internal training storms (80-89)
                 storm_num = int(filename[3:5])
                 if 80 <= storm_num <= 89:
-                    logger.debug(f"Ignoring NOAA training storm: {filename}")
                     continue
             except ValueError:
-                pass  # Safely ignore if the filename is highly anomalous
+                pass
 
             track_pts = self._parse_b_deck(b_url, now_utc, expiry_days)
             if track_pts:
-                processed_data.extend(track_pts)
                 sid = track_pts[0]["SID"]
-                active_sids.append((sid, b_url))
+                storm_name = track_pts[-1].get("NAME", sid)
 
-        if not active_sids:
-            logger.info("No ACTIVE storms found within expiry window. Clearing layer.")
-            if os.path.exists(self.output_path):
-                open(self.output_path, "w").close()  # Create empty file to wipe layer
+                # We store the active storm metadata to process A-Decks next
+                active_storms.append({
+                    "sid": sid,
+                    "name": storm_name,
+                    "b_url": b_url,
+                    "track": track_pts
+                })
+
+        if not active_storms:
+            logger.info("No ACTIVE storms found within expiry window.")
             return
 
-        # 3. For every active storm, hunt down its corresponding A-Deck forecast
-        for sid, b_url in active_sids:
-            filename = b_url.split("/")[-1]
+        # 3. Process Forecasts and Push to Database
+        for storm in active_storms:
+            sid = storm["sid"]
+            filename = storm["b_url"].split("/")[-1]
             core_id = filename[1:].replace(".dat", "")
 
             # Potential matching forecast file URLs
@@ -380,12 +297,28 @@ class StormUpdater(Updater):
                 nhc_fst.rstrip("/") + "/" + core_id + ".fst",
             ]
 
+            fcst_pts = []
             for a_url in a_deck_urls:
                 fcst_pts = self._parse_a_deck(a_url, sid)
                 if fcst_pts:
-                    logger.info(f"Successfully matched official forecast for {sid}")
-                    processed_data.extend(fcst_pts)
+                    logger.info(f"Matched official forecast for {sid}")
                     break
 
-        df = pd.DataFrame(processed_data)
-        self.plot_storms(df)
+            # Combine historical and forecast tracks
+            full_track = storm["track"] + fcst_pts
+
+            # Extract the single CURRENT point from the track
+            current_pt = [p for p in full_track if p.get('TYPE') == 'CURRENT']
+
+            # Combine CURRENT point + FORECAST points for the cone generator
+            cone_input = current_pt + fcst_pts if fcst_pts else []
+            cone_vertices = self._build_cone_polygons(cone_input) if cone_input else []
+
+            # Save directly into database
+            db.update_storm(
+                sid=sid,
+                name=storm["name"],
+                cone_vertices=cone_vertices,
+                track_points=full_track
+            )
+            logger.debug(f"Upserted storm {sid} ({storm['name']}) into database with {len(full_track)} track points.")

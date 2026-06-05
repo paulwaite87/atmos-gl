@@ -292,6 +292,7 @@ class Updater:
         self.common = config.get_section("common")
         self.workdir = self.common.get("workdir", ".")
         self.outfile = self.settings.get("outfile", "")
+        self.output_path = None
         self.enabled = self.settings.get("enabled", False)
         self.forecast_hour = max(self.common.get("forecast_hour", 1), 1)
 
@@ -304,22 +305,24 @@ class Updater:
         self.centre_latitude = map_data.region.centre_latitude
         self.map_region_bbox = map_data.region.bbox
 
-        # Always set these, which can be over-ridden later if required
+        # Always set these, which can be over-ridden later if required.
+        # If the updater doesn't have an outfile defined, this does nothing.
         self.set_output_path()
         self.base_url = self.get_base_url()
 
-    def get_output_path(self):
-        return str(os.path.join(self.common.get("workdir", "."), self.outfile))
+    def get_output_path(self) -> str | None:
+        return str(os.path.join(self.common.get("workdir", "."), self.outfile)) if self.outfile else None
 
     def set_output_path(self):
         self.output_path = self.get_output_path()
-        file_path = Path(self.output_path)
-        # Safely verify directories exist for non-image files
-        if file_path.suffix not in [".png", ".jpg", ".jpeg"]:
-            os.makedirs(os.path.dirname(self.output_path), exist_ok=True)
-            # Use append mode ('a') to touch/create the file if missing
-            with open(self.output_path, "a") as _:
-                pass
+        if self.output_path:
+            file_path = Path(self.output_path)
+            # Safely verify directories exist for non-image files
+            if file_path.suffix not in [".png", ".jpg", ".jpeg"]:
+                os.makedirs(os.path.dirname(self.output_path), exist_ok=True)
+                # Use append mode ('a') to touch/create the file if missing
+                with open(self.output_path, "a") as _:
+                    pass
 
     def get_output_path_if_exists(self, section=None):
         """Returns an output path for the given section, but only if the file exists"""
