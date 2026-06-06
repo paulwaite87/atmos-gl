@@ -3,7 +3,6 @@ import os
 import sys
 import logging
 import math
-import numpy as np
 import urllib.error
 import urllib.request
 from datetime import datetime, timedelta, timezone
@@ -15,29 +14,6 @@ from .common import Updater, MapData, MERCATOR_LAT_LIMIT
 
 logger = logging.getLogger(__name__)
 
-
-def _equirect_to_webmercator(img, lat_min, lat_max):
-    """Row-remap an equirectangular PIL image (rows linear in latitude over
-    [lat_min, lat_max], top row = lat_max) into Web Mercator, clamped to
-    +/-MERCATOR_LAT_LIMIT. Longitude is untouched; vertical resample is bilinear."""
-    lat_min_c = max(lat_min, -MERCATOR_LAT_LIMIT)
-    lat_max_c = min(lat_max,  MERCATOR_LAT_LIMIT)
-    arr = np.asarray(img.convert("RGB"))
-    h, w = arr.shape[:2]
-
-    mercY = lambda d: math.log(math.tan(math.pi / 4 + math.radians(d) / 2))
-    yT, yB = mercY(lat_max_c), mercY(lat_min_c)
-
-    # each destination row -> mercator-Y -> latitude -> fractional source row
-    merc_y   = yT + (np.arange(h) / (h - 1)) * (yB - yT)
-    dst_lat  = np.degrees(2 * np.arctan(np.exp(merc_y)) - np.pi / 2)
-    src_rowf = np.clip((lat_max - dst_lat) / (lat_max - lat_min) * (h - 1), 0, h - 1)
-
-    r0   = np.floor(src_rowf).astype(int)
-    r1   = np.minimum(r0 + 1, h - 1)
-    frac = (src_rowf - r0)[:, None, None]
-    warped = (arr[r0] * (1 - frac) + arr[r1] * frac).astype(np.uint8)
-    return Image.fromarray(warped, "RGB")
 
 def _lonlat_to_mercator_m(lon, lat):
     """WGS84 lon/lat degrees -> EPSG:3857 metres, latitude clamped to the
@@ -53,34 +29,28 @@ class CloudUpdater(Updater):
     def __init__(self, config: WorldMapConfig, map_data: MapData):
         super().__init__(config, "Clouds", map_data)
 
+        # Configurable lookback to prevent incomplete satellite swaths
+        # Default to 1 day back, but can be set to 2 in worldmap.json if needed
+        self.cloud_offset = self.settings.get("offset_days", 1)
+
         # Override default output path to save directly to the regional cache
-        cache_filename = f"clouds_{self.map_data.region.region_identifier}_{self.target_width}x{self.target_height}.jpg"
+        cache_filename = f"clouds_{self.cloud_offset}_{self.map_data.region.region_identifier}_{self.target_width}x{self.target_height}.jpg"
         self.cache_output_path = os.path.join(self.workdir, "data", cache_filename)
 
     def save_cache_as_transparent(self):
-        """Reprojects the cached equirectangular cloud image to Web Mercator,
-        then applies threshold and gamma to build the transparent overlay."""
         threshold = self.settings.get("threshold", 0)
         gamma = self.settings.get("gamma", 1.0)
-
-        # bbox is [lon_min, lat_min, lon_max, lat_max]; the cached image spans
-        # this latitude range linearly (it was fetched as EPSG:4326).
-        _, lat_min, _, lat_max = self.map_data.region.bbox
-
         with Image.open(self.cache_output_path) as raw_clouds_image:
-            mercator_image = _equirect_to_webmercator(raw_clouds_image, lat_min, lat_max)
-
-            cloud_mask = mercator_image.convert("L")
+            cloud_mask = raw_clouds_image.convert("L")
             lut = [
                 int(pow(i / 255.0, 1.0 / gamma) * 255.0) if i >= threshold else 0
                 for i in range(256)
             ]
             cloud_mask = cloud_mask.point(lut)
-            transparent_clouds_image = Image.new("RGBA", mercator_image.size, (0, 0, 0, 0))
-            white_clouds = Image.new("RGBA", mercator_image.size, (255, 255, 255, 255))
+            transparent_clouds_image = Image.new("RGBA", raw_clouds_image.size, (0, 0, 0, 0))
+            white_clouds = Image.new("RGBA", raw_clouds_image.size, (255, 255, 255, 255))
             transparent_clouds_image.paste(white_clouds, (0, 0), mask=cloud_mask)
-
-        logger.debug(f"Saving transparent (Web Mercator) cloud map in {self.output_path}")
+        logger.debug(f"Saving transparent cloud map in {self.output_path}")
         transparent_clouds_image.save(self.output_path, "PNG")
 
     def run(self):
@@ -90,22 +60,18 @@ class CloudUpdater(Updater):
         base_url = self.get_base_url()
         expiry_hours = self.settings.get("expiry_hours", 3)
 
-        # Configurable lookback to prevent incomplete satellite swaths
-        # Default to 1 day back, but can be set to 2 in worldmap.json if needed
-        cloud_offset = self.settings.get("offset_days", 1)
-
         now_utc = datetime.now(timezone.utc)
 
         # Align with GFS baseline if available, but apply the lookback
         baseline = getattr(self.map_data, "shared_state", {}).get("gfs_baseline")
         if baseline:
             # We must offset from the baseline because GIBS cannot provide "today" in full yet.
-            target_date = baseline["timestamp"] - timedelta(days=cloud_offset)
+            target_date = baseline["timestamp"] - timedelta(days=self.cloud_offset)
             logger.debug(
-                f"Clouds syncing to baseline with a -{cloud_offset} day offset: {target_date.strftime('%Y-%m-%d')}"
+                f"Clouds syncing to baseline with a -{self.cloud_offset} day offset: {target_date.strftime('%Y-%m-%d')}"
             )
         else:
-            target_date = now_utc - timedelta(days=cloud_offset)
+            target_date = now_utc - timedelta(days=self.cloud_offset)
 
         time_param = target_date.strftime("%Y-%m-%d")
 
