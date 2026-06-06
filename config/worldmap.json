@@ -9,7 +9,7 @@
     "log_level": "DEBUG"
   },
   "clouds": {
-    "enabled": true,
+    "enabled": false,
     "url": "https://gibs.earthdata.nasa.gov/wms/epsg4326/best/wms.cgi",
     "outfile": "data/cloud_map.png",
     "threshold": 168,
@@ -123,7 +123,7 @@
     "runs_per_day": 2
   },
   "storms": {
-    "enabled": false,
+    "enabled": true,
     "jtwc_url": "https://www.ssd.noaa.gov/PS/TROP/DATA/ATCF/JTWC/",
     "nhc_url": "https://ftp.nhc.noaa.gov/atcf/fst/",
     "outfile": "data/storms.json",
@@ -137,7 +137,7 @@
     "runs_per_day": 8
   },
   "lightning": {
-    "enabled": false,
+    "enabled": true,
     "outfile": "data/lightning.json",
     "icon_zoom": 1,
     "strike_recent_minutes": 15,
@@ -203,7 +203,7 @@
     "extra_satellite_names": ""
   },
   "shipping_collector": {
-    "enabled": false,
+    "enabled": true,
     "url": "wss://stream.aisstream.io/v0/stream",
     "listen_duration": 1200,
     "sleep_interval": 300,
@@ -211,7 +211,7 @@
     "log_level": "INFO"
   },
   "weather_scanner": {
-    "enabled": false,
+    "enabled": true,
     "url": "https://demo.openweathermap.org/lightning/1.0/data",
     "expiry_hours": 24,
     "log_level": "INFO"

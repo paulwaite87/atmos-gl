@@ -46,7 +46,7 @@ class Database:
         beam = int(dim.get("C", 0)) + int(dim.get("D", 0))
 
         sql = """
-              INSERT INTO ships (mmsi, name, 'destination', vessel_type, vessel_class, imo, callsign, draught, prev_draught, length, beam)
+              INSERT INTO ships (mmsi, name, destination, vessel_type, vessel_class, imo, callsign, draught, prev_draught, length, beam)
               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 0.0, %s, %s) ON CONFLICT (mmsi) DO \
               UPDATE SET
                   prev_draught = CASE \

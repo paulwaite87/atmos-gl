@@ -1,43 +1,36 @@
-/**
- * Isobars Module - Renders flat pressure contour overlays with automatic background updates
- */
+import { liveLayerSync } from './_refresh.js';
+
 export function loadLayer(map, config) {
-    const baseUrl = `${window.MAP_UI}`;
-    const imageUrl = `${baseUrl}/${config.outfile}`;
     const sourceId = 'isobars-source';
+    const layerId  = 'isobars-layer';
+    const coordinates = [
+        [-180, 85.051129], [180, 85.051129],
+        [180, -85.051129], [-180, -85.051129],
+    ];
+    const urlFor = (cfg) => `${window.MAP_UI}/${cfg.outfile}`;
 
-    // 1. Establish the baseline layer source on startup
-    map.addSource(sourceId, {
-        type: 'image',
-        url: `${imageUrl}?t=${Date.now()}`, // Cache-bust the very first load
-        coordinates: [
-            [-180, 85.051129],
-            [180, 85.051129],
-            [180, -85.051129],
-            [-180, -85.051129]
-        ]
-    });
+    const mount = (cfg) => {
+        if (map.getSource(sourceId)) return;
+        map.addSource(sourceId, {
+            type: 'image',
+            url: `${urlFor(cfg)}?t=${Date.now()}`,
+            coordinates,
+        });
+        map.addLayer({
+            id: layerId, type: 'raster', source: sourceId,
+            paint: { 'raster-opacity': 0.85, 'raster-fade-duration': 0 },
+        });
+    };
 
-    map.addLayer({
-        id: 'isobars-layer',
-        type: 'raster',
-        source: sourceId,
-        paint: {
-            'raster-opacity': 0.85,
-            'raster-fade-duration': 0
-        }
-    });
+    const refresh = (cfg) => {
+        const s = map.getSource(sourceId);
+        if (s) s.updateImage({ url: `${urlFor(cfg)}?t=${Date.now()}` });
+    };
 
-    // Set up a background heartbeat timer
-    // Check your backend for an updated file every 5 minutes (300,000 milliseconds)
-    setInterval(() => {
-        console.log("[Refresh] Requesting latest isobar texture map from backend...");
+    const unmount = () => {
+        if (map.getLayer(layerId))   map.removeLayer(layerId);
+        if (map.getSource(sourceId)) map.removeSource(sourceId);
+    };
 
-        const source = map.getSource(sourceId);
-        if (source) {
-            source.updateImage({
-                url: `${imageUrl}?t=${Date.now()}`
-            });
-        }
-    }, 300000);
+    liveLayerSync(map, { sectionKey: 'isobars', initialConfig: config, mount, refresh, unmount });
 }

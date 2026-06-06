@@ -162,15 +162,17 @@
                     window.MAP_UI = "http://localhost:9000";
                     window.WM_API = "http://localhost:9000/api";
 
+                    const IMAGE_LAYERS = ['clouds', 'isobars', 'precipitation', 'ozone', 'stormwatch', 'temperature'];
+
                     for (const moduleName of frontendLayers) {
-                        const moduleConfig = configData[moduleName];
+                        const moduleConfig = configData[moduleName] || {};
+                        const isImage = IMAGE_LAYERS.includes(moduleName);
 
-                        if (moduleConfig && moduleConfig.enabled === true) {
+                        // Image layers always start their poller (it self-mounts only when enabled);
+                        // GeoJSON/marker layers keep the original enabled-only behaviour.
+                        if (isImage || moduleConfig.enabled === true) {
                             try {
-                                // Dynamic file import now works perfectly inside this async callback block
                                 const module = await import(`/modules/${moduleName}.js?t=${Date.now()}`);
-
-                                // Direct high-performance map context injected into your layer scripts
                                 module.loadLayer(map, moduleConfig);
                             } catch (err) {
                                 console.warn(`Could not load layer /modules/${moduleName}.js`, err);
