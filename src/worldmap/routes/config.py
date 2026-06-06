@@ -29,17 +29,6 @@ def get_regions():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/get_map_path")
-def get_map_path():
-    try:
-        worldmap_config = load_config()
-        target_geometry = worldmap_config.get_setting("common", "target_geometry")
-        region = MapRegion(target_geometry=target_geometry)
-        return {"status": "success", "data": f"{region.earth_map_path}"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
 @router.get("/config")
 def get_config():
     worldmap_config = load_config()

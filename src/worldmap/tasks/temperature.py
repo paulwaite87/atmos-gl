@@ -20,6 +20,17 @@ warnings.filterwarnings("ignore")
 logger = logging.getLogger(__name__)
 
 
+def _nan_safe_gaussian(a, sigma):
+    if sigma <= 0 or not np.isnan(a).any():
+        return gaussian_filter(a, sigma=sigma) if sigma > 0 else a
+    m = np.isnan(a)
+    filled = gaussian_filter(np.where(m, 0.0, a), sigma=sigma)
+    weight = gaussian_filter((~m).astype(float), sigma=sigma)
+    out = filled / np.where(weight == 0, 1.0, weight)
+    out[weight == 0] = np.nan
+    return out
+
+
 class TemperatureUpdater(Updater):
     def __init__(self, config: WorldMapConfig, map_data: MapData):
         super().__init__(config, "Temperature", map_data)
@@ -152,21 +163,23 @@ class TemperatureUpdater(Updater):
             (lat_inc, lon_norm), raw_matrix, bounds_error=False, fill_value=np.nan
         )
 
-        # Build new global target dimensions based on step choice
-        grid_lon = np.arange(bbox[0], bbox[2] + step, step)
-        grid_lat = np.arange(bbox[1], bbox[3] + step, step)
-        mesh_lat, mesh_lon = np.meshgrid(grid_lat, grid_lon, indexing="ij")
+        # Anchor target grid to the DATA domain so we never sample outside it.
+        lat_lo = max(bbox[1], float(lat_inc.min()))
+        lat_hi = min(bbox[3], float(lat_inc.max()))
+        lon_lo = max(bbox[0], float(lon_norm.min()))
+        lon_hi = min(bbox[2], float(lon_norm.max()))  # = 179.75, not 180.0
 
-        # Execute interpolation map
+        grid_lat = np.linspace(lat_lo, lat_hi, int(round((lat_hi - lat_lo) / step)) + 1)
+        grid_lon = np.linspace(lon_lo, lon_hi, int(round((lon_hi - lon_lo) / step)) + 1)
+        mesh_lat, mesh_lon = np.meshgrid(grid_lat, grid_lon, indexing="ij")
         temp_grid = fn((mesh_lat, mesh_lon))
 
         ds.close()
         del ds
         gc.collect()
 
-        # Apply Gaussian filtering for smooth aesthetics if LOD > 1
-        if filter_sigma > 0:
-            temp_grid = gaussian_filter(temp_grid, sigma=filter_sigma)
+        # Smooth without letting any residual NaN bloom across the grid
+        temp_grid = _nan_safe_gaussian(temp_grid, filter_sigma)
 
         # Dynamic Mode Processing (Absolute vs Automated Anomaly)
         if mode == "anomaly":

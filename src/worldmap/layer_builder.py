@@ -11,7 +11,6 @@ from typing import Dict, Optional, Type, Tuple, List, Any
 # Library imports
 from worldmap.lib.config import WorldMapConfig
 from worldmap.lib.logging import setup_logging, set_loglevel
-from worldmap.tasks.common import COMPOSITE_SECTIONS
 
 
 # Task imports
@@ -52,8 +51,6 @@ class LayerBuilder:
 
         self.starting_up = True
         self.last_run_times: Dict[str, datetime] = {}
-        self.map_updated = False
-        self.composite_layers_updated = False
 
         signal.signal(signal.SIGUSR1, self.handle_force_refresh)
 
@@ -115,11 +112,6 @@ class LayerBuilder:
         if self.starting_up or self.config.has_changed:
             return True
 
-        # Composite produces the weather image from clouds and/or isobars,
-        # so we run that if they were updated
-        if updater.section == "composite" and self.composite_layers_updated:
-            return True
-
         if updater.section == "satellites":
             update_minutes = updater.settings.get("update_minutes", 10)
             runs_per_day = int((24 * 60) / update_minutes)
@@ -146,8 +138,6 @@ class LayerBuilder:
 
             if self.enabled:
                 self.map_data.refresh()
-                self.map_updated = False
-                self.composite_layers_updated = False
 
                 if (
                     self.starting_up
@@ -171,13 +161,6 @@ class LayerBuilder:
 
                                 # Timestamp the completion with high precision
                                 self.last_run_times[section] = datetime.now()
-
-                                # Will trigger xplanet to update
-                                self.map_updated = True
-
-                                # Will allow composite overlay to update
-                                if section in COMPOSITE_SECTIONS:
-                                    self.composite_layers_updated = True
 
                             except Exception as e:
                                 logger.error(f"Task '{section}' execution failed: {e}")

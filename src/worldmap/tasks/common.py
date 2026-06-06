@@ -15,29 +15,9 @@ from pathlib import Path
 # Internal library import
 from worldmap.lib.config import WorldMapConfig
 from worldmap.lib.db import Database
-from worldmap.lib.maps import NASAGIBSDownloader
 from PIL import Image
 
 logger = logging.getLogger(__name__)
-
-# These are sections which contribute to the composite layer
-# image used in XPlanet rendering via the 'cloud"map' option
-COMPOSITE_SECTIONS = [
-    "isobars",
-    "clouds",
-    "precipitation",
-    "wind",
-    "sst",
-    "currents",
-    "waves",
-    "temperature",
-    "ozone",
-    "stormwatch",
-    "storms",
-]
-# A subset of the above list which pertain to climate layers.
-# These are layers which colourise the whole active region.
-CLIMATE_LAYERS = ["sst", "waves", "temperature", "ozone", "stormwatch"]
 
 
 def stringify_bbox(bbox):
@@ -154,27 +134,6 @@ class MapRegion:
         self.centre_longitude = 0.0
         self.set_map_region_data(region)
 
-    def ensure_map(self):
-        """Ensures we have a map of the right region and geometry downloaded"""
-        downloader = NASAGIBSDownloader()
-        if not os.path.exists(self.earth_map_path):
-            logger.debug(
-                f"Cache miss: Downloading {self.region_geometry} day map for {self.region_identifier}..."
-            )
-            try:
-                downloader.download_region_map(
-                    self.bbox,
-                    self.target_width,
-                    self.target_height,
-                    self.earth_map_path,
-                    is_night=False,
-                )
-            except Exception as e:
-                logger.error(
-                    f"Failed to download {self.region_geometry} day map for {self.region_identifier} {e}"
-                )
-                self.earth_map_path = None
-
     def is_in_region(self, lat: float, lon: float):
         return (
             self.bbox[1] <= lat <= self.bbox[3] and self.bbox[0] <= lon <= self.bbox[2]
@@ -242,8 +201,6 @@ class MapData:
         common_settings = self.config.get_section("common")
         target_geometry = common_settings.get("target_geometry", "2048x1024")
         self.region = MapRegion(target_geometry=target_geometry)
-        # Will download the proper map if we don't have it already
-        self.region.ensure_map()
 
 
 class Plot:
