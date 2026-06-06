@@ -9,6 +9,9 @@ import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import cartopy.crs as ccrs
 
+from scipy.ndimage import gaussian_filter
+from scipy.interpolate import RegularGridInterpolator
+
 # Internal imports
 from worldmap.lib.config import WorldMapConfig
 from .common import Updater, MapData, Plot
@@ -26,35 +29,68 @@ logger = logging.getLogger(__name__)
 class OzoneUpdater(Updater):
     def __init__(self, config: WorldMapConfig, map_data: MapData):
         super().__init__(config, "Ozone", map_data)
+        # Default to Medium resolution if not specified
+        self.level_of_detail = self.settings.get("level_of_detail", 2)
+        self.lod_desc = None
+
+    def save_ozone_key(self, output_path, cmap, norm, min_du, max_du):
+        """Generates a standalone key image using a standardized naming strategy."""
+        import matplotlib.pyplot as plt
+        import matplotlib as mpl
+        import os
+
+        # Standardize naming: take base name, add _key, append extension
+        base, ext = os.path.splitext(output_path)
+        key_path = f"{base}_key{ext}"
+
+        key_fontsize = self.settings.get("key_fontsize", 8)
+
+        fig, ax = plt.subplots(figsize=(4, 0.3))
+
+        # Calculate 5 evenly spaced ticks between min and max
+        calculated_ticks = np.linspace(min_du, max_du, 5)
+
+        cbar = fig.colorbar(mpl.cm.ScalarMappable(norm=norm, cmap=cmap),
+                            cax=ax, orientation='horizontal', ticks=calculated_ticks)
+
+        cbar.ax.xaxis.set_major_formatter(plt.FormatStrFormatter("%d"))
+        cbar.ax.set_title(
+            "Total Ozone (Dobson Units)",
+            color="white",
+            fontsize=key_fontsize,
+            pad=2,
+        )
+        cbar.ax.tick_params(colors="white", labelsize=8)
+
+        # Save key separately
+        fig.savefig(key_path, transparent=True, bbox_inches='tight')
+        plt.close(fig)
+        logger.debug(f"Saved Ozone key to: {key_path}")
 
     def plot(self):
-        """Renders the ozone layer as a direct geographical color mesh."""
+        """Renders the ozone layer with dynamic resampling for smoother visuals."""
         logger.debug(f"Plotting ozone layer to {self.output_path}...")
 
         alpha = self.settings.get("alpha", 0.4)
-        key_position = self.settings.get("key_position", "bottom-right").strip().lower()
-        key_fontsize = self.settings.get("key_fontsize", 10)
         palette_key = self.settings.get("palette", "critical").lower()
         bbox = self.map_region_bbox
 
         # 1. Load Data
         ds = xr.open_dataset(self.grib_path, engine="cfgrib")
 
-        # cfgrib usually parses TOZNE to a variable named 'tozne'
-        # If it uses a fallback like 'unknown', we grab the first data variable dynamically
         data_var = list(ds.data_vars)[0]
         raw_matrix = ds[data_var].values.squeeze()
 
         lat_raw = ds["latitude"].values
         lon_raw = ds["longitude"].values
 
-        # 2. Normalize and Sort Longitudes (-180 to 180)
+        # Normalize and Sort Longitudes (-180 to 180)
         lon_norm = ((lon_raw + 180) % 360) - 180
         lon_sort_idx = np.argsort(lon_norm)
         lon_norm = lon_norm[lon_sort_idx]
         raw_matrix = raw_matrix[:, lon_sort_idx]
 
-        # 3. Apply Localized Clipping Masks
+        # Apply Localized Clipping Masks
         lon_mask = (lon_norm >= bbox[0] - 1.0) & (lon_norm <= bbox[2] + 1.0)
         lat_mask = (lat_raw >= bbox[1] - 1.0) & (lat_raw <= bbox[3] + 1.0)
 
@@ -66,34 +102,57 @@ class OzoneUpdater(Updater):
         del ds
         gc.collect()
 
-        # 4. Mode Styling & Custom Colormaps
-        vmin = self.settings.get("min_du", 150)
-        vmax = self.settings.get("max_du", 500)
-        norm = mcolors.Normalize(vmin=vmin, vmax=vmax)
+        # 2. DYNAMIC RESAMPLING (Level of Detail Logic)
+        if self.level_of_detail == 3:
+            step = 0.05  # High resolution (very smooth)
+            filter_sigma = 1.2
+            self.lod_desc = "high"
+        elif self.level_of_detail == 2:
+            step = 0.125  # Medium resolution
+            filter_sigma = 0.8
+            self.lod_desc = "medium"
+        else:
+            step = 0.25  # Low resolution (Native GFS grid size)
+            filter_sigma = 0.0  # No smoothing
+            self.lod_desc = "low"
+
+        # Ensure latitudes are strictly increasing for the Interpolator
+        if lats_clipped[0] > lats_clipped[-1]:
+            lats_inc, data_inc = lats_clipped[::-1], display_data[::-1, :]
+        else:
+            lats_inc, data_inc = lats_clipped, display_data
+
+        fn = RegularGridInterpolator(
+            (lats_inc, lons_clipped), data_inc, bounds_error=False, fill_value=0
+        )
+
+        new_lats = np.arange(lats_clipped.min(), lats_clipped.max() + step, step)
+        new_lons = np.arange(lons_clipped.min(), lons_clipped.max() + step, step)
+        mesh_lats, mesh_lons = np.meshgrid(new_lats, new_lons, indexing="ij")
+
+        smooth_data = fn((mesh_lats, mesh_lons))
+
+        # Apply Gaussian smoothing only if LOD > 1
+        if filter_sigma > 0:
+            smooth_data = gaussian_filter(smooth_data, sigma=filter_sigma)
+
+        # 3. Mode Styling & Custom Colormaps
+        min_du = 150
+        max_du = 500
+        norm = mcolors.Normalize(vmin=min_du, vmax=max_du)
 
         if palette_key == "critical":
-            # 220 DU is the official definition of an ozone hole
             critical_du = self.settings.get("critical_du", 220.0)
-
-            # Calculate where the critical threshold falls on the 0.0 to 1.0 color scale
-            span = max(1, vmax - vmin)
-            crit_point = max(0.0, min(1.0, (critical_du - vmin) / span))
-
-            # Set the point where the data becomes totally invisible (just above the threshold)
+            span = max(1, max_du - min_du)
+            crit_point = max(0.0, min(1.0, (critical_du - min_du) / span))
             fade_point = min(1.0, crit_point + 0.05)
 
-            # Map the exact gradient stops: [Position (0 to 1), (R, G, B, Alpha)]
             color_stops = [0.0, crit_point, fade_point, 1.0]
             colors = [
-                (1.0, 0.0, 1.0, 1.0),  # Lowest values: Bright Opaque Magenta
-                (1.0, 1.0, 0.0, 0.9),  # Critical threshold: Bright Opaque Yellow
-                (0.0, 0.1, 0.3, 0.2),  # Safe area: Very faint, translucent dark blue
-                (
-                    0.0,
-                    0.1,
-                    0.3,
-                    0.2,
-                ),  # Highest values: Very faint, translucent dark blue
+                (1.0, 0.0, 1.0, 1.0),
+                (1.0, 1.0, 0.0, 0.9),
+                (0.0, 0.1, 0.3, 0.2),
+                (0.0, 0.1, 0.3, 0.2),
             ]
 
             cmap_data = list(zip(color_stops, colors))
@@ -101,7 +160,6 @@ class OzoneUpdater(Updater):
                 "critical_mask", cmap_data, N=256
             )
         else:
-            # Fallback to standard reversed colormaps
             palettes = {
                 "plasma": "plasma_r",
                 "viridis": "viridis_r",
@@ -110,62 +168,40 @@ class OzoneUpdater(Updater):
             }
             cmap = plt.get_cmap(palettes.get(palette_key, "plasma_r"))
 
-        # 5. Canvas Initialization
+        # 4. Canvas Initialization
         plot = Plot(self.map_data.region)
         plot.get_figure()
 
-        mesh = plot.ax.pcolormesh(
-            lons_clipped,
-            lats_clipped,
-            display_data,
-            transform=ccrs.PlateCarree(),
+        # Generate 150 discrete contour levels to simulate a perfectly smooth gradient
+        levels = np.linspace(min_du, max_du, 150)
+
+        # Replaced pcolormesh with contourf for smoothed rendering
+        cf = plot.ax.contourf(
+            new_lons,
+            new_lats,
+            smooth_data,
+            levels=levels,
             cmap=cmap,
             norm=norm,
-            alpha=alpha,
-            shading="nearest",
-            rasterized=True,
+            transform=ccrs.PlateCarree(),
+            extend="both",
+            antialiased=True,
             zorder=2,
         )
 
-        # 6. Colorbar Overlay
-        position_map = {
-            "top-left": [0.04, 0.89, 0.28, 0.03],
-            "top-right": [0.68, 0.89, 0.28, 0.03],
-            "bottom-left": [0.04, 0.08, 0.28, 0.03],
-            "bottom-right": [0.68, 0.08, 0.28, 0.03],
-        }
-        bbox_coords = position_map.get(key_position, position_map["bottom-right"])
-        cbar_ax = plot.ax.inset_axes(bbox_coords, transform=plot.ax.transAxes)
-
-        cbar_ax.patch.set_facecolor("#111111")
-        cbar_ax.patch.set_alpha(alpha)
-
-        calculated_ticks = np.linspace(vmin, vmax, 5)
-        cbar = plt.colorbar(
-            mesh, cax=cbar_ax, orientation="horizontal", ticks=calculated_ticks
-        )
-
-        cbar.ax.xaxis.set_tick_params(
-            color="white", labelsize=key_fontsize, labelcolor="white", pad=3
-        )
-        cbar.outline.set_edgecolor("white")
-        cbar.outline.set_linewidth(0.5)
-        cbar.ax.xaxis.set_major_formatter(plt.FormatStrFormatter("%d"))
-        cbar.ax.set_title(
-            "Total Ozone (DU)",
-            color="white",
-            fontsize=key_fontsize,
-            pad=5,
-            weight="bold",
-        )
-
+        # 5. Save the map and the standalone key
         plot.save_figure(self.output_path)
+        self.save_ozone_key(self.output_path, cmap, norm, min_du, max_du)
 
-        logger.debug("Successfully rendered GFS Ozone layer.")
+        # Memory cleanup
+        plt_close = getattr(plot, "close", None)
+        if callable(plt_close):
+            plt_close()
+
+        logger.debug("Finished Ozone plot. Memory cleared.")
 
     def run(self):
         self.exit_if_disabled()
-        # Get the GFS state for this updater
         self.get_gfs_state()
         self.grib_path = os.path.join(
             self.workdir, f"data/gfs_ozone_{self.forecast_hour_str}.grib2"
@@ -173,7 +209,7 @@ class OzoneUpdater(Updater):
 
         url = f"{self.base_url}/gfs.{self.gfs_date_str}/{self.gfs_run}/atmos/gfs.t{self.gfs_run}z.pgrb2.0p25.f{self.forecast_hour_str}"
         if self.remote_data_update(
-            remote_url=url, cache_file_path=self.grib_path, grib_targets=[":TOZNE:"]
+                remote_url=url, cache_file_path=self.grib_path, grib_targets=[":TOZNE:"]
         ):
-            logger.info("Generating Ozone plot...")
             self.plot()
+            logger.info(f"Generated Ozone plot ({self.lod_desc} resolution)...")

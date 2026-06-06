@@ -425,9 +425,9 @@
                             col.innerHTML = `
                                 <label class="form-label small text-white-50 fw-bold mb-1">${customLabelText}</label>
                                 <select class="form-select bg-dark text-light border-secondary dynamic-input" id="${domId}">
-                                    <option value="1" ${value === '1' ? 'selected' : ''}>High resolution (needs lots of memory)</option>
+                                    <option value="1" ${value === '1' ? 'selected' : ''}>Low resolution</option>
                                     <option value="2" ${value === '2' ? 'selected' : ''}>Medium resolution</option>
-                                    <option value="3" ${value === '3' ? 'selected' : ''}>Low resolution</option>
+                                    <option value="3" ${value === '3' ? 'selected' : ''}>High resolution (needs lots of memory)</option>
                                 </select>
                             `;
                         } else if (option.includes('gamma')) {
@@ -469,6 +469,16 @@
                                 </div>
                                 <input type="range" class="form-range dynamic-input" id="${domId}" min="0" max="5000" step="100" value="${initialMinCape}"
                                        oninput="document.getElementById('badge-${domId}').innerText = this.value + 'J/Kg'">
+                            `;
+                        } else if (option.endsWith('_du')) {
+                            const initialDU = parseFloat(value) !== undefined ? parseFloat(value) : 220.0;
+                            col.innerHTML = `
+                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                    <label class="form-label small text-white-50 fw-bold mb-0">Critical Ozone Threshold (Dobson Units)</label>
+                                    <span class="badge bg-info text-dark fw-bold" id="badge-${domId}">${initialDU.toFixed(1)}du</span>
+                                </div>
+                                <input type="range" class="form-range dynamic-input" id="${domId}" min="150.0" max="500.0" step="10.0" value="${initialDU}"
+                                       oninput="document.getElementById('badge-${domId}').innerText = parseFloat(this.value).toFixed(1) + 'du'">
                             `;
                         } else if (option.includes('_minutes')) {
                             const initialMinutes = parseInt(value) || 15;
@@ -554,43 +564,51 @@
                             col.innerHTML = `
                                 <label class="form-label small text-white-50 fw-bold mb-1">${customLabelText}</label>
                                 <select class="form-select bg-dark text-light border-secondary dynamic-input" id="${domId}">
-                                    <option value="absolute" ${value === 'absolute' ? 'selected' : ''}>absolute</option>
-                                    <option value="anomaly" ${value === 'anomaly' ? 'selected' : ''}>anomaly</option>
+                                    <option value="absolute" ${value === 'absolute' ? 'selected' : ''}>Absolute</option>
+                                    <option value="anomaly" ${value === 'anomaly' ? 'selected' : ''}>Anomaly</option>
                                 </select>
                             `;
                         } else if (option.includes('palette')) {
                             let optionsHTML = '';
                             if (section === 'sst') {
                                 optionsHTML = `
-                                    <option value="thermal" ${value === 'thermal' ? 'selected' : ''}>thermal</option>
-                                    <option value="vivid" ${value === 'vivid' ? 'selected' : ''}>vivid</option>
-                                    <option value="deep" ${value === 'deep' ? 'selected' : ''}>deep</option>
-                                    <option value="ocean" ${value === 'ocean' ? 'selected' : ''}>ocean</option>
+                                    <option value="thermal" ${value === 'thermal' ? 'selected' : ''}>Thermal</option>
+                                    <option value="vivid" ${value === 'vivid' ? 'selected' : ''}>Vivid</option>
+                                    <option value="deep" ${value === 'deep' ? 'selected' : ''}>Deep</option>
+                                    <option value="ocean" ${value === 'ocean' ? 'selected' : ''}>Ocean</option>
                                 `;
                             } else if (section === 'currents') {
                                 optionsHTML = `
-                                    <option value="thermal_red" ${value === 'thermal_red' ? 'selected' : ''}>thermal_red</option>
-                                    <option value="electric_blue" ${value === 'electric_blue' ? 'selected' : ''}>electric_blue</option>
-                                    <option value="toxic_neon" ${value === 'toxic_neon' ? 'selected' : ''}>toxic_neon</option>
-                                    <option value="cyberpunk" ${value === 'cyberpunk' ? 'selected' : ''}>cyberpunk</option>
+                                    <option value="thermal_red" ${value === 'thermal_red' ? 'selected' : ''}>Thermal red</option>
+                                    <option value="electric_blue" ${value === 'electric_blue' ? 'selected' : ''}>Electric blue</option>
+                                    <option value="toxic_neon" ${value === 'toxic_neon' ? 'selected' : ''}>Toxic neon</option>
+                                    <option value="cyberpunk" ${value === 'cyberpunk' ? 'selected' : ''}>Cyberpunk</option>
                                 `;
                             } else if (section === 'waves') {
                                 optionsHTML = `
-                                    <option value="ocean_storm" ${value === 'ocean_storm' ? 'selected' : ''}>ocean_storm</option>
-                                    <option value="neon_surge" ${value === 'neon_surge' ? 'selected' : ''}>neon_surge</option>
-                                    <option value="solar_flare" ${value === 'solar_flare' ? 'selected' : ''}>solar_flare</option>
+                                    <option value="ocean_storm" ${value === 'ocean_storm' ? 'selected' : ''}>Ocean storm</option>
+                                    <option value="neon_surge" ${value === 'neon_surge' ? 'selected' : ''}>Neon surge</option>
+                                    <option value="solar_flare" ${value === 'solar_flare' ? 'selected' : ''}>Solar flare</option>
                                 `;
                             } else if (section === 'temperature') {
                                 optionsHTML = `
-                                    <option value="global_thermal" ${value === 'global_thermal' ? 'selected' : ''}>global_thermal</option>
-                                    <option value="extreme_contrast" ${value === 'extreme_contrast' ? 'selected' : ''}>extreme_contrast</option>
-                                    <option value="twilight_gradient" ${value === 'twilight_gradient' ? 'selected' : ''}>twilight_gradient</option>
+                                    <option value="global_thermal" ${value === 'global_thermal' ? 'selected' : ''}>Global thermal</option>
+                                    <option value="extreme_contrast" ${value === 'extreme_contrast' ? 'selected' : ''}>Extreme contrast</option>
+                                    <option value="twilight_gradient" ${value === 'twilight_gradient' ? 'selected' : ''}>Twilight gradient</option>
                                 `;
                             } else if (section === 'precipitation') {
                                 optionsHTML = `
-                                    <option value="standard" ${value === 'standard' ? 'selected' : ''}>standard</option>
-                                    <option value="ocean_blue" ${value === 'ocean_blue' ? 'selected' : ''}>ocean_blue</option>
-                                    <option value="high_contrast" ${value === 'high_contrast' ? 'selected' : ''}>high_contrast</option>
+                                    <option value="standard" ${value === 'standard' ? 'selected' : ''}>Standard</option>
+                                    <option value="ocean_blue" ${value === 'ocean_blue' ? 'selected' : ''}>Ocean blue</option>
+                                    <option value="high_contrast" ${value === 'high_contrast' ? 'selected' : ''}>High contrast</option>
+                                `;
+                            } else if (section === 'ozone') {
+                                optionsHTML = `
+                                    <option value="critical" ${value === 'critical' ? 'selected' : ''}>Critical</option>
+                                    <option value="plasma" ${value === 'plasma' ? 'selected' : ''}>Plasma</option>
+                                    <option value="viridis" ${value === 'viridis' ? 'selected' : ''}>Viridis</option>
+                                    <option value="inferno" ${value === 'inferno' ? 'selected' : ''}>Inferno</option>
+                                    <option value="turbo" ${value === 'turbo' ? 'selected' : ''}>Turbo</option>
                                 `;
                             } else {
                                 optionsHTML = null;

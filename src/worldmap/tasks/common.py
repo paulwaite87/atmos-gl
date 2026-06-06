@@ -247,8 +247,9 @@ class MapData:
 
 
 class Plot:
-    def __init__(self, region: MapRegion):
+    def __init__(self, region: MapRegion, projection=ccrs.PlateCarree()):
         self.region = region
+        self.projection = projection
         self.fig = None
         self.ax = None
 
@@ -258,15 +259,14 @@ class Plot:
 
         self.fig = plt.figure(figsize=(plot_target_width, plot_target_height), dpi=100)
 
-        projection = ccrs.PlateCarree()
         self.ax = cast(
             geoaxes.GeoAxes,
-            self.fig.add_axes((0, 0, 1, 1), **{"projection": projection}),
+            self.fig.add_axes((0, 0, 1, 1), **{"projection": self.projection}),
         )
 
         # Lock the exact view to your base map's bbox
         bbox = self.region.bbox
-        self.ax.set_extent([bbox[0], bbox[2], bbox[1], bbox[3]], crs=ccrs.PlateCarree())
+        self.ax.set_extent([bbox[0], bbox[2], bbox[1], bbox[3]], crs=self.projection)
         self.ax.set_aspect("auto", adjustable="box")
 
     def save_figure(self, output_path: str):

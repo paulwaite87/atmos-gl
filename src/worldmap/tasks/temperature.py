@@ -7,8 +7,10 @@ import xarray as xr
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import cartopy.crs as ccrs
-
 import gc
+
+from scipy.ndimage import gaussian_filter
+from scipy.interpolate import RegularGridInterpolator
 
 # Internal imports
 from worldmap.lib.config import WorldMapConfig
@@ -21,6 +23,9 @@ logger = logging.getLogger(__name__)
 class TemperatureUpdater(Updater):
     def __init__(self, config: WorldMapConfig, map_data: MapData):
         super().__init__(config, "Temperature", map_data)
+        # Default to Medium resolution if not specified
+        self.level_of_detail = self.settings.get("level_of_detail", 2)
+        self.lod_desc = None
 
         # DESIGNED GRADIENTS FOR AIR TEMPERATURE (-40C to +45C)
         self.PALETTES = {
@@ -53,12 +58,43 @@ class TemperatureUpdater(Updater):
             ],
         }
 
-    def plot(self):
-        """Plots an underlying 2-meter surface temperature heatmap
-        with optional isotherm contour lines and an overlay color key.
-        """
-        from scipy.interpolate import griddata
+    def save_temperature_key(self, output_path, cmap, norm, ticks, title_text, tick_format):
+        """Generates a standalone key image using dynamic formatting based on mode."""
+        import matplotlib.pyplot as plt
+        import matplotlib as mpl
+        import os
 
+        # Standardize naming
+        base, ext = os.path.splitext(output_path)
+        key_path = f"{base}_key{ext}"
+
+        key_fontsize = self.settings.get("key_fontsize", 10)
+
+        fig, ax = plt.subplots(figsize=(4, 0.3))
+
+        cbar = fig.colorbar(mpl.cm.ScalarMappable(norm=norm, cmap=cmap),
+                            cax=ax, orientation='horizontal', ticks=ticks)
+
+        cbar.ax.xaxis.set_major_formatter(plt.FormatStrFormatter(tick_format))
+
+        cbar.ax.set_title(
+            title_text,
+            color="white",
+            fontsize=key_fontsize,
+            pad=2,
+            weight="bold"
+        )
+        cbar.ax.tick_params(colors="white", labelsize=8)
+
+        # Save key separately
+        fig.savefig(key_path, transparent=True, bbox_inches='tight')
+        plt.close(fig)
+        logger.debug(f"Saved Temperature key to: {key_path}")
+
+    def plot(self):
+        """Plots a global 2-meter surface temperature heatmap
+        with dynamic resampling for smooth visuals and crisp isotherms.
+        """
         logger.debug(
             f"Plotting Temperature Data for {self.map_data.region.region_identifier}"
         )
@@ -66,14 +102,10 @@ class TemperatureUpdater(Updater):
         alpha_setting = self.settings.get("alpha", 0.75)
         alpha_setting = np.clip(alpha_setting, 0.1, 1.0)
         mode = self.settings.get("mode", "absolute").strip().lower()
-
         show_freezing_line = self.settings.get("show_freezing_line", True)
+        bbox = self.map_region_bbox
 
-        # Key style configurations
-        key_position = self.settings.get("key_position", "bottom-right")
-        key_fontsize = self.settings.get("key_fontsize", 10)
-
-        # Open Dataset with cfgrib filtering for 2-meter above ground level
+        # Load Dataset
         ds = xr.open_dataset(
             self.grib_path,
             engine="cfgrib",
@@ -82,66 +114,71 @@ class TemperatureUpdater(Updater):
             },
         )
 
-        lon_raw = ((ds["longitude"].values + 180) % 360) - 180
-        lat_raw = ds["latitude"].values
-        lon_min, lat_min, lon_max, lat_max = self.map_region_bbox
-        buf = 1.0
-
-        lon_inside = (lon_raw >= lon_min - buf) & (lon_raw <= lon_max + buf)
-        lat_inside = (lat_raw >= lat_min - buf) & (lat_raw <= lat_max + buf)
-
         temp_key = "t2m" if "t2m" in ds else "2t"
+        raw_matrix = ds[temp_key].values.squeeze() - 273.15  # Convert Kelvin to Celsius immediately
 
-        if lon_raw.ndim == 1 and lat_raw.ndim == 1:
-            spatial_mask = lat_inside[:, np.newaxis] & lon_inside[np.newaxis, :]
-            mesh_lon_raw, mesh_lat_raw = np.meshgrid(lon_raw, lat_raw)
+        lon_raw = ds["longitude"].values
+        lat_raw = ds["latitude"].values
 
-            temp_raw_k = ds[temp_key].values[spatial_mask]
-            lons_clipped = mesh_lon_raw[spatial_mask]
-            lats_clipped = mesh_lat_raw[spatial_mask]
+        # Normalize and Sort Longitudes (-180 to 180) to avoid seam line artifacts
+        lon_norm = ((lon_raw + 180) % 360) - 180
+        lon_sort_idx = np.argsort(lon_norm)
+        lon_norm = lon_norm[lon_sort_idx]
+        raw_matrix = raw_matrix[:, lon_sort_idx]
+
+        # Ensure latitudes are strictly increasing for the RegularGridInterpolator
+        if lat_raw[0] > lat_raw[-1]:
+            lat_inc = lat_raw[::-1]
+            raw_matrix = raw_matrix[::-1, :]
         else:
-            mask = lon_inside & lat_inside
-            temp_raw_k = ds[temp_key].values[mask]
-            lons_clipped = lon_raw[mask]
-            lats_clipped = lat_raw[mask]
+            lat_inc = lat_raw
+
+        # Level of Detail Resolution Strategies (Global Scale Performance Optimized)
+        if self.level_of_detail == 3:
+            step = 0.05  # High Resolution (7200x3600 grid points)
+            filter_sigma = 1.2
+            self.lod_desc = "high"
+        elif self.level_of_detail == 2:
+            step = 0.10  # Medium Resolution (3600x1800 grid points)
+            filter_sigma = 0.8
+            self.lod_desc = "medium"
+        else:
+            step = 0.25  # Low Resolution (Native 1440x720 GFS Grid size)
+            filter_sigma = 0.0  # Raw data, no smoothing
+            self.lod_desc = "low"
+
+        # High-Speed Regular Grid Interpolation Pipeline
+        fn = RegularGridInterpolator(
+            (lat_inc, lon_norm), raw_matrix, bounds_error=False, fill_value=np.nan
+        )
+
+        # Build new global target dimensions based on step choice
+        grid_lon = np.arange(bbox[0], bbox[2] + step, step)
+        grid_lat = np.arange(bbox[1], bbox[3] + step, step)
+        mesh_lat, mesh_lon = np.meshgrid(grid_lat, grid_lon, indexing="ij")
+
+        # Execute interpolation map
+        temp_grid = fn((mesh_lat, mesh_lon))
 
         ds.close()
         del ds
         gc.collect()
 
-        valid = ~np.isnan(temp_raw_k)
-        if not np.any(valid):
-            logger.warning("No temperature coordinates found within the region slice.")
-            return
+        # Apply Gaussian filtering for smooth aesthetics if LOD > 1
+        if filter_sigma > 0:
+            temp_grid = gaussian_filter(temp_grid, sigma=filter_sigma)
 
-        points = np.column_stack((lons_clipped[valid], lats_clipped[valid]))
-        temp_raw_c = temp_raw_k[valid] - 273.15
-
-        # 3. Build unified processing grid mesh
-        grid_lon = np.linspace(lon_min, lon_max, 300)
-        grid_lat = np.linspace(lat_min, lat_max, 300)
-        mesh_lon, mesh_lat = np.meshgrid(grid_lon, grid_lat)
-
-        # Absolute temperature grid (always retained for the freezing line overlay)
-        temp_grid = griddata(
-            points, temp_raw_c, (mesh_lon, mesh_lat), method="linear", fill_value=np.nan
-        )
-
-        # 4. Dynamic Mode Processing (Absolute vs Automated Anomaly)
+        # Dynamic Mode Processing (Absolute vs Automated Anomaly)
         if mode == "anomaly":
             spatial_mean = np.nanmean(temp_grid)
             display_data = temp_grid - spatial_mean
 
-            cmap_name = "coolwarm"
-            cmap = plt.get_cmap(cmap_name)
+            cmap = plt.get_cmap("coolwarm")
 
-            # AUTOMATED RANGE ENGINE
-            # Captures 98th percentile of absolute deviations to ignore single extreme outliers
+            # Automated symmetric range calculation
             abs_anomalies = np.abs(display_data)
             calculated_range = float(np.nanpercentile(abs_anomalies, 98))
-            anomaly_range = max(
-                0.5, calculated_range
-            )  # Safety buffer to prevent 0-scale collapse
+            anomaly_range = max(0.5, calculated_range)
 
             vmin, vmax = -anomaly_range, anomaly_range
             levels = np.linspace(vmin, vmax, 86)
@@ -172,11 +209,14 @@ class TemperatureUpdater(Updater):
             calculated_ticks = [-40, -20, 0, 15, 30, 45]
             tick_format = "%d"
 
-        # 5. Initialize Core Canvas
-        plot = Plot(self.map_data.region)
+        # Initialize Canvas
+        plot = Plot(self.map_data.region, projection=ccrs.PlateCarree())
         plot.get_figure()
 
-        # 6. Render Heatmap (Using mode-dependent data)
+        # 6. Render Heatmap Contour
+        # The crucial fix: Notice the `.T` transpose on the data arrays.
+        # meshgrid with indexing="ij" creates arrays in (lat, lon) shape.
+        # contourf expects (lon, lat) shape to match x/y coordinates.
         cf = plot.ax.contourf(
             grid_lon,
             grid_lat,
@@ -190,7 +230,7 @@ class TemperatureUpdater(Updater):
             zorder=2,
         )
 
-        # 7. Render Freezing Line Isotherm (Always using absolute temp_grid!)
+        # 7. Render Freezing Line Isotherm
         if show_freezing_line:
             plot.ax.contour(
                 grid_lon,
@@ -205,48 +245,29 @@ class TemperatureUpdater(Updater):
                 zorder=4,
             )
 
-        # 8. ENHANCEMENT: DYNAMIC ADJUSTED COLOR KEY OVERLAY
-        position_map = {
-            "top-left": [0.04, 0.89, 0.28, 0.03],
-            "top-right": [0.68, 0.89, 0.28, 0.03],
-            "bottom-left": [0.04, 0.08, 0.28, 0.03],
-            "bottom-right": [0.68, 0.08, 0.28, 0.03],
-        }
-
-        bbox_coords = position_map.get(key_position, position_map["bottom-right"])
-        cbar_ax = plot.ax.inset_axes(bbox_coords, transform=plot.ax.transAxes)
-
-        cbar_ax.patch.set_facecolor("#111111")
-        cbar_ax.patch.set_alpha(0.4)
-
-        cbar = plt.colorbar(
-            cf, cax=cbar_ax, orientation="horizontal", ticks=calculated_ticks
-        )
-
-        # Style the color scale numbers
-        cbar.ax.xaxis.set_tick_params(
-            color="white", labelsize=key_fontsize, labelcolor="white", pad=3
-        )
-        cbar.ax.xaxis.set_major_formatter(plt.FormatStrFormatter(tick_format))
-        cbar.outline.set_edgecolor("white")
-        cbar.outline.set_linewidth(0.5)
-        cbar.ax.set_title(
-            title_text, color="white", fontsize=key_fontsize, pad=5, weight="bold"
-        )
-
+        # Save main figure and standalone key
         plot.save_figure(self.output_path)
 
+        self.save_temperature_key(
+            self.output_path,
+            cmap,
+            norm,
+            calculated_ticks,
+            title_text,
+            tick_format
+        )
+
+        # Clean up
         plt_close = getattr(plot, "close", None)
         if callable(plt_close):
             plt_close()
 
-        logger.debug(
-            f"Temperature ({mode} mode) plotting sequence completed successfully."
+        logger.info(
+            f"Successfully generated global Temperature plot ({self.lod_desc} resolution)."
         )
 
     def run(self):
         self.exit_if_disabled()
-        # Get the GFS state for this updater
         self.get_gfs_state()
         self.grib_path = os.path.join(
             self.workdir, f"data/gfs_temp_{self.forecast_hour_str}.grib2"
@@ -254,5 +275,4 @@ class TemperatureUpdater(Updater):
 
         url = f"{self.base_url}/gfs.{self.gfs_date_str}/{self.gfs_run}/atmos/gfs.t{self.gfs_run}z.pgrb2.0p25.f{self.forecast_hour_str}"
         if self.remote_data_update(remote_url=url, cache_file_path=self.grib_path):
-            logger.info("Generating Temperature plot...")
             self.plot()

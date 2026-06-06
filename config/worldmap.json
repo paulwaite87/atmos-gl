@@ -40,7 +40,7 @@
     "runs_per_day": 8
   },
   "precipitation": {
-    "enabled": true,
+    "enabled": false,
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
     "outfile": "data/precipitation.png",
     "level_of_detail": "2",
@@ -48,7 +48,6 @@
     "alpha": 0.9,
     "palette": "standard",
     "key_fontsize": 8,
-    "key_position": "bottom-left",
     "runs_per_day": 24
   },
   "sst": {
@@ -90,38 +89,37 @@
     "runs_per_day": 2
   },
   "temperature": {
-    "enabled": false,
+    "enabled": true,
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
     "outfile": "data/temperature.png",
+    "level_of_detail": "2",
     "mode": "absolute",
     "palette": "extreme_contrast",
     "alpha": 1,
     "show_freezing_line": true,
-    "key_fontsize": 18,
-    "key_position": "top-left",
+    "key_fontsize": 8,
     "runs_per_day": 8
   },
   "ozone": {
     "enabled": false,
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
     "outfile": "data/ozone.png",
+    "level_of_detail": "3",
     "palette": "critical",
     "critical_du": 230,
     "alpha": 1,
-    "key_fontsize": 18,
-    "key_position": "bottom-left",
+    "key_fontsize": 8,
     "runs_per_day": 2,
     "stormwatch": true
   },
   "stormwatch": {
-    "enabled": true,
+    "enabled": false,
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
     "outfile": "data/stormwatch.png",
     "level_of_detail": "2",
     "min_cape": 1200,
     "alpha": 1,
     "key_fontsize": 8,
-    "key_position": "top-right",
     "runs_per_day": 2
   },
   "storms": {
@@ -175,7 +173,7 @@
     "runs_per_day": 1
   },
   "shipping": {
-    "enabled": false,
+    "enabled": true,
     "outfile": "data/ships.json",
     "region": "NZ_Aus",
     "icon_zoom": 0.6,

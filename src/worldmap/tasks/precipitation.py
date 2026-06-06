@@ -131,18 +131,18 @@ class PrecipitationUpdater(Updater):
         del ds
         gc.collect()
 
-        # Sampling sizes according to user setting
-        if self.level_of_detail == 1:
-            step = 0.10  # High resolution; ~162M points
-            filter_sigma = 1.0
+        # 2. DYNAMIC RESAMPLING (Level of Detail Logic)
+        if self.level_of_detail == 3:
+            step = 0.05  # High resolution (very smooth)
+            filter_sigma = 1.2
             self.lod_desc = "high"
         elif self.level_of_detail == 2:
             step = 0.125  # Medium resolution
-            filter_sigma = 0.9
+            filter_sigma = 0.8
             self.lod_desc = "medium"
         else:
-            step = 0.15  # Low resolution; ~2.8M points
-            filter_sigma = 0.8
+            step = 0.25  # Low resolution (Native GFS grid size)
+            filter_sigma = 0.0  # No smoothing
             self.lod_desc = "low"
 
         new_lats = np.arange(lats.min(), lats.max() + step, step)
