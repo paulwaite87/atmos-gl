@@ -1,116 +1,74 @@
-// ui/modules/quakes.js
+import { liveDataSync } from './_datasync.js';
 
-export async function loadLayer(map, config) {
+export function loadLayer(map, config) {
     const sourceId = 'quakes-source';
-    const layerId = 'quakes-layer';
-
-    if (map.getSource(sourceId)) return;
-
-    // Pull configurations with fallbacks
-    const minMag = config.min_mag || 3.5;
-    const expiryHours = config.expiry_hours || 12;
-    const recentHours = config.recent_activity_hours || 3;
-    const zoomSize = config.icon_zoom || 1.0;
-
-    const baseUrl = `${window.WM_API}/quakes/geojson`;
-    const geojsonUrl = `${baseUrl}?min_mag=${minMag}&expiry_hours=${expiryHours}&recent_hours=${recentHours}`;
-
+    const layerId  = 'quakes-layer';
     const popup = new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 15 });
-
     const quakeIcons = [
         { id: 'quake-new', url: '/images/earthquake_new.png' },
-        { id: 'quake-old', url: '/images/earthquake_old.png' }
+        { id: 'quake-old', url: '/images/earthquake_old.png' },
     ];
 
-    try {
-        // 1. Fetch GeoJSON Data IMMEDIATELY
-        console.log(`[Quakes] Fetching dataset from: ${geojsonUrl}`);
-        const geoResponse = await fetch(`${geojsonUrl}&t=${Date.now()}`);
-        if (!geoResponse.ok) throw new Error(`HTTP ${geoResponse.status}`);
-        const geojsonData = await geoResponse.json();
+    const urlFor = (cfg) => `${window.WM_API}/quakes/geojson`
+        + `?min_mag=${cfg.min_mag ?? 3.5}`
+        + `&expiry_hours=${cfg.expiry_hours ?? 12}`
+        + `&recent_hours=${cfg.recent_activity_hours ?? 3}&t=${Date.now()}`;
 
-        console.log(`🌋 [Quakes] API returned ${geojsonData.features?.length || 0} events.`);
+    const fetchData = async (cfg) => {
+        const r = await fetch(urlFor(cfg));
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+    };
 
-        // 2. Isolated function to safely bind assets to the map layout canvas
-        const bindToMap = async () => {
-            try {
-                if (map.getSource(sourceId)) return;
+    // named handlers so unmount can map.off() them
+    const onEnter = (e) => {
+        if (!e.features.length) return;
+        map.getCanvas().style.cursor = 'pointer';
+        const d = e.features[0].properties;
+        const coords = e.features[0].geometry.coordinates.slice();
+        const mins = Math.floor(d.age_minutes);
+        const age = mins < 60 ? `${mins} mins ago` : `${Math.floor(mins/60)} hours ago`;
+        popup.setLngLat(coords).setHTML(
+            `<div style="font-family:sans-serif;font-size:12px;color:#000;padding:5px;">
+               <strong style="color:#ff4a4a;">M ${Number(d.mag).toFixed(1)}</strong> — ${d.place}
+               <hr style="margin:6px 0;"><div>Depth: <strong>${d.depth} km</strong></div>
+               <div>Age: <strong>${age}</strong></div></div>`).addTo(map);
+    };
+    const onLeave = () => { map.getCanvas().style.cursor = ''; popup.remove(); };
 
-                // Load and register image bitmaps into the map's WebGL sprite atlas
-                await Promise.all(quakeIcons.map(async (icon) => {
-                    const response = await fetch(`${window.location.origin}${icon.url}`);
-                    if (!response.ok) throw new Error(`Could not load ${icon.id}`);
-                    const blob = await response.blob();
-                    const bitmap = await createImageBitmap(blob);
-                    if (!map.hasImage(icon.id)) map.addImage(icon.id, bitmap);
-                }));
+    const mount = async (cfg) => {
+        await Promise.all(quakeIcons.map(async (ic) => {
+            if (map.hasImage(ic.id)) return;
+            const blob = await (await fetch(`${window.location.origin}${ic.url}`)).blob();
+            map.addImage(ic.id, await createImageBitmap(blob));
+        }));
+        const data = await fetchData(cfg);
+        if (map.getSource(sourceId)) return;          // guard against races
+        map.addSource(sourceId, { type: 'geojson', data });
+        map.addLayer({
+            id: layerId, type: 'symbol', source: sourceId,
+            layout: {
+                'icon-image': ['case', ['get', 'is_recent'], 'quake-new', 'quake-old'],
+                'icon-size': 0.8 * (cfg.icon_zoom ?? 1.0),
+                'icon-allow-overlap': true, 'icon-ignore-placement': true,
+            },
+        });
+        map.on('mouseenter', layerId, onEnter);
+        map.on('mouseleave', layerId, onLeave);
+    };
 
-                // Inject Source
-                map.addSource(sourceId, { type: 'geojson', data: geojsonData });
+    const refresh = async (cfg) => {
+        const data = await fetchData(cfg);
+        map.getSource(sourceId)?.setData(data);
+    };
 
-                // Inject Native WebGL Symbol Layer
-                map.addLayer({
-                    id: layerId,
-                    type: 'symbol',
-                    source: sourceId,
-                    layout: {
-                        // DATA-DRIVEN STYLING: Dynamically swap icon style directly in GPU memory
-                        'icon-image': [
-                            'case',
-                            ['get', 'is_recent'], 'quake-new',
-                            'quake-old'
-                        ],
-                        'icon-size': 0.8 * zoomSize,
-                        'icon-allow-overlap': true,
-                        'icon-ignore-placement': true
-                    }
-                });
+    const unmount = () => {
+        map.off('mouseenter', layerId, onEnter);
+        map.off('mouseleave', layerId, onLeave);
+        popup.remove();
+        if (map.getLayer(layerId))   map.removeLayer(layerId);
+        if (map.getSource(sourceId)) map.removeSource(sourceId);
+    };
 
-                console.log(`[Quakes] WebGL layer successfully mounted to map canvas.`);
-
-                // 3. High-Performance Interaction Listeners
-                map.on('mouseenter', layerId, (e) => {
-                    if (!e.features.length) return;
-                    map.getCanvas().style.cursor = 'pointer';
-
-                    const d = e.features[0].properties;
-                    const coordinates = e.features[0].geometry.coordinates.slice();
-
-                    const ageMins = Math.floor(d.age_minutes);
-                    const ageHours = Math.floor(ageMins / 60);
-                    const ageDisplay = ageMins < 60 ? `${ageMins} mins ago` : `${ageHours} ${ageHours === 1 ? 'hour' : 'hours'} ago`;
-
-                    popup.setLngLat(coordinates)
-                        .setHTML(`
-                            <div style="font-family: sans-serif; font-size: 12px; color: #000; padding: 5px;">
-                                <strong style="color: #ff4a4a; font-size: 14px;">M ${Number(d.mag).toFixed(1)}</strong> 
-                                <span style="color: #666; margin-left: 4px;">— ${d.place}</span>
-                                <hr style="border: 0; border-top: 1px solid #ccc; margin: 6px 0;">
-                                <div><span style="color: #666; width: 65px; display: inline-block;">Depth:</span> <strong>${d.depth} km</strong></div>
-                                <div><span style="color: #666; width: 65px; display: inline-block;">Age:</span> <strong style="color: ${d.is_recent ? '#28a745' : '#d9534f'};">${ageDisplay}</strong></div>
-                            </div>
-                        `)
-                        .addTo(map);
-                });
-
-                map.on('mouseleave', layerId, () => {
-                    map.getCanvas().style.cursor = '';
-                    popup.remove();
-                });
-
-            } catch (styleErr) {
-                console.error("❌ [Quakes] Layer registration crashed:", styleErr);
-            }
-        };
-
-        // 4. Map Engine Lifecycle Safeguard
-        if (map.loaded()) {
-            await bindToMap();
-        } else {
-            map.once('load', bindToMap);
-        }
-
-    } catch (err) {
-        console.error("❌ [Quakes] Core initialization failure:", err);
-    }
+    liveDataSync(map, { sectionKey: 'quakes', initialConfig: config, mount, refresh, unmount, refreshMs: 60000 });
 }

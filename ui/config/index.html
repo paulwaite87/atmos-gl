@@ -318,6 +318,26 @@
                                     ${optionsHTML}
                                 </select>
                             `;
+                        } else if (option === 'starting_latitude') {
+                            const initialStartLat = parseFloat(value) !== undefined ? parseFloat(value) : 0.0;
+                            col.innerHTML = `
+                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                    <label class="form-label small text-white-50 fw-bold mb-0">${customLabelText}</label>
+                                    <span class="badge bg-info text-dark fw-bold" id="badge-${domId}">${initialStartLat.toFixed(1)} deg</span>
+                                </div>
+                                <input type="range" class="form-range dynamic-input" id="${domId}" min="-180.0" max="180.0" step="1.0" value="${initialStartLat}"
+                                       oninput="document.getElementById('badge-${domId}').innerText = parseFloat(this.value).toFixed(1) + ' deg'">
+                            `;
+                        } else if (option === 'starting_longitude') {
+                            const initialStartLat = parseFloat(value) !== undefined ? parseFloat(value) : 0.0;
+                            col.innerHTML = `
+                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                    <label class="form-label small text-white-50 fw-bold mb-0">${customLabelText}</label>
+                                    <span class="badge bg-info text-dark fw-bold" id="badge-${domId}">${initialStartLat.toFixed(1)} deg</span>
+                                </div>
+                                <input type="range" class="form-range dynamic-input" id="${domId}" min="-90.0" max="90.0" step="1.0" value="${initialStartLat}"
+                                       oninput="document.getElementById('badge-${domId}').innerText = parseFloat(this.value).toFixed(1) + ' deg'">
+                            `;
                         } else if (option.endsWith('_color')) {
                             const rawColorStr = String(value).toLowerCase().trim();
                             const initialHex = rawColorStr.startsWith('#') ? rawColorStr : COLOR_MAP[rawColorStr] || "#ffffff";

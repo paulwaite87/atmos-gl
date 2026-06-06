@@ -1,172 +1,97 @@
-// ui/modules/storms.js
+import { liveDataSync } from './_datasync.js';
 
-export async function loadLayer(map, config) {
+export function loadLayer(map, config) {
     const sourceId = 'storms-source';
-
-    if (map.getSource(sourceId)) return;
-
-    const geojsonUrl = `${window.WM_API}/storms/geojson`;
+    const layerIds = [
+        'storms-cone', 'storms-cone-shadow', 'storms-cone-outline',
+        'storms-track-past', 'storms-track-forecast', 'storms-points',
+    ];
     const popup = new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 10 });
+    let pulsing = false;
 
-    try {
-        console.log(`[Quakes] Fetching dataset from: ${geojsonUrl}`);
-        const geoResponse = await fetch(`${geojsonUrl}?t=${Date.now()}`);
-        if (!geoResponse.ok) throw new Error(`HTTP ${geoResponse.status}`);
-        const geojsonData = await geoResponse.json();
+    const urlFor = () => `${window.WM_API}/storms/geojson?t=${Date.now()}`;
 
-        console.log(`🌀 [Storms] API returned ${geojsonData.features?.length || 0} geometric features.`);
+    const fetchData = async () => {
+        const r = await fetch(urlFor());
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+    };
 
-        const bindToMap = () => {
-            if (map.getSource(sourceId)) return;
+    const onEnter = (e) => {
+        map.getCanvas().style.cursor = 'pointer';
+        const p = e.features[0].properties;
+        const coords = e.features[0].geometry.coordinates.slice();
+        const dateStr = new Date(p.dt).toLocaleString(undefined,
+            { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+        popup.setLngLat(coords).setHTML(
+            `<div style="font-family:sans-serif;font-size:12px;color:#000;padding:4px;">
+                <strong style="color:#ff4a4a;font-size:14px;">${p.name || p.sid}</strong>
+                <hr style="border:0;border-top:1px solid #ccc;margin:4px 0;">
+                <div><span style="color:#666;width:45px;display:inline-block;">Type:</span> <strong>${p.record_type}</strong></div>
+                <div><span style="color:#666;width:45px;display:inline-block;">Time:</span> <strong>${dateStr}</strong></div>
+                ${p.tau > 0 ? `<div><span style="color:#666;width:45px;display:inline-block;">Hour:</span> <strong>+${p.tau}</strong></div>` : ''}
+            </div>`).addTo(map);
+    };
+    const onLeave = () => { map.getCanvas().style.cursor = ''; popup.remove(); };
 
-            // Inject Unified Source
-            map.addSource(sourceId, { type: 'geojson', data: geojsonData });
-
-            // Inside bindToMap() in storms.js
-            map.addLayer({
-                id: 'storms-cone',
-                type: 'fill',
-                source: sourceId,
-                filter: ['==', 'feature_type', 'CONE'],
-                paint: {
-                    'fill-color': '#ff4a4a',        // Use your track red
-                    'fill-opacity': 0.2,            // Very light fill
-                    'fill-outline-color': '#ff4a4a' // Solid color for the outline
-                }
-            });
-
-            map.addLayer({
-                id: 'storms-cone-shadow',
-                type: 'line',
-                source: sourceId,
-                filter: ['==', 'feature_type', 'CONE'],
-                paint: {
-                    'line-color': '#000000',
-                    'line-width': 3,
-                    'line-opacity': 0.3,
-                    'line-offset': 1 // Shifts the shadow slightly to the right
-                }
-            }, 'storms-cone');
-
-
-            // A dedicated outline layer for extra "beef"
-            map.addLayer({
-                id: 'storms-cone-outline',
-                type: 'line',
-                source: sourceId,
-                filter: ['==', 'feature_type', 'CONE'],
-                paint: {
-                    'line-color': '#ff4a4a',
-                    'line-width': 2,
-                    'line-opacity': 0.6
-                }
-            });
-
-            // Past Track (Solid Red Line)
-            map.addLayer({
-                id: 'storms-track-past',
-                type: 'line',
-                source: sourceId,
-                filter: ['==', 'feature_type', 'TRACK_PAST'],
-                paint: {
-                    'line-color': '#ff4a4a',
-                    'line-width': 2
-                }
-            });
-
-            // 4. Forecast Track (Dashed Red Line)
-            map.addLayer({
-                id: 'storms-track-forecast',
-                type: 'line',
-                source: sourceId,
-                filter: ['==', 'feature_type', 'TRACK_FORECAST'],
-                paint: {
-                    'line-color': '#ff4a4a',
-                    'line-width': 2,
-                    'line-dasharray': [2, 2] // Creates the dashed effect
-                }
-            });
-
-            // 5. Track Points (Interactive Dots)
-            map.addLayer({
-                id: 'storms-points',
-                type: 'circle',
-                source: sourceId,
-                filter: ['==', 'feature_type', 'POINT'],
-                paint: {
-                    'circle-radius': [
-                        'match',
-                        ['get', 'record_type'],
-                        'CURRENT', 6, // Make the current position larger
-                        4             // Past/Forecast points are smaller
-                    ],
-                    'circle-color': '#111111',
-                    'circle-stroke-color': '#ff4a4a',
-                    'circle-stroke-width': 2
-                }
-            });
-
-            // 6. Interactivity (Hover over points)
-            map.on('mouseenter', 'storms-points', (e) => {
-                map.getCanvas().style.cursor = 'pointer';
-                const props = e.features[0].properties;
-                const coords = e.features[0].geometry.coordinates.slice();
-
-                // Format the timestamp nicely
-                const dateStr = new Date(props.dt).toLocaleString(undefined, {
-                    month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
-                });
-
-                popup.setLngLat(coords)
-                    .setHTML(`
-                        <div style="font-family: sans-serif; font-size: 12px; color: #000; padding: 4px;">
-                            <strong style="color: #ff4a4a; font-size: 14px;">${props.name || props.sid}</strong>
-                            <hr style="border: 0; border-top: 1px solid #ccc; margin: 4px 0;">
-                            <div><span style="color: #666; width: 45px; display: inline-block;">Type:</span> <strong>${props.record_type}</strong></div>
-                            <div><span style="color: #666; width: 45px; display: inline-block;">Time:</span> <strong>${dateStr}</strong></div>
-                            ${props.tau > 0 ? `<div><span style="color: #666; width: 45px; display: inline-block;">Hour:</span> <strong>+${props.tau}</strong></div>` : ''}
-                        </div>
-                    `)
-                    .addTo(map);
-            });
-
-            map.on('mouseleave', 'storms-points', () => {
-                map.getCanvas().style.cursor = '';
-                popup.remove();
-            });
-
-            // Add this helper inside loadLayer, before the closing brace of loadLayer
-            function animatePulse() {
-                if (!map.getSource(sourceId)) return; // Safety: stop if source is gone
-
-                // Create an oscillating value between 0 and 1
-                const pulse = (Math.sin(Date.now() / 400) + 1) / 2;
-
-                // Scale: radius goes from 6 to 10
-                const currentRadius = 6 + (pulse * 4);
-
-                // Apply the animation ONLY to the 'CURRENT' record_type
-                map.setPaintProperty('storms-points', 'circle-radius', [
-                    'match',
-                    ['get', 'record_type'],
-                    'CURRENT', currentRadius, // Apply pulse here
-                    4                         // Keep others small (size 4)
-                ]);
-
-                requestAnimationFrame(animatePulse);
-            }
-
-            // Start the animation loop
-            animatePulse();
+    const startPulse = () => {
+        pulsing = true;
+        const loop = () => {
+            if (!pulsing || !map.getLayer('storms-points')) return;
+            const r = 6 + ((Math.sin(Date.now() / 400) + 1) / 2) * 4;
+            map.setPaintProperty('storms-points', 'circle-radius',
+                ['match', ['get', 'record_type'], 'CURRENT', r, 4]);
+            requestAnimationFrame(loop);
         };
+        requestAnimationFrame(loop);
+    };
 
-        if (map.loaded()) {
-            bindToMap();
-        } else {
-            map.once('load', bindToMap);
-        }
+    const mount = async () => {
+        const data = await fetchData();
+        if (map.getSource(sourceId)) return;
+        map.addSource(sourceId, { type: 'geojson', data });
 
-    } catch (err) {
-        console.error("❌ [Storms] Core initialization failure:", err);
-    }
+        map.addLayer({ id: 'storms-cone', type: 'fill', source: sourceId,
+            filter: ['==', 'feature_type', 'CONE'],
+            paint: { 'fill-color': '#ff4a4a', 'fill-opacity': 0.2, 'fill-outline-color': '#ff4a4a' } });
+        map.addLayer({ id: 'storms-cone-shadow', type: 'line', source: sourceId,
+            filter: ['==', 'feature_type', 'CONE'],
+            paint: { 'line-color': '#000000', 'line-width': 3, 'line-opacity': 0.3, 'line-offset': 1 } },
+            'storms-cone');
+        map.addLayer({ id: 'storms-cone-outline', type: 'line', source: sourceId,
+            filter: ['==', 'feature_type', 'CONE'],
+            paint: { 'line-color': '#ff4a4a', 'line-width': 2, 'line-opacity': 0.6 } });
+        map.addLayer({ id: 'storms-track-past', type: 'line', source: sourceId,
+            filter: ['==', 'feature_type', 'TRACK_PAST'],
+            paint: { 'line-color': '#ff4a4a', 'line-width': 2 } });
+        map.addLayer({ id: 'storms-track-forecast', type: 'line', source: sourceId,
+            filter: ['==', 'feature_type', 'TRACK_FORECAST'],
+            paint: { 'line-color': '#ff4a4a', 'line-width': 2, 'line-dasharray': [2, 2] } });
+        map.addLayer({ id: 'storms-points', type: 'circle', source: sourceId,
+            filter: ['==', 'feature_type', 'POINT'],
+            paint: {
+                'circle-radius': ['match', ['get', 'record_type'], 'CURRENT', 6, 4],
+                'circle-color': '#111111', 'circle-stroke-color': '#ff4a4a', 'circle-stroke-width': 2,
+            } });
+
+        map.on('mouseenter', 'storms-points', onEnter);
+        map.on('mouseleave', 'storms-points', onLeave);
+        startPulse();
+    };
+
+    const refresh = async () => {
+        const data = await fetchData();
+        map.getSource(sourceId)?.setData(data);
+    };
+
+    const unmount = () => {
+        pulsing = false;
+        map.off('mouseenter', 'storms-points', onEnter);
+        map.off('mouseleave', 'storms-points', onLeave);
+        popup.remove();
+        for (const id of layerIds) if (map.getLayer(id)) map.removeLayer(id);
+        if (map.getSource(sourceId)) map.removeSource(sourceId);
+    };
+
+    liveDataSync(map, { sectionKey: 'storms', initialConfig: config, mount, refresh, unmount, refreshMs: 120000 });
 }

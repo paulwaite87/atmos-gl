@@ -80,6 +80,10 @@
                 // 2. Extract dynamically injected key out of the standard common section
                 const maptilerKey = configData.common?.api_key || '';
 
+                // Starting view of the globe
+                const startingLatitude = configData.common?.starting_latitude || 0.0;
+                const startingLongitude = configData.common?.starting_longitude || 0.0;
+
                 if (configData.common?.RULE__missing_maptiler) {
                     console.warn("MapTiler API Key missing! Check your host .env configuration.");
                 }
@@ -88,8 +92,8 @@
                 const map = new maplibregl.Map({
                     container: 'globeViz',
                     style: `https://api.maptiler.com/maps/satellite/style.json?key=${maptilerKey}`,
-                    center: [0, 0],
-                    zoom: 2, // Start zoomed out to see the globe shape immediately
+                    center: [startingLatitude, startingLongitude],
+                    zoom: 2.5, // Start zoomed out to see the globe shape immediately
                     projection: 'globe' // Start with a spherical projection
                 });
 
@@ -162,15 +166,27 @@
                     window.MAP_UI = "http://localhost:9000";
                     window.WM_API = "http://localhost:9000/api";
 
-                    const IMAGE_LAYERS = ['clouds', 'isobars', 'precipitation', 'ozone', 'stormwatch', 'temperature'];
+                    const LIVE_LAYERS = [
+                        'clouds',
+                        'precipitation',
+                        'stormwatch',
+                        'ozone',
+                        'temperature',
+                        'isobars',
+                        'quakes',
+                        'volcanoes',
+                        'lightning',
+                        'storms',
+                        'shipping',
+                    ];
 
                     for (const moduleName of frontendLayers) {
                         const moduleConfig = configData[moduleName] || {};
-                        const isImage = IMAGE_LAYERS.includes(moduleName);
+                        const isLive = LIVE_LAYERS.includes(moduleName);
 
                         // Image layers always start their poller (it self-mounts only when enabled);
                         // GeoJSON/marker layers keep the original enabled-only behaviour.
-                        if (isImage || moduleConfig.enabled === true) {
+                        if (isLive || moduleConfig.enabled === true) {
                             try {
                                 const module = await import(`/modules/${moduleName}.js?t=${Date.now()}`);
                                 module.loadLayer(map, moduleConfig);

@@ -49,5 +49,8 @@ export function loadLayer(map, config) {
         document.getElementById(slotId)?.remove();
     };
 
-    liveLayerSync(map, { sectionKey: 'ozone', initialConfig: config, mount, refresh, unmount });
+    liveLayerSync(map, {
+        sectionKey: 'ozone', initialConfig: config,
+        mount, refresh, unmount, imageUrl: urlFor,
+    });
 }

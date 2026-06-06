@@ -1,119 +1,80 @@
-// ui/modules/lightning.js
+import { liveDataSync } from './_datasync.js';
 
-export async function loadLayer(map, config) {
+export function loadLayer(map, config) {
     const sourceId = 'lightning-source';
-    const layerId = 'lightning-layer';
-
-    if (map.getSource(sourceId)) return; // Prevent duplicates
-
-    // Default config fallbacks if not provided by backend
-    const recentMins = config.strike_recent_minutes || 15;
-    const keepMins = config.strike_keep_minutes || 60;
-    const expiryHours = config.strike_expiry_hours || 2;
-
-    const baseUrl = `${window.WM_API}/lightning/geojson`;
-    const geojsonUrl = `${baseUrl}?expiry_hours=${expiryHours}`;
-
+    const layerId  = 'lightning-layer';
     const popup = new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 15 });
-
     const boltIcons = [
-        { id: 'bolt-white', url: '/images/bolt_white.png' },
+        { id: 'bolt-white',  url: '/images/bolt_white.png' },
         { id: 'bolt-yellow', url: '/images/bolt_yellow.png' },
-        { id: 'bolt-red', url: '/images/bolt_red.png' }
+        { id: 'bolt-red',    url: '/images/bolt_red.png' },
     ];
 
-    try {
-        // 1. Fetch GeoJSON Data IMMEDIATELY
-        console.log(`[Lightning] Fetching dataset from: ${geojsonUrl}`);
-        const geoResponse = await fetch(`${geojsonUrl}&t=${Date.now()}`);
-        if (!geoResponse.ok) throw new Error(`HTTP ${geoResponse.status}`);
-        const geojsonData = await geoResponse.json();
+    const urlFor = (cfg) => `${window.WM_API}/lightning/geojson`
+        + `?expiry_hours=${cfg.strike_expiry_hours ?? 2}&t=${Date.now()}`;
 
-        console.log(`⚡ [Lightning] API returned ${geojsonData.features?.length || 0} strikes.`);
+    const fetchData = async (cfg) => {
+        const r = await fetch(urlFor(cfg));
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+    };
 
-        // 2. Isolated function to safely bind assets to the map layout canvas
-        const bindToMap = async () => {
-            try {
-                if (map.getSource(sourceId)) return;
+    const onEnter = (e) => {
+        if (!e.features.length) return;
+        map.getCanvas().style.cursor = 'pointer';
+        const recentMins = config.strike_recent_minutes ?? 15;
+        const keepMins   = config.strike_keep_minutes ?? 60;
+        const f = e.features[0].properties;
+        const coords = e.features[0].geometry.coordinates.slice();
+        const mins = Math.floor(f.age_minutes);
+        const age = mins < 60 ? `${mins} mins ago` : `${(mins / 60).toFixed(1)} hours ago`;
+        const color = mins <= recentMins ? '#28a745' : (mins <= keepMins ? '#f0ad4e' : '#d9534f');
+        popup.setLngLat(coords).setHTML(
+            `<div style="font-family:sans-serif;font-size:12px;color:#000;padding:5px;">
+                <strong style="color:#ff4a4a;font-size:14px;">Strike at ${f.timestamp}</strong>
+                <hr style="border:0;border-top:1px solid #ccc;margin:6px 0;">
+                <div><span style="color:#666;width:40px;display:inline-block;">Age:</span> <strong style="color:${color};">${age}</strong></div>
+            </div>`).addTo(map);
+    };
+    const onLeave = () => { map.getCanvas().style.cursor = ''; popup.remove(); };
 
-                // Load and register image bitmaps into the map's WebGL sprite atlas
-                await Promise.all(boltIcons.map(async (icon) => {
-                    const response = await fetch(`${window.location.origin}${icon.url}`);
-                    if (!response.ok) throw new Error(`Could not load ${icon.id}`);
-                    const blob = await response.blob();
-                    const bitmap = await createImageBitmap(blob);
-                    if (!map.hasImage(icon.id)) map.addImage(icon.id, bitmap);
-                }));
+    const mount = async (cfg) => {
+        const recentMins = cfg.strike_recent_minutes ?? 15;
+        const keepMins   = cfg.strike_keep_minutes ?? 60;
+        await Promise.all(boltIcons.map(async (ic) => {
+            if (map.hasImage(ic.id)) return;
+            const res = await fetch(`${window.location.origin}${ic.url}`);
+            if (!res.ok) throw new Error(`Could not load ${ic.id}`);
+            map.addImage(ic.id, await createImageBitmap(await res.blob()));
+        }));
+        const data = await fetchData(cfg);
+        if (map.getSource(sourceId)) return;
+        map.addSource(sourceId, { type: 'geojson', data });
+        map.addLayer({
+            id: layerId, type: 'symbol', source: sourceId,
+            layout: {
+                'icon-image': ['step', ['get', 'age_minutes'],
+                    'bolt-white', recentMins, 'bolt-yellow', keepMins, 'bolt-red'],
+                'icon-size': 0.8,
+                'icon-allow-overlap': true, 'icon-ignore-placement': true,
+            },
+        });
+        map.on('mouseenter', layerId, onEnter);
+        map.on('mouseleave', layerId, onLeave);
+    };
 
-                // Inject Source
-                map.addSource(sourceId, { type: 'geojson', data: geojsonData });
+    const refresh = async (cfg) => {
+        const data = await fetchData(cfg);
+        map.getSource(sourceId)?.setData(data);
+    };
 
-                // Inject Native WebGL Symbol Layer
-                map.addLayer({
-                    id: layerId,
-                    type: 'symbol',
-                    source: sourceId,
-                    layout: {
-                        // DATA-DRIVEN STEP EXPRESSION:
-                        // Age < recentMins -> White
-                        // Age >= recentMins AND < keepMins -> Yellow
-                        // Age >= keepMins -> Red
-                        'icon-image': [
-                            'step',
-                            ['get', 'age_minutes'],
-                            'bolt-white',
-                            recentMins, 'bolt-yellow',
-                            keepMins, 'bolt-red'
-                        ],
-                        'icon-size': 0.8,
-                        'icon-allow-overlap': true,
-                        'icon-ignore-placement': true
-                    }
-                });
+    const unmount = () => {
+        map.off('mouseenter', layerId, onEnter);
+        map.off('mouseleave', layerId, onLeave);
+        popup.remove();
+        if (map.getLayer(layerId))   map.removeLayer(layerId);
+        if (map.getSource(sourceId)) map.removeSource(sourceId);
+    };
 
-                console.log(`[Lightning] WebGL layer successfully mounted to map canvas.`);
-
-                // 3. High-Performance Interaction Listeners
-                map.on('mouseenter', layerId, (e) => {
-                    if (!e.features.length) return;
-                    map.getCanvas().style.cursor = 'pointer';
-
-                    const feature = e.features[0].properties;
-                    const coordinates = e.features[0].geometry.coordinates.slice();
-
-                    const ageMins = Math.floor(feature.age_minutes);
-                    const ageDisplay = ageMins < 60 ? `${ageMins} mins ago` : `${(ageMins / 60).toFixed(1)} hours ago`;
-                    const color = ageMins <= recentMins ? '#28a745' : (ageMins <= keepMins ? '#f0ad4e' : '#d9534f');
-
-                    popup.setLngLat(coordinates)
-                        .setHTML(`
-                            <div style="font-family: sans-serif; font-size: 12px; color: #000; padding: 5px;">
-                                <strong style="color: #ff4a4a; font-size: 14px;">Strike at ${feature.timestamp}</strong> 
-                                <hr style="border: 0; border-top: 1px solid #ccc; margin: 6px 0;">
-                                <div><span style="color: #666; width: 40px; display: inline-block;">Age:</span> <strong style="color: ${color};">${ageDisplay}</strong></div>
-                            </div>
-                        `)
-                        .addTo(map);
-                });
-
-                map.on('mouseleave', layerId, () => {
-                    map.getCanvas().style.cursor = '';
-                    popup.remove();
-                });
-
-            } catch (styleErr) {
-                console.error("❌ [Lightning] Layer registration crashed:", styleErr);
-            }
-        };
-
-        // 4. Map Engine Lifecycle Safeguard
-        if (map.loaded()) {
-            await bindToMap();
-        } else {
-            map.once('load', bindToMap);
-        }
-
-    } catch (err) {
-        console.error("❌ [Lightning] Core initialization failure:", err);
-    }
+    liveDataSync(map, { sectionKey: 'lightning', initialConfig: config, mount, refresh, unmount, refreshMs: 60000 });
 }

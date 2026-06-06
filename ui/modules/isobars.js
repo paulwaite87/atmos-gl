@@ -32,5 +32,8 @@ export function loadLayer(map, config) {
         if (map.getSource(sourceId)) map.removeSource(sourceId);
     };
 
-    liveLayerSync(map, { sectionKey: 'isobars', initialConfig: config, mount, refresh, unmount });
+    liveLayerSync(map, {
+        sectionKey: 'isobars', initialConfig: config,
+        mount, refresh, unmount, imageUrl: urlFor,
+    });
 }

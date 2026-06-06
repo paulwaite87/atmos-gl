@@ -5,6 +5,8 @@
     "night_shade": false,
     "auto_rotate": false,
     "auto_rotate_speed": 0.1,
+    "starting_latitude": 165,
+    "starting_longitude": -40,
     "workdir": ".",
     "log_level": "DEBUG"
   },
@@ -19,7 +21,7 @@
     "runs_per_day": 8
   },
   "isobars": {
-    "enabled": true,
+    "enabled": false,
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
     "outfile": "data/isobars.png",
     "isobar_color": "White",
@@ -40,7 +42,7 @@
     "runs_per_day": 8
   },
   "precipitation": {
-    "enabled": true,
+    "enabled": false,
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
     "outfile": "data/precipitation.png",
     "level_of_detail": "2",
@@ -65,7 +67,7 @@
     "runs_per_day": 2
   },
   "currents": {
-    "enabled": false,
+    "enabled": true,
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/rtofs/prod/",
     "outfile": "data/currents.png",
     "palette": "thermal_red",
@@ -123,7 +125,7 @@
     "runs_per_day": 2
   },
   "storms": {
-    "enabled": true,
+    "enabled": false,
     "jtwc_url": "https://www.ssd.noaa.gov/PS/TROP/DATA/ATCF/JTWC/",
     "nhc_url": "https://ftp.nhc.noaa.gov/atcf/fst/",
     "outfile": "data/storms.json",
@@ -137,7 +139,7 @@
     "runs_per_day": 8
   },
   "lightning": {
-    "enabled": true,
+    "enabled": false,
     "outfile": "data/lightning.json",
     "icon_zoom": 1,
     "strike_recent_minutes": 15,
@@ -146,7 +148,7 @@
     "runs_per_day": 24
   },
   "quakes": {
-    "enabled": true,
+    "enabled": false,
     "url": "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.csv",
     "outfile": "data/quakes.json",
     "icon_zoom": 0.7,
