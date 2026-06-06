@@ -163,9 +163,9 @@ class TemperatureUpdater(Updater):
             (lat_inc, lon_norm), raw_matrix, bounds_error=False, fill_value=np.nan
         )
 
-        # Anchor target grid to the DATA domain so we never sample outside it.
-        lat_lo = max(bbox[1], float(lat_inc.min()))
-        lat_hi = min(bbox[3], float(lat_inc.max()))
+        from .common import MERCATOR_LAT_LIMIT
+        lat_lo = max(bbox[1], float(lat_inc.min()), -MERCATOR_LAT_LIMIT)
+        lat_hi = min(bbox[3], float(lat_inc.max()), MERCATOR_LAT_LIMIT)
         lon_lo = max(bbox[0], float(lon_norm.min()))
         lon_hi = min(bbox[2], float(lon_norm.max()))  # = 179.75, not 180.0
 
@@ -223,7 +223,7 @@ class TemperatureUpdater(Updater):
             tick_format = "%d"
 
         # Initialize Canvas
-        plot = Plot(self.map_data.region, projection=ccrs.PlateCarree())
+        plot = Plot(self.map_data.region)
         plot.get_figure()
 
         # 6. Render Heatmap Contour

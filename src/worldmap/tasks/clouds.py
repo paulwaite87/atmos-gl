@@ -2,6 +2,8 @@
 import os
 import sys
 import logging
+import math
+import numpy as np
 import urllib.error
 import urllib.request
 from datetime import datetime, timedelta, timezone
@@ -9,9 +11,42 @@ from PIL import Image
 
 # Internal library import
 from worldmap.lib.config import WorldMapConfig
-from .common import Updater, MapData
+from .common import Updater, MapData, MERCATOR_LAT_LIMIT
 
 logger = logging.getLogger(__name__)
+
+
+def _equirect_to_webmercator(img, lat_min, lat_max):
+    """Row-remap an equirectangular PIL image (rows linear in latitude over
+    [lat_min, lat_max], top row = lat_max) into Web Mercator, clamped to
+    +/-MERCATOR_LAT_LIMIT. Longitude is untouched; vertical resample is bilinear."""
+    lat_min_c = max(lat_min, -MERCATOR_LAT_LIMIT)
+    lat_max_c = min(lat_max,  MERCATOR_LAT_LIMIT)
+    arr = np.asarray(img.convert("RGB"))
+    h, w = arr.shape[:2]
+
+    mercY = lambda d: math.log(math.tan(math.pi / 4 + math.radians(d) / 2))
+    yT, yB = mercY(lat_max_c), mercY(lat_min_c)
+
+    # each destination row -> mercator-Y -> latitude -> fractional source row
+    merc_y   = yT + (np.arange(h) / (h - 1)) * (yB - yT)
+    dst_lat  = np.degrees(2 * np.arctan(np.exp(merc_y)) - np.pi / 2)
+    src_rowf = np.clip((lat_max - dst_lat) / (lat_max - lat_min) * (h - 1), 0, h - 1)
+
+    r0   = np.floor(src_rowf).astype(int)
+    r1   = np.minimum(r0 + 1, h - 1)
+    frac = (src_rowf - r0)[:, None, None]
+    warped = (arr[r0] * (1 - frac) + arr[r1] * frac).astype(np.uint8)
+    return Image.fromarray(warped, "RGB")
+
+def _lonlat_to_mercator_m(lon, lat):
+    """WGS84 lon/lat degrees -> EPSG:3857 metres, latitude clamped to the
+    Mercator limit so the poles can't produce +/-inf."""
+    R = 20037508.342789244  # == 6378137 * pi  (half the Mercator world span)
+    lat = max(-MERCATOR_LAT_LIMIT, min(MERCATOR_LAT_LIMIT, lat))
+    x = lon * R / 180.0
+    y = math.log(math.tan((90.0 + lat) * math.pi / 360.0)) * R / math.pi
+    return x, y
 
 
 class CloudUpdater(Updater):
@@ -23,30 +58,29 @@ class CloudUpdater(Updater):
         self.cache_output_path = os.path.join(self.workdir, "data", cache_filename)
 
     def save_cache_as_transparent(self):
-        """
-        Applies threshold and gamma corrections to the cloud mask
-        to prevent 'white-out' and control wispy-ness.
-        """
+        """Reprojects the cached equirectangular cloud image to Web Mercator,
+        then applies threshold and gamma to build the transparent overlay."""
         threshold = self.settings.get("threshold", 0)
         gamma = self.settings.get("gamma", 1.0)
 
+        # bbox is [lon_min, lat_min, lon_max, lat_max]; the cached image spans
+        # this latitude range linearly (it was fetched as EPSG:4326).
+        _, lat_min, _, lat_max = self.map_data.region.bbox
+
         with Image.open(self.cache_output_path) as raw_clouds_image:
-            cloud_mask = raw_clouds_image.convert("L")
+            mercator_image = _equirect_to_webmercator(raw_clouds_image, lat_min, lat_max)
+
+            cloud_mask = mercator_image.convert("L")
             lut = [
                 int(pow(i / 255.0, 1.0 / gamma) * 255.0) if i >= threshold else 0
                 for i in range(256)
             ]
             cloud_mask = cloud_mask.point(lut)
-            transparent_clouds_image = Image.new(
-                "RGBA", raw_clouds_image.size, (0, 0, 0, 0)
-            )
-            white_clouds = Image.new(
-                "RGBA", raw_clouds_image.size, (255, 255, 255, 255)
-            )
+            transparent_clouds_image = Image.new("RGBA", mercator_image.size, (0, 0, 0, 0))
+            white_clouds = Image.new("RGBA", mercator_image.size, (255, 255, 255, 255))
             transparent_clouds_image.paste(white_clouds, (0, 0), mask=cloud_mask)
 
-        # Save it
-        logger.debug(f"Saving transparent cloud map in {self.output_path}")
+        logger.debug(f"Saving transparent (Web Mercator) cloud map in {self.output_path}")
         transparent_clouds_image.save(self.output_path, "PNG")
 
     def run(self):
@@ -75,9 +109,11 @@ class CloudUpdater(Updater):
 
         time_param = target_date.strftime("%Y-%m-%d")
 
-        # Dynamically construct the Bounding Box for the target region using the bbox list
-        # bbox is [lon_min, lat_min, lon_max, lat_max]
-        bbox_str = f"{self.map_data.region.bbox[0]},{self.map_data.region.bbox[1]},{self.map_data.region.bbox[2]},{self.map_data.region.bbox[3]}"
+        lon_min, lat_min, lon_max, lat_max = self.map_data.region.bbox
+        x_min, y_min = _lonlat_to_mercator_m(lon_min, lat_min)
+        x_max, y_max = _lonlat_to_mercator_m(lon_max, lat_max)
+        # WMS 1.1.1 BBOX order is minx,miny,maxx,maxy (x first) — matches your existing layout
+        bbox_str = f"{x_min},{y_min},{x_max},{y_max}"
 
         params = {
             "SERVICE": "WMS",
@@ -87,7 +123,7 @@ class CloudUpdater(Updater):
             "FORMAT": "image/jpeg",
             "TRANSPARENT": "FALSE",
             "STYLES": "",
-            "SRS": "EPSG:4326",
+            "SRS": "EPSG:3857",
             "BBOX": bbox_str,
             "WIDTH": str(self.target_width),
             "HEIGHT": str(self.target_height),

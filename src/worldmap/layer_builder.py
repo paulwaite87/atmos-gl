@@ -88,8 +88,6 @@ class LayerBuilder:
     def tasks_ready_to_run(self) -> bool:
         for section, task_class in self.task_registry:
             updater = task_class(self.config, self.map_data)
-            if section == "composite":
-                continue
             if self.should_run(updater):
                 return True
         return False

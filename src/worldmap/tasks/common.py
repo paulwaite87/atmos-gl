@@ -19,6 +19,9 @@ from PIL import Image
 
 logger = logging.getLogger(__name__)
 
+WEB_MERCATOR = ccrs.Mercator.GOOGLE      # EPSG:3857
+MERCATOR_LAT_LIMIT = 85.0511             # NOTE: just *inside* GOOGLE's 85.0511288 max
+
 
 def stringify_bbox(bbox):
     """
@@ -129,7 +132,6 @@ class MapRegion:
             self.target_height = int(target_geometry.split("x")[1])
         self.bbox = None
         self.world_view = False
-        self.earth_map_path = None
         self.centre_latitude = 0.0
         self.centre_longitude = 0.0
         self.set_map_region_data(region)
@@ -143,7 +145,6 @@ class MapRegion:
         bbox = None
         bbox_prefix = "region_"
         self.world_view = False
-        self.earth_map_path = None
 
         # Handle explicit 'falsy' regions (None, empty string)
         if not region:
@@ -183,9 +184,6 @@ class MapRegion:
             self.bbox = bbox
             self.region_identifier = f"{bbox_prefix}_{stringify_bbox(bbox)}"
             self.centre_longitude, self.centre_latitude = get_bbox_center(bbox)
-            self.earth_map_path = os.path.join(
-                "data", f"{self.region_identifier}_{self.region_geometry}_day.jpg"
-            )
 
 
 class MapData:
@@ -204,7 +202,7 @@ class MapData:
 
 
 class Plot:
-    def __init__(self, region: MapRegion, projection=ccrs.PlateCarree()):
+    def __init__(self, region: MapRegion, projection=WEB_MERCATOR):
         self.region = region
         self.projection = projection
         self.fig = None
@@ -213,17 +211,14 @@ class Plot:
     def get_figure(self):
         plot_target_width = float(self.region.target_width) / 100
         plot_target_height = float(self.region.target_height) / 100
-
         self.fig = plt.figure(figsize=(plot_target_width, plot_target_height), dpi=100)
-
-        self.ax = cast(
-            geoaxes.GeoAxes,
-            self.fig.add_axes((0, 0, 1, 1), **{"projection": self.projection}),
-        )
-
-        # Lock the exact view to your base map's bbox
+        self.ax = cast(geoaxes.GeoAxes,
+                       self.fig.add_axes((0, 0, 1, 1), projection=self.projection))
         bbox = self.region.bbox
-        self.ax.set_extent([bbox[0], bbox[2], bbox[1], bbox[3]], crs=self.projection)
+        lat_lo = max(bbox[1], -MERCATOR_LAT_LIMIT)
+        lat_hi = min(bbox[3],  MERCATOR_LAT_LIMIT)
+        # extent is ALWAYS given in lon/lat degrees, regardless of axes projection
+        self.ax.set_extent([bbox[0], bbox[2], lat_lo, lat_hi], crs=ccrs.PlateCarree())
         self.ax.set_aspect("auto", adjustable="box")
 
     def save_figure(self, output_path: str):
@@ -625,21 +620,3 @@ class Updater:
             if self.config.section_enabled(layer):
                 return True
         return False
-
-    def create_plot(self):
-        plot_target_width = float(self.target_width) / 100
-        plot_target_height = float(self.target_height) / 100
-
-        fig = plt.figure(figsize=(plot_target_width, plot_target_height), dpi=100)
-
-        projection = ccrs.PlateCarree()
-        ax = cast(
-            geoaxes.GeoAxes, fig.add_axes((0, 0, 1, 1), **{"projection": projection})
-        )
-
-        # Lock the exact view to your base map's bbox
-        bbox = self.map_region_bbox
-        ax.set_extent([bbox[0], bbox[2], bbox[1], bbox[3]], crs=ccrs.PlateCarree())
-        ax.set_aspect("auto", adjustable="box")
-
-        return fig, ax
