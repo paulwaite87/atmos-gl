@@ -92,6 +92,8 @@ class SSTUpdater(Updater):
             vmin, vmax = -anomaly_range, anomaly_range
             norm = mcolors.TwoSlopeNorm(vmin=vmin, vcenter=0, vmax=vmax)
             cmap = plt.get_cmap("coolwarm")
+            title_text = "SST Climatological Anomaly (°C)"
+            tick_format = "%.1f"
         else:
             # Absolute Mode Configurations
             vmin = self.settings.get("min_c", 0)
@@ -106,7 +108,6 @@ class SSTUpdater(Updater):
                 "ocean": "inferno",
             }
             cmap = plt.get_cmap(palettes.get(palette_key, "magma"))
-
             title_text = "Sea Surface Temp (°C)"
             tick_format = "%d"
 

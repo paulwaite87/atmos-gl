@@ -161,7 +161,7 @@ class LayerBuilder:
                                 self.last_run_times[section] = datetime.now()
 
                             except Exception as e:
-                                logger.error(f"Task '{section}' execution failed: {e}")
+                                logger.error(f"Task '{section}' execution failed: {e}", exc_info=True)
 
                     self.starting_up = False
                     logger.info("Layer-builder scheduler run finished")

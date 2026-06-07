@@ -166,7 +166,6 @@ class CurrentsUpdater(Updater):
 
         u_grid[grid_land_mask] = np.nan
         v_grid[grid_land_mask] = np.nan
-        # ----------------------------
 
         speed_grid = np.sqrt(u_grid**2 + v_grid**2)
 
