@@ -30,7 +30,7 @@
             <li class="nav-item"><button class="nav-link" id="atmospheric-tab" data-bs-toggle="tab" data-bs-target="#atmospheric-pane" type="button">Atmospheric</button></li>
             <li class="nav-item"><button class="nav-link" id="climate-tab" data-bs-toggle="tab" data-bs-target="#climate-pane" type="button">Climate</button></li>
             <li class="nav-item"><button class="nav-link" id="events-tab" data-bs-toggle="tab" data-bs-target="#events-pane" type="button">Events</button></li>
-            <li class="nav-item"><button class="nav-link" id="satellites-tab" data-bs-toggle="tab" data-bs-target="#satellites-pane" type="button">Satellites</button></li>
+            <li class="nav-item"><button class="nav-link" id="misc-tab" data-bs-toggle="tab" data-bs-target="#misc-pane" type="button">Miscellaneous</button></li>
             <li class="nav-item"><button class="nav-link" id="shipping-tab" data-bs-toggle="tab" data-bs-target="#shipping-pane" type="button">Shipping</button></li>
             <li class="nav-item"><button class="nav-link" id="background-tab" data-bs-toggle="tab" data-bs-target="#background-pane" type="button">Background</button></li>
         </ul>
@@ -81,9 +81,10 @@
                         </div>
 
                         <div class="grouping-box">
-                            <h5>Satellites</h5>
+                            <h5>Miscellaneous</h5>
                             <div class="row g-3">
                                 <div class="col-md-6"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="satellites__enabled"><label class="form-check-label fw-bold ms-2">Satellites</label></div></div>
+                                <div class="col-md-6"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="terminator__enabled"><label class="form-check-label fw-bold ms-2">Terminator Night/day Shade</label></div></div>
                             </div>
                         </div>
 
@@ -124,7 +125,7 @@
                     <div class="tab-pane fade" id="atmospheric-pane"><div id="container-atmospheric"></div></div>
                     <div class="tab-pane fade" id="climate-pane"><div id="container-climate"></div></div>
                     <div class="tab-pane fade" id="events-pane"><div id="container-events"></div></div>
-                    <div class="tab-pane fade" id="satellites-pane"><div id="container-satellites"></div></div>
+                    <div class="tab-pane fade" id="misc-pane"><div id="container-misc"></div></div>
                     <div class="tab-pane fade" id="shipping-pane"><div id="container-shipping"></div></div>
                     <div class="tab-pane fade" id="background-pane"><div id="container-background"></div></div>
                 </div>
@@ -151,7 +152,7 @@
             "atmospheric": ["clouds", "isobars", "wind", "precipitation", "lightning", "storms"],
             "climate": ["sst", "currents", "waves", "temperature", "ozone", "stormwatch"],
             "events": ["quakes", "volcanoes"],
-            "satellites": ["satellites"],
+            "misc": ["satellites", "terminator"],
             "shipping": ["shipping"],
             "background": ["shipping_collector", "weather_scanner", "satellites_collector"]
         };
@@ -223,7 +224,7 @@
         });
 
         function parseExplicitElements(data) {
-            ['clouds', 'isobars', 'wind', 'precipitation', 'lightning', 'storms', 'quakes', 'volcanoes', 'satellites', 'shipping'].forEach(layer => {
+            ['clouds', 'isobars', 'wind', 'precipitation', 'lightning', 'storms', 'quakes', 'volcanoes', 'satellites', 'shipping', 'terminator'].forEach(layer => {
                 const el = document.getElementById(`${layer}__enabled`);
                 if (el && data[layer]) {
                     el.checked = !!data[layer].enabled;
@@ -546,7 +547,7 @@
                                 <input type="range" class="form-range dynamic-input" id="${domId}" min="0.1" max="5.0" step="0.1" value="${initialWidth}"
                                        oninput="document.getElementById('badge-${domId}').innerText = parseFloat(this.value).toFixed(1) + 'px'">
                             `;
-                        } else if (option.includes('alpha')) {
+                        } else if (option.includes('alpha') || option.includes('opacity')) {
                             const initialAlpha = parseFloat(value) !== undefined ? parseFloat(value) : 1.0;
                             col.innerHTML = `
                                 <div class="d-flex justify-content-between align-items-center mb-1">
@@ -555,6 +556,16 @@
                                 </div>
                                 <input type="range" class="form-range dynamic-input" id="${domId}" min="0.1" max="1.0" step="0.1" value="${initialAlpha}"
                                        oninput="document.getElementById('badge-${domId}').innerText = parseFloat(this.value).toFixed(1)">
+                            `;
+                        } else if (option === 'edge_softness') {
+                            const initialSoftness = parseInt(value) || 15;
+                            col.innerHTML = `
+                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                    <label class="form-label small text-white-50 fw-bold mb-0">${customLabelText}</label>
+                                    <span class="badge bg-success text-dark fw-bold" id="badge-${domId}">${initialSoftness}</span>
+                                </div>
+                                <input type="range" class="form-range dynamic-input" id="${domId}" min="0" max="50" step="1" value="${initialSoftness}"
+                                       oninput="document.getElementById('badge-${domId}').innerText = this.value">
                             `;
                         } else if (option.includes('min_mm_hr')) {
                             const initialAlpha = parseFloat(value) !== undefined ? parseFloat(value) : 1.0;
@@ -814,6 +825,7 @@
                 "quakes": document.getElementById('quakes__enabled')?.checked,
                 "volcanoes": document.getElementById('volcanoes__enabled')?.checked,
                 "satellites": document.getElementById('satellites__enabled')?.checked,
+                "terminator": document.getElementById('terminator__enabled')?.checked,
                 "shipping": document.getElementById('shipping__enabled')?.checked,
                 "sst": document.getElementById('radio__sst')?.checked,
                 "currents": document.getElementById('radio__currents')?.checked,
@@ -841,7 +853,7 @@
         async function saveActiveConfig() {
             const payload = JSON.parse(JSON.stringify(masterConfigCache));
 
-            ['clouds', 'isobars', 'wind', 'precipitation', 'lightning', 'storms', 'quakes', 'volcanoes', 'satellites', 'shipping', 'shipping_collector', 'weather_scanner', 'satellites_collector'].forEach(layer => {
+            ['clouds', 'isobars', 'wind', 'precipitation', 'lightning', 'storms', 'quakes', 'volcanoes', 'satellites', 'terminator', 'shipping', 'shipping_collector', 'weather_scanner', 'satellites_collector'].forEach(layer => {
                 if (payload[layer]) payload[layer].enabled = document.getElementById(`${layer}__enabled`)?.checked || false;
             });
 

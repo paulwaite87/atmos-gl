@@ -10,6 +10,12 @@
     "workdir": ".",
     "log_level": "DEBUG"
   },
+  "terminator": {
+    "enabled": false,
+    "shade_opacity": 0.4,
+    "shade_color": "#070b18",
+    "edge_softness": 14
+  },
   "clouds": {
     "enabled": true,
     "url": "https://gibs.earthdata.nasa.gov/wms/epsg4326/best/wms.cgi",
