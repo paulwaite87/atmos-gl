@@ -1,7 +1,6 @@
 # --- Project Specific (Data & Config) ---
 # Ignore various data files
 data/*
-satellites/*
 /config/worldmap.json
 
 # Ignore environment secrets

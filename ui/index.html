@@ -144,31 +144,13 @@
                         rotateGlobe();
                     }
 
-                    // Sequentially initialize backend active feature modules
-                    // Best practice ordering: Base textures first, vector
-                    // data points on top
-                    const frontendLayers = [
-                        'clouds',
-                        'precipitation',
-                        'stormwatch',
-                        'ozone',
-                        'temperature',
-                        'sst',
-                        'wind',
-                        'waves',
-                        'currents',
-                        'isobars',
-                        'quakes',
-                        'volcanoes',
-                        'lightning',
-                        'storms',
-                        'shipping',
-                    ];
-
                     // Inject Global UI and API Configuration
                     window.MAP_UI = "http://localhost:9000";
                     window.WM_API = "http://localhost:9000/api";
 
+                    // Sequentially initialize backend active feature modules
+                    // Best practice ordering: Base textures first, vector
+                    // data points on top
                     const ALL_LAYERS = [
                         'sst', 'currents', 'waves',
                         'clouds', 'precipitation', 'stormwatch', 'ozone', 'temperature', 'isobars', 'wind',
