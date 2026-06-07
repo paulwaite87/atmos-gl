@@ -111,6 +111,12 @@
                                         <div id="key-warn-weather" class="text-danger small mt-1 d-none">⚠️ Deactivated: Missing OPENWEATHER_API_KEY.</div>
                                     </div>
                                 </div>
+                                <div class="col-md-6">
+                                    <div class="form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" id="satellites_collector__enabled">
+                                        <label class="form-check-label fw-bold ms-2" for="satellites_collector__enabled">Satellites Collector</label>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -147,7 +153,7 @@
             "events": ["quakes", "volcanoes"],
             "satellites": ["satellites"],
             "shipping": ["shipping"],
-            "background": ["shipping_collector", "weather_scanner"]
+            "background": ["shipping_collector", "weather_scanner", "satellites_collector"]
         };
 
         const COLOR_MAP = {
@@ -816,7 +822,8 @@
                 "ozone": document.getElementById('radio__ozone')?.checked,
                 "stormwatch": document.getElementById('radio__stormwatch')?.checked,
                 "shipping_collector": document.getElementById('shipping_collector__enabled')?.checked,
-                "weather_scanner": document.getElementById('weather_scanner__enabled')?.checked
+                "weather_scanner": document.getElementById('weather_scanner__enabled')?.checked,
+                "satellites_collector": document.getElementById('satellites_collector__enabled')?.checked
             };
 
             for (const [section, isEnabled] of Object.entries(statusMap)) {
@@ -834,7 +841,7 @@
         async function saveActiveConfig() {
             const payload = JSON.parse(JSON.stringify(masterConfigCache));
 
-            ['clouds', 'isobars', 'wind', 'precipitation', 'lightning', 'storms', 'quakes', 'volcanoes', 'satellites', 'shipping', 'shipping_collector', 'weather_scanner'].forEach(layer => {
+            ['clouds', 'isobars', 'wind', 'precipitation', 'lightning', 'storms', 'quakes', 'volcanoes', 'satellites', 'shipping', 'shipping_collector', 'weather_scanner', 'satellites_collector'].forEach(layer => {
                 if (payload[layer]) payload[layer].enabled = document.getElementById(`${layer}__enabled`)?.checked || false;
             });
 

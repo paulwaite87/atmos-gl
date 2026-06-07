@@ -4,14 +4,14 @@
     "forecast_hour": 0,
     "night_shade": false,
     "auto_rotate": false,
-    "auto_rotate_speed": 0.1,
+    "auto_rotate_speed": 0.03,
     "starting_latitude": 165,
     "starting_longitude": -40,
     "workdir": ".",
     "log_level": "DEBUG"
   },
   "clouds": {
-    "enabled": false,
+    "enabled": true,
     "url": "https://gibs.earthdata.nasa.gov/wms/epsg4326/best/wms.cgi",
     "outfile": "data/cloud_map.png",
     "threshold": 168,
@@ -21,7 +21,7 @@
     "runs_per_day": 8
   },
   "isobars": {
-    "enabled": false,
+    "enabled": true,
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
     "outfile": "data/isobars.png",
     "isobar_color": "White",
@@ -42,7 +42,7 @@
     "runs_per_day": 8
   },
   "precipitation": {
-    "enabled": false,
+    "enabled": true,
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
     "outfile": "data/precipitation.png",
     "level_of_detail": "2",
@@ -53,7 +53,7 @@
     "runs_per_day": 24
   },
   "sst": {
-    "enabled": true,
+    "enabled": false,
     "url": "https://downloads.psl.noaa.gov/Datasets/noaa.oisst.v2.highres",
     "outfile": "data/sst.png",
     "level_of_detail": "2",
@@ -125,7 +125,7 @@
     "runs_per_day": 2
   },
   "storms": {
-    "enabled": false,
+    "enabled": true,
     "jtwc_url": "https://www.ssd.noaa.gov/PS/TROP/DATA/ATCF/JTWC/",
     "nhc_url": "https://ftp.nhc.noaa.gov/atcf/fst/",
     "outfile": "data/storms.json",
@@ -139,7 +139,7 @@
     "runs_per_day": 8
   },
   "lightning": {
-    "enabled": false,
+    "enabled": true,
     "outfile": "data/lightning.json",
     "icon_zoom": 1,
     "strike_recent_minutes": 15,
@@ -148,7 +148,7 @@
     "runs_per_day": 24
   },
   "quakes": {
-    "enabled": false,
+    "enabled": true,
     "url": "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.csv",
     "outfile": "data/quakes.json",
     "icon_zoom": 0.7,
@@ -190,19 +190,25 @@
     "expiry_days": 14,
     "runs_per_day": 24
   },
-  "satellites": {
-    "enabled": false,
+  "satellites_collector": {
+    "enabled": true,
     "url": "https://celestrak.org/NORAD/elements",
-    "groups": ["stations", "weather", "science", "resource"],
-    "sat_names": ["ISS (ZARYA)"],
-    "extra_satellite_names": "",
-    "past_minutes": 90,
-    "future_minutes": 90,
-    "step_seconds": 30,
-    "color": "",
+    "groups": "stations,weather,science,resource",
     "update_hours": 12,
     "log_level": "INFO"
-},
+  },
+  "satellites": {
+    "enabled": true,
+    "sat_names": [
+      "ISS (ZARYA)",
+      "HST"
+    ],
+    "extra_satellite_names": "",
+    "past_minutes": 45,
+    "future_minutes": 45,
+    "step_seconds": 30,
+    "color": ""
+  },
   "shipping_collector": {
     "enabled": true,
     "url": "wss://stream.aisstream.io/v0/stream",

@@ -9,6 +9,7 @@ from worldmap.lib.logging import set_loglevel
 
 logger = logging.getLogger("worldmap.satellites_collector")
 
+CELESTRAK_GROUPS = ["stations", "weather", "science", "resource"]
 
 class SatellitesCollector:
     def __init__(self, config_path):
@@ -19,13 +20,10 @@ class SatellitesCollector:
 
     def refresh_settings(self):
         self.config.load()
-        self.settings = self.config.get_section("satellites")
+        self.settings = self.config.get_section("satellites_collector")
         self.base_url = self.settings.get(
             "url", "https://celestrak.org/NORAD/elements"
         ).rstrip("/")
-        self.groups = self.settings.get(
-            "groups", ["stations", "weather", "science", "resource"]
-        )
         self.update_hours = int(self.settings.get("update_hours", 12))
         log_level = self.settings.get("log_level")
         if log_level:
@@ -50,7 +48,7 @@ class SatellitesCollector:
                 logger.info("Satellites Collector: refreshing orbital elements.")
                 stored = 0
                 async with aiohttp.ClientSession() as session:
-                    for group in self.groups:
+                    for group in CELESTRAK_GROUPS:
                         records = await self.fetch_group(session, group)
                         for rec in records:
                             try:
