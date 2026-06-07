@@ -10,7 +10,7 @@ import gc
 
 # Internal imports
 from worldmap.lib.config import WorldMapConfig
-from .common import Updater, MapData, Plot
+from .common import Updater, MapData, Plot, _opaque_cmap
 
 warnings.filterwarnings("ignore")
 logger = logging.getLogger(__name__)
@@ -47,6 +47,26 @@ class WavesUpdater(Updater):
             ],
         }
 
+    def save_waves_key(self, output_path, cmap, norm):
+        """Generates a standalone Wave Height key image (separate _key.png)."""
+        import matplotlib.pyplot as plt
+        import matplotlib as mpl
+        import os
+
+        base, ext = os.path.splitext(output_path)
+        key_path = f"{base}_key{ext}"
+        key_fontsize = self.settings.get("key_fontsize", 10)
+
+        fig, ax = plt.subplots(figsize=(4, 0.3))
+        cbar = fig.colorbar(mpl.cm.ScalarMappable(norm=norm, cmap=_opaque_cmap(cmap)),
+                            cax=ax, orientation="horizontal", ticks=[0, 2, 4, 6, 8])
+        cbar.ax.set_title("Wave Height (m)", color="white", fontsize=key_fontsize, pad=2, weight="bold")
+        cbar.ax.tick_params(colors="white", labelsize=8)
+
+        fig.savefig(key_path, transparent=True, bbox_inches="tight")
+        plt.close(fig)
+        logger.debug(f"Saved Waves key to: {key_path}")
+
     def plot(self):
         """Plots an underlying significant wave height contour heatmap
         with adaptive directional quiver arrows layered over top.
@@ -70,9 +90,6 @@ class WavesUpdater(Updater):
         arrow_density_mod = self.settings.get("arrow_density", 1.0)
         arrow_scale_mod = self.settings.get("arrow_scale", 1.0)
         arrow_scale_mod = max(0.1, arrow_scale_mod)
-
-        key_position = self.settings.get("key_position", "bottom-right")
-        key_fontsize = self.settings.get("key_fontsize", 10)
 
         # 1. Open Dataset with cfgrib engine backend
         ds = xr.open_dataset(
@@ -153,7 +170,6 @@ class WavesUpdater(Updater):
         swh_grid[grid_land_mask] = np.nan
         u_grid[grid_land_mask] = np.nan
         v_grid[grid_land_mask] = np.nan
-        # -----------------------------------------------
 
         # 4. Initialize Core Canvas
         plot = Plot(self.map_data.region)
@@ -244,38 +260,8 @@ class WavesUpdater(Updater):
                 "Wave vector rendering skipped by user configuration settings."
             )
 
-        # 7. ENHANCEMENT: DYNAMIC ADJUSTED COLOR KEY OVERLAY
-        position_map = {
-            "top-left": [0.04, 0.89, 0.28, 0.03],
-            "top-right": [0.68, 0.89, 0.28, 0.03],
-            "bottom-left": [0.04, 0.08, 0.28, 0.03],
-            "bottom-right": [0.68, 0.08, 0.28, 0.03],
-        }
-
-        bbox_coords = position_map.get(key_position, position_map["bottom-right"])
-        cbar_ax = plot.ax.inset_axes(bbox_coords, transform=plot.ax.transAxes)
-
-        cbar_ax.patch.set_facecolor("#111111")
-        cbar_ax.patch.set_alpha(0.4)
-
-        cbar = plt.colorbar(
-            cf, cax=cbar_ax, orientation="horizontal", ticks=[0, 2, 4, 6, 8]
-        )
-
-        cbar.ax.xaxis.set_tick_params(
-            color="white", labelsize=key_fontsize, labelcolor="white", pad=3
-        )
-        cbar.outline.set_edgecolor("white")
-        cbar.outline.set_linewidth(0.5)
-        cbar.ax.set_title(
-            "Wave Height (m)",
-            color="white",
-            fontsize=key_fontsize,
-            pad=5,
-            weight="bold",
-        )
-
         plot.save_figure(self.output_path)
+        self.save_waves_key(self.output_path, cmap, norm)
 
         plt_close = getattr(plot, "close", None)
         if callable(plt_close):

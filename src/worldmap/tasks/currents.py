@@ -10,7 +10,7 @@ import gc
 
 # Internal imports
 from worldmap.lib.config import WorldMapConfig
-from .common import Updater, MapData, Plot
+from .common import Updater, MapData, Plot, _opaque_cmap
 
 warnings.filterwarnings("ignore")
 logger = logging.getLogger(__name__)
@@ -46,6 +46,27 @@ class CurrentsUpdater(Updater):
                 (0.0, 1.0, 0.75),  # Electric Turquoise (Fast)
             ],
         }
+
+    def save_currents_key(self, output_path, cmap, norm, ticks):
+        """Generates a standalone Ocean Currents key image (separate _key.png)."""
+        import matplotlib.pyplot as plt
+        import matplotlib as mpl
+        import os
+
+        base, ext = os.path.splitext(output_path)
+        key_path = f"{base}_key{ext}"
+        key_fontsize = self.settings.get("key_fontsize", 10)
+
+        fig, ax = plt.subplots(figsize=(4, 0.3))
+        cbar = fig.colorbar(mpl.cm.ScalarMappable(norm=norm, cmap=_opaque_cmap(cmap)),
+                            cax=ax, orientation="horizontal", ticks=ticks)
+        cbar.ax.xaxis.set_major_formatter(plt.FormatStrFormatter("%.1f"))
+        cbar.ax.set_title("Current Speed (m/sec)", color="white", fontsize=key_fontsize, pad=2, weight="bold")
+        cbar.ax.tick_params(colors="white", labelsize=8)
+
+        fig.savefig(key_path, transparent=True, bbox_inches="tight")
+        plt.close(fig)
+        logger.debug(f"Saved Currents key to: {key_path}")
 
     def plot(self):
         """Renders ocean currents with adaptive density, dynamic line widths,
@@ -219,41 +240,9 @@ class CurrentsUpdater(Updater):
             zorder=3,
         )
 
-        # 9. TEXT-SAFE PADDED INSET COLOR KEY
-        position_map = {
-            "top-left": [0.04, 0.89, 0.28, 0.03],
-            "top-right": [0.68, 0.89, 0.28, 0.03],
-            "bottom-left": [0.04, 0.08, 0.28, 0.03],
-            "bottom-right": [0.68, 0.08, 0.28, 0.03],
-        }
-
-        bbox_coords = position_map.get(key_position, position_map["bottom-right"])
-        cbar_ax = plot.ax.inset_axes(bbox_coords, transform=plot.ax.transAxes)
-
-        cbar_ax.patch.set_facecolor("#111111")
-        cbar_ax.patch.set_alpha(0.4)
-
-        calculated_ticks = np.linspace(0.0, vmax_dynamic, 4)
-
-        cbar = plt.colorbar(
-            strm.lines, cax=cbar_ax, orientation="horizontal", ticks=calculated_ticks
-        )
-
-        cbar.ax.xaxis.set_tick_params(
-            color="white", labelsize=key_fontsize, labelcolor="white", pad=3
-        )
-        cbar.ax.xaxis.set_major_formatter(plt.FormatStrFormatter("%.1f"))
-        cbar.outline.set_edgecolor("white")
-        cbar.outline.set_linewidth(0.5)
-        cbar.ax.set_title(
-            "Current Speed (m/sec)",
-            color="white",
-            fontsize=key_fontsize,
-            pad=5,
-            weight="bold",
-        )
-
         plot.save_figure(self.output_path)
+        ticks = np.linspace(0.0, vmax_dynamic, 4)
+        self.save_currents_key(self.output_path, cmap, norm, ticks)
 
         plt_close = getattr(plot, "close", None)
         if callable(plt_close):

@@ -23,6 +23,15 @@ WEB_MERCATOR = ccrs.Mercator.GOOGLE      # EPSG:3857
 MERCATOR_LAT_LIMIT = 85.0511             # NOTE: just *inside* GOOGLE's 85.0511288 max
 
 
+def _opaque_cmap(cmap, n=256):
+    """Return an opaque copy of a colormap (alpha forced to 1.0)."""
+    import numpy as np
+    import matplotlib.colors as mcolors
+    colors = cmap(np.linspace(0, 1, n))   # (n, 4) RGBA
+    colors[:, 3] = 1.0
+    return mcolors.ListedColormap(colors)
+
+
 def stringify_bbox(bbox):
     """
     Converts a bbox list into a filename-safe string.

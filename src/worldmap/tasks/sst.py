@@ -21,10 +21,29 @@ class SSTUpdater(Updater):
         super().__init__(config, "sst", map_data)
         self.mode = self.settings.get("mode", "absolute").strip().lower()
 
+    def save_sst_key(self, output_path, cmap, norm, ticks, title_text, tick_format):
+        """Generates a standalone SST key image (separate _key.png)."""
+        import matplotlib.pyplot as plt
+        import matplotlib as mpl
+        import os
+
+        base, ext = os.path.splitext(output_path)
+        key_path = f"{base}_key{ext}"
+        key_fontsize = self.settings.get("key_fontsize", 10)
+
+        fig, ax = plt.subplots(figsize=(4, 0.3))
+        cbar = fig.colorbar(mpl.cm.ScalarMappable(norm=norm, cmap=cmap),
+                            cax=ax, orientation="horizontal", ticks=ticks)
+        cbar.ax.xaxis.set_major_formatter(plt.FormatStrFormatter(tick_format))
+        cbar.ax.set_title(title_text, color="white", fontsize=key_fontsize, pad=2, weight="bold")
+        cbar.ax.tick_params(colors="white", labelsize=8)
+
+        fig.savefig(key_path, transparent=True, bbox_inches="tight")
+        plt.close(fig)
+        logger.debug(f"Saved SST key to: {key_path}")
+
     def plot(self):
         alpha = self.settings.get("alpha", 0.4)
-        key_position = self.settings.get("key_position", "bottom-right").strip().lower()
-        key_fontsize = self.settings.get("key_fontsize", 10)
         bbox = self.map_region_bbox
 
         # --- Data Loading ---
@@ -73,8 +92,6 @@ class SSTUpdater(Updater):
             vmin, vmax = -anomaly_range, anomaly_range
             norm = mcolors.TwoSlopeNorm(vmin=vmin, vcenter=0, vmax=vmax)
             cmap = plt.get_cmap("coolwarm")
-            title_text = "SST Climatological Anomaly (°C)"
-            tick_format = "%.1f"
         else:
             # Absolute Mode Configurations
             vmin = self.settings.get("min_c", 0)
@@ -111,35 +128,9 @@ class SSTUpdater(Updater):
             zorder=2,
         )
 
-        # --- Colorbar Overlay ---
-        position_map = {
-            "top-left": [0.04, 0.89, 0.28, 0.03],
-            "top-right": [0.68, 0.89, 0.28, 0.03],
-            "bottom-left": [0.04, 0.08, 0.28, 0.03],
-            "bottom-right": [0.68, 0.08, 0.28, 0.03],
-        }
-        bbox_coords = position_map.get(key_position, position_map["bottom-right"])
-        cbar_ax = plot.ax.inset_axes(bbox_coords, transform=plot.ax.transAxes)
-
-        cbar_ax.patch.set_facecolor("#111111")
-        cbar_ax.patch.set_alpha(0.4)
-
-        calculated_ticks = np.linspace(vmin, vmax, 5)
-        cbar = plt.colorbar(
-            mesh, cax=cbar_ax, orientation="horizontal", ticks=calculated_ticks
-        )
-
-        cbar.ax.xaxis.set_tick_params(
-            color="white", labelsize=key_fontsize, labelcolor="white", pad=3
-        )
-        cbar.outline.set_edgecolor("white")
-        cbar.outline.set_linewidth(0.5)
-        cbar.ax.xaxis.set_major_formatter(plt.FormatStrFormatter(tick_format))
-        cbar.ax.set_title(
-            title_text, color="white", fontsize=key_fontsize, pad=5, weight="bold"
-        )
-
         plot.save_figure(self.output_path)
+        calculated_ticks = np.linspace(vmin, vmax, 5)
+        self.save_sst_key(self.output_path, cmap, norm, calculated_ticks, title_text, tick_format)
 
         plt_close = getattr(plot, "close", None)
         if callable(plt_close):

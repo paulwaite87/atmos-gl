@@ -510,6 +510,16 @@
                                 <input type="range" class="form-range dynamic-input" id="${domId}" min="0" max="120" step="1" value="${initialMinutes}"
                                        oninput="document.getElementById('badge-${domId}').innerText = this.value + 'mins'">
                             `;
+                        } else if (option === 'min_c' || option === 'max_c') {
+                            const initialC = parseInt(value) || 20;
+                            col.innerHTML = `
+                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                    <label class="form-label small text-white-50 fw-bold mb-0">${customLabelText}</label>
+                                    <span class="badge bg-success text-dark fw-bold" id="badge-${domId}">${initialC} DegC</span>
+                                </div>
+                                <input type="range" class="form-range dynamic-input" id="${domId}" min="0" max="36" step="1" value="${initialC}"
+                                       oninput="document.getElementById('badge-${domId}').innerText = this.value + ' DegC'">
+                            `;
                         } else if (option.includes('fontsize')) {
                             const initialSize = parseInt(value) || 10;
                             col.innerHTML = `
