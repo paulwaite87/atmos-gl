@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 # Import the new decoupled router files
-from worldmap.routes import storms, volcanoes, quakes, lightning, shipping, config
+from worldmap.routes import satellites, storms, volcanoes, quakes, lightning, shipping, config
 
 app = FastAPI(title="WorldMap Configuration API")
 
@@ -22,6 +22,7 @@ app.mount("/data", StaticFiles(directory="data"), name="data")
 # -------------------------------------------------------------
 # ROUTER HOOKS - Registering the modular layout blocks
 # -------------------------------------------------------------
+app.include_router(satellites.router)
 app.include_router(storms.router)
 app.include_router(volcanoes.router)
 app.include_router(quakes.router)
