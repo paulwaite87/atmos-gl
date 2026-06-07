@@ -2,7 +2,6 @@
   "common": {
     "target_geometry": "8192x4096",
     "forecast_hour": 0,
-    "night_shade": false,
     "auto_rotate": false,
     "auto_rotate_speed": 0.03,
     "starting_latitude": 165,
@@ -11,10 +10,10 @@
     "log_level": "DEBUG"
   },
   "terminator": {
-    "enabled": false,
-    "shade_opacity": 0.4,
+    "enabled": true,
+    "shade_opacity": 0.8,
     "shade_color": "#070b18",
-    "edge_softness": 14
+    "edge_softness": 35
   },
   "clouds": {
     "enabled": true,
@@ -197,7 +196,7 @@
     "runs_per_day": 24
   },
   "satellites_collector": {
-    "enabled": true,
+    "enabled": false,
     "url": "https://celestrak.org/NORAD/elements",
     "groups": "stations,weather,science,resource",
     "update_hours": 12,
