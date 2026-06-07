@@ -32,10 +32,16 @@ class SSTUpdater(Updater):
         key_fontsize = self.settings.get("key_fontsize", 10)
 
         fig, ax = plt.subplots(figsize=(4, 0.3))
-        cbar = fig.colorbar(mpl.cm.ScalarMappable(norm=norm, cmap=cmap),
-                            cax=ax, orientation="horizontal", ticks=ticks)
+        cbar = fig.colorbar(
+            mpl.cm.ScalarMappable(norm=norm, cmap=cmap),
+            cax=ax,
+            orientation="horizontal",
+            ticks=ticks,
+        )
         cbar.ax.xaxis.set_major_formatter(plt.FormatStrFormatter(tick_format))
-        cbar.ax.set_title(title_text, color="white", fontsize=key_fontsize, pad=2, weight="bold")
+        cbar.ax.set_title(
+            title_text, color="white", fontsize=key_fontsize, pad=2, weight="bold"
+        )
         cbar.ax.tick_params(colors="white", labelsize=8)
 
         fig.savefig(key_path, transparent=True, bbox_inches="tight")
@@ -116,7 +122,7 @@ class SSTUpdater(Updater):
         plot.get_figure()
 
         # Render complete mapped geographic array using exact pixel cell boundaries
-        mesh = plot.ax.pcolormesh(
+        plot.ax.pcolormesh(
             lons_clipped,
             lats_clipped,
             display_data,
@@ -131,7 +137,9 @@ class SSTUpdater(Updater):
 
         plot.save_figure(self.output_path)
         calculated_ticks = np.linspace(vmin, vmax, 5)
-        self.save_sst_key(self.output_path, cmap, norm, calculated_ticks, title_text, tick_format)
+        self.save_sst_key(
+            self.output_path, cmap, norm, calculated_ticks, title_text, tick_format
+        )
 
         plt_close = getattr(plot, "close", None)
         if callable(plt_close):

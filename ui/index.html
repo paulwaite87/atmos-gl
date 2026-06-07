@@ -169,37 +169,18 @@
                     window.MAP_UI = "http://localhost:9000";
                     window.WM_API = "http://localhost:9000/api";
 
-                    const LIVE_LAYERS = [
-                        'clouds',
-                        'precipitation',
-                        'stormwatch',
-                        'ozone',
-                        'temperature',
-                        'sst',
-                        'wind',
-                        'waves',
-                        'currents',
-                        'isobars',
-                        'quakes',
-                        'volcanoes',
-                        'lightning',
-                        'storms',
-                        'shipping',
+                    const ALL_LAYERS = [
+                        'sst', 'currents', 'waves',
+                        'clouds', 'precipitation', 'stormwatch', 'ozone', 'temperature', 'isobars', 'wind',
+                        'quakes', 'volcanoes', 'lightning', 'storms', 'shipping', 'satellites',
                     ];
 
-                    for (const moduleName of frontendLayers) {
-                        const moduleConfig = configData[moduleName] || {};
-                        const isLive = LIVE_LAYERS.includes(moduleName);
-
-                        // Image layers always start their poller (it self-mounts only when enabled);
-                        // GeoJSON/marker layers keep the original enabled-only behaviour.
-                        if (isLive || moduleConfig.enabled === true) {
-                            try {
-                                const module = await import(`/modules/${moduleName}.js?t=${Date.now()}`);
-                                module.loadLayer(map, moduleConfig);
-                            } catch (err) {
-                                console.warn(`Could not load layer /modules/${moduleName}.js`, err);
-                            }
+                    for (const moduleName of ALL_LAYERS) {
+                        try {
+                            const module = await import(`/modules/${moduleName}.js?t=${Date.now()}`);
+                            module.loadLayer(map, configData[moduleName] || {});
+                        } catch (err) {
+                            console.warn(`Could not load layer /modules/${moduleName}.js`, err);
                         }
                     }
                 });

@@ -41,7 +41,6 @@ class ShippingCollector:
 
         logger.info("One-time init: populating vessel_class field")
 
-
     def refresh_settings(self):
         self.config.load()
         self.settings = self.config.get_section("shipping_collector")

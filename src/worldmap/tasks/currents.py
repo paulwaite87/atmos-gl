@@ -58,10 +58,20 @@ class CurrentsUpdater(Updater):
         key_fontsize = self.settings.get("key_fontsize", 10)
 
         fig, ax = plt.subplots(figsize=(4, 0.3))
-        cbar = fig.colorbar(mpl.cm.ScalarMappable(norm=norm, cmap=_opaque_cmap(cmap)),
-                            cax=ax, orientation="horizontal", ticks=ticks)
+        cbar = fig.colorbar(
+            mpl.cm.ScalarMappable(norm=norm, cmap=_opaque_cmap(cmap)),
+            cax=ax,
+            orientation="horizontal",
+            ticks=ticks,
+        )
         cbar.ax.xaxis.set_major_formatter(plt.FormatStrFormatter("%.1f"))
-        cbar.ax.set_title("Current Speed (m/sec)", color="white", fontsize=key_fontsize, pad=2, weight="bold")
+        cbar.ax.set_title(
+            "Current Speed (m/sec)",
+            color="white",
+            fontsize=key_fontsize,
+            pad=2,
+            weight="bold",
+        )
         cbar.ax.tick_params(colors="white", labelsize=8)
 
         fig.savefig(key_path, transparent=True, bbox_inches="tight")
@@ -72,7 +82,6 @@ class CurrentsUpdater(Updater):
         """Renders ocean currents with adaptive density, dynamic line widths,
         high-resolution land masking, and a configurable global width multiplier.
         """
-        import matplotlib.pyplot as plt
         from scipy.interpolate import griddata, NearestNDInterpolator
 
         logger.debug(
@@ -91,10 +100,7 @@ class CurrentsUpdater(Updater):
         width_factor = self.settings.get("width_factor", 1.0)
         width_factor = max(0.1, width_factor)  # Prevent flat zero or negative scales
 
-        key_position = self.settings.get("key_position", "bottom-right").strip().lower()
-        key_fontsize = self.settings.get("key_fontsize", 10)
-
-        # 1. Load Dataset
+        # Load Dataset
         ds = xr.open_dataset(self.nc_path)
 
         lon_raw = ((ds["Longitude"].values + 180) % 360) - 180
@@ -102,7 +108,7 @@ class CurrentsUpdater(Updater):
         lon_min, lat_min, lon_max, lat_max = self.map_region_bbox
         buf = 1.5
 
-        # 2. Extract index bounds via mask
+        # Extract index bounds via mask
         mask = (
             (lon_raw >= lon_min - buf)
             & (lon_raw <= lon_max + buf)
@@ -134,7 +140,7 @@ class CurrentsUpdater(Updater):
         del ds
         gc.collect()
 
-        # 3. Filter Land Mass NaNs for velocity vector calculations
+        # Filter Land Mass NaNs for velocity vector calculations
         valid = ~np.isnan(u_raw) & ~np.isnan(v_raw)
         if not np.any(valid):
             logger.warning("No open water points found in this region slice.")
@@ -144,7 +150,7 @@ class CurrentsUpdater(Updater):
         u_points = u_raw[valid]
         v_points = v_raw[valid]
 
-        # 4. Generate perfectly uniform grid and interpolate velocities
+        # Generate perfectly uniform grid and interpolate velocities
         grid_lon = np.linspace(lon_min, lon_max, 200)
         grid_lat = np.linspace(lat_min, lat_max, 200)
         mesh_lon, mesh_lat = np.meshgrid(grid_lon, grid_lat)
@@ -169,7 +175,7 @@ class CurrentsUpdater(Updater):
 
         speed_grid = np.sqrt(u_grid**2 + v_grid**2)
 
-        # 5. Dynamic Color Normalization Range
+        # Dynamic Color Normalization Range
         vmax_dynamic = max(1.5, float(np.nanpercentile(speed_grid, 95)))
         norm = mcolors.Normalize(vmin=0.0, vmax=vmax_dynamic)
 
@@ -177,13 +183,13 @@ class CurrentsUpdater(Updater):
         plot = Plot(self.map_data.region)
         plot.get_figure()
 
-        # 7. AUTOMATED DENSITY & WIDTH CALCULATION ENGINE
+        # AUTOMATED DENSITY & WIDTH CALCULATION ENGINE
         geo_span = max(abs(lon_max - lon_min), abs(lat_max - lat_min))
 
         fig_w_inches, _ = plot.fig.get_size_inches()
         canvas_pixel_width = fig_w_inches * plot.fig.dpi
 
-        # A. Calculate Base Density relative to Geographic scale
+        # Calculate Base Density relative to Geographic scale
         if geo_span >= 40.0:
             base_density = 0.65
         elif geo_span <= 2.0:
@@ -191,12 +197,12 @@ class CurrentsUpdater(Updater):
         else:
             base_density = 1.65 - ((geo_span - 2.0) / (40.0 - 2.0)) * (1.65 - 0.65)
 
-        # B. Apply Resolution Scaling Factor
+        # Apply Resolution Scaling Factor
         res_factor = canvas_pixel_width / 1200.0
         res_factor = np.clip(res_factor, 0.8, 1.5)
         calculated_density = base_density * res_factor
 
-        # C. Calculate Variable Line Weight Matrix based on velocity
+        # Calculate Variable Line Weight Matrix based on velocity
         max_thickness = 4.8 if geo_span < 10.0 else 3.8
         min_thickness = 1.8 if geo_span < 10.0 else 1.2
 
@@ -215,7 +221,7 @@ class CurrentsUpdater(Updater):
             f"Width Factor: {width_factor}x"
         )
 
-        # 8. Render Streamlines with transparency injector
+        # Render Streamlines with transparency injector
         custom_rgba_list = [
             (r, g, b, alpha_setting) for (r, g, b) in self.PALETTES[palette_name]
         ]
@@ -223,7 +229,7 @@ class CurrentsUpdater(Updater):
             "current_speed", custom_rgba_list, N=256
         )
 
-        strm = plot.ax.streamplot(
+        plot.ax.streamplot(
             grid_lon,
             grid_lat,
             u_grid,

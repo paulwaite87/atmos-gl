@@ -69,7 +69,9 @@ class TemperatureUpdater(Updater):
             ],
         }
 
-    def save_temperature_key(self, output_path, cmap, norm, ticks, title_text, tick_format):
+    def save_temperature_key(
+        self, output_path, cmap, norm, ticks, title_text, tick_format
+    ):
         """Generates a standalone key image using dynamic formatting based on mode."""
         import matplotlib.pyplot as plt
         import matplotlib as mpl
@@ -83,22 +85,22 @@ class TemperatureUpdater(Updater):
 
         fig, ax = plt.subplots(figsize=(4, 0.3))
 
-        cbar = fig.colorbar(mpl.cm.ScalarMappable(norm=norm, cmap=cmap),
-                            cax=ax, orientation='horizontal', ticks=ticks)
+        cbar = fig.colorbar(
+            mpl.cm.ScalarMappable(norm=norm, cmap=cmap),
+            cax=ax,
+            orientation="horizontal",
+            ticks=ticks,
+        )
 
         cbar.ax.xaxis.set_major_formatter(plt.FormatStrFormatter(tick_format))
 
         cbar.ax.set_title(
-            title_text,
-            color="white",
-            fontsize=key_fontsize,
-            pad=2,
-            weight="bold"
+            title_text, color="white", fontsize=key_fontsize, pad=2, weight="bold"
         )
         cbar.ax.tick_params(colors="white", labelsize=8)
 
         # Save key separately
-        fig.savefig(key_path, transparent=True, bbox_inches='tight')
+        fig.savefig(key_path, transparent=True, bbox_inches="tight")
         plt.close(fig)
         logger.debug(f"Saved Temperature key to: {key_path}")
 
@@ -126,7 +128,9 @@ class TemperatureUpdater(Updater):
         )
 
         temp_key = "t2m" if "t2m" in ds else "2t"
-        raw_matrix = ds[temp_key].values.squeeze() - 273.15  # Convert Kelvin to Celsius immediately
+        raw_matrix = (
+            ds[temp_key].values.squeeze() - 273.15
+        )  # Convert Kelvin to Celsius immediately
 
         lon_raw = ds["longitude"].values
         lat_raw = ds["latitude"].values
@@ -164,6 +168,7 @@ class TemperatureUpdater(Updater):
         )
 
         from .common import MERCATOR_LAT_LIMIT
+
         lat_lo = max(bbox[1], float(lat_inc.min()), -MERCATOR_LAT_LIMIT)
         lat_hi = min(bbox[3], float(lat_inc.max()), MERCATOR_LAT_LIMIT)
         lon_lo = max(bbox[0], float(lon_norm.min()))
@@ -230,7 +235,7 @@ class TemperatureUpdater(Updater):
         # The crucial fix: Notice the `.T` transpose on the data arrays.
         # meshgrid with indexing="ij" creates arrays in (lat, lon) shape.
         # contourf expects (lon, lat) shape to match x/y coordinates.
-        cf = plot.ax.contourf(
+        plot.ax.contourf(
             grid_lon,
             grid_lat,
             display_data,
@@ -262,12 +267,7 @@ class TemperatureUpdater(Updater):
         plot.save_figure(self.output_path)
 
         self.save_temperature_key(
-            self.output_path,
-            cmap,
-            norm,
-            calculated_ticks,
-            title_text,
-            tick_format
+            self.output_path, cmap, norm, calculated_ticks, title_text, tick_format
         )
 
         # Clean up

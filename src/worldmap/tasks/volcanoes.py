@@ -58,5 +58,5 @@ class VolcanoUpdater(Updater):
                 r.get("longitude"),
                 r.get("vei", 0),
                 r.get("significant", False),
-                r.get("timeErupt", "")
+                r.get("timeErupt", ""),
             )

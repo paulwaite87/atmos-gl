@@ -45,19 +45,23 @@ class StormwatchUpdater(Updater):
         norm = mpl.colors.BoundaryNorm(levels, cmap.N)
 
         # Draw the colorbar
-        cbar = fig.colorbar(mpl.cm.ScalarMappable(norm=norm, cmap=cmap),
-                            cax=ax, orientation='horizontal', ticks=levels[:-1])
+        cbar = fig.colorbar(
+            mpl.cm.ScalarMappable(norm=norm, cmap=cmap),
+            cax=ax,
+            orientation="horizontal",
+            ticks=levels[:-1],
+        )
 
         cbar.ax.set_title(
             "Storm Potential (Effective CAPE J/kg)",
             color="white",
             fontsize=self.settings.get("key_fontsize", 8),
-            pad=2
+            pad=2,
         )
         cbar.ax.tick_params(colors="white", labelsize=6)
 
         # Save with transparency
-        fig.savefig(key_path, transparent=True, bbox_inches='tight')
+        fig.savefig(key_path, transparent=True, bbox_inches="tight")
         plt.close(fig)
         logger.debug(f"Saved Stormwatch key to: {key_path}")
 
@@ -170,7 +174,7 @@ class StormwatchUpdater(Updater):
 
         cape_smooth = gaussian_filter(cape_smooth, sigma=filter_sigma)
 
-        cf = plot.ax.contourf(
+        plot.ax.contourf(
             new_lons,
             new_lats,
             cape_smooth,

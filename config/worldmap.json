@@ -193,17 +193,16 @@
   "satellites": {
     "enabled": false,
     "url": "https://celestrak.org/NORAD/elements",
-    "outfile": "data/satellites.json",
-    "marker_color": "Orange",
-    "marker_fontsize": 10,
-    "sat_names": [
-      "ISS (ZARYA)"
-    ],
-    "update_minutes": 5,
-    "trail_minutes": 50,
-    "degrees_above_horizon": 45,
-    "extra_satellite_names": ""
-  },
+    "groups": ["stations", "weather", "science", "resource"],
+    "sat_names": ["ISS (ZARYA)"],
+    "extra_satellite_names": "",
+    "past_minutes": 90,
+    "future_minutes": 90,
+    "step_seconds": 30,
+    "color": "",
+    "update_hours": 12,
+    "log_level": "INFO"
+},
   "shipping_collector": {
     "enabled": true,
     "url": "wss://stream.aisstream.io/v0/stream",

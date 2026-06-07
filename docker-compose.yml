@@ -31,7 +31,38 @@ services:
     networks:
       - wmap
 
-  # Tiles the globe/regions for lightning strikes and populates DB
+  # Acquires satellites from Celestrak and updates our database
+  satellites_collector:
+    container_name: satellites_collector
+    image: worldmap:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: python -m worldmap.satellites_collector --config /opt/project/config/worldmap.json
+    env_file:
+      - .env
+    environment:
+      - LOG_LEVEL=INFO
+      - TZ=Pacific/Auckland
+      - PYTHONPATH=/opt/project/src
+      - PYTHONUNBUFFERED=1
+      - PGHOST=worldmap_db
+      - PGPORT=5432
+      - PGDATABASE=worldmap
+      - PGUSER=wmap
+      - PGPASSWORD=wmap
+    restart: unless-stopped
+    depends_on:
+      worldmap_db:
+        condition: service_healthy
+    volumes:
+      - ./data:/opt/project/data
+      - ./config:/opt/project/config
+      - .:/opt/project
+    networks:
+      - wmap
+
+  # Scans the World for lightning strikes and populates DB
   weather_scanner:
     container_name: weather_scanner
     image: worldmap:latest

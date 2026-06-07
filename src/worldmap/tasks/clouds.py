@@ -47,8 +47,12 @@ class CloudUpdater(Updater):
                 for i in range(256)
             ]
             cloud_mask = cloud_mask.point(lut)
-            transparent_clouds_image = Image.new("RGBA", raw_clouds_image.size, (0, 0, 0, 0))
-            white_clouds = Image.new("RGBA", raw_clouds_image.size, (255, 255, 255, 255))
+            transparent_clouds_image = Image.new(
+                "RGBA", raw_clouds_image.size, (0, 0, 0, 0)
+            )
+            white_clouds = Image.new(
+                "RGBA", raw_clouds_image.size, (255, 255, 255, 255)
+            )
             transparent_clouds_image.paste(white_clouds, (0, 0), mask=cloud_mask)
         logger.debug(f"Saving transparent cloud map in {self.output_path}")
         transparent_clouds_image.save(self.output_path, "PNG")

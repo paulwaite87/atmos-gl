@@ -3,9 +3,9 @@ import os
 from fastapi import APIRouter, HTTPException
 from worldmap.lib.db import Database
 from worldmap.lib.config import WorldMapConfig
-from worldmap.tasks.common import MapRegion
 
 router = APIRouter(prefix="/api", tags=["System Configuration"])
+
 
 def load_config():
     config_path = os.getenv("CONFIG_PATH", "./config/worldmap.json")

@@ -50,8 +50,12 @@ class OzoneUpdater(Updater):
         # Calculate 5 evenly spaced ticks between min and max
         calculated_ticks = np.linspace(min_du, max_du, 5)
 
-        cbar = fig.colorbar(mpl.cm.ScalarMappable(norm=norm, cmap=cmap),
-                            cax=ax, orientation='horizontal', ticks=calculated_ticks)
+        cbar = fig.colorbar(
+            mpl.cm.ScalarMappable(norm=norm, cmap=cmap),
+            cax=ax,
+            orientation="horizontal",
+            ticks=calculated_ticks,
+        )
 
         cbar.ax.xaxis.set_major_formatter(plt.FormatStrFormatter("%d"))
         cbar.ax.set_title(
@@ -63,7 +67,7 @@ class OzoneUpdater(Updater):
         cbar.ax.tick_params(colors="white", labelsize=8)
 
         # Save key separately
-        fig.savefig(key_path, transparent=True, bbox_inches='tight')
+        fig.savefig(key_path, transparent=True, bbox_inches="tight")
         plt.close(fig)
         logger.debug(f"Saved Ozone key to: {key_path}")
 
@@ -71,11 +75,10 @@ class OzoneUpdater(Updater):
         """Renders the ozone layer with dynamic resampling for smoother visuals."""
         logger.debug(f"Plotting ozone layer to {self.output_path}...")
 
-        alpha = self.settings.get("alpha", 0.4)
         palette_key = self.settings.get("palette", "critical").lower()
         bbox = self.map_region_bbox
 
-        # 1. Load Data
+        # Load Data
         ds = xr.open_dataset(self.grib_path, engine="cfgrib")
 
         data_var = list(ds.data_vars)[0]
@@ -102,7 +105,7 @@ class OzoneUpdater(Updater):
         del ds
         gc.collect()
 
-        # 2. DYNAMIC RESAMPLING (Level of Detail Logic)
+        # DYNAMIC RESAMPLING (Level of Detail Logic)
         if self.level_of_detail == 3:
             step = 0.05  # High resolution (very smooth)
             filter_sigma = 1.2
@@ -136,7 +139,7 @@ class OzoneUpdater(Updater):
         if filter_sigma > 0:
             smooth_data = gaussian_filter(smooth_data, sigma=filter_sigma)
 
-        # 3. Mode Styling & Custom Colormaps
+        # Mode Styling & Custom Colormaps
         min_du = 150
         max_du = 500
         norm = mcolors.Normalize(vmin=min_du, vmax=max_du)
@@ -168,7 +171,7 @@ class OzoneUpdater(Updater):
             }
             cmap = plt.get_cmap(palettes.get(palette_key, "plasma_r"))
 
-        # 4. Canvas Initialization
+        # Canvas Initialization
         plot = Plot(self.map_data.region)
         plot.get_figure()
 
@@ -176,7 +179,7 @@ class OzoneUpdater(Updater):
         levels = np.linspace(min_du, max_du, 150)
 
         # Replaced pcolormesh with contourf for smoothed rendering
-        cf = plot.ax.contourf(
+        plot.ax.contourf(
             new_lons,
             new_lats,
             smooth_data,
@@ -189,7 +192,7 @@ class OzoneUpdater(Updater):
             zorder=2,
         )
 
-        # 5. Save the map and the standalone key
+        # Save the map and the standalone key
         plot.save_figure(self.output_path)
         self.save_ozone_key(self.output_path, cmap, norm, min_du, max_du)
 
@@ -209,7 +212,7 @@ class OzoneUpdater(Updater):
 
         url = f"{self.base_url}/gfs.{self.gfs_date_str}/{self.gfs_run}/atmos/gfs.t{self.gfs_run}z.pgrb2.0p25.f{self.forecast_hour_str}"
         if self.remote_data_update(
-                remote_url=url, cache_file_path=self.grib_path, grib_targets=[":TOZNE:"]
+            remote_url=url, cache_file_path=self.grib_path, grib_targets=[":TOZNE:"]
         ):
             self.plot()
             logger.info(f"Generated Ozone plot ({self.lod_desc} resolution)...")

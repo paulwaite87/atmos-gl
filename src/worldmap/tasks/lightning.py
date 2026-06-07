@@ -31,7 +31,6 @@ class LightningUpdater(Updater):
             expiry_minutes=self.strike_expiry_minutes,
         )
 
-        written_count = 0
         now = datetime.now(timezone.utc)
 
         strikes_list = []

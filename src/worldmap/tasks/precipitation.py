@@ -70,22 +70,26 @@ class PrecipitationUpdater(Updater):
         key_ticks = [0.1, 1.0, 5.0, 15.0, 50.0, 100.0]
 
         # Use your existing colormap logic
-        cmap = mpl.colors.ListedColormap(self.PALETTES['standard'])
+        cmap = mpl.colors.ListedColormap(self.PALETTES["standard"])
         norm = mpl.colors.BoundaryNorm(key_ticks, cmap.N)
 
-        cbar = fig.colorbar(mpl.cm.ScalarMappable(norm=norm, cmap=cmap),
-                            cax=ax, orientation='horizontal', ticks=key_ticks)
+        cbar = fig.colorbar(
+            mpl.cm.ScalarMappable(norm=norm, cmap=cmap),
+            cax=ax,
+            orientation="horizontal",
+            ticks=key_ticks,
+        )
 
         cbar.ax.set_title(
             "Precipitation (mm/hr)",
             color="white",
             fontsize=self.settings.get("key_fontsize", 8),
-            pad=2
+            pad=2,
         )
         cbar.ax.tick_params(colors="white", labelsize=6)
 
         # 2. Save key separately
-        fig.savefig(key_path, transparent=True, bbox_inches='tight')
+        fig.savefig(key_path, transparent=True, bbox_inches="tight")
         plt.close(fig)
         logger.debug(f"Saved precipitation key to: {key_path}")
 
@@ -176,7 +180,7 @@ class PrecipitationUpdater(Updater):
 
         # Render Heatmap Contour
         prate_smooth = gaussian_filter(prate_smooth, sigma=filter_sigma)
-        cf = plot.ax.contourf(
+        plot.ax.contourf(
             new_lons,
             new_lats,
             prate_smooth,
@@ -215,4 +219,3 @@ class PrecipitationUpdater(Updater):
         ):
             self.plot()
             logger.info(f"Generated precipitation plot ({self.lod_desc} resolution)...")
-

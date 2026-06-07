@@ -19,15 +19,16 @@ from PIL import Image
 
 logger = logging.getLogger(__name__)
 
-WEB_MERCATOR = ccrs.Mercator.GOOGLE      # EPSG:3857
-MERCATOR_LAT_LIMIT = 85.0511             # NOTE: just *inside* GOOGLE's 85.0511288 max
+WEB_MERCATOR = ccrs.Mercator.GOOGLE  # EPSG:3857
+MERCATOR_LAT_LIMIT = 85.0511  # NOTE: just *inside* GOOGLE's 85.0511288 max
 
 
 def _opaque_cmap(cmap, n=256):
     """Return an opaque copy of a colormap (alpha forced to 1.0)."""
     import numpy as np
     import matplotlib.colors as mcolors
-    colors = cmap(np.linspace(0, 1, n))   # (n, 4) RGBA
+
+    colors = cmap(np.linspace(0, 1, n))  # (n, 4) RGBA
     colors[:, 3] = 1.0
     return mcolors.ListedColormap(colors)
 
@@ -221,11 +222,12 @@ class Plot:
         plot_target_width = float(self.region.target_width) / 100
         plot_target_height = float(self.region.target_height) / 100
         self.fig = plt.figure(figsize=(plot_target_width, plot_target_height), dpi=100)
-        self.ax = cast(geoaxes.GeoAxes,
-                       self.fig.add_axes((0, 0, 1, 1), projection=self.projection))
+        self.ax = cast(
+            geoaxes.GeoAxes, self.fig.add_axes((0, 0, 1, 1), projection=self.projection)
+        )
         bbox = self.region.bbox
         lat_lo = max(bbox[1], -MERCATOR_LAT_LIMIT)
-        lat_hi = min(bbox[3],  MERCATOR_LAT_LIMIT)
+        lat_hi = min(bbox[3], MERCATOR_LAT_LIMIT)
         # extent is ALWAYS given in lon/lat degrees, regardless of axes projection
         self.ax.set_extent([bbox[0], bbox[2], lat_lo, lat_hi], crs=ccrs.PlateCarree())
         self.ax.set_aspect("auto", adjustable="box")
@@ -272,7 +274,11 @@ class Updater:
         self.base_url = self.get_base_url()
 
     def get_output_path(self) -> str | None:
-        return str(os.path.join(self.common.get("workdir", "."), self.outfile)) if self.outfile else None
+        return (
+            str(os.path.join(self.common.get("workdir", "."), self.outfile))
+            if self.outfile
+            else None
+        )
 
     def set_output_path(self):
         self.output_path = self.get_output_path()
@@ -622,10 +628,3 @@ class Updater:
             logger.error(f"Failed to crop to regional image: {e}")
 
         return None
-
-    def climate_layer_is_active(self):
-        """Return True if at least one climate layer is enabled"""
-        for layer in CLIMATE_LAYERS:
-            if self.config.section_enabled(layer):
-                return True
-        return False

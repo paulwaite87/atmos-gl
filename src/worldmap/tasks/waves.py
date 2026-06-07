@@ -58,9 +58,19 @@ class WavesUpdater(Updater):
         key_fontsize = self.settings.get("key_fontsize", 10)
 
         fig, ax = plt.subplots(figsize=(4, 0.3))
-        cbar = fig.colorbar(mpl.cm.ScalarMappable(norm=norm, cmap=_opaque_cmap(cmap)),
-                            cax=ax, orientation="horizontal", ticks=[0, 2, 4, 6, 8])
-        cbar.ax.set_title("Wave Height (m)", color="white", fontsize=key_fontsize, pad=2, weight="bold")
+        cbar = fig.colorbar(
+            mpl.cm.ScalarMappable(norm=norm, cmap=_opaque_cmap(cmap)),
+            cax=ax,
+            orientation="horizontal",
+            ticks=[0, 2, 4, 6, 8],
+        )
+        cbar.ax.set_title(
+            "Wave Height (m)",
+            color="white",
+            fontsize=key_fontsize,
+            pad=2,
+            weight="bold",
+        )
         cbar.ax.tick_params(colors="white", labelsize=8)
 
         fig.savefig(key_path, transparent=True, bbox_inches="tight")
@@ -71,7 +81,6 @@ class WavesUpdater(Updater):
         """Plots an underlying significant wave height contour heatmap
         with adaptive directional quiver arrows layered over top.
         """
-        import matplotlib.pyplot as plt
         from scipy.interpolate import griddata, NearestNDInterpolator
 
         logger.debug(
@@ -186,7 +195,7 @@ class WavesUpdater(Updater):
         levels = np.linspace(0.0, 8.0, 17)
         norm = mcolors.Normalize(vmin=0.0, vmax=8.0)
 
-        cf = plot.ax.contourf(
+        plot.ax.contourf(
             grid_lon,
             grid_lat,
             swh_grid,

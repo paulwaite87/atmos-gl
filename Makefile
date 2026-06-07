@@ -9,6 +9,7 @@ DB_SERVICE = worldmap_db
 BUILDER_SERVICE = layer_builder
 SHIP_COLLECTOR_SERVICE = shipping_collector
 WEATHER_SCANNER_SERVICE = weather_scanner
+SATELLITES_COLLECTOR_SERVICE = satellites_collector
 WALLPAPER_UPDATER = wallpaper_updater.sh
 DUMP_FILE = worldmap_dump.sql
 
@@ -85,7 +86,7 @@ restore:
 	@read -p "Are you sure? [y/N] " ans; \
 	if [ "$${ans:-N}" = "y" ] || [ "$${ans:-N}" = "Y" ]; then \
 	   @echo "Stopping services"; \
-	   docker compose stop $(SHIP_COLLECTOR_SERVICE) $(WEATHER_SCANNER_SERVICE) $(BUILDER_SERVICE); \
+	   docker compose stop $(SHIP_COLLECTOR_SERVICE) $(WEATHER_SCANNER_SERVICE) $(SATELLITES_COLLECTOR_SERVICE) $(BUILDER_SERVICE); \
 	   @echo "Ensuring worldmap database is running..."; \
 	   docker compose up $(DB_SERVICE) -d; \
 	   @sleep 5
@@ -153,11 +154,6 @@ status:
 	 LEFT JOIN lightning_strikes l ON ST_Within(l.geom, r.boundary) \
 	 GROUP BY r.label \
 	 ORDER BY strikes DESC;"
-
-## refresh-map: Force map builder to refresh wallpaper
-refresh-map:
-	@docker kill --signal=SIGUSR1 $(BUILDER_SERVICE)
-	@echo "Refresh signal sent"
 
 ## help: Show this help menu
 help:

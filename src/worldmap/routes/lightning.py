@@ -4,6 +4,7 @@ from worldmap.lib.db import Database
 
 router = APIRouter(prefix="/api", tags=["Weather"])
 
+
 @router.get("/lightning/geojson")
 async def get_lightning_geojson(expiry_hours: int = 12):
     db = Database()

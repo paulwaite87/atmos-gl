@@ -46,7 +46,9 @@ class QuakeUpdater(Updater):
                 db.update_quake(quake_id, mag, depth, place, time_iso, lat, lon)
                 count += 1
 
-            logger.debug(f"Earthquake update complete. UPSERTed {count} quakes to Database.")
+            logger.debug(
+                f"Earthquake update complete. UPSERTed {count} quakes to Database."
+            )
 
         except requests.RequestException as e:
             logger.error(f"Error fetching quakes: {e}")

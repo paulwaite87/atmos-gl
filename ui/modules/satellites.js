@@ -1,0 +1,85 @@
+import { liveDataSync } from './_datasync.js';
+
+export function loadLayer(map, config) {
+    const sourceId = 'satellites-source';
+    const layerIds = ['sat-track-past', 'sat-track-future', 'sat-position', 'sat-labels'];
+    const popup = new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 10 });
+    let pulsing = false;
+
+    const urlFor = () => `${window.WM_API}/satellites/geojson?t=${Date.now()}`;
+    const fetchData = async () => {
+        const r = await fetch(urlFor());
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+    };
+
+    const onEnter = (e) => {
+        map.getCanvas().style.cursor = 'pointer';
+        const p = e.features[0].properties;
+        const c = e.features[0].geometry.coordinates.slice();
+        popup.setLngLat(c).setHTML(
+            `<div style="font-family:sans-serif;font-size:12px;color:#000;padding:4px;">
+                <strong style="color:#222;font-size:14px;">${p.name}</strong>
+                <hr style="border:0;border-top:1px solid #ccc;margin:4px 0;">
+                <div><span style="color:#666;width:50px;display:inline-block;">NORAD:</span> <strong>${p.norad_id}</strong></div>
+                <div><span style="color:#666;width:50px;display:inline-block;">Alt:</span> <strong>${p.alt_km} km</strong></div>
+            </div>`).addTo(map);
+    };
+    const onLeave = () => { map.getCanvas().style.cursor = ''; popup.remove(); };
+
+    const startPulse = () => {
+        pulsing = true;
+        const loop = () => {
+            if (!pulsing || !map.getLayer('sat-position')) return;
+            const r = 5 + ((Math.sin(Date.now() / 400) + 1) / 2) * 4;
+            map.setPaintProperty('sat-position', 'circle-radius', r);
+            requestAnimationFrame(loop);
+        };
+        requestAnimationFrame(loop);
+    };
+
+    const mount = async () => {
+        const data = await fetchData();
+        if (map.getSource(sourceId)) return;
+        map.addSource(sourceId, { type: 'geojson', data });
+
+        map.addLayer({ id: 'sat-track-past', type: 'line', source: sourceId,
+            filter: ['==', 'feature_type', 'TRACK_PAST'],
+            paint: { 'line-color': ['get', 'color'], 'line-width': 2 } });
+        map.addLayer({ id: 'sat-track-future', type: 'line', source: sourceId,
+            filter: ['==', 'feature_type', 'TRACK_FUTURE'],
+            paint: { 'line-color': ['get', 'color'], 'line-width': 2, 'line-dasharray': [2, 2] } });
+        map.addLayer({ id: 'sat-position', type: 'circle', source: sourceId,
+            filter: ['==', 'feature_type', 'POSITION'],
+            paint: { 'circle-radius': 6, 'circle-color': '#111111',
+                     'circle-stroke-color': ['get', 'color'], 'circle-stroke-width': 2 } });
+        map.addLayer({ id: 'sat-labels', type: 'symbol', source: sourceId,
+            filter: ['==', 'feature_type', 'POSITION'],
+            layout: { 'text-field': ['get', 'name'], 'text-size': 11,
+                      'text-offset': [0, 1.2], 'text-anchor': 'top',
+                      'text-allow-overlap': false },
+            paint: { 'text-color': ['get', 'color'], 'text-halo-color': '#000', 'text-halo-width': 1 } });
+
+        map.on('mouseenter', 'sat-position', onEnter);
+        map.on('mouseleave', 'sat-position', onLeave);
+        startPulse();
+    };
+
+    const refresh = async () => {
+        const data = await fetchData();
+        map.getSource(sourceId)?.setData(data);
+    };
+
+    const unmount = () => {
+        pulsing = false;
+        map.off('mouseenter', 'sat-position', onEnter);
+        map.off('mouseleave', 'sat-position', onLeave);
+        popup.remove();
+        for (const id of layerIds) if (map.getLayer(id)) map.removeLayer(id);
+        if (map.getSource(sourceId)) map.removeSource(sourceId);
+    };
+
+    // Current dot moves fast; trail/prediction barely change. ~15s keeps the dot lively
+    // (the RAF pulse covers between-refresh smoothness).
+    liveDataSync(map, { sectionKey: 'satellites', initialConfig: config, mount, refresh, unmount, refreshMs: 15000 });
+}

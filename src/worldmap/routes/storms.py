@@ -4,6 +4,7 @@ from worldmap.lib.db import Database
 
 router = APIRouter(prefix="/api", tags=["Weather"])
 
+
 @router.get("/storms/geojson")
 async def get_storms_geojson():
     db = Database()

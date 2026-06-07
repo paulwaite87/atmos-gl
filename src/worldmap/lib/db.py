@@ -67,7 +67,19 @@ class Database:
               """
         with self.conn.cursor() as cur:
             cur.execute(
-                sql, (str(mmsi), name, destination, v_type, v_class, imo, callsign, draught, length, beam)
+                sql,
+                (
+                    str(mmsi),
+                    name,
+                    destination,
+                    v_type,
+                    v_class,
+                    imo,
+                    callsign,
+                    draught,
+                    length,
+                    beam,
+                ),
             )
 
     def update_ship_position_data(self, mmsi, body):
@@ -373,7 +385,9 @@ class Database:
         """
         try:
             with self.conn.cursor() as cur:
-                cur.execute(sql, (quake_id, mag, depth, place, time_iso, lat, lon, lon, lat))
+                cur.execute(
+                    sql, (quake_id, mag, depth, place, time_iso, lat, lon, lon, lat)
+                )
         except Exception as e:
             logger.error(f"Error saving earthquake {quake_id}: {e}")
 
@@ -425,7 +439,9 @@ class Database:
                 erupt_date_code = EXCLUDED.erupt_date_code;
         """
         with self.conn.cursor() as cur:
-            cur.execute(sql, (v_id, name, lat, lon, vei, significant, date_code, lon, lat))
+            cur.execute(
+                sql, (v_id, name, lat, lon, vei, significant, date_code, lon, lat)
+            )
 
     def get_volcanoes_as_geojson(self, vei_min, significant_only, date_codes):
         sql = """
@@ -499,23 +515,31 @@ class Database:
                 cur.execute(sql_delete_tracks, (sid,))
                 # Insert fresh points
                 for pt in track_points:
-                    cur.execute(sql_insert_track, (
-                        sid,
-                        pt['TYPE'],
-                        pt.get('TIME'),  # Might be None for forecast points depending on your parser
-                        pt.get('TAU', 0),
-                        pt['LAT'],
-                        pt['LON'],
-                        pt['LON'],
-                        pt['LAT']
-                    ))
+                    cur.execute(
+                        sql_insert_track,
+                        (
+                            sid,
+                            pt["TYPE"],
+                            pt.get(
+                                "TIME"
+                            ),  # Might be None for forecast points depending on your parser
+                            pt.get("TAU", 0),
+                            pt["LAT"],
+                            pt["LON"],
+                            pt["LON"],
+                            pt["LAT"],
+                        ),
+                    )
         except Exception as e:
-            logger.error(f"❌ Error updating storm {sid} in database: {e}", exc_info=True)
+            logger.error(
+                f"❌ Error updating storm {sid} in database: {e}", exc_info=True
+            )
 
     def update_storm_cone(self, sid, cone_vertices):
         """Updates only the cone geometry for a specific storm."""
         # Convert vertices to JSON string for Postgres
         import json
+
         vertices_json = json.dumps(cone_vertices)
 
         sql = """
@@ -610,6 +634,31 @@ class Database:
                     logger.info(f"Pruned {cur.rowcount} expired storms from database.")
         except Exception as e:
             logger.error(f"Error pruning expired storms: {e}")
+
+    def update_satellite(self, norad_id, name, omm, epoch_iso):
+        from psycopg2.extras import Json
+
+        sql = """
+            INSERT INTO satellites (norad_id, name, omm, epoch, updated_at)
+            VALUES (%s, %s, %s, %s, NOW())
+            ON CONFLICT (norad_id) DO UPDATE SET
+                name = EXCLUDED.name,
+                omm = EXCLUDED.omm,
+                epoch = EXCLUDED.epoch, 
+                updated_at = NOW();
+        """
+        with self.conn.cursor() as cur:
+            cur.execute(sql, (norad_id, name, Json(omm), epoch_iso))
+
+    def get_satellites_by_names(self, names):
+        if not names:
+            return []
+        sql = "SELECT norad_id, name, omm, epoch FROM satellites WHERE name = ANY(%s);"
+        with self.conn.cursor() as cur:
+            cur.execute(sql, (list(names),))
+            return (
+                cur.fetchall()
+            )  # RealDictCursor returns omm already decoded to a dict
 
     def get_priority_region_list(self, primary_region_label):
         """

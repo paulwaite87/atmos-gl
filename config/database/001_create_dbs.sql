@@ -87,6 +87,14 @@ CREATE TABLE storm_track (
     geom GEOMETRY(Point, 4326)
 );
 
+CREATE TABLE IF NOT EXISTS satellites (
+    norad_id   INTEGER PRIMARY KEY,
+    name       VARCHAR(120),
+    omm        JSONB NOT NULL,
+    epoch      TIMESTAMP WITH TIME ZONE,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
 -- Indices for high-performance lookups
 CREATE INDEX IF NOT EXISTS idx_ships_geom ON ships USING GIST(geom);
 CREATE INDEX IF NOT EXISTS idx_map_region_boundary ON map_region USING GIST(boundary);
@@ -99,6 +107,7 @@ CREATE INDEX IF NOT EXISTS idx_lightning_time ON lightning_strikes(acquired_at);
 CREATE INDEX IF NOT EXISTS idx_quakes_time ON earthquakes(eq_time);
 CREATE INDEX IF NOT EXISTS idx_quakes_geom ON earthquakes USING GIST(geom);
 CREATE INDEX IF NOT EXISTS idx_storm_track_sid ON storm_track(sid);
+CREATE INDEX IF NOT EXISTS idx_satellites_name ON satellites(name);
 
 -- Populate Regions
 INSERT INTO map_region (label, boundary) VALUES ('NZ_Aus', ST_MakeEnvelope(63.131759, -57.173648, 190.337125, 0.239941, 4326));

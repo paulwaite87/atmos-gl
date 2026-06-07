@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-import os
 import logging
 import requests
 import math
@@ -150,7 +149,9 @@ class StormUpdater(Updater):
                 lat, lon = self._parse_latlon(parts[6], parts[7])
 
                 # Forecast times are derived by adding TAU hours to the run time
-                run_dt = datetime.strptime(latest_run, "%Y%m%d%H").replace(tzinfo=timezone.utc)
+                run_dt = datetime.strptime(latest_run, "%Y%m%d%H").replace(
+                    tzinfo=timezone.utc
+                )
                 fcst_dt = run_dt + timedelta(hours=tau)
 
                 pts.append(
@@ -274,12 +275,9 @@ class StormUpdater(Updater):
                 storm_name = track_pts[-1].get("NAME", sid)
 
                 # We store the active storm metadata to process A-Decks next
-                active_storms.append({
-                    "sid": sid,
-                    "name": storm_name,
-                    "b_url": b_url,
-                    "track": track_pts
-                })
+                active_storms.append(
+                    {"sid": sid, "name": storm_name, "b_url": b_url, "track": track_pts}
+                )
 
         if not active_storms:
             logger.info("No ACTIVE storms found within expiry window.")
@@ -308,7 +306,7 @@ class StormUpdater(Updater):
             full_track = storm["track"] + fcst_pts
 
             # Extract the single CURRENT point from the track
-            current_pt = [p for p in full_track if p.get('TYPE') == 'CURRENT']
+            current_pt = [p for p in full_track if p.get("TYPE") == "CURRENT"]
 
             # Combine CURRENT point + FORECAST points for the cone generator
             cone_input = current_pt + fcst_pts if fcst_pts else []
@@ -319,6 +317,8 @@ class StormUpdater(Updater):
                 sid=sid,
                 name=storm["name"],
                 cone_vertices=cone_vertices,
-                track_points=full_track
+                track_points=full_track,
             )
-            logger.debug(f"Upserted storm {sid} ({storm['name']}) into database with {len(full_track)} track points.")
+            logger.debug(
+                f"Upserted storm {sid} ({storm['name']}) into database with {len(full_track)} track points."
+            )

@@ -27,7 +27,6 @@ from worldmap.tasks.ozone import OzoneUpdater
 from worldmap.tasks.stormwatch import StormwatchUpdater
 from worldmap.tasks.storms import StormUpdater
 from worldmap.tasks.quakes import QuakeUpdater
-from worldmap.tasks.satellites import SatelliteUpdater
 from worldmap.tasks.volcanoes import VolcanoUpdater
 
 logger = logging.getLogger("worldmap.layer_builder")
@@ -68,7 +67,6 @@ class LayerBuilder:
             ("stormwatch", StormwatchUpdater),
             ("storms", StormUpdater),
             ("quakes", QuakeUpdater),
-            ("satellites", SatelliteUpdater),
             ("volcanoes", VolcanoUpdater),
         ]
 
@@ -110,12 +108,7 @@ class LayerBuilder:
         if self.starting_up or self.config.has_changed:
             return True
 
-        if updater.section == "satellites":
-            update_minutes = updater.settings.get("update_minutes", 10)
-            runs_per_day = int((24 * 60) / update_minutes)
-        else:
-            runs_per_day = int(updater.settings.get("runs_per_day", 0))
-
+        runs_per_day = int(updater.settings.get("runs_per_day", 0))
         if runs_per_day <= 0:
             return False
 
@@ -161,7 +154,10 @@ class LayerBuilder:
                                 self.last_run_times[section] = datetime.now()
 
                             except Exception as e:
-                                logger.error(f"Task '{section}' execution failed: {e}", exc_info=True)
+                                logger.error(
+                                    f"Task '{section}' execution failed: {e}",
+                                    exc_info=True,
+                                )
 
                     self.starting_up = False
                     logger.info("Layer-builder scheduler run finished")
