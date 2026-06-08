@@ -7,15 +7,15 @@ import requests
 import matplotlib.pyplot as plt
 import cartopy.crs as ccrs
 import cartopy.mpl.geoaxes as geoaxes
+import numpy as np
+from PIL import Image
 from typing import cast, Any
 from datetime import datetime, timezone, timedelta
-
 from pathlib import Path
 
 # Internal library import
 from worldmap.lib.config import WorldMapConfig
 from worldmap.lib.db import Database
-from PIL import Image
 
 logger = logging.getLogger(__name__)
 
@@ -118,6 +118,65 @@ def get_bbox_center(bbox):
         center_lon += 360
 
     return center_lon, center_lat
+
+
+def encode_data_texture(matrix_t0, matrix_t1, output_path, vmin, vmax):
+    """
+    Encodes two timesteps of scalar data (e.g., pressure) into the Red and Green
+    channels of a PNG image for WebGL shader interpolation.
+
+    Args:
+        matrix_t0: 2D numpy array of data at Hour 0.
+        matrix_t1: 2D numpy array of data at Hour 6 (or next step).
+        output_path: Destination filepath (e.g., 'data/isobars_data.png').
+        vmin: Minimum expected physical value (maps to pixel value 0).
+        vmax: Maximum expected physical value (maps to pixel value 255).
+    """
+    # 1. Ensure matrices are float arrays and dimensions match
+    matrix_t0 = np.asarray(matrix_t0, dtype=np.float32)
+    matrix_t1 = np.asarray(matrix_t1, dtype=np.float32)
+
+    if matrix_t0.shape != matrix_t1.shape:
+        raise ValueError(f"Matrix shape mismatch: {matrix_t0.shape} vs {matrix_t1.shape}")
+
+    height, width = matrix_t0.shape
+
+    # 2. Normalize data mathematically to a 0.0 - 1.0 range
+    # Example: If vmin=950 and vmax=1050, a pressure of 1000 becomes 0.5.
+    norm_t0 = (matrix_t0 - vmin) / (vmax - vmin)
+    norm_t1 = (matrix_t1 - vmin) / (vmax - vmin)
+
+    # 3. Clip out-of-bounds values to strictly stay within 0.0 and 1.0
+    # This prevents extreme weather anomalies from overflowing the 8-bit integer
+    norm_t0 = np.clip(norm_t0, 0.0, 1.0)
+    norm_t1 = np.clip(norm_t1, 0.0, 1.0)
+
+    # 4. Scale to 0 - 255 and convert to 8-bit unsigned integers (pixels)
+    r_channel = (norm_t0 * 255.0).astype(np.uint8)
+    g_channel = (norm_t1 * 255.0).astype(np.uint8)
+
+    # 5. Create Blue and Alpha channels
+    # Blue is unused for now (set to 0)
+    b_channel = np.zeros((height, width), dtype=np.uint8)
+    # Alpha defaults to 255 (fully visible)
+    a_channel = np.full((height, width), 255, dtype=np.uint8)
+
+    # 6. Handle Missing Data (NaNs)
+    # If the interpolator produced NaNs (e.g., off the edge of the map),
+    # we set the Alpha channel to 0 so the WebGL shader knows to ignore it.
+    nan_mask = np.isnan(matrix_t0) | np.isnan(matrix_t1)
+    a_channel[nan_mask] = 0
+
+    # 7. Stack channels into a single (Height, Width, 4) RGBA array
+    rgba_array = np.dstack((r_channel, g_channel, b_channel, a_channel))
+
+    # 8. Generate and save the PNG losslessly
+    # We must use PNG because JPEG compression alters pixel colors,
+    # which would corrupt our physical data.
+    img = Image.fromarray(rgba_array, mode="RGBA")
+    img.save(output_path, format="PNG")
+
+    return True
 
 
 class MapRegion:

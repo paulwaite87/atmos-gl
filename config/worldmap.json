@@ -10,13 +10,13 @@
     "log_level": "DEBUG"
   },
   "terminator": {
-    "enabled": true,
+    "enabled": false,
     "shade_opacity": 0.8,
     "shade_color": "#070b18",
     "edge_softness": 35
   },
   "clouds": {
-    "enabled": true,
+    "enabled": false,
     "url": "https://gibs.earthdata.nasa.gov/wms/epsg4326/best/wms.cgi",
     "outfile": "data/cloud_map.png",
     "threshold": 168,
