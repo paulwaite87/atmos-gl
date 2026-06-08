@@ -54,6 +54,7 @@ uniform float u_time;              // 0..1 across the whole forecast span
 uniform float u_frames_n;          // number of frames (>= 2)
 uniform float u_vmin;
 uniform float u_span;
+uniform sampler2D u_cmap;          // optional 256x1 colour LUT (unused by some layers)
 const float PI = 3.141592653589793;
 ${body}
 void main() {
@@ -94,6 +95,10 @@ export function createAnimatedRasterLayer(map, opts) {
         frames = (cfg) => Math.max(2, parseInt(cfg.animation_frames, 10) || 2),
         // true = ping-pong (now->ahead->now, seamless); false = forward then reset.
         bounce = (cfg) => !!cfg.animation_bounce,
+        // optional colour LUT: (cfg) -> Uint8Array(256*4) | null  (sampled as u_cmap)
+        colormap = null,
+        // optional side-content hooks (e.g. legends), fired in both static & animated modes
+        onMount = () => {}, onRefresh = () => {}, onUnmount = () => {},
         refreshMs, syncMs,             // optional; undefined -> liveLayerSync defaults
         staticUrl = (cfg) => `${window.MAP_UI}/${cfg.outfile}`,
         dataUrl = (cfg) => `${window.MAP_UI}/${cfg.outfile.replace(/\.png$/, '_data.png')}`,
@@ -110,7 +115,8 @@ export function createAnimatedRasterLayer(map, opts) {
     let glCanvas = null, gl = null, program = null, quadBuf = null, aPos = -1;
     let outCanvas = null, out2d = null;
     let framesTex = null, texReady = false, rafId = null, startTime = 0;
-    let uTime = null, uFrames = null, uFramesN = null, customLocs = {};
+    let uTime = null, uFrames = null, uFramesN = null, uCmap = null, customLocs = {};
+    let cmapTex = null;
     let curW = 2048, curH = 1024, curResampling = 'linear', curN = 2, curBounce = false;
     let loopMs = loopSeconds * 1000;
 
@@ -161,6 +167,7 @@ export function createAnimatedRasterLayer(map, opts) {
         uTime = gl.getUniformLocation(program, 'u_time');
         uFrames = gl.getUniformLocation(program, 'u_frames');
         uFramesN = gl.getUniformLocation(program, 'u_frames_n');
+        uCmap = gl.getUniformLocation(program, 'u_cmap');
         gl.useProgram(program);
         gl.uniform1f(gl.getUniformLocation(program, 'u_vmin'), vmin);
         gl.uniform1f(gl.getUniformLocation(program, 'u_span'), vspan);
@@ -172,6 +179,17 @@ export function createAnimatedRasterLayer(map, opts) {
         gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
         gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
         gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+        // Colour LUT texture (256x1). Defaults to white so layers that don't use
+        // u_cmap (e.g. isobars) are unaffected; colourise() uploads the real ramp.
+        cmapTex = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, cmapTex);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE,
+            new Uint8Array([255, 255, 255, 255]));
 
         // 2D bridge canvas — this is what MapLibre actually samples.
         outCanvas = document.createElement('canvas');
@@ -198,6 +216,13 @@ export function createAnimatedRasterLayer(map, opts) {
             if (!(name in customLocs)) customLocs[name] = gl.getUniformLocation(program, name);
             setUniform(customLocs[name], val);
         }
+    };
+    const colourise = (cfg) => {
+        if (!gl || !cmapTex || !colormap) return;
+        const lut = colormap(cfg);                  // Uint8Array(256*4) | null
+        if (!lut) return;
+        gl.bindTexture(gl.TEXTURE_2D, cmapTex);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 256, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, lut);
     };
     const loadTexture = (cfg) => {
         const img = new Image();
@@ -227,6 +252,9 @@ export function createAnimatedRasterLayer(map, opts) {
         gl.activeTexture(gl.TEXTURE0);
         gl.bindTexture(gl.TEXTURE_2D_ARRAY, framesTex);
         gl.uniform1i(uFrames, 0);
+        gl.activeTexture(gl.TEXTURE1);
+        gl.bindTexture(gl.TEXTURE_2D, cmapTex);
+        gl.uniform1i(uCmap, 1);
         gl.uniform1f(uTime, t);
         gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     };
@@ -256,6 +284,7 @@ export function createAnimatedRasterLayer(map, opts) {
         if (!initGL()) { webglFailed = true; cleanupGL(); mountStatic(cfg); mode = 'static'; return; }
         texReady = false;
         applyCustomUniforms(cfg);
+        colourise(cfg);
         loadTexture(cfg);
         map.addSource(A_SRC, { type: 'canvas', canvas: outCanvas, animate: true, coordinates });
         map.addLayer({ id: A_LYR, type: 'raster', source: A_SRC,
@@ -275,19 +304,21 @@ export function createAnimatedRasterLayer(map, opts) {
         }
         curBounce = bounce(cfg);                        // live; loop() reads it each frame
         applyCustomUniforms(cfg);
+        colourise(cfg);
         loadTexture(cfg);
     };
     const cleanupGL = () => {
         if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
         if (gl) {
             if (framesTex) gl.deleteTexture(framesTex);
+            if (cmapTex) gl.deleteTexture(cmapTex);
             if (quadBuf) gl.deleteBuffer(quadBuf);
             if (program) gl.deleteProgram(program);
             gl.getExtension('WEBGL_lose_context')?.loseContext();
         }
         if (outCanvas && outCanvas.parentNode) outCanvas.parentNode.removeChild(outCanvas);
         gl = null; glCanvas = null; outCanvas = null; out2d = null;
-        program = null; quadBuf = null; framesTex = null; texReady = false; customLocs = {};
+        program = null; quadBuf = null; framesTex = null; cmapTex = null; texReady = false; customLocs = {};
     };
     const unmountAnimated = () => {
         if (map.getLayer(A_LYR)) map.removeLayer(A_LYR);
@@ -304,16 +335,22 @@ export function createAnimatedRasterLayer(map, opts) {
         mode = target;
         if (target === 'animated') mountAnimated(cfg); else mountStatic(cfg);
     };
-    const mount = (cfg) => { mode = wanted(cfg); if (mode === 'animated') mountAnimated(cfg); else mountStatic(cfg); };
+    const mount = (cfg) => {
+        mode = wanted(cfg);
+        if (mode === 'animated') mountAnimated(cfg); else mountStatic(cfg);
+        onMount(cfg);
+    };
     const refresh = (cfg) => {
         const want = wanted(cfg);
-        if (want !== mode) { switchTo(want, cfg); return; }
-        if (mode === 'animated') refreshAnimated(cfg); else refreshStatic(cfg);
+        if (want !== mode) switchTo(want, cfg);
+        else if (mode === 'animated') refreshAnimated(cfg); else refreshStatic(cfg);
+        onRefresh(cfg);
     };
     const unmount = () => {
         if (mode === 'static') unmountStatic();
         else if (mode === 'animated') unmountAnimated();
         mode = null;
+        onUnmount();
     };
 
     liveLayerSync(map, {

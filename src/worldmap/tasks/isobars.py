@@ -7,13 +7,12 @@ import xarray as xr
 import matplotlib.pyplot as plt
 import cartopy.crs as ccrs
 import scipy.ndimage as ndimage
-from PIL import Image
 
 from matplotlib import patheffects
 
 # Internal imports
 from worldmap.lib.config import WorldMapConfig
-from .common import Updater, MapData, Plot
+from .common import Updater, MapData, Plot, encode_frames
 
 # Silence warnings from GRIB backend
 warnings.filterwarnings("ignore", message=".*missingValue.*")
@@ -24,30 +23,6 @@ logger = logging.getLogger(__name__)
 
 
 # --- WEBGL DATA ENCODER (multi-frame) ---
-def encode_frames(frames, output_path, vmin, vmax):
-    """
-    Stack N scalar fields vertically into a single RGBA PNG, for upload as a
-    WebGL2 2D-array texture (one array layer per frame, frame 0 on top).
-    Per frame: R = normalised value (0..1 -> 0..255), G=B=0, A = 255 (0 where NaN).
-    """
-    span = float(vmax - vmin)
-    slabs = []
-    shape0 = None
-    for m in frames:
-        m = np.asarray(m, dtype=np.float32)
-        if shape0 is None:
-            shape0 = m.shape
-        elif m.shape != shape0:
-            raise ValueError(f"Frame shape mismatch: {m.shape} vs {shape0}")
-        norm = np.clip((m - vmin) / span, 0.0, 1.0)
-        r = (norm * 255.0).astype(np.uint8)
-        z = np.zeros_like(r)
-        a = np.where(np.isnan(m), 0, 255).astype(np.uint8)
-        slabs.append(np.dstack((r, z, z, a)))
-    filmstrip = np.vstack(slabs)                       # (N*H, W, 4)
-    Image.fromarray(filmstrip, mode="RGBA").save(output_path, format="PNG")
-    logger.debug(f"Saved {len(frames)}-frame data texture to {output_path} {filmstrip.shape}")
-    return True
 
 
 class IsobarUpdater(Updater):
