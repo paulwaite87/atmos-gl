@@ -916,7 +916,7 @@
             });
 
             // Translate the single user-facing "hours ahead" into the hidden frame/step pair.
-            ['isobars'].forEach(section => {          // add 'precipitation' etc. here later
+            ['isobars','precipitation'].forEach(section => {          // add 'precipitation' etc. here later
                 const p = payload[section];
                 if (p && p.animation_forecast_hours != null) {
                     const T = Math.max(1, parseInt(p.animation_forecast_hours, 10) || 6);

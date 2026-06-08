@@ -11,7 +11,7 @@ from scipy.ndimage import gaussian_filter
 
 # Internal imports
 from worldmap.lib.config import WorldMapConfig
-from .common import Updater, MapData, Plot
+from .common import Updater, MapData, Plot, encode_frames
 
 # Silence warnings
 warnings.filterwarnings("ignore", message=".*missingValue.*")
@@ -25,6 +25,11 @@ class PrecipitationUpdater(Updater):
         super().__init__(config, "Precipitation", map_data)
         self.level_of_detail = self.settings.get("level_of_detail", 1)
         self.lod_desc = None
+
+        # Top of the precip scale (mm/hr). Must match the frontend shader's VMAX.
+        # The data texture is sqrt-encoded against this, so most of the 8-bit range
+        # is spent on the low rates where precip actually lives (see encode_frames).
+        self.VMAX_PRECIP = 100.0
 
         self.PALETTES = {
             "standard": [
@@ -93,10 +98,28 @@ class PrecipitationUpdater(Updater):
         plt.close(fig)
         logger.debug(f"Saved precipitation key to: {key_path}")
 
+    def _load_prate_global(self, path):
+        """Global instantaneous precip rate in mm/hr.
+
+        Longitudes standardized to -180..180 ascending; latitude left in the GFS
+        native (descending) order so row 0 is the northern edge -- the row order
+        the WebGL data texture and shader expect (matches isobars)."""
+        ds = xr.open_dataset(path, engine="cfgrib")
+        ds = ds.assign_coords(longitude=(((ds.longitude + 180) % 360) - 180))
+        ds = ds.sortby("longitude")
+        prate = ds["prate"].values.squeeze() * 3600.0
+        ds.close()
+        del ds
+        return prate
+
     def plot(self):
-        """Renders precipitation with early clipping to prevent memory exhaustion."""
+        """Static region render (frame 0) + colourbar key + global N-frame texture."""
         from scipy.interpolate import RegularGridInterpolator
         import gc  # Garbage collector
+
+        if not os.path.exists(self.frame_paths[0]):
+            logger.warning("Skipping Precipitation: current-hour frame not available yet.")
+            return
 
         logger.debug(
             f"Plotting precipitation for {self.map_data.region.region_identifier}"
@@ -201,21 +224,74 @@ class PrecipitationUpdater(Updater):
         if callable(plt_close):
             plt_close()
 
-        logger.debug("Finished Precipitation plot. Memory cleared.")
+        # --- WebGL multi-frame data texture (global, sqrt-encoded) ---
+        # Global PRATE per forecast frame; the frontend interpolates between frames
+        # on the GPU and colourises via the palette LUT. Resilient like isobars:
+        # NOMADS often lags the .idx sidecar for the freshest hours, so any frame
+        # that isn't ready holds the last good frame -- always emitting exactly N
+        # frames (keeping the frontend's array slicing valid).
+        try:
+            p0 = self._load_prate_global(self.frame_paths[0])
+        except Exception as e:
+            logger.warning(f"Precipitation: could not load current frame for texture ({e}).")
+            return
+        frames = [p0]
+        last_good = p0
+        live = 1
+        for path in self.frame_paths[1:]:
+            pk = last_good
+            if os.path.exists(path):
+                try:
+                    pk = self._load_prate_global(path)
+                    last_good = pk
+                    live += 1
+                except Exception as e:
+                    logger.warning(f"Precipitation frame unreadable ({path}: {e}); holding previous.")
+            frames.append(pk)
+
+        base, _ = os.path.splitext(self.output_path)
+        encode_frames(frames, f"{base}_data.png", 0.0, self.VMAX_PRECIP, transform="sqrt")
+        held = len(frames) - live
+        logger.info(
+            f"Finished Precipitation plot ({self.lod_desc} resolution); "
+            f"data texture: {len(frames)} frames ({live} live, {held} held)."
+        )
 
     def run(self):
         self.exit_if_disabled()
         # Get the GFS state for this updater
         self.get_gfs_state()
-        self.grib_path = os.path.join(
-            self.workdir, f"data/gfs_precip_{self.forecast_hour_str}.grib2"
-        )
 
-        url = f"{self.base_url}/gfs.{self.gfs_date_str}/{self.gfs_run}/atmos/gfs.t{self.gfs_run}z.pgrb2.0p25.f{self.forecast_hour_str}"
-        if self.remote_data_update(
-            remote_url=url,
-            cache_file_path=self.grib_path,
-            grib_targets=[":PRATE:surface:"],
-        ):
+        # Animation span: n_frames forecast steps spaced step hours apart, from "now".
+        step = int(self.settings.get("animation_step_hours", 6))
+        n_frames = max(2, int(self.settings.get("animation_frames", 2)))
+        f_hour_0 = int(self.forecast_hour_str)
+
+        self.frame_hours = [f_hour_0 + k * step for k in range(n_frames)]
+        self.frame_paths = [
+            os.path.join(self.workdir, f"data/gfs_precip_{h:03d}.grib2")
+            for h in self.frame_hours
+        ]
+        # Frame 0 (current hour) drives the static region render + colourbar key.
+        self.grib_path = self.frame_paths[0]
+
+        urls = [
+            f"{self.base_url}/gfs.{self.gfs_date_str}/{self.gfs_run}/atmos/"
+            f"gfs.t{self.gfs_run}z.pgrb2.0p25.f{h:03d}"
+            for h in self.frame_hours
+        ]
+
+        needs_plot = False
+        for url, path in zip(urls, self.frame_paths):
+            if self.remote_data_update(
+                remote_url=url,
+                cache_file_path=path,
+                grib_targets=[":PRATE:surface:"],
+            ):
+                needs_plot = True
+
+        if needs_plot:
+            logger.info(
+                f"Generating Precipitation plot and {n_frames}-frame data texture..."
+            )
             self.plot()
-            logger.info(f"Generated precipitation plot ({self.lod_desc} resolution)...")
