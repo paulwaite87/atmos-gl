@@ -148,7 +148,7 @@
         let dynamicVesselClasses = {}
 
         const TAB_GROUPS = {
-            "global": ["common", "map_builder"],
+            "global": ["common", "map_builder", "animation"],
             "atmospheric": ["clouds", "isobars", "wind", "precipitation", "lightning", "storms"],
             "climate": ["sst", "currents", "waves", "temperature", "ozone", "stormwatch"],
             "events": ["quakes", "volcanoes"],
@@ -290,7 +290,7 @@
 
                     for (const [option, value] of Object.entries(sectionData)) {
                         if (option === 'enabled' || option.startsWith('RULE__')
-                            || option === 'animation_frames' || option === 'animation_step_hours') continue;
+                            || (section === 'animation' && (option === 'frames' || option === 'step_hours'))) continue;
 
                         const col = document.createElement('div');
                         col.className = 'col-md-6';
@@ -300,10 +300,11 @@
                         if (option === "outfile") customLabelText = "Output file";
                         else if (section === "quakes" && option === "min_mag") customLabelText = "Minimum magnitude";
                         else if (section === "shipping" && option === "track_min_dist") customLabelText = "Track minimum distance";
-                        else if (section === "isobars" && option === "animated") customLabelText = "Animated forecast";
-                        else if (section === "isobars" && option === "animation_sharp") customLabelText = "Sharp lines (no smoothing)";
-                        else if (option === 'animation_forecast_hours') customLabelText = "Forecast hours ahead";
-                        else if (section === "isobars" && option === "animation_bounce") customLabelText = "Ping-pong loop (off = forward)";
+                        else if (option === "animated") customLabelText = "Animated forecast";
+                        else if (section === "animation" && option === "seconds") customLabelText = "Loop seconds";
+                        else if (section === "animation" && option === "sharp") customLabelText = "Sharp (no smoothing)";
+                        else if (section === "animation" && option === "forecast_hours") customLabelText = "Forecast hours ahead";
+                        else if (section === "animation" && option === "bounce") customLabelText = "Ping-pong loop (off = forward)";
                         else {
                             const spaced = option.replace(/_/g, ' ');
                             customLabelText = spaced.charAt(0).toUpperCase() + spaced.slice(1);
@@ -377,7 +378,7 @@
                                 <input type="range" class="form-range dynamic-input" id="${domId}" min="0" max="96" step="1" value="${initialFcstHour}"
                                        oninput="document.getElementById('badge-${domId}').innerText = parseInt(this.value) + 'h'">
                             `;
-                        } else if (option === 'animation_seconds') {
+                        } else if (section === 'animation' && option === 'seconds') {
                             const initialAnimSecs = parseInt(value) || 8;
                             col.innerHTML = `
                                 <div class="d-flex justify-content-between align-items-center mb-1">
@@ -387,7 +388,7 @@
                                 <input type="range" class="form-range dynamic-input" id="${domId}" min="2" max="30" step="1" value="${initialAnimSecs}"
                                        oninput="document.getElementById('badge-${domId}').innerText = parseInt(this.value) + ' sec'">
                             `;
-                        } else if (option === 'animation_forecast_hours') {
+                        } else if (section === 'animation' && option === 'forecast_hours') {
                             const initialFc = parseInt(value) || 24;
                             col.innerHTML = `
                                 <div class="d-flex justify-content-between align-items-center mb-1">
@@ -915,18 +916,17 @@
                 }
             });
 
-            // Translate the single user-facing "hours ahead" into the hidden frame/step pair.
-            ['isobars','precipitation'].forEach(section => {          // add 'precipitation' etc. here later
-                const p = payload[section];
-                if (p && p.animation_forecast_hours != null) {
-                    const T = Math.max(1, parseInt(p.animation_forecast_hours, 10) || 6);
-                    const MAX = 8;
-                    let step = Math.ceil(T / (MAX - 1));
-                    for (const c of [1, 2, 3, 6, 12, 24]) { if (c >= step) { step = c; break; } }
-                    p.animation_frames = Math.max(2, Math.min(MAX, Math.floor(T / step) + 1));
-                    p.animation_step_hours = step;
-                }
-            });
+            // Translate the single user-facing "hours ahead" into the hidden frame/step
+            // pair. Now layer-agnostic: one shared [animation] section drives every layer.
+            const anim = payload.animation;
+            if (anim && anim.forecast_hours != null) {
+                const T = Math.max(1, parseInt(anim.forecast_hours, 10) || 6);
+                const MAX = 8;
+                let step = Math.ceil(T / (MAX - 1));
+                for (const c of [1, 2, 3, 6, 12, 24]) { if (c >= step) { step = c; break; } }
+                anim.frames = Math.max(2, Math.min(MAX, Math.floor(T / step) + 1));
+                anim.step_hours = step;
+            }
 
             try {
                 const response = await fetch(CONFIG_API_URL, {

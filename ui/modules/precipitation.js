@@ -52,7 +52,7 @@ function buildLUT(paletteName) {
     return lut;
 }
 
-export function loadLayer(map, config) {
+export function loadLayer(map, config, fullConfig = {}) {
     const slotId = 'precipitation-legend-slot';
 
     const keyUrlFor = (cfg) => {
@@ -77,10 +77,11 @@ export function loadLayer(map, config) {
     createAnimatedRasterLayer(map, {
         sectionKey: 'precipitation',
         initialConfig: config,
+        initialAnimation: fullConfig.animation || {},
         vmin: 0.0,
         vspan: 1.0,                            // value = stored sqrt-position in [0,1]
         opacity: 1.0,                          // per-pixel alpha comes from u_alpha
-        // resolution from cfg.level_of_detail; sharpness from cfg.animation_sharp
+        // resolution from cfg.level_of_detail; timing/sharpness from the global [animation] section
         fragmentBody: `
             uniform float u_min;               // mm/hr threshold (below -> transparent)
             uniform float u_alpha;             // layer opacity

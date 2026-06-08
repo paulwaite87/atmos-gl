@@ -346,6 +346,7 @@ class Updater:
         self.section = section.lower()
         self.settings = config.get_section(self.section)
         self.common = config.get_section("common")
+        self.animation = config.get_section("animation")
         self.workdir = self.common.get("workdir", ".")
         self.outfile = self.settings.get("outfile", "")
         self.output_path = None

@@ -1,13 +1,14 @@
 import { createAnimatedRasterLayer, cssToRgb } from './_webglanim.js';
 
-export function loadLayer(map, config) {
+export function loadLayer(map, config, fullConfig = {}) {
     createAnimatedRasterLayer(map, {
         sectionKey: 'isobars',
         initialConfig: config,
+        initialAnimation: fullConfig.animation || {},
         vmin: 950.0,
         vspan: 100.0,                          // 1050 - 950, matches backend encode
         opacity: 0.85,
-        // resolution comes from cfg.level_of_detail; sharpness from cfg.animation_sharp
+        // resolution from cfg.level_of_detail; timing/sharpness from the global [animation] section
         fragmentBody: `
             uniform float u_interval;          // hPa between isobars
             uniform float u_linewidth;         // line width in canvas px

@@ -9,7 +9,7 @@ export function liveDataSync(map, {
     sectionKey, initialConfig, mount, refresh, unmount,
     syncMs = 20000, refreshMs = 60000,
 }) {
-    let mounted = false, busy = false, lastRefresh = 0;
+    let mounted = false, busy = false, lastRefresh = 0, lastSig = '';
 
     const fetchSection = async () => {
         try {
@@ -36,13 +36,18 @@ export function liveDataSync(map, {
                     unmount();                         // yes — back it out immediately
                     return;
                 }
-                mounted = true; lastRefresh = Date.now();
+                mounted = true; lastRefresh = Date.now(); lastSig = JSON.stringify(section);
                 console.log(`[${sectionKey}] enabled — layer mounted.`);
             } else if (!enabled && mounted) {
                 unmount(); mounted = false;
                 console.log(`[${sectionKey}] disabled — layer removed.`);
-            } else if (enabled && mounted && Date.now() - lastRefresh >= refreshMs) {
-                await refresh(section); lastRefresh = Date.now();
+            } else if (enabled && mounted) {
+                const sig = JSON.stringify(section);
+                if (sig !== lastSig) {                     // settings changed -> apply now
+                    await refresh(section); lastSig = sig; lastRefresh = Date.now();
+                } else if (Date.now() - lastRefresh >= refreshMs) {
+                    await refresh(section); lastRefresh = Date.now();   // slow cadence (fresh data)
+                }
             }
         } finally {
             busy = false;
@@ -52,7 +57,7 @@ export function liveDataSync(map, {
     if (initialConfig && initialConfig.enabled) {      // fast first paint from snapshot
         busy = true;
         Promise.resolve(mount(initialConfig))
-            .then(() => { mounted = true; lastRefresh = Date.now(); })
+            .then(() => { mounted = true; lastRefresh = Date.now(); lastSig = JSON.stringify(initialConfig); })
             .catch(err => console.error(`[${sectionKey}] initial mount failed`, err))
             .finally(() => { busy = false; });
     }

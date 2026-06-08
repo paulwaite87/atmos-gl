@@ -81,8 +81,12 @@ export function createAnimatedRasterLayer(map, opts) {
         fragmentBody,
         customUniforms = () => ({}),
         opacity = 0.85,
-        loopSeconds = 8,
-        // Offscreen canvas size, driven by the shared Low/Medium/High `level_of_detail`
+        // Initial snapshot of the global [animation] section (from page-load config),
+        // so the first mount slices the texture with the correct frame count.
+        initialAnimation = {},
+        // Loop length in seconds (from [animation].seconds). Shared across layers.
+        loopSeconds = (anim) => (Number(anim.seconds) > 0 ? Number(anim.seconds) : 8),
+        // Offscreen canvas size, driven by the per-layer Low/Medium/High `level_of_detail`
         // selector (1->2048, 2->4096, 3->8192). Override per-layer if needed.
         resolution = (cfg) => {
             const lod = parseInt(cfg.level_of_detail, 10);
@@ -90,11 +94,11 @@ export function createAnimatedRasterLayer(map, opts) {
             return { w, h: Math.round(w / 2) };
         },
         // 'nearest' = crisp but can shimmer while moving; 'linear' = smooth (default).
-        resampling = (cfg) => (cfg.animation_sharp ? 'nearest' : 'linear'),
+        resampling = (anim) => (anim.sharp ? 'nearest' : 'linear'),
         // number of forecast frames packed into the data texture (>= 2)
-        frames = (cfg) => Math.max(2, parseInt(cfg.animation_frames, 10) || 2),
+        frames = (anim) => Math.max(2, parseInt(anim.frames, 10) || 2),
         // true = ping-pong (now->ahead->now, seamless); false = forward then reset.
-        bounce = (cfg) => !!cfg.animation_bounce,
+        bounce = (anim) => !!anim.bounce,
         // optional colour LUT: (cfg) -> Uint8Array(256*4) | null  (sampled as u_cmap)
         colormap = null,
         // optional side-content hooks (e.g. legends), fired in both static & animated modes
@@ -118,7 +122,8 @@ export function createAnimatedRasterLayer(map, opts) {
     let uTime = null, uFrames = null, uFramesN = null, uCmap = null, customLocs = {};
     let cmapTex = null;
     let curW = 2048, curH = 1024, curResampling = 'linear', curN = 2, curBounce = false;
-    let loopMs = loopSeconds * 1000;
+    let curAnim = initialAnimation || {};   // latest global [animation] section
+    let loopMs = 8000;
 
     // ---------- static ----------
     const mountStatic = (cfg) => {
@@ -276,11 +281,11 @@ export function createAnimatedRasterLayer(map, opts) {
     };
     const mountAnimated = (cfg) => {
         if (map.getSource(A_SRC)) return;
-        loopMs = (Number(cfg.animation_seconds) > 0 ? Number(cfg.animation_seconds) : loopSeconds) * 1000;
+        loopMs = loopSeconds(curAnim) * 1000;
         const res = resolution(cfg); curW = res.w; curH = res.h;
-        curResampling = resampling(cfg);
-        curN = frames(cfg);
-        curBounce = bounce(cfg);
+        curResampling = resampling(curAnim);
+        curN = frames(curAnim);
+        curBounce = bounce(curAnim);
         if (!initGL()) { webglFailed = true; cleanupGL(); mountStatic(cfg); mode = 'static'; return; }
         texReady = false;
         applyCustomUniforms(cfg);
@@ -294,15 +299,16 @@ export function createAnimatedRasterLayer(map, opts) {
     };
     const refreshAnimated = (cfg) => {
         const res = resolution(cfg);
-        if (res.w !== curW || res.h !== curH || frames(cfg) !== curN) {   // rebuild GL
+        if (res.w !== curW || res.h !== curH || frames(curAnim) !== curN) {   // rebuild GL
             unmountAnimated(); mountAnimated(cfg); return;
         }
-        const rs = resampling(cfg);
+        loopMs = loopSeconds(curAnim) * 1000;           // live loop-length change
+        const rs = resampling(curAnim);
         if (rs !== curResampling) {                     // cheap paint-only change
             curResampling = rs;
             if (map.getLayer(A_LYR)) map.setPaintProperty(A_LYR, 'raster-resampling', rs);
         }
-        curBounce = bounce(cfg);                        // live; loop() reads it each frame
+        curBounce = bounce(curAnim);                    // live; loop() reads it each frame
         applyCustomUniforms(cfg);
         colourise(cfg);
         loadTexture(cfg);
@@ -335,12 +341,14 @@ export function createAnimatedRasterLayer(map, opts) {
         mode = target;
         if (target === 'animated') mountAnimated(cfg); else mountStatic(cfg);
     };
-    const mount = (cfg) => {
+    const mount = (cfg, globals) => {
+        curAnim = (globals && globals.animation) || {};
         mode = wanted(cfg);
         if (mode === 'animated') mountAnimated(cfg); else mountStatic(cfg);
         onMount(cfg);
     };
-    const refresh = (cfg) => {
+    const refresh = (cfg, globals) => {
+        curAnim = (globals && globals.animation) || {};
         const want = wanted(cfg);
         if (want !== mode) switchTo(want, cfg);
         else if (mode === 'animated') refreshAnimated(cfg); else refreshStatic(cfg);
@@ -354,7 +362,10 @@ export function createAnimatedRasterLayer(map, opts) {
     };
 
     liveLayerSync(map, {
-        sectionKey, initialConfig, mount, refresh, unmount,
+        sectionKey, initialConfig,
+        initialGlobals: { animation: initialAnimation },
+        globalKeys: ['animation'],          // watch [animation] for live timing changes
+        mount, refresh, unmount,
         imageUrl: (cfg) => (isAnimated(cfg) && !webglFailed) ? dataUrl(cfg) : staticUrl(cfg),
         refreshMs, syncMs,
     });

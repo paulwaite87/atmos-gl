@@ -116,8 +116,8 @@ class IsobarUpdater(Updater):
         self.get_gfs_state()
 
         # Animation span: n_frames forecast steps spaced step hours apart, from "now".
-        step = int(self.settings.get("animation_step_hours", 6))
-        n_frames = max(2, int(self.settings.get("animation_frames", 2)))
+        step = int(self.animation.get("step_hours", 6))
+        n_frames = max(2, int(self.animation.get("frames", 2)))
         f_hour_0 = int(self.forecast_hour_str)
 
         self.frame_hours = [f_hour_0 + k * step for k in range(n_frames)]

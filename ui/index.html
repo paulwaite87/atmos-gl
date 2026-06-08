@@ -162,7 +162,7 @@
                     for (const moduleName of ALL_LAYERS) {
                         try {
                             const module = await import(`/modules/${moduleName}.js?t=${Date.now()}`);
-                            module.loadLayer(map, configData[moduleName] || {});
+                            module.loadLayer(map, configData[moduleName] || {}, configData);
                         } catch (err) {
                             console.warn(`Could not load layer /modules/${moduleName}.js`, err);
                         }
