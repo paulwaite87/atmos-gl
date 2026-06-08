@@ -289,7 +289,8 @@
                     row.className = 'row g-3';
 
                     for (const [option, value] of Object.entries(sectionData)) {
-                        if (option === 'enabled' || option.startsWith('RULE__')) continue;
+                        if (option === 'enabled' || option.startsWith('RULE__')
+                            || option === 'animation_frames' || option === 'animation_step_hours') continue;
 
                         const col = document.createElement('div');
                         col.className = 'col-md-6';
@@ -299,6 +300,10 @@
                         if (option === "outfile") customLabelText = "Output file";
                         else if (section === "quakes" && option === "min_mag") customLabelText = "Minimum magnitude";
                         else if (section === "shipping" && option === "track_min_dist") customLabelText = "Track minimum distance";
+                        else if (section === "isobars" && option === "animated") customLabelText = "Animated forecast";
+                        else if (section === "isobars" && option === "animation_sharp") customLabelText = "Sharp lines (no smoothing)";
+                        else if (option === 'animation_forecast_hours') customLabelText = "Forecast hours ahead";
+                        else if (section === "isobars" && option === "animation_bounce") customLabelText = "Ping-pong loop (off = forward)";
                         else {
                             const spaced = option.replace(/_/g, ' ');
                             customLabelText = spaced.charAt(0).toUpperCase() + spaced.slice(1);
@@ -371,6 +376,26 @@
                                 </div>
                                 <input type="range" class="form-range dynamic-input" id="${domId}" min="0" max="96" step="1" value="${initialFcstHour}"
                                        oninput="document.getElementById('badge-${domId}').innerText = parseInt(this.value) + 'h'">
+                            `;
+                        } else if (option === 'animation_seconds') {
+                            const initialAnimSecs = parseInt(value) || 8;
+                            col.innerHTML = `
+                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                    <label class="form-label small text-white-50 fw-bold mb-0">Animation Duration (Secs)</label>
+                                    <span class="badge bg-primary text-light fw-bold" id="badge-${domId}">${initialAnimSecs} sec</span>
+                                </div>
+                                <input type="range" class="form-range dynamic-input" id="${domId}" min="2" max="30" step="1" value="${initialAnimSecs}"
+                                       oninput="document.getElementById('badge-${domId}').innerText = parseInt(this.value) + ' sec'">
+                            `;
+                        } else if (option === 'animation_forecast_hours') {
+                            const initialFc = parseInt(value) || 24;
+                            col.innerHTML = `
+                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                    <label class="form-label small text-white-50 fw-bold mb-0">${customLabelText}</label>
+                                    <span class="badge bg-success text-dark fw-bold" id="badge-${domId}">${initialFc}h ahead</span>
+                                </div>
+                                <input type="range" class="form-range dynamic-input" id="${domId}" min="6" max="48" step="6" value="${initialFc}"
+                                       oninput="document.getElementById('badge-${domId}').innerText = this.value + 'h ahead'">
                             `;
                         } else if (option.includes('_hours')) {
                             const initialHours = parseInt(value) || 3;
@@ -887,6 +912,19 @@
                     } else {
                         payload[section][option] = input.value.trim();
                     }
+                }
+            });
+
+            // Translate the single user-facing "hours ahead" into the hidden frame/step pair.
+            ['isobars'].forEach(section => {          // add 'precipitation' etc. here later
+                const p = payload[section];
+                if (p && p.animation_forecast_hours != null) {
+                    const T = Math.max(1, parseInt(p.animation_forecast_hours, 10) || 6);
+                    const MAX = 8;
+                    let step = Math.ceil(T / (MAX - 1));
+                    for (const c of [1, 2, 3, 6, 12, 24]) { if (c >= step) { step = c; break; } }
+                    p.animation_frames = Math.max(2, Math.min(MAX, Math.floor(T / step) + 1));
+                    p.animation_step_hours = step;
                 }
             });
 
