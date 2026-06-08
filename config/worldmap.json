@@ -37,7 +37,7 @@
     "enabled": true,
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
     "outfile": "data/isobars.png",
-    "animated": true,
+    "animated": false,
     "level_of_detail": "2",
     "isobar_color": "White",
     "linewidth": 1,

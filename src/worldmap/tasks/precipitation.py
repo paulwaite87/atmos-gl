@@ -110,6 +110,11 @@ class PrecipitationUpdater(Updater):
         prate = ds["prate"].values.squeeze() * 3600.0
         ds.close()
         del ds
+        # Smooth the native 0.25 deg field before it becomes a data-texture frame.
+        # Raw PRATE is very speckly; as a magnitude-keyed colour fill (unlike isobars'
+        # contour lines) that speckle crosses the min_mm_hr threshold differently each
+        # interpolated frame and shimmers globally. isobars smooths PRMSL the same way.
+        prate = gaussian_filter(prate, sigma=1.0)
         return prate
 
     def plot(self):
