@@ -5,6 +5,7 @@ export function loadLayer(map, config, fullConfig = {}) {
         sectionKey: 'isobars',
         initialConfig: config,
         initialAnimation: fullConfig.animation || {},
+        initialCommon: fullConfig.common || {},
         vmin: 950.0,
         vspan: 100.0,                          // 1050 - 950, matches backend encode
         opacity: 0.85,

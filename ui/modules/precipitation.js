@@ -78,6 +78,7 @@ export function loadLayer(map, config, fullConfig = {}) {
         sectionKey: 'precipitation',
         initialConfig: config,
         initialAnimation: fullConfig.animation || {},
+        initialCommon: fullConfig.common || {},
         vmin: 0.0,
         vspan: 1.0,                            // value = stored sqrt-position in [0,1]
         opacity: 1.0,                          // per-pixel alpha comes from u_alpha

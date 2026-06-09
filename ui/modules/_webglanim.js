@@ -1,4 +1,5 @@
 import { liveLayerSync } from './_refresh.js';
+import { forecastHud } from './forecast_progress.js';
 
 /**
  * Shared machinery for GPU-animated raster overlays.
@@ -84,6 +85,8 @@ export function createAnimatedRasterLayer(map, opts) {
         // Initial snapshot of the global [animation] section (from page-load config),
         // so the first mount slices the texture with the correct frame count.
         initialAnimation = {},
+        // Initial [common] snapshot — supplies forecast_hour for the progress HUD start.
+        initialCommon = {},
         // Loop length in seconds (from [animation].seconds). Shared across layers.
         loopSeconds = (anim) => (Number(anim.seconds) > 0 ? Number(anim.seconds) : 8),
         // Offscreen canvas size, driven by the per-layer Low/Medium/High `level_of_detail`
@@ -118,11 +121,12 @@ export function createAnimatedRasterLayer(map, opts) {
     let webglFailed = false;
     let glCanvas = null, gl = null, program = null, quadBuf = null, aPos = -1;
     let outCanvas = null, out2d = null;
-    let framesTex = null, texReady = false, rafId = null, startTime = 0;
+    let framesTex = null, texReady = false, rafId = null;
     let uTime = null, uFrames = null, uFramesN = null, uCmap = null, customLocs = {};
     let cmapTex = null;
     let curW = 2048, curH = 1024, curResampling = 'linear', curN = 2, curBounce = false;
     let curAnim = initialAnimation || {};   // latest global [animation] section
+    let curCommon = initialCommon || {};    // latest global [common] section
     let loopMs = 8000;
 
     // ---------- static ----------
@@ -264,13 +268,13 @@ export function createAnimatedRasterLayer(map, opts) {
         gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     };
     const loop = () => {
-        const elapsed = performance.now() - startTime;
+        const now = performance.now();                    // shared clock -> all layers in phase
         let t;
         if (curBounce) {
-            const phase = (elapsed % (2 * loopMs)) / loopMs;  // 0..2
+            const phase = (now % (2 * loopMs)) / loopMs;  // 0..2
             t = phase <= 1 ? phase : 2 - phase;               // ping-pong, seamless
         } else {
-            t = (elapsed % loopMs) / loopMs;                  // forward, then reset
+            t = (now % loopMs) / loopMs;                  // forward, then reset
         }
         if (texReady) {
             drawOffscreen(t);
@@ -279,6 +283,14 @@ export function createAnimatedRasterLayer(map, opts) {
         }
         rafId = requestAnimationFrame(loop);
     };
+    // Progress-HUD descriptor for this layer (shared timeline; identical across layers).
+    const hudParams = () => ({
+        loopMs,
+        bounce: curBounce,
+        startHour: Math.max(1, Number(curCommon.forecast_hour) || 1),
+        stepHours: Math.max(1, parseInt(curAnim.step_hours, 10) || 6),
+        frames: curN,
+    });
     const mountAnimated = (cfg) => {
         if (map.getSource(A_SRC)) return;
         loopMs = loopSeconds(curAnim) * 1000;
@@ -294,7 +306,7 @@ export function createAnimatedRasterLayer(map, opts) {
         map.addSource(A_SRC, { type: 'canvas', canvas: outCanvas, animate: true, coordinates });
         map.addLayer({ id: A_LYR, type: 'raster', source: A_SRC,
             paint: { 'raster-opacity': opacity, 'raster-fade-duration': 0, 'raster-resampling': curResampling } });
-        startTime = performance.now();
+        forecastHud.set(sectionKey, hudParams());
         rafId = requestAnimationFrame(loop);
     };
     const refreshAnimated = (cfg) => {
@@ -309,6 +321,7 @@ export function createAnimatedRasterLayer(map, opts) {
             if (map.getLayer(A_LYR)) map.setPaintProperty(A_LYR, 'raster-resampling', rs);
         }
         curBounce = bounce(curAnim);                    // live; loop() reads it each frame
+        forecastHud.set(sectionKey, hudParams());       // live: hours/loop length/bounce
         applyCustomUniforms(cfg);
         colourise(cfg);
         loadTexture(cfg);
@@ -327,6 +340,7 @@ export function createAnimatedRasterLayer(map, opts) {
         program = null; quadBuf = null; framesTex = null; cmapTex = null; texReady = false; customLocs = {};
     };
     const unmountAnimated = () => {
+        forecastHud.clear(sectionKey);
         if (map.getLayer(A_LYR)) map.removeLayer(A_LYR);
         if (map.getSource(A_SRC)) map.removeSource(A_SRC);
         cleanupGL();
@@ -343,12 +357,14 @@ export function createAnimatedRasterLayer(map, opts) {
     };
     const mount = (cfg, globals) => {
         curAnim = (globals && globals.animation) || {};
+        curCommon = (globals && globals.common) || {};
         mode = wanted(cfg);
         if (mode === 'animated') mountAnimated(cfg); else mountStatic(cfg);
         onMount(cfg);
     };
     const refresh = (cfg, globals) => {
         curAnim = (globals && globals.animation) || {};
+        curCommon = (globals && globals.common) || {};
         const want = wanted(cfg);
         if (want !== mode) switchTo(want, cfg);
         else if (mode === 'animated') refreshAnimated(cfg); else refreshStatic(cfg);
@@ -363,8 +379,8 @@ export function createAnimatedRasterLayer(map, opts) {
 
     liveLayerSync(map, {
         sectionKey, initialConfig,
-        initialGlobals: { animation: initialAnimation },
-        globalKeys: ['animation'],          // watch [animation] for live timing changes
+        initialGlobals: { animation: initialAnimation, common: initialCommon },
+        globalKeys: ['animation', 'common'],   // watch shared timing + forecast_hour
         mount, refresh, unmount,
         imageUrl: (cfg) => (isAnimated(cfg) && !webglFailed) ? dataUrl(cfg) : staticUrl(cfg),
         refreshMs, syncMs,

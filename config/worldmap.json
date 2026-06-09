@@ -37,7 +37,7 @@
     "enabled": true,
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
     "outfile": "data/isobars.png",
-    "animated": false,
+    "animated": true,
     "level_of_detail": "2",
     "isobar_color": "White",
     "linewidth": 1,
@@ -47,7 +47,7 @@
     "runs_per_day": 24
   },
   "wind": {
-    "enabled": true,
+    "enabled": false,
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
     "outfile": "data/wind.png",
     "animated": true,
@@ -67,8 +67,8 @@
     "enabled": true,
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
     "outfile": "data/precipitation.png",
-    "animated": false,
-    "level_of_detail": "3",
+    "animated": true,
+    "level_of_detail": "2",
     "min_mm_hr": 0.2,
     "alpha": 0.9,
     "palette": "standard",
