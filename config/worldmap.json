@@ -1,6 +1,6 @@
 {
   "common": {
-    "target_geometry": "8192x4096",
+    "target_geometry": "4096x2048",
     "forecast_hour": 0,
     "auto_rotate": false,
     "auto_rotate_speed": 0.03,
@@ -51,8 +51,8 @@
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
     "outfile": "data/wind.png",
     "animated": true,
-    "level_of_detail": "2",
-    "particle_speed": 25,
+    "level_of_detail": "1",
+    "particle_speed": 40,
     "particle_alpha": 90,
     "particle_size": 1,
     "trail_fade": 80,

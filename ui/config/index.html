@@ -300,7 +300,7 @@
                         if (option === "outfile") customLabelText = "Output file";
                         else if (section === "quakes" && option === "min_mag") customLabelText = "Minimum magnitude";
                         else if (section === "shipping" && option === "track_min_dist") customLabelText = "Track minimum distance";
-                        else if (option === "animated") customLabelText = "Animated forecast";
+                        else if (option === "animated" && section !== "wind") customLabelText = "Animated forecast";
                         else if (section === "animation" && option === "seconds") customLabelText = "Loop seconds";
                         else if (section === "animation" && option === "sharp") customLabelText = "Sharp (no smoothing)";
                         else if (section === "animation" && option === "forecast_hours") customLabelText = "Forecast hours ahead";
