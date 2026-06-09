@@ -8,7 +8,7 @@ import cartopy.crs as ccrs
 
 # Internal imports
 from worldmap.lib.config import WorldMapConfig
-from .common import Updater, MapData, Plot
+from .common import Updater, MapData, Plot, encode_uv
 
 # Silence warnings
 warnings.filterwarnings("ignore", message=".*missingValue.*")
@@ -23,6 +23,9 @@ logger = logging.getLogger(__name__)
 class WindUpdater(Updater):
     def __init__(self, config: WorldMapConfig, map_data: MapData):
         super().__init__(config, "Wind", map_data)
+        # Top of the wind scale (m/s) the particle velocity texture is encoded
+        # against. Clips rare extremes; raise if you need storm cores exact.
+        self.VMAX_WIND = 40.0
 
     def plot(self):
         """Renders wind vectors with registration and type-hint fixes."""
@@ -97,6 +100,11 @@ class WindUpdater(Updater):
             )
 
         plot.save_figure(self.output_path)
+
+        # GPU particle layer: global U/V velocity texture (R=U east, G=V north).
+        base, _ = os.path.splitext(self.output_path)
+        encode_uv(u, v, f"{base}_data.png", self.VMAX_WIND)
+
         ds.close()
         logger.debug("Finished Wind plot...saving")
 

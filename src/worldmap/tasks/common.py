@@ -57,6 +57,32 @@ def encode_frames(frames, output_path, vmin, vmax, transform=None):
     return True
 
 
+def encode_uv(u, v, output_path, vmax):
+    """
+    Encode a global vector field (U=east, V=north, in m/s) into a single RGBA PNG
+    for a GPU particle layer:  R = (U + vmax) / (2*vmax),  G = (V + vmax) / (2*vmax),
+    B = 0,  A = 255 (0 where NaN).  Row 0 = north (GFS native), lon -180..180.
+    Decode on the GPU as:  component = channel * (2*vmax) - vmax.
+    vmax clips extremes; pick it a little above the strongest winds you care about.
+    """
+    u = np.asarray(u, dtype=np.float32)
+    v = np.asarray(v, dtype=np.float32)
+    if u.shape != v.shape:
+        raise ValueError(f"U/V shape mismatch: {u.shape} vs {v.shape}")
+    span = 2.0 * float(vmax)
+    mask = np.isnan(u) | np.isnan(v)
+    ru = np.clip((np.nan_to_num(u) + vmax) / span, 0.0, 1.0)
+    rv = np.clip((np.nan_to_num(v) + vmax) / span, 0.0, 1.0)
+    r = (ru * 255.0).astype(np.uint8)
+    g = (rv * 255.0).astype(np.uint8)
+    z = np.zeros_like(r)
+    a = np.where(mask, 0, 255).astype(np.uint8)
+    img = np.dstack((r, g, z, a))
+    Image.fromarray(img, mode="RGBA").save(output_path, format="PNG")
+    logger.debug(f"Saved wind vector texture to {output_path} {img.shape}")
+    return True
+
+
 def _opaque_cmap(cmap, n=256):
     """Return an opaque copy of a colormap (alpha forced to 1.0)."""
     import numpy as np
