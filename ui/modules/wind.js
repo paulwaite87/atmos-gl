@@ -26,11 +26,42 @@ function buildLUT() {
 }
 
 export function loadLayer(map, config, fullConfig = {}) {
+    const slotId = 'wind-legend-slot';
+    const rgbCss = (c) => `rgb(${Math.round(c[0] * 255)},${Math.round(c[1] * 255)},${Math.round(c[2] * 255)})`;
+    const gradient = () => PALETTE
+        .map((c, i) => `${rgbCss(c)} ${(i / (PALETTE.length - 1) * 100).toFixed(1)}%`)
+        .join(', ');
+
+    const addLegend = (cfg) => {
+        const stack = document.getElementById('legend-stack');
+        if (!stack) return;
+        document.getElementById(slotId)?.remove();
+        const vmaxKph = Number(cfg.max_speed_color) > 0 ? Number(cfg.max_speed_color) : 100;
+        const ticks = [0, 0.25, 0.5, 0.75, 1].map(f => Math.round(vmaxKph * f));
+
+        const slot = document.createElement('div');
+        slot.id = slotId;
+        slot.className = 'legend-slot';
+        slot.innerHTML = `
+            <div style="font-size:11px;color:#fff;font-weight:600;margin-bottom:3px;">Wind speed (km/h)</div>
+            <div style="height:10px;border-radius:2px;background:linear-gradient(to right, ${gradient()});"></div>
+            <div style="display:flex;justify-content:space-between;font-size:10px;color:rgba(255,255,255,0.8);margin-top:2px;">
+                ${ticks.map(t => `<span>${t}</span>`).join('')}
+            </div>`;
+        stack.appendChild(slot);
+    };
+    const removeLegend = () => document.getElementById(slotId)?.remove();
+
     createParticleWindLayer(map, {
         sectionKey: 'wind',
         initialConfig: config,
         vmax: 40.0,                   // must match backend VMAX_WIND
         colormap: () => buildLUT(),   // speed LUT (palette fixed for now)
+        // max_speed_color is in km/h (user-facing); convert to m/s for the speed shader.
+        maxSpeedColor: (cfg) => (Number(cfg.max_speed_color) > 0 ? Number(cfg.max_speed_color) : 100) / 3.6,
+        onMount: addLegend,
+        onRefresh: addLegend,         // re-draw if max_speed_color changed
+        onUnmount: removeLegend,      // animated layer only -> legend hidden with barbs
         // Tunables fall through to _windparticles defaults; override via wind config:
         //   particle_count, particle_speed, trail_fade, particle_size,
         //   drop_rate, drop_rate_bump, max_speed_color, particle_alpha

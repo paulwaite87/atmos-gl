@@ -6,6 +6,12 @@ const MERCATOR_CORNERS = [
     [-180, 85.051129], [180, 85.051129], [180, -85.051129], [-180, -85.051129],
 ];
 
+// level_of_detail ("1"/"2"/"3" = Low/Medium/High) bundles the perf/quality knobs:
+// canvas resolution (sharpness) and particle count (density). Medium is the default.
+const lodOf = (cfg) => { const n = parseInt(cfg.level_of_detail, 10); return (n === 1 || n === 3) ? n : 2; };
+const LOD_RES = { 1: 2048, 2: 4096, 3: 8192 };
+const LOD_COUNT = { 1: 25000, 2: 65000, 3: 160000 };
+
 // ---- shaders -------------------------------------------------------------
 
 const QUAD_VS = `#version 300 es
@@ -33,6 +39,9 @@ uniform sampler2D u_particles;
 uniform sampler2D u_wind;
 uniform float u_vmax, u_speed, u_dropRate, u_dropBump, u_dropSpeed, u_seed;
 const float PI = 3.141592653589793;
+// Scales an m/s velocity into a per-frame step in normalised [0,1] space. Picked so
+// the default u_speed gives a few pixels/frame; u_speed is the user-facing multiplier.
+const float STEP = 0.0005;
 ${PACK}
 void main(){
     vec2 pos = decodePos(texture(u_particles, v_uv));
@@ -40,9 +49,9 @@ void main(){
     vec4 w = texture(u_wind, pos);
     vec2 vel = (w.a < 0.5) ? vec2(0.0) : (w.rg * (2.0*u_vmax) - u_vmax);   // m/s (east,north)
     float coslat = max(cos(lat), 0.05);
-    // east step is /360, north step /180 of the equirect span -> factor 0.5 on x; /coslat
-    // keeps zonal motion right as meridians converge.
-    vec2 d = vec2(vel.x / coslat * u_speed * 0.5, -vel.y * u_speed);
+    // east step is half of north per equirect aspect (x spans 360 deg, y spans 180);
+    // /coslat keeps zonal motion right as meridians converge.
+    vec2 d = vec2(vel.x / coslat * 0.5, -vel.y) * (u_speed * STEP);
     vec2 npos = pos + d;
     npos.x = fract(npos.x + 1.0);                       // wrap longitude seam
     float speed = length(vel);
@@ -88,8 +97,6 @@ out vec4 fragColor;
 uniform sampler2D u_cmap;
 uniform float u_maxspeed, u_alpha;
 void main(){
-    vec2 d = gl_PointCoord - 0.5;
-    if (dot(d, d) > 0.25) discard;                      // round dots
     float t = clamp(v_speed / u_maxspeed, 0.0, 1.0);
     fragColor = vec4(texture(u_cmap, vec2(t, 0.5)).rgb, u_alpha);
 }`;
@@ -117,15 +124,37 @@ export function createParticleWindLayer(map, opts) {
         staticUrl = (cfg) => `${window.MAP_UI}/${cfg.outfile}`,
         dataUrl = (cfg) => `${window.MAP_UI}/${cfg.outfile.replace(/\.png$/, '_data.png')}`,
         // tunables (resolvers over the layer config)
-        resolution = () => ({ w: 2048, h: 1024 }),      // trail buffer size
-        particleCount = (cfg) => Math.max(256, parseInt(cfg.particle_count, 10) || 65536),
-        speed = (cfg) => (Number(cfg.particle_speed) > 0 ? Number(cfg.particle_speed) : 0.25),
-        fade = (cfg) => (cfg.trail_fade != null ? Math.min(0.999, Math.max(0.0, Number(cfg.trail_fade))) : 0.96),
-        pointSize = (cfg) => (Number(cfg.particle_size) > 0 ? Number(cfg.particle_size) : 1.5),
+        // resolution + particle count come from level_of_detail; an explicit
+        // particle_resolution / particle_count key still overrides (power-user escape hatch).
+        resolution = (cfg) => {
+            const explicit = parseInt(cfg.particle_resolution, 10);
+            const w = Math.max(1024, explicit > 0 ? explicit : (LOD_RES[lodOf(cfg)] || 4096));
+            return { w, h: Math.round(w / 2) };
+        },
+        particleCount = (cfg) => {
+            const explicit = parseInt(cfg.particle_count, 10);
+            return Math.max(256, explicit > 0 ? explicit : (LOD_COUNT[lodOf(cfg)] || 65000));
+        },
+        // particle_speed is a friendly 0-100 "speed" (Slow..Fast). Mapped to the internal
+        // advection multiplier and clamped, so negatives / over-range can't produce oddities.
+        speed = (cfg) => { const p = Number(cfg.particle_speed);
+                           return (isFinite(p) ? Math.min(100, Math.max(0, p)) : 50) / 200; },
+        // trail_fade: 0-100 "trail length" -> internal exponential fade (0.85 short .. 0.99 long).
+        fade = (cfg) => { const v = Number(cfg.trail_fade);
+                          const c = isFinite(v) ? Math.min(100, Math.max(0, v)) : 80;
+                          return 0.85 + (c / 100) * 0.14; },
+        // particle_size: 1-5 line thickness in px.
+        pointSize = (cfg) => { const v = Number(cfg.particle_size);
+                               return isFinite(v) ? Math.min(5, Math.max(0.5, v)) : 1.5; },
         dropRate = (cfg) => (cfg.drop_rate != null ? Number(cfg.drop_rate) : 0.003),
         dropBump = (cfg) => (cfg.drop_rate_bump != null ? Number(cfg.drop_rate_bump) : 0.012),
         maxSpeedColor = (cfg) => (Number(cfg.max_speed_color) > 0 ? Number(cfg.max_speed_color) : 30.0),
-        alpha = (cfg) => (Number(cfg.particle_alpha) > 0 ? Number(cfg.particle_alpha) : 0.9),
+        // particle_alpha: 0-100 opacity.
+        alpha = (cfg) => { const v = Number(cfg.particle_alpha);
+                           const c = isFinite(v) ? Math.min(100, Math.max(0, v)) : 90;
+                           return c / 100; },
+        // fired alongside the animated (particle) layer only — used for the speed legend
+        onMount = () => {}, onRefresh = () => {}, onUnmount = () => {},
     } = opts;
 
     const S_SRC = `${sectionKey}-source`, S_LYR = `${sectionKey}-layer`;
@@ -146,7 +175,7 @@ export function createParticleWindLayer(map, opts) {
 
     // live params (read each frame / draw)
     let curSpeed = 0.25, curFade = 0.96, curPoint = 1.5, curDropRate = 0.003,
-        curDropBump = 0.012, curMaxSpeed = 30.0, curAlpha = 0.9;
+        curDropBump = 0.012, curMaxSpeed = 30.0, curAlpha = 0.9, curSubSteps = 1;
 
     // ---- static (barbs PNG) fallback ----
     const mountStatic = (cfg) => {
@@ -302,9 +331,9 @@ export function createParticleWindLayer(map, opts) {
         gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, windTex);
         gl.uniform1i(gl.getUniformLocation(updateProg, 'u_wind'), 1);
         gl.uniform1f(gl.getUniformLocation(updateProg, 'u_vmax'), vmax);
-        gl.uniform1f(gl.getUniformLocation(updateProg, 'u_speed'), curSpeed);
-        gl.uniform1f(gl.getUniformLocation(updateProg, 'u_dropRate'), curDropRate);
-        gl.uniform1f(gl.getUniformLocation(updateProg, 'u_dropBump'), curDropBump);
+        gl.uniform1f(gl.getUniformLocation(updateProg, 'u_speed'), curSpeed * (2048.0 / W) / curSubSteps);
+        gl.uniform1f(gl.getUniformLocation(updateProg, 'u_dropRate'), curDropRate / curSubSteps);
+        gl.uniform1f(gl.getUniformLocation(updateProg, 'u_dropBump'), curDropBump / curSubSteps);
         gl.uniform1f(gl.getUniformLocation(updateProg, 'u_dropSpeed'), 10.0);
         gl.uniform1f(gl.getUniformLocation(updateProg, 'u_seed'), Math.random());
         bindAttrib(updateProg, 'a_pos', quadBuf, 2);
@@ -330,15 +359,22 @@ export function createParticleWindLayer(map, opts) {
 
     const frame = () => {
         if (gl && windReady) {
-            updateParticles();
-
+            // Fade the previous trail buffer once per frame.
             gl.bindFramebuffer(gl.FRAMEBUFFER, screenFbo[1 - screenCur]);
             gl.viewport(0, 0, W, H);
             gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
             gl.disable(gl.BLEND);
-            drawTexture(screenTex[screenCur], curFade);     // faded previous frame
-            gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-            drawParticles();                                // new dots on top
+            drawTexture(screenTex[screenCur], curFade);
+
+            // Then advance in small sub-steps, dropping a dot each time, so the trail
+            // stays continuous (sharp) no matter how fast the flow is moving.
+            for (let i = 0; i < curSubSteps; i++) {
+                updateParticles();                              // -> state FBO, RES viewport
+                gl.bindFramebuffer(gl.FRAMEBUFFER, screenFbo[1 - screenCur]);
+                gl.viewport(0, 0, W, H);
+                gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+                drawParticles();
+            }
             screenCur = 1 - screenCur;
 
             gl.bindFramebuffer(gl.FRAMEBUFFER, null);
@@ -357,6 +393,9 @@ export function createParticleWindLayer(map, opts) {
         curSpeed = speed(cfg); curFade = fade(cfg); curPoint = pointSize(cfg);
         curDropRate = dropRate(cfg); curDropBump = dropBump(cfg);
         curMaxSpeed = maxSpeedColor(cfg); curAlpha = alpha(cfg);
+        // Lay down dots ~1 point-size apart per frame whatever the speed, so trail
+        // sharpness is decoupled from speed. 20.48 = vmax(40 m/s) * 0.512 px-per-(m/s).
+        curSubSteps = Math.min(4, Math.max(1, Math.ceil(20.48 * curSpeed / Math.max(0.5, curPoint))));
     };
 
     const cleanupGL = () => {
@@ -398,6 +437,7 @@ export function createParticleWindLayer(map, opts) {
         map.addSource(A_SRC, { type: 'canvas', canvas: outCanvas, animate: true, coordinates });
         map.addLayer({ id: A_LYR, type: 'raster', source: A_SRC, paint: { 'raster-opacity': 1.0, 'raster-fade-duration': 0 } });
         frame();
+        onMount(cfg);
     };
     const refreshAnimated = (cfg) => {
         const res = resolution(cfg);
@@ -408,11 +448,13 @@ export function createParticleWindLayer(map, opts) {
         applyParams(cfg);
         uploadColormap(cfg);
         loadWind(cfg);              // pick up newly regenerated wind data
+        onRefresh(cfg);
     };
     const unmountAnimated = () => {
         if (map.getLayer(A_LYR)) map.removeLayer(A_LYR);
         if (map.getSource(A_SRC)) map.removeSource(A_SRC);
         cleanupGL();
+        onUnmount();
     };
 
     // ---- dispatch ----
