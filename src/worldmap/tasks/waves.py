@@ -167,8 +167,10 @@ class WavesUpdater(Updater):
         except (TypeError, ValueError):
             lod = 2
         lod = min(3, max(1, lod))
+        # LOD controls the wave-field grid density (smoothness/detail). The coastline
+        # mask always uses the most-detailed 10m geometry at high resolution (below),
+        # independent of LOD, so land edges stay crisp at every level.
         grid_n = {1: 300, 2: 600, 3: 1100}[lod]
-        coast_res = {1: "110m", 2: "50m", 3: "10m"}[lod]
 
         # Wave-height display threshold: heights below this (in metres) render fully
         # transparent, so calm water shows the base map instead of the lowest colour.
@@ -259,14 +261,14 @@ class WavesUpdater(Updater):
         u_grid = combined_grid[:, :, 1]
         v_grid = combined_grid[:, :, 2]
 
-        # --- HIGH RESOLUTION LAND BOUNDARY RECOVERY ---
-        # Preferred: cut land using true coastline geometry at the LOD-selected
-        # resolution, which gives crisp coastlines independent of the coarse 0.25 deg
-        # wave grid. If that geometry can't be loaded (e.g. no network to fetch the
-        # Natural Earth data), fall back to the original nearest-neighbour mask derived
-        # from the wave data itself, which is blocky but always available.
+        # --- LAND MASK FOR ARROWS ---
+        # Cut land out of the arrow (u/v) field using true coastline geometry. The
+        # displayed heat field is masked separately at high resolution below. If the
+        # geometry can't be loaded (e.g. no network for Natural Earth), fall back to the
+        # blocky-but-always-available nearest-neighbour mask from the wave data itself.
+        COAST_RES = "10m"  # most-detailed Natural Earth coastline, for accurate edges
         grid_land_mask = self._coastline_mask(
-            mesh_lon, mesh_lat, lon_min, lat_min, lon_max, lat_max, coast_res
+            mesh_lon, mesh_lat, lon_min, lat_min, lon_max, lat_max, COAST_RES
         )
         if grid_land_mask is None:
             raw_land_mask = land_or_missing
@@ -279,19 +281,49 @@ class WavesUpdater(Updater):
             )
             grid_land_mask = mask_interpolator(mesh_lon, mesh_lat).astype(bool)
 
-        swh_grid[grid_land_mask] = np.nan
         u_grid[grid_land_mask] = np.nan
         v_grid[grid_land_mask] = np.nan
 
-        # Apply the display threshold: anything below it becomes transparent, and the
-        # matching direction arrows are dropped too so they don't float over the base
-        # map. NaN comparisons are False, so land/missing cells are unaffected here.
+        # --- HIGH-RESOLUTION DISPLAY FIELD ---
+        # The wave grid is coarse (0.25 deg data on a grid_n^2 mesh), so cutting land at
+        # that resolution gives blocky coastlines. Instead, upsample the smooth field
+        # onto a much finer mesh and cut land from the SAME coastline geometry at that
+        # finer resolution, so coastline crispness is set by the mask grid (~HR_TARGET
+        # px) and is independent of the wave-data resolution.
+        from scipy.ndimage import zoom
+
+        HR_TARGET = 2200  # target long-edge (px) for the mask/display grid
+        upscale = max(1, int(np.ceil(HR_TARGET / grid_n)))
+        hr_n = grid_n * upscale
+
+        # Fill no-data cells before resampling so bilinear zoom doesn't smear NaNs, then
+        # restore them at high res with a nearest-neighbour upsample (exact, no smearing).
+        nan_mask = ~np.isfinite(swh_grid)
+        fill_value = float(np.nanmean(swh_grid)) if not nan_mask.all() else 0.0
+        swh_hr = zoom(np.where(nan_mask, fill_value, swh_grid), upscale, order=1)
+        invalid_hr = zoom(nan_mask.astype(np.uint8), upscale, order=0).astype(bool)
+        swh_hr[invalid_hr] = np.nan
+
+        hr_lon = np.linspace(lon_min, lon_max, hr_n)
+        hr_lat = np.linspace(lat_min, lat_max, hr_n)
+        hr_mesh_lon, hr_mesh_lat = np.meshgrid(hr_lon, hr_lat)
+        land_hr = self._coastline_mask(
+            hr_mesh_lon, hr_mesh_lat, lon_min, lat_min, lon_max, lat_max, COAST_RES
+        )
+        if land_hr is None:
+            # geometry unavailable: upsample the coarse mask we already computed
+            land_hr = zoom(grid_land_mask.astype(np.uint8), upscale, order=0).astype(bool)
+        swh_hr[land_hr] = np.nan
+
+        # Apply the display threshold: below-threshold water becomes transparent on the
+        # heat field, and the matching arrows are dropped too so they don't float over
+        # bare base map. NaN comparisons are False, so land/no-data cells are unaffected.
         if wave_threshold > 0.0:
             with np.errstate(invalid="ignore"):
-                below_threshold = swh_grid < wave_threshold
-            swh_grid[below_threshold] = np.nan
-            u_grid[below_threshold] = np.nan
-            v_grid[below_threshold] = np.nan
+                swh_hr[swh_hr < wave_threshold] = np.nan
+                arrow_below = swh_grid < wave_threshold
+            u_grid[arrow_below] = np.nan
+            v_grid[arrow_below] = np.nan
 
         # 4. Initialize Core Canvas
         plot = Plot(self.map_data.region)
@@ -318,16 +350,20 @@ class WavesUpdater(Updater):
         # "cross-hatch" that becomes visible when zoomed in. imshow has no triangulation,
         # so the colour is genuinely smooth at every zoom.) NaN propagates through the
         # interpolation stencil, so land/threshold edges stay cleanly transparent.
-        # Heights above vmax clamp to the palette's top colour.
+        # aspect="auto" is REQUIRED: imshow otherwise forces aspect="equal", which
+        # overrides the axes' set_aspect("auto") and shrinks the square Web-Mercator
+        # raster to half of a wide world figure. Heights above vmax clamp to the top
+        # colour.
         plot.ax.imshow(
-            swh_grid,
-            extent=[grid_lon[0], grid_lon[-1], grid_lat[0], grid_lat[-1]],
+            swh_hr,
+            extent=[hr_lon[0], hr_lon[-1], hr_lat[0], hr_lat[-1]],
             origin="lower",
             interpolation="bilinear",
             cmap=cmap,
             norm=norm,
             transform=ccrs.PlateCarree(),
             zorder=2,
+            aspect="auto",
         )
 
         # 6. ENHANCEMENT: CONDITIONAL ARROW OVERLAY PROJECTION
