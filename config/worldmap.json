@@ -225,7 +225,7 @@
     "runs_per_day": 24
   },
   "satellites_collector": {
-    "enabled": true,
+    "enabled": false,
     "url": "https://celestrak.org/NORAD/elements",
     "groups": "stations,weather,science,resource",
     "update_hours": 12,
@@ -242,6 +242,11 @@
     "future_minutes": 45,
     "step_seconds": 30,
     "color": ""
+  },
+  "markers": {
+    "enabled": true,
+    "marker_color": "White",
+    "marker_fontsize": 10
   },
   "shipping_collector": {
     "enabled": true,

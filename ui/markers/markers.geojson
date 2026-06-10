@@ -1,0 +1,2903 @@
+{
+ "type": "FeatureCollection",
+ "features": [
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     139.5,
+     35.75
+    ]
+   },
+   "properties": {
+    "name": "Tokyo",
+    "priority": 100,
+    "timezone": "Asia/Tokyo",
+    "country": "Japan"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     77.22,
+     28.67
+    ]
+   },
+   "properties": {
+    "name": "Delhi",
+    "priority": 98,
+    "timezone": "Asia/Calcutta",
+    "country": "India"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     121.37,
+     31.1
+    ]
+   },
+   "properties": {
+    "name": "Shanghai",
+    "priority": 97,
+    "timezone": "Asia/Shanghai",
+    "country": "China"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     106.75,
+     -6.13
+    ]
+   },
+   "properties": {
+    "name": "Jakarta",
+    "priority": 96,
+    "timezone": "Asia/Jakarta",
+    "country": "Indonesia"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     31.25,
+     30.05
+    ]
+   },
+   "properties": {
+    "name": "Cairo",
+    "priority": 95,
+    "timezone": "Africa/Cairo",
+    "country": "Egypt"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -99.15,
+     19.4
+    ]
+   },
+   "properties": {
+    "name": "Mexico City",
+    "priority": 95,
+    "timezone": "America/Mexico_City",
+    "country": "Mexico"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -46.65,
+     -23.55
+    ]
+   },
+   "properties": {
+    "name": "São Paulo",
+    "priority": 95,
+    "timezone": "America/Sao_Paulo",
+    "country": "Brazil"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     116.43,
+     39.92
+    ]
+   },
+   "properties": {
+    "name": "Beijing",
+    "priority": 94,
+    "country": "China"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     72.85,
+     18.93
+    ]
+   },
+   "properties": {
+    "name": "Mumbai",
+    "priority": 94,
+    "country": "India"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     90.37,
+     23.72
+    ]
+   },
+   "properties": {
+    "name": "Dhaka",
+    "priority": 93,
+    "timezone": "Asia/Dhaka",
+    "country": "Bangladesh"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     37.7,
+     55.75
+    ]
+   },
+   "properties": {
+    "name": "Moscow",
+    "priority": 92,
+    "timezone": "Europe/Moscow",
+    "country": "Russia"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -74.0,
+     40.7
+    ]
+   },
+   "properties": {
+    "name": "New York",
+    "priority": 92,
+    "timezone": "America/New_York",
+    "country": "USA"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     127.0,
+     37.53
+    ]
+   },
+   "properties": {
+    "name": "Seoul",
+    "priority": 92,
+    "timezone": "Asia/Seoul",
+    "country": "South Korea"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     67.03,
+     24.85
+    ]
+   },
+   "properties": {
+    "name": "Karachi",
+    "priority": 91,
+    "timezone": "Asia/Karachi",
+    "country": "Pakistan"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     3.47,
+     6.45
+    ]
+   },
+   "properties": {
+    "name": "Lagos",
+    "priority": 91,
+    "timezone": "Africa/Lagos",
+    "country": "Nigeria"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     120.97,
+     14.62
+    ]
+   },
+   "properties": {
+    "name": "Manila",
+    "priority": 91,
+    "timezone": "Asia/Manila",
+    "country": "Philippines"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -58.5,
+     -34.67
+    ]
+   },
+   "properties": {
+    "name": "Buenos Aires",
+    "priority": 90,
+    "timezone": "America/Buenos_Aires",
+    "country": "Argentina"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     113.33,
+     23.13
+    ]
+   },
+   "properties": {
+    "name": "Guangzhou",
+    "priority": 90,
+    "country": "China"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     28.95,
+     41.03
+    ]
+   },
+   "properties": {
+    "name": "Istanbul",
+    "priority": 90,
+    "timezone": "Asia/Istanbul",
+    "country": "Turkey"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     88.33,
+     22.5
+    ]
+   },
+   "properties": {
+    "name": "Calcutta",
+    "priority": 88,
+    "timezone": "Asia/Calcutta",
+    "country": "India"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -118.23,
+     34.05
+    ]
+   },
+   "properties": {
+    "name": "Los Angeles",
+    "priority": 88,
+    "timezone": "America/Los_Angeles",
+    "country": "USA"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     135.5,
+     34.67
+    ]
+   },
+   "properties": {
+    "name": "Osaka",
+    "priority": 88,
+    "country": "Japan"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     100.5,
+     13.73
+    ]
+   },
+   "properties": {
+    "name": "Bangkok",
+    "priority": 86,
+    "timezone": "Asia/Bangkok",
+    "country": "Thailand"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -0.17,
+     51.5
+    ]
+   },
+   "properties": {
+    "name": "London",
+    "priority": 86,
+    "timezone": "Europe/London",
+    "country": "UK"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     2.33,
+     48.87
+    ]
+   },
+   "properties": {
+    "name": "Paris",
+    "priority": 86,
+    "timezone": "Europe/Paris",
+    "country": "France"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -43.28,
+     -22.88
+    ]
+   },
+   "properties": {
+    "name": "Rio de Janeiro",
+    "priority": 86,
+    "country": "Brazil"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     77.58,
+     12.97
+    ]
+   },
+   "properties": {
+    "name": "Bangalore",
+    "priority": 85,
+    "country": "India"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     106.56,
+     29.56
+    ]
+   },
+   "properties": {
+    "name": "Chongqing",
+    "priority": 85,
+    "timezone": "Asia/Chungking",
+    "country": "China"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -74.08,
+     4.63
+    ]
+   },
+   "properties": {
+    "name": "Bogotá",
+    "priority": 84,
+    "timezone": "America/Bogota",
+    "country": "Colombia"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     104.1,
+     30.62
+    ]
+   },
+   "properties": {
+    "name": "Chengdu",
+    "priority": 84,
+    "country": "China"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     15.3,
+     -4.3
+    ]
+   },
+   "properties": {
+    "name": "Kinshasa",
+    "priority": 84,
+    "timezone": "Africa/Kinshasa",
+    "country": "Congo"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     74.37,
+     31.57
+    ]
+   },
+   "properties": {
+    "name": "Lahore",
+    "priority": 84,
+    "country": "Pakistan"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -77.05,
+     -12.05
+    ]
+   },
+   "properties": {
+    "name": "Lima",
+    "priority": 84,
+    "timezone": "America/Lima",
+    "country": "Peru"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     117.2,
+     39.13
+    ]
+   },
+   "properties": {
+    "name": "Tianjin",
+    "priority": 84,
+    "country": "China"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     80.3,
+     13.08
+    ]
+   },
+   "properties": {
+    "name": "Chennai",
+    "priority": 83,
+    "timezone": "Asia/Calcutta",
+    "country": "India"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     106.67,
+     10.75
+    ]
+   },
+   "properties": {
+    "name": "Ho Chi Minh City",
+    "priority": 82,
+    "country": "Vietnam"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     114.15,
+     22.28
+    ]
+   },
+   "properties": {
+    "name": "Hong Kong",
+    "priority": 82,
+    "country": "China"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     78.43,
+     17.37
+    ]
+   },
+   "properties": {
+    "name": "Hyderabad",
+    "priority": 82,
+    "country": "India"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     51.43,
+     35.67
+    ]
+   },
+   "properties": {
+    "name": "Tehran",
+    "priority": 82,
+    "timezone": "Asia/Tehran",
+    "country": "Iran"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     114.32,
+     30.58
+    ]
+   },
+   "properties": {
+    "name": "Wuhan",
+    "priority": 82,
+    "country": "China"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     108.9,
+     34.27
+    ]
+   },
+   "properties": {
+    "name": "Xian",
+    "priority": 82,
+    "country": "China"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     44.42,
+     33.35
+    ]
+   },
+   "properties": {
+    "name": "Baghdad",
+    "priority": 80,
+    "timezone": "Asia/Baghdad",
+    "country": "Iraq"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     126.68,
+     45.75
+    ]
+   },
+   "properties": {
+    "name": "Harbin",
+    "priority": 80,
+    "country": "China"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     136.88,
+     35.13
+    ]
+   },
+   "properties": {
+    "name": "Nagoya",
+    "priority": 80,
+    "country": "Japan"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     72.67,
+     23.05
+    ]
+   },
+   "properties": {
+    "name": "Ahmadabad",
+    "priority": 78,
+    "country": "India"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -87.65,
+     41.85
+    ]
+   },
+   "properties": {
+    "name": "Chicago",
+    "priority": 78,
+    "timezone": "America/Chicago",
+    "country": "USA"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     28.03,
+     -26.17
+    ]
+   },
+   "properties": {
+    "name": "Johannesburg",
+    "priority": 78,
+    "timezone": "Africa/Johannesburg",
+    "country": "South Africa"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     123.43,
+     41.83
+    ]
+   },
+   "properties": {
+    "name": "Shenyang",
+    "priority": 78,
+    "country": "China"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     103.85,
+     1.28
+    ]
+   },
+   "properties": {
+    "name": "Singapore",
+    "priority": 78,
+    "timezone": "Asia/Singapore",
+    "country": "Singapore"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     101.7,
+     3.17
+    ]
+   },
+   "properties": {
+    "name": "Kuala Lumpur",
+    "priority": 76,
+    "timezone": "Asia/Kuala_Lumpur",
+    "country": "Malaysia"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -77.03,
+     38.88
+    ]
+   },
+   "properties": {
+    "name": "Washington",
+    "priority": 76,
+    "country": "USA"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     13.25,
+     -8.83
+    ]
+   },
+   "properties": {
+    "name": "Luanda",
+    "priority": 74,
+    "timezone": "Africa/Luanda",
+    "country": "Angola"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -3.72,
+     40.42
+    ]
+   },
+   "properties": {
+    "name": "Madrid",
+    "priority": 74,
+    "timezone": "Europe/Madrid",
+    "country": "Spain"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     46.77,
+     24.65
+    ]
+   },
+   "properties": {
+    "name": "Riyadh",
+    "priority": 74,
+    "timezone": "Asia/Riyadh",
+    "country": "Saudi Arabia"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -70.67,
+     -33.45
+    ]
+   },
+   "properties": {
+    "name": "Santiago",
+    "priority": 74,
+    "timezone": "America/Santiago",
+    "country": "Chile"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     121.37,
+     25.02
+    ]
+   },
+   "properties": {
+    "name": "Taipei",
+    "priority": 74,
+    "timezone": "Asia/Taipei",
+    "country": "Taiwan"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -79.42,
+     43.7
+    ]
+   },
+   "properties": {
+    "name": "Toronto",
+    "priority": 74,
+    "timezone": "America/Montreal",
+    "country": "Canada"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     32.83,
+     39.92
+    ]
+   },
+   "properties": {
+    "name": "Ankara",
+    "priority": 72,
+    "country": "Turkey"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -96.8,
+     32.78
+    ]
+   },
+   "properties": {
+    "name": "Dallas",
+    "priority": 72,
+    "country": "USA"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     39.3,
+     -6.85
+    ]
+   },
+   "properties": {
+    "name": "Dar es Salaam",
+    "priority": 72,
+    "timezone": "Africa/Dar_es_Salaam",
+    "country": "Tanzania"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -95.35,
+     29.75
+    ]
+   },
+   "properties": {
+    "name": "Houston",
+    "priority": 72,
+    "timezone": "America/Chicago",
+    "country": "USA"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     32.53,
+     15.55
+    ]
+   },
+   "properties": {
+    "name": "Khartoum",
+    "priority": 72,
+    "timezone": "Africa/Khartoum",
+    "country": "Sudan"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -80.18,
+     25.77
+    ]
+   },
+   "properties": {
+    "name": "Miami",
+    "priority": 72,
+    "timezone": "America/New_York",
+    "country": "USA"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     36.83,
+     -1.28
+    ]
+   },
+   "properties": {
+    "name": "Nairobi",
+    "priority": 72,
+    "timezone": "Africa/Nairobi",
+    "country": "Kenya"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     151.17,
+     -33.92
+    ]
+   },
+   "properties": {
+    "name": "Sydney",
+    "priority": 72,
+    "timezone": "Australia/Sydney",
+    "country": "Australia"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     38.7,
+     9.03
+    ]
+   },
+   "properties": {
+    "name": "Adis Abeba",
+    "priority": 70,
+    "timezone": "Africa/Addis_Ababa",
+    "country": "Ethiopia"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     29.9,
+     31.2
+    ]
+   },
+   "properties": {
+    "name": "Alexandria",
+    "priority": 70,
+    "country": "Egypt"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     13.42,
+     52.53
+    ]
+   },
+   "properties": {
+    "name": "Berlin",
+    "priority": 70,
+    "timezone": "Europe/Berlin",
+    "country": "Germany"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -7.58,
+     33.65
+    ]
+   },
+   "properties": {
+    "name": "Casablanca",
+    "priority": 70,
+    "timezone": "Africa/Casablanca",
+    "country": "Morocco"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     144.97,
+     -37.75
+    ]
+   },
+   "properties": {
+    "name": "Melbourne",
+    "priority": 70,
+    "country": "Australia"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -75.15,
+     39.95
+    ]
+   },
+   "properties": {
+    "name": "Philadelphia",
+    "priority": 70,
+    "country": "USA"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     96.17,
+     16.78
+    ]
+   },
+   "properties": {
+    "name": "Rangoon",
+    "priority": 70,
+    "timezone": "Asia/Rangoon",
+    "country": "Myanmar"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     30.25,
+     59.88
+    ]
+   },
+   "properties": {
+    "name": "St. Petersburg",
+    "priority": 70,
+    "country": "Russia"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     18.47,
+     -33.93
+    ]
+   },
+   "properties": {
+    "name": "Cape Town",
+    "priority": 68,
+    "timezone": "Africa/Johannesburg",
+    "country": "South Africa"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     12.5,
+     41.88
+    ]
+   },
+   "properties": {
+    "name": "Rome",
+    "priority": 68,
+    "timezone": "Europe/Rome",
+    "country": "Italy"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -71.05,
+     42.35
+    ]
+   },
+   "properties": {
+    "name": "Boston",
+    "priority": 66,
+    "country": "USA"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     79.87,
+     6.92
+    ]
+   },
+   "properties": {
+    "name": "Colombo",
+    "priority": 66,
+    "timezone": "Asia/Colombo",
+    "country": "Sri Lanka"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     55.27,
+     25.2
+    ]
+   },
+   "properties": {
+    "name": "Dubai",
+    "priority": 66,
+    "timezone": "Asia/Dubai",
+    "country": "UAE"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -99.83,
+     25.2
+    ]
+   },
+   "properties": {
+    "name": "Monterrey",
+    "priority": 66,
+    "timezone": "America/Monterrey",
+    "country": "Mexico"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -122.42,
+     37.77
+    ]
+   },
+   "properties": {
+    "name": "San Francisco",
+    "priority": 66,
+    "country": "USA"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     3.0,
+     36.83
+    ]
+   },
+   "properties": {
+    "name": "Algiers",
+    "priority": 64,
+    "timezone": "Africa/Algiers",
+    "country": "Algeria"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     35.93,
+     31.95
+    ]
+   },
+   "properties": {
+    "name": "Amman",
+    "priority": 64,
+    "timezone": "Asia/Amman",
+    "country": "Jordan"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -66.92,
+     10.5
+    ]
+   },
+   "properties": {
+    "name": "Caracas",
+    "priority": 64,
+    "timezone": "America/Caracas",
+    "country": "Venezuela"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -38.58,
+     -3.75
+    ]
+   },
+   "properties": {
+    "name": "Fortaleza",
+    "priority": 64,
+    "timezone": "America/Fortaleza",
+    "country": "Brazil"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     69.18,
+     34.52
+    ]
+   },
+   "properties": {
+    "name": "Kabul",
+    "priority": 64,
+    "timezone": "Asia/Kabul",
+    "country": "Afghanistan"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     139.63,
+     35.47
+    ]
+   },
+   "properties": {
+    "name": "Yokohama",
+    "priority": 64,
+    "country": "Japan"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     30.55,
+     50.46
+    ]
+   },
+   "properties": {
+    "name": "Kyiv",
+    "priority": 62
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -73.6,
+     45.5
+    ]
+   },
+   "properties": {
+    "name": "Montréal",
+    "priority": 62,
+    "timezone": "America/Montreal",
+    "country": "Canada"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     129.03,
+     35.08
+    ]
+   },
+   "properties": {
+    "name": "Pusan",
+    "priority": 62,
+    "country": "South Korea"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -34.88,
+     -8.1
+    ]
+   },
+   "properties": {
+    "name": "Recife",
+    "priority": 62,
+    "timezone": "America/Recife",
+    "country": "Brazil"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -122.32,
+     47.6
+    ]
+   },
+   "properties": {
+    "name": "Seattle",
+    "priority": 62,
+    "timezone": "America/Los_Angeles",
+    "country": "USA"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     34.77,
+     32.08
+    ]
+   },
+   "properties": {
+    "name": "Tel Aviv",
+    "priority": 62,
+    "timezone": "Asia/Tel_Aviv",
+    "country": "Israel"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     76.95,
+     43.25
+    ]
+   },
+   "properties": {
+    "name": "Almaty",
+    "priority": 60,
+    "timezone": "Asia/Almaty",
+    "country": "Kazakhstan"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     47.5,
+     -18.87
+    ]
+   },
+   "properties": {
+    "name": "Antananarivo",
+    "priority": 60,
+    "timezone": "Africa/Antananarivo",
+    "country": "Madagascar"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -17.45,
+     14.63
+    ]
+   },
+   "properties": {
+    "name": "Dakar",
+    "priority": 60,
+    "timezone": "Africa/Dakar",
+    "country": "Senegal"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -83.03,
+     42.32
+    ]
+   },
+   "properties": {
+    "name": "Detroit",
+    "priority": 60,
+    "country": "USA"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     48.0,
+     29.33
+    ]
+   },
+   "properties": {
+    "name": "Kuwait City",
+    "priority": 60,
+    "timezone": "Asia/Kuwait",
+    "country": "Kuwait"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -57.67,
+     -25.27
+    ]
+   },
+   "properties": {
+    "name": "Asunción",
+    "priority": 58,
+    "timezone": "America/Asuncion",
+    "country": "Paraguay"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     35.5,
+     33.87
+    ]
+   },
+   "properties": {
+    "name": "Beirut",
+    "priority": 58,
+    "timezone": "Asia/Beirut",
+    "country": "Lebanon"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     153.0,
+     -27.5
+    ]
+   },
+   "properties": {
+    "name": "Brisbane",
+    "priority": 58,
+    "timezone": "Australia/Brisbane",
+    "country": "Australia"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     36.32,
+     33.5
+    ]
+   },
+   "properties": {
+    "name": "Damascus",
+    "priority": 58,
+    "timezone": "Asia/Damascus",
+    "country": "Syria"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     28.33,
+     -15.43
+    ]
+   },
+   "properties": {
+    "name": "Lusaka",
+    "priority": 58,
+    "timezone": "Africa/Lusaka",
+    "country": "Zambia"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     125.78,
+     39.0
+    ]
+   },
+   "properties": {
+    "name": "Pyongyang",
+    "priority": 58,
+    "timezone": "Asia/Pyonyang",
+    "country": "North Korea"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -78.5,
+     -0.23
+    ]
+   },
+   "properties": {
+    "name": "Quito",
+    "priority": 58,
+    "timezone": "America/Guayaquil",
+    "country": "Ecuador"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -69.95,
+     18.5
+    ]
+   },
+   "properties": {
+    "name": "Santo Domingo",
+    "priority": 58,
+    "timezone": "America/Santo_Domingo",
+    "country": "Dominican Republic"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     51.6,
+     25.25
+    ]
+   },
+   "properties": {
+    "name": "Ad-Dawhah",
+    "priority": 56,
+    "timezone": "Asia/Qatar",
+    "country": "Qatar"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     49.88,
+     40.37
+    ]
+   },
+   "properties": {
+    "name": "Baku",
+    "priority": 56,
+    "timezone": "Asia/Baku",
+    "country": "Azerbaijan"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     26.1,
+     44.43
+    ]
+   },
+   "properties": {
+    "name": "Bucharest",
+    "priority": 56,
+    "timezone": "Europe/Bucharest",
+    "country": "Romania"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -104.98,
+     39.73
+    ]
+   },
+   "properties": {
+    "name": "Denver",
+    "priority": 56,
+    "timezone": "America/Denver",
+    "country": "USA"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     32.58,
+     -25.97
+    ]
+   },
+   "properties": {
+    "name": "Maputo",
+    "priority": 56,
+    "timezone": "Africa/Maputo",
+    "country": "Mozambique"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     10.22,
+     36.83
+    ]
+   },
+   "properties": {
+    "name": "Tunis",
+    "priority": 56,
+    "timezone": "Africa/Tunis",
+    "country": "Tunisia"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -123.1,
+     49.22
+    ]
+   },
+   "properties": {
+    "name": "Vancouver",
+    "priority": 56,
+    "timezone": "America/Vancouver",
+    "country": "Canada"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -82.35,
+     23.17
+    ]
+   },
+   "properties": {
+    "name": "Havana",
+    "priority": 54,
+    "timezone": "America/Havana",
+    "country": "Cuba"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -60.0,
+     -3.1
+    ]
+   },
+   "properties": {
+    "name": "Manaus",
+    "priority": 54,
+    "timezone": "America/Manaus",
+    "country": "Brazil"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     39.82,
+     21.45
+    ]
+   },
+   "properties": {
+    "name": "Mecca",
+    "priority": 54,
+    "timezone": "Asia/Riyadh",
+    "country": "Saudi Arabia"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     115.82,
+     -31.97
+    ]
+   },
+   "properties": {
+    "name": "Perth",
+    "priority": 54,
+    "timezone": "Australia/Perth",
+    "country": "Australia"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     104.92,
+     11.58
+    ]
+   },
+   "properties": {
+    "name": "Phnum Pénh",
+    "priority": 54,
+    "timezone": "Asia/Phnom_Penh",
+    "country": "Cambodia"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     31.05,
+     -17.83
+    ]
+   },
+   "properties": {
+    "name": "Harare",
+    "priority": 52,
+    "timezone": "Africa/Harare",
+    "country": "Zimbabwe"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -68.17,
+     -16.5
+    ]
+   },
+   "properties": {
+    "name": "La Paz",
+    "priority": 52,
+    "timezone": "America/La_Paz",
+    "country": "Bolivia"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -56.17,
+     -34.92
+    ]
+   },
+   "properties": {
+    "name": "Montevideo",
+    "priority": 52,
+    "timezone": "America/Montevideo",
+    "country": "Uruguay"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     45.35,
+     2.03
+    ]
+   },
+   "properties": {
+    "name": "Muqdisho",
+    "priority": 52,
+    "timezone": "Africa/Mogadishu",
+    "country": "Somalia"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -79.5,
+     8.95
+    ]
+   },
+   "properties": {
+    "name": "Panama",
+    "priority": 52,
+    "timezone": "America/Panama",
+    "country": "Panama"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -66.13,
+     18.48
+    ]
+   },
+   "properties": {
+    "name": "San Juan",
+    "priority": 52,
+    "timezone": "America/Puerto_Rico",
+    "country": "Puerto Rico"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     174.78,
+     -36.92
+    ]
+   },
+   "properties": {
+    "name": "Auckland",
+    "priority": 50,
+    "timezone": "Pacific/Auckland",
+    "country": "New Zealand"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     6.95,
+     51.45
+    ]
+   },
+   "properties": {
+    "name": "Essen",
+    "priority": 50,
+    "country": "Germany"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     18.08,
+     59.33
+    ]
+   },
+   "properties": {
+    "name": "Stockholm",
+    "priority": 50,
+    "timezone": "Europe/Stockholm",
+    "country": "Sweden"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -114.08,
+     51.08
+    ]
+   },
+   "properties": {
+    "name": "Calgary",
+    "priority": 48,
+    "timezone": "America/Edmonton",
+    "country": "Canada"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     25.0,
+     60.13
+    ]
+   },
+   "properties": {
+    "name": "Helsinki",
+    "priority": 48,
+    "timezone": "Europe/Helsinki",
+    "country": "Finland"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     85.32,
+     27.7
+    ]
+   },
+   "properties": {
+    "name": "Kathmandu",
+    "priority": 48,
+    "timezone": "Asia/Katmandu",
+    "country": "Nepal"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     58.63,
+     23.62
+    ]
+   },
+   "properties": {
+    "name": "Masqat",
+    "priority": 48,
+    "timezone": "Asia/Muscat",
+    "country": "Oman"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     83.08,
+     55.07
+    ]
+   },
+   "properties": {
+    "name": "Novosibirsk",
+    "priority": 48,
+    "timezone": "Asia/Novosibirsk",
+    "country": "Russia"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     50.57,
+     26.22
+    ]
+   },
+   "properties": {
+    "name": "Al-Manamah",
+    "priority": 46,
+    "timezone": "Asia/Bahrain",
+    "country": "Bahrain"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     119.47,
+     -5.15
+    ]
+   },
+   "properties": {
+    "name": "Ujung Pandang",
+    "priority": 46,
+    "timezone": "Asia/Ujung_Pandang",
+    "country": "Indonesia"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     106.87,
+     47.9
+    ]
+   },
+   "properties": {
+    "name": "Ulaanbaatar",
+    "priority": 46,
+    "timezone": "Asia/Ulaanbaatar",
+    "country": "Mongolia"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     8.53,
+     47.38
+    ]
+   },
+   "properties": {
+    "name": "Zurich",
+    "priority": 46,
+    "country": "Switzerland"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     36.23,
+     49.99
+    ]
+   },
+   "properties": {
+    "name": "Kharkiv",
+    "priority": 44
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     14.98,
+     12.17
+    ]
+   },
+   "properties": {
+    "name": "NDjamena",
+    "priority": 44,
+    "timezone": "Africa/Ndjamena",
+    "country": "Chad"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     10.75,
+     59.93
+    ]
+   },
+   "properties": {
+    "name": "Oslo",
+    "priority": 44,
+    "timezone": "Europe/Oslo",
+    "country": "Norway"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -89.65,
+     20.98
+    ]
+   },
+   "properties": {
+    "name": "Mérida",
+    "priority": 42,
+    "timezone": "America/Merida",
+    "country": "Mexico"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     2.08,
+     13.53
+    ]
+   },
+   "properties": {
+    "name": "Niamey",
+    "priority": 42,
+    "timezone": "Africa/Niamey",
+    "country": "Niger"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -15.97,
+     18.15
+    ]
+   },
+   "properties": {
+    "name": "Nouakchott",
+    "priority": 42,
+    "timezone": "Africa/Nouakchott",
+    "country": "Mauritania"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -87.23,
+     14.08
+    ]
+   },
+   "properties": {
+    "name": "Tegucigalpa",
+    "priority": 42,
+    "timezone": "America/Tegucigalpa",
+    "country": "Honduras"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     13.18,
+     32.9
+    ]
+   },
+   "properties": {
+    "name": "Tripoli",
+    "priority": 42,
+    "timezone": "Africa/Tripoli",
+    "country": "Libya"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -157.85,
+     21.3
+    ]
+   },
+   "properties": {
+    "name": "Honolulu",
+    "priority": 40,
+    "timezone": "Pacific/Honolulu",
+    "country": "USA"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     30.73,
+     46.46
+    ]
+   },
+   "properties": {
+    "name": "Odessa",
+    "priority": 40
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     45.05,
+     12.78
+    ]
+   },
+   "properties": {
+    "name": "Aden",
+    "priority": 38,
+    "timezone": "Asia/Aden",
+    "country": "Yemen"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     114.93,
+     4.88
+    ]
+   },
+   "properties": {
+    "name": "Bandar Seri Begawan",
+    "priority": 34,
+    "timezone": "Asia/Brunei",
+    "country": "Brunei"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     104.25,
+     52.3
+    ]
+   },
+   "properties": {
+    "name": "Irkutsk",
+    "priority": 34,
+    "timezone": "Asia/Irkutsk",
+    "country": "Russia"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -21.97,
+     64.15
+    ]
+   },
+   "properties": {
+    "name": "Reykjavik",
+    "priority": 34,
+    "timezone": "Atlantic/Reykjavik",
+    "country": "Iceland"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     174.78,
+     -41.3
+    ]
+   },
+   "properties": {
+    "name": "Wellington",
+    "priority": 34,
+    "country": "NZ"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -61.52,
+     10.63
+    ]
+   },
+   "properties": {
+    "name": "Port of Spain",
+    "priority": 32,
+    "timezone": "America/Port_of_Spain",
+    "country": "Trinidad and Tobago"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -149.9,
+     61.22
+    ]
+   },
+   "properties": {
+    "name": "Anchorage",
+    "priority": 30,
+    "timezone": "America/Anchorage",
+    "country": "USA"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     172.67,
+     -43.55
+    ]
+   },
+   "properties": {
+    "name": "Christchurch",
+    "priority": 30,
+    "timezone": "Pacific/Auckland",
+    "country": "New Zealand"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     25.92,
+     -24.75
+    ]
+   },
+   "properties": {
+    "name": "Gaborone",
+    "priority": 30,
+    "timezone": "Africa/Gaborone",
+    "country": "Botswana"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -63.58,
+     44.63
+    ]
+   },
+   "properties": {
+    "name": "Halifax",
+    "priority": 30,
+    "timezone": "America/Halifax",
+    "country": "Canada"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -15.45,
+     28.13
+    ]
+   },
+   "properties": {
+    "name": "Las Palmas de Gran Canaria",
+    "priority": 30,
+    "timezone": "Atlantic/Canary",
+    "country": "Spain"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     147.17,
+     -9.5
+    ]
+   },
+   "properties": {
+    "name": "Port Moresby",
+    "priority": 30,
+    "timezone": "Pacific/Port_Moresby",
+    "country": "Papua New Guinea"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     17.1,
+     -22.57
+    ]
+   },
+   "properties": {
+    "name": "Windhoek",
+    "priority": 30,
+    "timezone": "Africa/Windhoek",
+    "country": "Namibia"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     0.0,
+     90.0
+    ]
+   },
+   "properties": {
+    "name": "North Pole",
+    "priority": 28,
+    "color": "LightBlue"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     0.0,
+     -90.0
+    ]
+   },
+   "properties": {
+    "name": "South Pole",
+    "priority": 28,
+    "color": "LightBlue"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     37.55,
+     47.1
+    ]
+   },
+   "properties": {
+    "name": "Mariupol",
+    "priority": 26
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     147.3,
+     -42.9
+    ]
+   },
+   "properties": {
+    "name": "Hobart",
+    "priority": 24,
+    "timezone": "Australia/Hobart",
+    "country": "Australia"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     178.42,
+     -18.13
+    ]
+   },
+   "properties": {
+    "name": "Suva",
+    "priority": 24,
+    "timezone": "Pacific/Fiji",
+    "country": "Fiji"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     129.83,
+     62.17
+    ]
+   },
+   "properties": {
+    "name": "Yakutsk",
+    "priority": 24,
+    "timezone": "Asia/Yakutsk",
+    "country": "Russia"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -171.75,
+     -13.8
+    ]
+   },
+   "properties": {
+    "name": "Apia",
+    "priority": 22,
+    "timezone": "Pacific/Apia",
+    "country": "Samoa"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     130.73,
+     -12.38
+    ]
+   },
+   "properties": {
+    "name": "Darwin",
+    "priority": 22,
+    "timezone": "Australia/Darwin",
+    "country": "Australia"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     166.43,
+     -22.27
+    ]
+   },
+   "properties": {
+    "name": "Noumea",
+    "priority": 22,
+    "timezone": "Pacific/Noumea",
+    "country": "New Caledonia"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -52.3,
+     4.92
+    ]
+   },
+   "properties": {
+    "name": "Cayenne",
+    "priority": 18,
+    "timezone": "America/Cayenne",
+    "country": "French Guiana"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     36.46,
+     45.36
+    ]
+   },
+   "properties": {
+    "name": "Kerch",
+    "priority": 18
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     43.27,
+     -11.67
+    ]
+   },
+   "properties": {
+    "name": "Moroni",
+    "priority": 18,
+    "timezone": "Indian/Comoro",
+    "country": "Comoro Islands"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -149.57,
+     -17.53
+    ]
+   },
+   "properties": {
+    "name": "Papeete",
+    "priority": 18,
+    "timezone": "Pacific/Tahiti",
+    "country": "French Polynesia"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     172.98,
+     1.32
+    ]
+   },
+   "properties": {
+    "name": "Bairiki",
+    "priority": 16,
+    "timezone": "Pacific/Tarawa",
+    "country": "Kiribati"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -56.0,
+     52.0
+    ]
+   },
+   "properties": {
+    "name": "Newfoundland",
+    "priority": 16,
+    "country": "Canada"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     144.75,
+     13.47
+    ]
+   },
+   "properties": {
+    "name": "Hagåtña",
+    "priority": 14,
+    "timezone": "Pacific/Guam",
+    "country": "Bermuda"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -135.05,
+     60.72
+    ]
+   },
+   "properties": {
+    "name": "Whitehorse",
+    "priority": 12,
+    "timezone": "America/Whitehorse",
+    "country": "Canada"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -68.5,
+     63.75
+    ]
+   },
+   "properties": {
+    "name": "Iqaluit",
+    "priority": 10,
+    "timezone": "America/Iqaluit",
+    "country": "Canada"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -114.48,
+     62.5
+    ]
+   },
+   "properties": {
+    "name": "Yellowknife",
+    "priority": 10,
+    "timezone": "America/Yellowknife",
+    "country": "Canada"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -130.08,
+     -25.07
+    ]
+   },
+   "properties": {
+    "name": "Adamstown",
+    "priority": 8,
+    "timezone": "Pacific/Pitcairn",
+    "country": "Pitcairn Island (UK)"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -109.37,
+     -27.12
+    ]
+   },
+   "properties": {
+    "name": "Easter Island",
+    "priority": 8,
+    "timezone": "Pacific/Easter",
+    "country": "Chile"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -89.6,
+     -0.9
+    ]
+   },
+   "properties": {
+    "name": "Puerto Baquerizo Moreno",
+    "priority": 8,
+    "timezone": "Pacific/Galapagos",
+    "country": "Ecuador"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     43.33,
+     12.67
+    ]
+   },
+   "properties": {
+    "name": "Bab el Mandeb",
+    "priority": 6,
+    "timezone": "Asia/Aden",
+    "country": "Indian Ocean"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     105.67,
+     -10.5
+    ]
+   },
+   "properties": {
+    "name": "Christmas Island",
+    "priority": 6,
+    "timezone": "Indian/Christmas",
+    "country": "Australia"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     56.4,
+     26.86
+    ]
+   },
+   "properties": {
+    "name": "Larak Island",
+    "priority": 6,
+    "timezone": "Asia/Muscat",
+    "country": "Iran"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -57.93,
+     -51.75
+    ]
+   },
+   "properties": {
+    "name": "Stanley",
+    "priority": 6,
+    "timezone": "Atlantic/Stanley",
+    "country": "Falkland Islands"
+   }
+  }
+ ]
+}

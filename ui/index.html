@@ -88,10 +88,27 @@
                     console.warn("MapTiler API Key missing! Check your host .env configuration.");
                 }
 
+                // Build the style, guaranteeing a glyphs endpoint so text labels
+                // (e.g. the place-markers layer) always render even if the satellite
+                // style ships without one. Fetch the style, patch glyphs if absent,
+                // and hand MapLibre the object; on any failure fall back to the URL.
+                const styleUrl = `https://api.maptiler.com/maps/satellite/style.json?key=${maptilerKey}`;
+                let mapStyle = styleUrl;
+                try {
+                    const styleJson = await (await fetch(styleUrl)).json();
+                    if (!styleJson.glyphs) {
+                        styleJson.glyphs = `https://api.maptiler.com/fonts/{fontstack}/{range}.pbf?key=${maptilerKey}`;
+                        console.info('[markers] injected MapTiler glyphs endpoint for label rendering.');
+                    }
+                    mapStyle = styleJson;
+                } catch (err) {
+                    console.warn('Could not pre-fetch map style to verify glyphs; using style URL as-is.', err);
+                }
+
                 // Initialize the map core
                 const map = new maplibregl.Map({
                     container: 'globeViz',
-                    style: `https://api.maptiler.com/maps/satellite/style.json?key=${maptilerKey}`,
+                    style: mapStyle,
                     center: [startingLatitude, startingLongitude],
                     zoom: 2.5, // Start zoomed out to see the globe shape immediately
                     projection: 'globe' // Start with a spherical projection
@@ -157,6 +174,7 @@
                         'precipitation', 'stormwatch', 'wind', 'isobars',
                         'quakes', 'volcanoes', 'lightning', 'storms',
                         'shipping', 'satellites',
+                        'markers'
                     ];
 
                     for (const moduleName of ALL_LAYERS) {
