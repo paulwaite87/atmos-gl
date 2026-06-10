@@ -29,15 +29,27 @@ export function loadLayer(map, config) {
 
         map.addSource(sourceId, { type: 'geojson', data });
 
-        // Dots first, sitting beneath the labels.
+        // Per-place dots (marine features get no dot). Dots reveal in priority bands
+        // as you zoom, roughly tracking the label reveal, so a 1000+ marker set
+        // doesn't become a wall of dots at low zoom.
+        const dotReveal = ['step', ['zoom'],
+            ['case', ['>=', ['get', 'priority'], 80], 1, 0],   // z3-4: megacities only
+            4, ['case', ['>=', ['get', 'priority'], 50], 1, 0],  // + majors/capitals
+            5, ['case', ['>=', ['get', 'priority'], 30], 1, 0],
+            6, ['case', ['>=', ['get', 'priority'], 15], 1, 0],  // + general tail
+            8, 1,                                                // everything
+        ];
         map.addLayer({
             id: dotLayerId, type: 'circle', source: sourceId,
             minzoom: 3,                                       // nothing renders below z3
+            filter: ['!=', ['get', 'kind'], 'feature'],       // seas/straits get no dot
             paint: {
                 'circle-radius': 2.5,
                 'circle-color': colorExpr(cfg),
+                'circle-opacity': dotReveal,
                 'circle-stroke-color': 'rgba(0,0,0,0.65)',
                 'circle-stroke-width': 0.6,
+                'circle-stroke-opacity': dotReveal,
             },
         });
 

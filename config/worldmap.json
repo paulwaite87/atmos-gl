@@ -49,11 +49,11 @@
     "cache_expiry_days": 3
   },
   "wind": {
-    "enabled": false,
+    "enabled": true,
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
     "outfile": "data/wind.png",
-    "animated": false,
-    "level_of_detail": "3",
+    "animated": true,
+    "level_of_detail": "2",
     "particle_speed": 20,
     "particle_alpha": 90,
     "particle_size": 1,
@@ -246,7 +246,7 @@
   "markers": {
     "enabled": true,
     "marker_color": "White",
-    "marker_fontsize": 10
+    "marker_fontsize": 13
   },
   "shipping_collector": {
     "enabled": true,
