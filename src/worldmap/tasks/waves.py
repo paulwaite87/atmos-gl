@@ -47,7 +47,7 @@ class WavesUpdater(Updater):
             ],
         }
 
-    def save_waves_key(self, output_path, cmap, norm):
+    def save_waves_key(self, output_path, cmap, norm, threshold=0.0):
         """Generates a standalone Wave Height key image (separate _key.png)."""
         import matplotlib.pyplot as plt
         import matplotlib as mpl
@@ -63,8 +63,15 @@ class WavesUpdater(Updater):
             orientation="horizontal",
             ticks=[0, 2, 4, 6, 8],
         )
+        title = "Wave Height (m)"
+        if threshold > 0.0:
+            # Mark the transparent (below-threshold) zone on the key so the ramp's
+            # visible start matches what's actually rendered on the map.
+            cbar.ax.axvspan(norm.vmin, threshold, color="black", alpha=0.55)
+            cbar.ax.axvline(threshold, color="white", linewidth=1.2)
+            title = f"Wave Height (m) \u2265 {threshold:g}"
         cbar.ax.set_title(
-            "Wave Height (m)",
+            title,
             color="white",
             fontsize=key_fontsize,
             pad=2,
@@ -162,6 +169,15 @@ class WavesUpdater(Updater):
         lod = min(3, max(1, lod))
         grid_n = {1: 300, 2: 600, 3: 1100}[lod]
         coast_res = {1: "110m", 2: "50m", 3: "10m"}[lod]
+
+        # Wave-height display threshold: heights below this (in metres) render fully
+        # transparent, so calm water shows the base map instead of the lowest colour.
+        # 0 disables the threshold (legacy behaviour).
+        try:
+            wave_threshold = float(self.settings.get("min_wave_height", 0.0))
+        except (TypeError, ValueError):
+            wave_threshold = 0.0
+        wave_threshold = max(0.0, wave_threshold)
 
         # 1. Open Dataset with cfgrib engine backend
         ds = xr.open_dataset(
@@ -267,6 +283,16 @@ class WavesUpdater(Updater):
         u_grid[grid_land_mask] = np.nan
         v_grid[grid_land_mask] = np.nan
 
+        # Apply the display threshold: anything below it becomes transparent, and the
+        # matching direction arrows are dropped too so they don't float over the base
+        # map. NaN comparisons are False, so land/missing cells are unaffected here.
+        if wave_threshold > 0.0:
+            with np.errstate(invalid="ignore"):
+                below_threshold = swh_grid < wave_threshold
+            swh_grid[below_threshold] = np.nan
+            u_grid[below_threshold] = np.nan
+            v_grid[below_threshold] = np.nan
+
         # 4. Initialize Core Canvas
         plot = Plot(self.map_data.region)
         plot.get_figure()
@@ -279,18 +305,27 @@ class WavesUpdater(Updater):
             "wave_height", custom_rgba_list, N=256
         )
 
-        levels = np.linspace(0.0, 8.0, 17)
+        # NaN cells (land, missing data, below display threshold) render fully
+        # transparent rather than the colormap's default.
+        cmap.set_bad((0.0, 0.0, 0.0, 0.0))
+
         norm = mcolors.Normalize(vmin=0.0, vmax=8.0)
 
-        plot.ax.contourf(
-            grid_lon,
-            grid_lat,
+        # Smooth continuous blend. The field sits on a regular lon/lat grid, so imshow
+        # rasterises it with bilinear interpolation for a seamless min->max gradient.
+        # (pcolormesh shading="gouraud" triangulates each quad into two triangles, and
+        # with alpha<1 the antialiased triangle edges double-blend into a diagonal
+        # "cross-hatch" that becomes visible when zoomed in. imshow has no triangulation,
+        # so the colour is genuinely smooth at every zoom.) NaN propagates through the
+        # interpolation stencil, so land/threshold edges stay cleanly transparent.
+        # Heights above vmax clamp to the palette's top colour.
+        plot.ax.imshow(
             swh_grid,
-            levels=levels,
+            extent=[grid_lon[0], grid_lon[-1], grid_lat[0], grid_lat[-1]],
+            origin="lower",
+            interpolation="bilinear",
             cmap=cmap,
             norm=norm,
-            extend="max",
-            antialiased=True,
             transform=ccrs.PlateCarree(),
             zorder=2,
         )
@@ -357,7 +392,7 @@ class WavesUpdater(Updater):
             )
 
         plot.save_figure(self.output_path)
-        self.save_waves_key(self.output_path, cmap, norm)
+        self.save_waves_key(self.output_path, cmap, norm, threshold=wave_threshold)
 
         plt_close = getattr(plot, "close", None)
         if callable(plt_close):

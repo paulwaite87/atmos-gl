@@ -193,6 +193,7 @@ services:
       - "8180:80"
     volumes:
       - ./ui:/usr/share/nginx/html:ro
+      - ./config/nginx.conf:/etc/nginx/nginx.conf
     depends_on:
       - map_api
     networks:

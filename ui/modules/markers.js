@@ -33,11 +33,12 @@ export function loadLayer(map, config) {
         // as you zoom, roughly tracking the label reveal, so a 1000+ marker set
         // doesn't become a wall of dots at low zoom.
         const dotReveal = ['step', ['zoom'],
-            ['case', ['>=', ['get', 'priority'], 80], 1, 0],   // z3-4: megacities only
-            4, ['case', ['>=', ['get', 'priority'], 50], 1, 0],  // + majors/capitals
-            5, ['case', ['>=', ['get', 'priority'], 30], 1, 0],
-            6, ['case', ['>=', ['get', 'priority'], 15], 1, 0],  // + general tail
-            8, 1,                                                // everything
+            ['case', ['>=', ['get', 'priority'], 88], 1, 0],   // z3-4: ~115 top world cities
+            4, ['case', ['>=', ['get', 'priority'], 70], 1, 0],  // + majors/capitals (~700)
+            5, ['case', ['>=', ['get', 'priority'], 55], 1, 0],  // (~1400)
+            6, ['case', ['>=', ['get', 'priority'], 40], 1, 0],  // (~3800)
+            7, ['case', ['>=', ['get', 'priority'], 25], 1, 0],  // general tail (~6600)
+            9, 1,                                                // everything
         ];
         map.addLayer({
             id: dotLayerId, type: 'circle', source: sourceId,
@@ -71,7 +72,7 @@ export function loadLayer(map, config) {
                 // heavy thinning (only top-priority labels survive), relaxing toward
                 // the default so more reveal progressively as you zoom in.
                 'text-padding': ['interpolate', ['linear'], ['zoom'],
-                    3, 45, 5, 15, 8, 4, 11, 2],
+                    3, 60, 5, 24, 7, 10, 10, 3, 13, 2],
                 'symbol-sort-key': ['-', 100, ['coalesce', ['get', 'priority'], 0]],
             },
             paint: {
