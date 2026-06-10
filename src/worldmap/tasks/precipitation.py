@@ -123,7 +123,9 @@ class PrecipitationUpdater(Updater):
         import gc  # Garbage collector
 
         if not os.path.exists(self.frame_paths[0]):
-            logger.warning("Skipping Precipitation: current-hour frame not available yet.")
+            logger.warning(
+                "Skipping Precipitation: current-hour frame not available yet."
+            )
             return
 
         logger.debug(
@@ -238,7 +240,9 @@ class PrecipitationUpdater(Updater):
         try:
             p0 = self._load_prate_global(self.frame_paths[0])
         except Exception as e:
-            logger.warning(f"Precipitation: could not load current frame for texture ({e}).")
+            logger.warning(
+                f"Precipitation: could not load current frame for texture ({e})."
+            )
             return
         frames = [p0]
         last_good = p0
@@ -251,11 +255,15 @@ class PrecipitationUpdater(Updater):
                     last_good = pk
                     live += 1
                 except Exception as e:
-                    logger.warning(f"Precipitation frame unreadable ({path}: {e}); holding previous.")
+                    logger.warning(
+                        f"Precipitation frame unreadable ({path}: {e}); holding previous."
+                    )
             frames.append(pk)
 
         base, _ = os.path.splitext(self.output_path)
-        encode_frames(frames, f"{base}_data.png", 0.0, self.VMAX_PRECIP, transform="sqrt")
+        encode_frames(
+            frames, f"{base}_data.png", 0.0, self.VMAX_PRECIP, transform="sqrt"
+        )
         held = len(frames) - live
         logger.info(
             f"Finished Precipitation plot ({self.lod_desc} resolution); "
@@ -274,8 +282,7 @@ class PrecipitationUpdater(Updater):
 
         self.frame_hours = [f_hour_0 + k * step for k in range(n_frames)]
         self.frame_paths = [
-            os.path.join(self.workdir, f"data/gfs_precip_{h:03d}.grib2")
-            for h in self.frame_hours
+            self.cache_path(f"gfs_precip_{h:03d}.grib2") for h in self.frame_hours
         ]
         # Frame 0 (current hour) drives the static region render + colourbar key.
         self.grib_path = self.frame_paths[0]

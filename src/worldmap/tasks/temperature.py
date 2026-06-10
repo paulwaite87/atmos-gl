@@ -75,7 +75,6 @@ class TemperatureUpdater(Updater):
         """Generates a standalone key image using dynamic formatting based on mode."""
         import matplotlib.pyplot as plt
         import matplotlib as mpl
-        import os
 
         # Standardize naming
         base, ext = os.path.splitext(output_path)
@@ -282,9 +281,7 @@ class TemperatureUpdater(Updater):
     def run(self):
         self.exit_if_disabled()
         self.get_gfs_state()
-        self.grib_path = os.path.join(
-            self.workdir, f"data/gfs_temp_{self.forecast_hour_str}.grib2"
-        )
+        self.grib_path = self.cache_path(f"gfs_temp_{self.forecast_hour_str}.grib2")
 
         url = f"{self.base_url}/gfs.{self.gfs_date_str}/{self.gfs_run}/atmos/gfs.t{self.gfs_run}z.pgrb2.0p25.f{self.forecast_hour_str}"
         if self.remote_data_update(remote_url=url, cache_file_path=self.grib_path):

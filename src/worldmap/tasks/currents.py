@@ -51,7 +51,6 @@ class CurrentsUpdater(Updater):
         """Generates a standalone Ocean Currents key image (separate _key.png)."""
         import matplotlib.pyplot as plt
         import matplotlib as mpl
-        import os
 
         base, ext = os.path.splitext(output_path)
         key_path = f"{base}_key{ext}"
@@ -259,9 +258,7 @@ class CurrentsUpdater(Updater):
         self.exit_if_disabled()
         # Get the GFS state for this updater
         self.get_gfs_state()
-        self.nc_path = os.path.join(
-            self.workdir, f"data/rtofs_currents_{self.forecast_hour_str}.nc"
-        )
+        self.nc_path = self.cache_path(f"rtofs_currents_{self.forecast_hour_str}.nc")
 
         urls_to_try = [
             f"{self.base_url}/rtofs.{self.gfs_date_str}/rtofs_glo_2ds_f{self.forecast_hour_str}_prog.nc",

@@ -19,11 +19,22 @@ def _subsolar(dt):
     start = datetime(dt.year, 1, 1, tzinfo=timezone.utc)
     doy = (dt - start).total_seconds() / 86400.0
     g = 2.0 * math.pi / 365.0 * doy
-    decl = (0.006918 - 0.399912 * math.cos(g) + 0.070257 * math.sin(g)
-            - 0.006758 * math.cos(2 * g) + 0.000907 * math.sin(2 * g)
-            - 0.002697 * math.cos(3 * g) + 0.00148 * math.sin(3 * g))
-    eot = 229.18 * (0.000075 + 0.001868 * math.cos(g) - 0.032077 * math.sin(g)
-                    - 0.014615 * math.cos(2 * g) - 0.040849 * math.sin(2 * g))
+    decl = (
+        0.006918
+        - 0.399912 * math.cos(g)
+        + 0.070257 * math.sin(g)
+        - 0.006758 * math.cos(2 * g)
+        + 0.000907 * math.sin(2 * g)
+        - 0.002697 * math.cos(3 * g)
+        + 0.00148 * math.sin(3 * g)
+    )
+    eot = 229.18 * (
+        0.000075
+        + 0.001868 * math.cos(g)
+        - 0.032077 * math.sin(g)
+        - 0.014615 * math.cos(2 * g)
+        - 0.040849 * math.sin(2 * g)
+    )
     lat = math.degrees(decl)
     utc_hours = dt.hour + dt.minute / 60.0 + dt.second / 3600.0
     lon = -15.0 * (utc_hours + eot / 60.0 - 12.0)
@@ -57,12 +68,16 @@ def terminator_geojson():
     fc = {
         "type": "FeatureCollection",
         "features": [
-            {"type": "Feature",
-             "geometry": {"type": "Polygon", "coordinates": [ring]},
-             "properties": {"feature_type": "NIGHT"}},
-            {"type": "Feature",
-             "geometry": {"type": "LineString", "coordinates": curve},
-             "properties": {"feature_type": "TERMINATOR"}},
+            {
+                "type": "Feature",
+                "geometry": {"type": "Polygon", "coordinates": [ring]},
+                "properties": {"feature_type": "NIGHT"},
+            },
+            {
+                "type": "Feature",
+                "geometry": {"type": "LineString", "coordinates": curve},
+                "properties": {"feature_type": "TERMINATOR"},
+            },
         ],
     }
     return Response(json.dumps(fc), media_type="application/json")

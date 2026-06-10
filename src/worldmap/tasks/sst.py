@@ -25,7 +25,6 @@ class SSTUpdater(Updater):
         """Generates a standalone SST key image (separate _key.png)."""
         import matplotlib.pyplot as plt
         import matplotlib as mpl
-        import os
 
         base, ext = os.path.splitext(output_path)
         key_path = f"{base}_key{ext}"
@@ -152,10 +151,10 @@ class SSTUpdater(Updater):
         # Construct paths and target endpoints using the common base_url
         current_year = datetime.now().year
         if self.mode == "anomaly":
-            self.nc_path = os.path.join(self.workdir, "data/noaa_oisst_anomaly.nc")
+            self.nc_path = self.cache_path("noaa_oisst_anomaly.nc")
             self.target_url = f"{self.base_url}/sst.day.anom.{current_year}.nc"
         else:
-            self.nc_path = os.path.join(self.workdir, "data/noaa_oisst_mean.nc")
+            self.nc_path = self.cache_path("noaa_oisst_mean.nc")
             self.target_url = f"{self.base_url}/sst.day.mean.{current_year}.nc"
 
         if self.remote_data_update(

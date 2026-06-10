@@ -12,11 +12,20 @@ export function liveLayerSync(map, {
     sectionKey, initialConfig, mount, refresh, unmount, imageUrl,
     syncMs = 20000, refreshMs = 300000,
     globalKeys = [], initialGlobals = {},
+    regenWaitMs = 120000,
 }) {
     let mounted = false;
     let imageReady = false;
     let lastRefresh = 0;
     let lastSig = '';                                 // JSON of last-seen section + globals
+    // After a render-affecting config change the backend re-renders the PNG on its
+    // own beat, so the new image lands a little later than we detect the config edit.
+    // While "awaiting regen" we keep watching the image's Last-Modified and apply the
+    // fresh render the moment it appears, instead of refreshing once and going dormant
+    // for the slow cadence (which left stale renders on screen for minutes).
+    let awaitingRegen = false;
+    let regenDeadline = 0;
+    let baselineMtime = 0;
 
     const pickGlobals = (data) => {
         const g = {};
@@ -28,10 +37,25 @@ export function liveLayerSync(map, {
     const doMount = (cfg, globals) => {
         mount(cfg, globals); mounted = true; imageReady = false;
         lastRefresh = Date.now(); lastSig = sigOf(cfg, globals);
+        awaitingRegen = false;
     };
-    const doUnmount = () => { unmount(); mounted = false; imageReady = false; };
+    const doUnmount = () => {
+        unmount(); mounted = false; imageReady = false; awaitingRegen = false;
+    };
 
     if (initialConfig && initialConfig.enabled) doMount(initialConfig, initialGlobals);
+
+    // Last-Modified of the served image as a millisecond timestamp (0 if unavailable).
+    const imageMtime = async (cfg) => {
+        if (!imageUrl) return 0;
+        try {
+            const r = await fetch(`${imageUrl(cfg)}?probe=${Date.now()}`, { method: 'HEAD' });
+            if (!r.ok) return 0;
+            const lm = r.headers.get('Last-Modified');
+            const t = lm ? Date.parse(lm) : NaN;
+            return Number.isNaN(t) ? 0 : t;
+        } catch { return 0; }
+    };
 
     const imageExists = async (cfg) => {
         if (!imageUrl) return true;                       // no probe supplied -> assume present
@@ -77,10 +101,29 @@ export function liveLayerSync(map, {
                 }
             } else {
                 const sig = sigOf(section, globals);
-                if (sig !== lastSig) {                    // settings changed -> apply now
-                    refresh(section, globals);
+                if (sig !== lastSig) {                    // settings changed
+                    refresh(section, globals);            // apply frontend-side change now
                     lastSig = sig;
                     lastRefresh = Date.now();
+                    // ...and start chasing the backend re-render so we don't sit on a
+                    // stale PNG until the slow cadence.
+                    awaitingRegen = true;
+                    regenDeadline = Date.now() + regenWaitMs;
+                    baselineMtime = await imageMtime(section);
+                } else if (awaitingRegen) {
+                    const m = await imageMtime(section);
+                    if (m && m > baselineMtime) {         // backend produced a fresh render
+                        refresh(section, globals);
+                        awaitingRegen = false;
+                        lastRefresh = Date.now();
+                        console.log(`[${sectionKey}] backend re-render detected — applied.`);
+                    } else if (m === 0) {
+                        // Last-Modified not exposed: re-pull each tick within the window
+                        // so the new image is still picked up, just less precisely.
+                        refresh(section, globals);
+                        lastRefresh = Date.now();
+                    }
+                    if (Date.now() >= regenDeadline) awaitingRegen = false;
                 } else if (Date.now() - lastRefresh >= refreshMs) {
                     refresh(section, globals);            // unchanged config: slow cadence
                     lastRefresh = Date.now();             // (picks up regenerated PNGs)

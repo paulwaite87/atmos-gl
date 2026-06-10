@@ -11,6 +11,7 @@ logger = logging.getLogger("worldmap.satellites_collector")
 
 CELESTRAK_GROUPS = ["stations", "weather", "science", "resource"]
 
+
 class SatellitesCollector:
     def __init__(self, config_path):
         self.config = WorldMapConfig(config_path)

@@ -4,7 +4,16 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 # Import the new decoupled router files
-from worldmap.routes import satellites, storms, volcanoes, quakes, lightning, shipping, config, terminator
+from worldmap.routes import (
+    satellites,
+    storms,
+    volcanoes,
+    quakes,
+    lightning,
+    shipping,
+    config,
+    terminator,
+)
 
 app = FastAPI(title="WorldMap Configuration API")
 

@@ -36,8 +36,11 @@ class IsobarUpdater(Updater):
     def _load_prmsl(self, path, lon_idx):
         """Open a PRMSL GRIB, standardise longitudes, smooth. Returns (p, lons, lats, lon_idx)."""
         ds = xr.open_dataset(
-            path, engine="cfgrib",
-            backend_kwargs={"filter_by_keys": {"typeOfLevel": "meanSea", "shortName": "prmsl"}},
+            path,
+            engine="cfgrib",
+            backend_kwargs={
+                "filter_by_keys": {"typeOfLevel": "meanSea", "shortName": "prmsl"}
+            },
         )
         p = ds["prmsl"].values / 100.0
         lons = ds["longitude"].values
@@ -72,11 +75,19 @@ class IsobarUpdater(Updater):
         alpha_val = self.settings.get("alpha", 1.0)
 
         line_effect = [
-            patheffects.withStroke(linewidth=thickness + 1.0, foreground="black", alpha=alpha_val * 0.4)
+            patheffects.withStroke(
+                linewidth=thickness + 1.0, foreground="black", alpha=alpha_val * 0.4
+            )
         ]
         cs = plot.ax.contour(
-            lons, lats, p0, levels=levels, colors=color,
-            linewidths=thickness, alpha=alpha_val, transform=ccrs.PlateCarree(),
+            lons,
+            lats,
+            p0,
+            levels=levels,
+            colors=color,
+            linewidths=thickness,
+            alpha=alpha_val,
+            transform=ccrs.PlateCarree(),
         )
         for collection in getattr(cs, "collections", []):
             collection.set_path_effects(line_effect)
@@ -99,17 +110,25 @@ class IsobarUpdater(Updater):
             pk = last_good
             if os.path.exists(path):
                 try:
-                    pk, _, _, _ = self._load_prmsl(path, lon_idx)   # reuse frame-0 lon ordering
+                    pk, _, _, _ = self._load_prmsl(
+                        path, lon_idx
+                    )  # reuse frame-0 lon ordering
                     last_good = pk
                     live += 1
                 except Exception as e:
-                    logger.warning(f"Isobars frame unreadable ({path}: {e}); holding previous.")
+                    logger.warning(
+                        f"Isobars frame unreadable ({path}: {e}); holding previous."
+                    )
             frames.append(pk)
 
         base, _ = os.path.splitext(self.output_path)
-        encode_frames(frames, f"{base}_data.png", self.VMIN_PRESSURE, self.VMAX_PRESSURE)
+        encode_frames(
+            frames, f"{base}_data.png", self.VMIN_PRESSURE, self.VMAX_PRESSURE
+        )
         held = len(frames) - live
-        logger.info(f"Isobars data texture: {len(frames)} frames ({live} live, {held} held).")
+        logger.info(
+            f"Isobars data texture: {len(frames)} frames ({live} live, {held} held)."
+        )
 
     def run(self):
         self.exit_if_disabled()
@@ -122,8 +141,7 @@ class IsobarUpdater(Updater):
 
         self.frame_hours = [f_hour_0 + k * step for k in range(n_frames)]
         self.frame_paths = [
-            os.path.join(self.workdir, f"data/gfs_isobars_{h:03d}.grib2")
-            for h in self.frame_hours
+            self.cache_path(f"gfs_isobars_{h:03d}.grib2") for h in self.frame_hours
         ]
         urls = [
             f"{self.base_url}/gfs.{self.gfs_date_str}/{self.gfs_run}/atmos/"
@@ -134,8 +152,10 @@ class IsobarUpdater(Updater):
         needs_plot = False
         for url, path in zip(urls, self.frame_paths):
             if self.remote_data_update(
-                    remote_url=url, cache_file_path=path,
-                    grib_targets=[":PRMSL:mean sea level:"]):
+                remote_url=url,
+                cache_file_path=path,
+                grib_targets=[":PRMSL:mean sea level:"],
+            ):
                 needs_plot = True
 
         if needs_plot:

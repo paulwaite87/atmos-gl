@@ -34,8 +34,8 @@ class CloudUpdater(Updater):
         self.cloud_offset = self.settings.get("offset_days", 1)
 
         # Override default output path to save directly to the regional cache
-        cache_filename = f"clouds_{self.cloud_offset}_{self.map_data.region.region_identifier}_{self.target_width}x{self.target_height}.jpg"
-        self.cache_output_path = os.path.join(self.workdir, "data", cache_filename)
+        cache_filename = f"{self.cloud_offset}_{self.map_data.region.region_identifier}_{self.target_width}x{self.target_height}.jpg"
+        self.cache_output_path = self.cache_path(cache_filename)
 
     def save_cache_as_transparent(self):
         threshold = self.settings.get("threshold", 0)

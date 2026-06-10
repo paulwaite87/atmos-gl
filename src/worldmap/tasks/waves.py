@@ -51,7 +51,6 @@ class WavesUpdater(Updater):
         """Generates a standalone Wave Height key image (separate _key.png)."""
         import matplotlib.pyplot as plt
         import matplotlib as mpl
-        import os
 
         base, ext = os.path.splitext(output_path)
         key_path = f"{base}_key{ext}"
@@ -77,6 +76,58 @@ class WavesUpdater(Updater):
         plt.close(fig)
         logger.debug(f"Saved Waves key to: {key_path}")
 
+    # Cache unioned coastline geometry per (resolution, rounded-bbox) so we don't
+    # re-read the shapefile and re-union on every scheduled run.
+    _coast_cache = {}
+
+    def _coastline_mask(
+        self, mesh_lon, mesh_lat, lon_min, lat_min, lon_max, lat_max, res
+    ):
+        """Boolean land mask at grid resolution, cut from true coastline geometry.
+
+        Returns a mesh-shaped boolean array (True over land) using Natural Earth
+        'physical/land' polygons at the requested resolution, or None if the
+        geometry can't be loaded so the caller can fall back to the data-derived mask.
+        """
+        try:
+            import cartopy.feature as cfeature
+            from shapely.ops import unary_union
+
+            key = (
+                res,
+                round(lon_min, 2),
+                round(lat_min, 2),
+                round(lon_max, 2),
+                round(lat_max, 2),
+            )
+            land_geom = self._coast_cache.get(key)
+            if land_geom is None:
+                land = cfeature.NaturalEarthFeature("physical", "land", res)
+                geoms = list(
+                    land.intersecting_geometries([lon_min, lon_max, lat_min, lat_max])
+                )
+                if not geoms:
+                    # No land in this region -> everything is water.
+                    return np.zeros(mesh_lon.shape, dtype=bool)
+                land_geom = unary_union(geoms)
+                self._coast_cache[key] = land_geom
+
+            try:
+                import shapely
+
+                mask = shapely.contains_xy(land_geom, mesh_lon, mesh_lat)
+            except (ImportError, AttributeError):
+                import shapely.vectorized as shpvec
+
+                mask = shpvec.contains(land_geom, mesh_lon, mesh_lat)
+            return np.asarray(mask, dtype=bool)
+        except Exception as exc:  # network/data/parse failure -> graceful fallback
+            logger.warning(
+                f"Coastline geometry unavailable ({exc!r}); "
+                "falling back to data-derived land mask."
+            )
+            return None
+
     def plot(self):
         """Plots an underlying significant wave height contour heatmap
         with adaptive directional quiver arrows layered over top.
@@ -99,6 +150,18 @@ class WavesUpdater(Updater):
         arrow_density_mod = self.settings.get("arrow_density", 1.0)
         arrow_scale_mod = self.settings.get("arrow_scale", 1.0)
         arrow_scale_mod = max(0.1, arrow_scale_mod)
+
+        # Level of detail controls BOTH the processing grid density and the coastline
+        # resolution used to cut land out of the field. The wave data itself is 0.25 deg
+        # so higher LOD doesn't invent wave detail, but it does sharpen the coastline
+        # cutouts (the visibly "blocky" part) from a true coastline geometry.
+        try:
+            lod = int(self.settings.get("level_of_detail", 2))
+        except (TypeError, ValueError):
+            lod = 2
+        lod = min(3, max(1, lod))
+        grid_n = {1: 300, 2: 600, 3: 1100}[lod]
+        coast_res = {1: "110m", 2: "50m", 3: "10m"}[lod]
 
         # 1. Open Dataset with cfgrib engine backend
         ds = xr.open_dataset(
@@ -136,8 +199,20 @@ class WavesUpdater(Updater):
         del ds
         gc.collect()
 
-        # 2. Extract valid water data points
-        valid = ~np.isnan(swh_raw) & ~np.isnan(mwd_raw)
+        # 2. Extract valid water data points.
+        # The GFS wave model only solves over open water; land/ice cells come back
+        # either as NaN or as a large GRIB fill value (e.g. ~9.999e20) depending on the
+        # encoding. cfgrib does not always mask the fill, and an unmasked fill sits above
+        # the colour scale -> extend="max" clamps it to the top colour and paints every
+        # landmass the maximum-wave-height colour. Treat anything outside the physical
+        # wave range as "no data" so land stays transparent however it's encoded.
+        SWH_VALID_MAX = (
+            60.0  # m: far above any real sea state (~30 m extreme), below any fill
+        )
+        land_or_missing = (
+            ~np.isfinite(swh_raw) | (swh_raw < 0.0) | (swh_raw > SWH_VALID_MAX)
+        )
+        valid = ~land_or_missing & np.isfinite(mwd_raw)
         if not np.any(valid):
             logger.warning("No open water coordinates found within the region slice.")
             return
@@ -147,8 +222,8 @@ class WavesUpdater(Updater):
         mwd_points = mwd_raw[valid]
 
         # 3. Build high-fidelity unified processing grid mesh
-        grid_lon = np.linspace(lon_min, lon_max, 300)
-        grid_lat = np.linspace(lat_min, lat_max, 300)
+        grid_lon = np.linspace(lon_min, lon_max, grid_n)
+        grid_lat = np.linspace(lat_min, lat_max, grid_n)
         mesh_lon, mesh_lat = np.meshgrid(grid_lon, grid_lat)
 
         rad_angles = np.radians(mwd_points)
@@ -169,12 +244,24 @@ class WavesUpdater(Updater):
         v_grid = combined_grid[:, :, 2]
 
         # --- HIGH RESOLUTION LAND BOUNDARY RECOVERY ---
-        raw_land_mask = np.isnan(swh_raw)
-        all_raw_points = np.column_stack((lons_clipped.ravel(), lats_clipped.ravel()))
-        all_raw_land_states = raw_land_mask.ravel()
-
-        mask_interpolator = NearestNDInterpolator(all_raw_points, all_raw_land_states)
-        grid_land_mask = mask_interpolator(mesh_lon, mesh_lat).astype(bool)
+        # Preferred: cut land using true coastline geometry at the LOD-selected
+        # resolution, which gives crisp coastlines independent of the coarse 0.25 deg
+        # wave grid. If that geometry can't be loaded (e.g. no network to fetch the
+        # Natural Earth data), fall back to the original nearest-neighbour mask derived
+        # from the wave data itself, which is blocky but always available.
+        grid_land_mask = self._coastline_mask(
+            mesh_lon, mesh_lat, lon_min, lat_min, lon_max, lat_max, coast_res
+        )
+        if grid_land_mask is None:
+            raw_land_mask = land_or_missing
+            all_raw_points = np.column_stack(
+                (lons_clipped.ravel(), lats_clipped.ravel())
+            )
+            all_raw_land_states = raw_land_mask.ravel()
+            mask_interpolator = NearestNDInterpolator(
+                all_raw_points, all_raw_land_states
+            )
+            grid_land_mask = mask_interpolator(mesh_lon, mesh_lat).astype(bool)
 
         swh_grid[grid_land_mask] = np.nan
         u_grid[grid_land_mask] = np.nan
@@ -282,9 +369,7 @@ class WavesUpdater(Updater):
         self.exit_if_disabled()
         # Get the GFS state for this updater
         self.get_gfs_state()
-        self.grib_path = os.path.join(
-            self.workdir, f"data/gfs_waves_{self.forecast_hour_str}.grib2"
-        )
+        self.grib_path = self.cache_path(f"gfs_waves_{self.forecast_hour_str}.grib2")
 
         url = f"{self.base_url}/gfs.{self.gfs_date_str}/{self.gfs_run}/wave/gridded/gfswave.t{self.gfs_run}z.global.0p25.f{self.forecast_hour_str}.grib2"
         if self.remote_data_update(remote_url=url, cache_file_path=self.grib_path):

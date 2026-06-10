@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 WEB_MERCATOR = ccrs.Mercator.GOOGLE  # EPSG:3857
 MERCATOR_LAT_LIMIT = 85.0511  # NOTE: just *inside* GOOGLE's 85.0511288 max
 
+
 def encode_frames(frames, output_path, vmin, vmax, transform=None):
     """
     Stack N scalar fields vertically into a single RGBA PNG, for upload as a
@@ -46,14 +47,16 @@ def encode_frames(frames, output_path, vmin, vmax, transform=None):
         norm = np.clip((m - vmin) / span, 0.0, 1.0)
         if transform == "sqrt":
             norm = np.sqrt(norm)
-        norm = np.nan_to_num(norm, nan=0.0)            # NaN -> 0 (masked out via alpha)
+        norm = np.nan_to_num(norm, nan=0.0)  # NaN -> 0 (masked out via alpha)
         r = (norm * 255.0).astype(np.uint8)
         z = np.zeros_like(r)
         a = np.where(np.isnan(m), 0, 255).astype(np.uint8)
         slabs.append(np.dstack((r, z, z, a)))
-    filmstrip = np.vstack(slabs)                       # (N*H, W, 4)
+    filmstrip = np.vstack(slabs)  # (N*H, W, 4)
     Image.fromarray(filmstrip, mode="RGBA").save(output_path, format="PNG")
-    logger.debug(f"Saved {len(frames)}-frame data texture to {output_path} {filmstrip.shape}")
+    logger.debug(
+        f"Saved {len(frames)}-frame data texture to {output_path} {filmstrip.shape}"
+    )
     return True
 
 
@@ -197,7 +200,9 @@ def encode_data_texture(matrix_t0, matrix_t1, output_path, vmin, vmax):
     matrix_t1 = np.asarray(matrix_t1, dtype=np.float32)
 
     if matrix_t0.shape != matrix_t1.shape:
-        raise ValueError(f"Matrix shape mismatch: {matrix_t0.shape} vs {matrix_t1.shape}")
+        raise ValueError(
+            f"Matrix shape mismatch: {matrix_t0.shape} vs {matrix_t1.shape}"
+        )
 
     height, width = matrix_t0.shape
 
@@ -421,6 +426,18 @@ class Updater:
             if os.path.exists(output_path):
                 return output_path
         return None
+
+    def cache_path(self, filename: str) -> str:
+        """Path for a downloadable cache file under the data dir.
+
+        Every cache file carries a uniform '<section>_cache_' prefix. This lets the
+        housekeeper find and expire caches by a single marker (no per-layer pattern
+        lists to maintain), and makes live render outputs - which never carry the
+        prefix - safe from deletion by construction rather than by a guard list.
+        """
+        return str(
+            os.path.join(self.workdir, "data", f"{self.section}_cache_{filename}")
+        )
 
     def get_base_url(self):
         return self.settings.get("url", "").rstrip("/")

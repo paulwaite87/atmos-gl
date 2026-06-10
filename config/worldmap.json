@@ -1,6 +1,6 @@
 {
   "common": {
-    "target_geometry": "4096x2048",
+    "target_geometry": "8192x4096",
     "forecast_hour": 0,
     "auto_rotate": false,
     "auto_rotate_speed": 0.03,
@@ -31,28 +31,30 @@
     "gamma": 0.5,
     "offset_days": 1,
     "expiry_hours": 3,
-    "runs_per_day": 8
+    "runs_per_day": 8,
+    "cache_expiry_days": 3
   },
   "isobars": {
     "enabled": true,
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
     "outfile": "data/isobars.png",
-    "animated": true,
-    "level_of_detail": "2",
+    "animated": false,
+    "level_of_detail": "3",
     "isobar_color": "White",
     "linewidth": 1,
     "alpha": 1,
-    "label_fontsize": 10,
+    "label_fontsize": 8,
     "label_outline": false,
-    "runs_per_day": 24
+    "runs_per_day": 24,
+    "cache_expiry_days": 3
   },
   "wind": {
     "enabled": false,
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
     "outfile": "data/wind.png",
-    "animated": true,
-    "level_of_detail": "1",
-    "particle_speed": 40,
+    "animated": false,
+    "level_of_detail": "3",
+    "particle_speed": 20,
     "particle_alpha": 90,
     "particle_size": 1,
     "trail_fade": 80,
@@ -61,19 +63,21 @@
     "barb_length_base": 4,
     "barb_length_step": 1.3,
     "barb_density": 50,
-    "runs_per_day": 8
+    "runs_per_day": 8,
+    "cache_expiry_days": 3
   },
   "precipitation": {
     "enabled": true,
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
     "outfile": "data/precipitation.png",
-    "animated": true,
-    "level_of_detail": "2",
+    "animated": false,
+    "level_of_detail": "3",
     "min_mm_hr": 0.2,
     "alpha": 0.9,
     "palette": "standard",
     "key_fontsize": 8,
-    "runs_per_day": 24
+    "runs_per_day": 24,
+    "cache_expiry_days": 3
   },
   "sst": {
     "enabled": false,
@@ -87,7 +91,8 @@
     "max_c": 32,
     "key_fontsize": 8,
     "key_position": "top-right",
-    "runs_per_day": 2
+    "runs_per_day": 2,
+    "cache_expiry_days": 3
   },
   "currents": {
     "enabled": false,
@@ -98,20 +103,23 @@
     "width_factor": 2.6,
     "key_fontsize": 8,
     "key_position": "bottom-left",
-    "runs_per_day": 2
+    "runs_per_day": 2,
+    "cache_expiry_days": 3
   },
   "waves": {
     "enabled": false,
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
     "outfile": "data/waves.png",
+    "level_of_detail": "3",
     "palette": "neon_surge",
     "alpha": 0.7,
-    "show_arrows": true,
+    "show_arrows": false,
     "arrow_density": 1,
     "arrow_scale": 1,
     "key_fontsize": 8,
     "key_position": "top-right",
-    "runs_per_day": 2
+    "runs_per_day": 2,
+    "cache_expiry_days": 3
   },
   "temperature": {
     "enabled": false,
@@ -123,7 +131,8 @@
     "alpha": 1,
     "show_freezing_line": true,
     "key_fontsize": 8,
-    "runs_per_day": 8
+    "runs_per_day": 8,
+    "cache_expiry_days": 3
   },
   "ozone": {
     "enabled": false,
@@ -135,17 +144,19 @@
     "alpha": 1,
     "key_fontsize": 8,
     "runs_per_day": 2,
-    "stormwatch": true
+    "stormwatch": true,
+    "cache_expiry_days": 3
   },
   "stormwatch": {
     "enabled": false,
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
     "outfile": "data/stormwatch.png",
-    "level_of_detail": "2",
+    "level_of_detail": "3",
     "min_cape": 1200,
     "alpha": 1,
     "key_fontsize": 8,
-    "runs_per_day": 2
+    "runs_per_day": 2,
+    "cache_expiry_days": 3
   },
   "storms": {
     "enabled": true,
@@ -214,7 +225,7 @@
     "runs_per_day": 24
   },
   "satellites_collector": {
-    "enabled": false,
+    "enabled": true,
     "url": "https://celestrak.org/NORAD/elements",
     "groups": "stations,weather,science,resource",
     "update_hours": 12,
@@ -249,6 +260,11 @@
   "layer_builder": {
     "enabled": true,
     "log_level": "INFO"
+  },
+  "housekeeper": {
+    "enabled": true,
+    "days_between_runs": 1,
+    "dry_run": false
   },
   "radio": {
     "sst": "on",

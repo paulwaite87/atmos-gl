@@ -112,9 +112,7 @@ class WindUpdater(Updater):
         self.exit_if_disabled()
         # Get the GFS state for this updater
         self.get_gfs_state()
-        self.grib_path = os.path.join(
-            self.workdir, f"data/gfs_wind_{self.forecast_hour_str}.grib2"
-        )
+        self.grib_path = self.cache_path(f"gfs_wind_{self.forecast_hour_str}.grib2")
 
         url = f"{self.base_url}/gfs.{self.gfs_date_str}/{self.gfs_run}/atmos/gfs.t{self.gfs_run}z.pgrb2.0p25.f{self.forecast_hour_str}"
         if self.remote_data_update(

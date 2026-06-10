@@ -125,6 +125,28 @@ services:
     networks:
       - wmap
 
+  housekeeper:
+    container_name: housekeeper
+    image: worldmap:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: python -m worldmap.housekeeper --config /opt/project/config/worldmap.json
+    env_file:
+      - .env
+    environment:
+      - LOG_LEVEL=INFO
+      - TZ=Pacific/Auckland
+      - PYTHONPATH=/opt/project/src
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+    volumes:
+      - ./data:/opt/project/data
+      - ./config:/opt/project/config
+      - .:/opt/project
+    networks:
+      - wmap
+
   # API Core (Bridges config/db to your UI browser inputs)
   map_api:
     container_name: map_api
