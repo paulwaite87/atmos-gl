@@ -510,7 +510,7 @@ export function createWaveParticleController(map, opts) {
         if (sz.RES !== RES) { RES = sz.RES; count = sz.count; pendingRebuild = true; }
         applyParams(cfg);
         if (colormap) pendingLut = colormap(cfg);
-        loadWind(cfg);                                     // pick up regenerated swell data
+        loadWind(cfg);   // pick up regenerated swell data
         map.triggerRepaint();
         onRefresh(cfg);
     };
