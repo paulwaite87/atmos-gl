@@ -114,13 +114,20 @@
     "palette": "neon_surge",
     "alpha": 0.8,
     "min_wave_height": 0,
+    "prebuild_maxzoom": 6,
     "show_arrows": false,
     "arrow_density": 1,
     "arrow_scale": 1,
     "key_fontsize": 8,
     "key_position": "top-right",
     "runs_per_day": 2,
-    "cache_expiry_days": 3
+    "cache_expiry_days": 3,
+    "animated": true,
+    "particle_count": 6000,
+    "particle_speed": 28,
+    "particle_size": 2,
+    "bar_length": 7,
+    "particle_alpha": 1
   },
   "temperature": {
     "enabled": false,

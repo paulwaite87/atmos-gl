@@ -7,25 +7,34 @@
  * poll and pass through to mount/refresh as a second `globals` arg. They are
  * folded into the change signature, so editing a shared section live-updates
  * every layer that watches it. initialGlobals seeds the snapshot mount.
+ *
+ * viewportRender (optional): when supplied, the layer renders the CURRENT map
+ * bounds on demand instead of showing one static world image. liveLayerSync then
+ * drives `viewportRender(cfg)` on mount, on a debounced `moveend` (pan/zoom), on a
+ * settings change, and on the slow cadence (to pick up fresh data). The static
+ * image-existence/Last-Modified chase is skipped in this mode. Layers without
+ * viewportRender behave exactly as before.
  */
 export function liveLayerSync(map, {
     sectionKey, initialConfig, mount, refresh, unmount, imageUrl,
     syncMs = 20000, refreshMs = 300000,
     globalKeys = [], initialGlobals = {},
     regenWaitMs = 120000,
+    viewportRender = null,
+    viewportDebounceMs = 250,
 }) {
     let mounted = false;
     let imageReady = false;
     let lastRefresh = 0;
     let lastSig = '';                                 // JSON of last-seen section + globals
-    // After a render-affecting config change the backend re-renders the PNG on its
-    // own beat, so the new image lands a little later than we detect the config edit.
-    // While "awaiting regen" we keep watching the image's Last-Modified and apply the
-    // fresh render the moment it appears, instead of refreshing once and going dormant
-    // for the slow cadence (which left stale renders on screen for minutes).
     let awaitingRegen = false;
     let regenDeadline = 0;
     let baselineMtime = 0;
+
+    // viewport-render state
+    let currentSection = initialConfig;
+    let moveTimer = null;
+    let moveHandler = null;
 
     const pickGlobals = (data) => {
         const g = {};
@@ -34,12 +43,28 @@ export function liveLayerSync(map, {
     };
     const sigOf = (section, globals) => JSON.stringify([section, globals]);
 
+    // Debounce pan/zoom: only re-render once the view has settled.
+    const scheduleViewport = () => {
+        if (!viewportRender) return;
+        if (moveTimer) clearTimeout(moveTimer);
+        moveTimer = setTimeout(() => {
+            if (mounted && currentSection) viewportRender(currentSection);
+        }, viewportDebounceMs);
+    };
+
     const doMount = (cfg, globals) => {
         mount(cfg, globals); mounted = true; imageReady = false;
         lastRefresh = Date.now(); lastSig = sigOf(cfg, globals);
-        awaitingRegen = false;
+        awaitingRegen = false; currentSection = cfg;
+        if (viewportRender) {
+            moveHandler = () => scheduleViewport();
+            map.on('moveend', moveHandler);
+            viewportRender(cfg);                      // render the current view immediately
+        }
     };
     const doUnmount = () => {
+        if (moveHandler) { map.off('moveend', moveHandler); moveHandler = null; }
+        if (moveTimer) { clearTimeout(moveTimer); moveTimer = null; }
         unmount(); mounted = false; imageReady = false; awaitingRegen = false;
     };
 
@@ -77,6 +102,7 @@ export function liveLayerSync(map, {
         const section = data[sectionKey];
         const globals = pickGlobals(data);
         const enabled = !!(section && section.enabled);
+        if (section) currentSection = section;
 
         if (enabled && !mounted) {
             doMount(section, globals);
@@ -89,6 +115,20 @@ export function liveLayerSync(map, {
             return;
         }
         if (enabled && mounted) {
+            if (viewportRender) {
+                // Viewport mode: re-render the current bounds on a settings change, and
+                // on the slow cadence so fresh data is picked up. Pan/zoom is handled by
+                // the debounced moveend listener attached at mount.
+                const sig = sigOf(section, globals);
+                if (sig !== lastSig) {
+                    lastSig = sig; lastRefresh = Date.now();
+                    viewportRender(section);
+                } else if (Date.now() - lastRefresh >= refreshMs) {
+                    lastRefresh = Date.now();
+                    viewportRender(section);
+                }
+                return;
+            }
             if (!imageReady) {
                 const exists = await imageExists(section);
                 if (!mounted) return;          // disabled while the probe was in flight
@@ -105,8 +145,6 @@ export function liveLayerSync(map, {
                     refresh(section, globals);            // apply frontend-side change now
                     lastSig = sig;
                     lastRefresh = Date.now();
-                    // ...and start chasing the backend re-render so we don't sit on a
-                    // stale PNG until the slow cadence.
                     awaitingRegen = true;
                     regenDeadline = Date.now() + regenWaitMs;
                     baselineMtime = await imageMtime(section);
@@ -118,8 +156,6 @@ export function liveLayerSync(map, {
                         lastRefresh = Date.now();
                         console.log(`[${sectionKey}] backend re-render detected — applied.`);
                     } else if (m === 0) {
-                        // Last-Modified not exposed: re-pull each tick within the window
-                        // so the new image is still picked up, just less precisely.
                         refresh(section, globals);
                         lastRefresh = Date.now();
                     }

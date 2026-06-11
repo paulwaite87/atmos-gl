@@ -10,10 +10,44 @@ import gc
 
 # Internal imports
 from worldmap.lib.config import WorldMapConfig
-from .common import Updater, MapData, Plot, _opaque_cmap
+from .common import Updater, MapData, Plot, _opaque_cmap, encode_uv
 
 warnings.filterwarnings("ignore")
 logger = logging.getLogger(__name__)
+
+# Magnitude scale for the animated swell particle field (metres of significant wave
+# height). The GPU layer clips |velocity| to this; pick a little above the tallest
+# swell you care to distinguish. Must match VMAX_WAVES on the frontend (waves.js).
+VMAX_WAVES = 8.0
+
+
+# DESIGNED GRADIENTS FOR WAVE HEIGHT INTENSITY. Module-level so other renderers
+# (e.g. the tile server) can reuse the exact same palettes as a single source of truth.
+PALETTES = {
+    "ocean_storm": [
+        (0.0, 0.2, 0.4),  # Calm: Deep Blue
+        (0.0, 0.6, 0.3),  # Low: Emerald Teal
+        (0.9, 0.7, 0.0),  # Moderate: Amber Yellow
+        (0.8, 0.2, 0.0),  # Heavy: Crimson Red
+        (0.9, 0.9, 0.9),  # Extreme: Foam White
+    ],
+    "neon_surge": [
+        (0.0, 0.8, 1.0),  # 0m+: Electric Cyan
+        (0.0, 0.95, 0.4),  # Low Swell: Neon Green
+        (1.0, 0.9, 0.0),  # Moderate: Vivid Yellow
+        (1.0, 0.3, 0.0),  # Heavy: Bright Orange
+        (0.9, 0.0, 0.5),  # Violent: Hot Magenta
+        (0.6, 0.0, 0.7),  # Extreme: Deep Purple
+    ],
+    "solar_flare": [
+        (0.6, 1.0, 0.9),  # 0m+: Soft, glowing cyan (Calm)
+        (0.0, 1.0, 0.0),  # Low Swell: Electric Lime
+        (1.0, 1.0, 0.0),  # Light Seas: Pure, Blazing Yellow
+        (1.0, 0.65, 0.0),  # Moderate: Pierce Orange
+        (1.0, 0.2, 0.1),  # Heavy: Safety Red
+        (1.0, 0.0, 1.0),  # Extreme: Hot Magenta/Pink
+    ],
+}
 
 
 class WavesUpdater(Updater):
@@ -21,31 +55,8 @@ class WavesUpdater(Updater):
         super().__init__(config, "Waves", map_data)
 
         # DESIGNED GRADIENTS FOR WAVE HEIGHT INTENSITY
-        self.PALETTES = {
-            "ocean_storm": [
-                (0.0, 0.2, 0.4),  # Calm: Deep Blue
-                (0.0, 0.6, 0.3),  # Low: Emerald Teal
-                (0.9, 0.7, 0.0),  # Moderate: Amber Yellow
-                (0.8, 0.2, 0.0),  # Heavy: Crimson Red
-                (0.9, 0.9, 0.9),  # Extreme: Foam White
-            ],
-            "neon_surge": [
-                (0.0, 0.8, 1.0),  # 0m+: Electric Cyan
-                (0.0, 0.95, 0.4),  # Low Swell: Neon Green
-                (1.0, 0.9, 0.0),  # Moderate: Vivid Yellow
-                (1.0, 0.3, 0.0),  # Heavy: Bright Orange
-                (0.9, 0.0, 0.5),  # Violent: Hot Magenta
-                (0.6, 0.0, 0.7),  # Extreme: Deep Purple
-            ],
-            "solar_flare": [
-                (0.6, 1.0, 0.9),  # 0m+: Soft, glowing cyan (Calm)
-                (0.0, 1.0, 0.0),  # Low Swell: Electric Lime
-                (1.0, 1.0, 0.0),  # Light Seas: Pure, Blazing Yellow
-                (1.0, 0.65, 0.0),  # Moderate: Pierce Orange
-                (1.0, 0.2, 0.1),  # Heavy: Safety Red
-                (1.0, 0.0, 1.0),  # Extreme: Hot Magenta/Pink
-            ],
-        }
+        self.PALETTES = PALETTES
+
 
     def save_waves_key(self, output_path, cmap, norm, threshold=0.0):
         """Generates a standalone Wave Height key image (separate _key.png)."""
@@ -436,6 +447,59 @@ class WavesUpdater(Updater):
 
         logger.debug("Wave condition plotting sequence completed successfully.")
 
+    def _write_velocity_texture(self):
+        """Encode the global swell vector field into <outfile_base>_data.png for the
+        animated particle layer. Direction matches the arrows (u=sin, v=cos of the wave
+        direction); magnitude is significant wave height, so taller swell drifts faster.
+        Land / missing cells are flagged transparent so particles respawn there."""
+        ds = xr.open_dataset(
+            self.grib_path, engine="cfgrib",
+            backend_kwargs={"filter_by_keys": {"typeOfLevel": "surface"}},
+        )
+        direction_key = "dirpw" if "dirpw" in ds else "mwd"
+        lon = np.asarray(ds["longitude"].values, dtype=np.float64)
+        swh = np.asarray(ds["swh"].values, dtype=np.float32)
+        mwd = np.asarray(ds[direction_key].values, dtype=np.float32)
+        ds.close()
+
+        # GFS native grid is row0=north already (matches encode_uv); just wrap lon to
+        # -180..180 and sort columns so the texture is a clean equirect -180..180.
+        lon = ((lon + 180.0) % 360.0) - 180.0
+        order = np.argsort(lon)
+        swh = swh[:, order]
+        mwd = mwd[:, order]
+
+        bad = (~np.isfinite(swh) | (swh < 0.0) | (swh > 60.0) | ~np.isfinite(mwd))
+        rad = np.radians(np.nan_to_num(mwd))
+        mag = np.where(bad, np.nan, swh)
+        u = mag * np.sin(rad)        # east  component (m), NaN where bad -> A=0
+        v = mag * np.cos(rad)        # north component (m)
+
+        base, _ = os.path.splitext(self.output_path)
+        encode_uv(u, v, f"{base}_data.png", VMAX_WAVES)
+        logger.info("Waves: wrote swell velocity texture for the animated layer.")
+
+    def _write_legend_key(self):
+        """Regenerate just the colourbar key (palette/threshold may have changed),
+        without the slow world render — the heat field is served as tiles now."""
+        import matplotlib.colors as mcolors
+
+        palette_name = self.settings.get("palette", "ocean_storm")
+        if palette_name not in self.PALETTES:
+            palette_name = "ocean_storm"
+        alpha_setting = float(np.clip(self.settings.get("alpha", 0.75), 0.1, 1.0))
+        try:
+            threshold = max(0.0, float(self.settings.get("min_wave_height", 0) or 0))
+        except (TypeError, ValueError):
+            threshold = 0.0
+        cmap = mcolors.LinearSegmentedColormap.from_list(
+            "wave_height",
+            [(r, g, b, alpha_setting) for (r, g, b) in self.PALETTES[palette_name]],
+            N=256,
+        )
+        norm = mcolors.Normalize(vmin=0.0, vmax=8.0)
+        self.save_waves_key(self.output_path, cmap, norm, threshold=threshold)
+
     def run(self):
         self.exit_if_disabled()
         # Get the GFS state for this updater
@@ -443,6 +507,32 @@ class WavesUpdater(Updater):
         self.grib_path = self.cache_path(f"gfs_waves_{self.forecast_hour_str}.grib2")
 
         url = f"{self.base_url}/gfs.{self.gfs_date_str}/{self.gfs_run}/wave/gridded/gfswave.t{self.gfs_run}z.global.0p25.f{self.forecast_hour_str}.grib2"
-        if self.remote_data_update(remote_url=url, cache_file_path=self.grib_path):
-            logger.info("Generating Waves plot...")
-            self.plot()
+        # Ensure the latest GRIB is cached (downloads only if new/updated).
+        self.remote_data_update(remote_url=url, cache_file_path=self.grib_path)
+        if not os.path.exists(self.grib_path):
+            logger.warning("Waves: no GRIB available yet; skipping tile build.")
+            return
+
+        from worldmap.tiles import waves_tiles as wt
+
+        # The legend key is cheap to draw and depends on palette/alpha/threshold AND
+        # key_fontsize. Refresh it whenever the task runs, so settings like key_fontsize
+        # apply to the legend WITHOUT forcing a tile rebuild.
+        self._write_legend_key()
+
+        # Tiles depend only on the wave DATA and the settings that change tile pixels
+        # (palette, alpha, min_wave_height) — see wt.current_version. Unrelated settings
+        # never change the version, so they never trigger a (re)build.
+        if wt.current_version(self.config) == wt.published_version(self.config):
+            return
+
+        # Publish-then-fill: bake + publish the new version IMMEDIATELY so the API can
+        # serve it on demand (the frontend's visible tiles render first — viewport
+        # prioritised). Then warm the base pyramid in the background; the API keeps
+        # serving on demand throughout, so the user never waits for the whole world.
+        logger.info("Waves: data or tile settings changed — publishing dataset...")
+        self._write_velocity_texture()
+        version, field, meta = wt.publish_dataset(self.config, self.grib_path)
+        logger.info(f"Waves: version {version} published; warming base pyramid...")
+        wt.warm_pyramid(self.config, version, field, meta)
+        logger.info("Waves: base pyramid warmed.")

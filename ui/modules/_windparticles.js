@@ -101,6 +101,48 @@ void main(){
     fragColor = vec4(texture(u_cmap, vec2(t, 0.5)).rgb, u_alpha);
 }`;
 
+
+// Waves mode: each particle -> a short bar drawn PERPENDICULAR to the swell direction
+// (6 verts/particle via gl_VertexID, no attributes). Mercator is conformal, so the
+// swell direction in clip space is just normalize(vel); we rotate it 90deg, correct
+// for canvas aspect to keep a constant pixel length, and lay a thin oriented quad.
+const BAR_VS = `#version 300 es
+precision highp float;
+uniform sampler2D u_particles;
+uniform sampler2D u_wind;
+uniform float u_res, u_vmax, u_W, u_H, u_halfLen, u_halfThick;
+out float v_speed;
+const float PI = 3.141592653589793;
+const float LAT_MAX = 1.4844222297453324;
+float unpackPos(vec2 c){ return (c.x*255.0*256.0 + c.y*255.0)/65535.0; }
+vec2 decodePos(vec4 c){ return vec2(unpackPos(c.rg), unpackPos(c.ba)); }
+void main(){
+    int pid = gl_VertexID / 6;
+    int corner = gl_VertexID - pid*6;
+    float col = mod(float(pid), u_res);
+    float row = floor(float(pid) / u_res);
+    vec4 s = texelFetch(u_particles, ivec2(int(col), int(row)), 0);
+    vec2 pos = decodePos(s);
+    vec4 w = texture(u_wind, pos);
+    vec2 vel = (w.a < 0.5) ? vec2(0.0) : (w.rg * (2.0*u_vmax) - u_vmax);
+    v_speed = length(vel);
+
+    float lat = clamp((0.5 - pos.y) * PI, -LAT_MAX, LAT_MAX);
+    float mercY = log(tan(PI*0.25 + lat*0.5));
+    float y01 = 0.5 - mercY / (2.0 * PI);
+    vec2 center = vec2(pos.x*2.0 - 1.0, 1.0 - 2.0*y01);
+
+    vec2 dirClip = (v_speed > 1e-4) ? normalize(vel) : vec2(0.0, 1.0);
+    vec2 dirPix = normalize(vec2(dirClip.x * u_W, dirClip.y * u_H));   // -> pixel space
+    vec2 perpPix = vec2(-dirPix.y, dirPix.x);                          // 90deg = bar long axis
+    vec2 ab[6] = vec2[6](vec2(-1.0,-1.0), vec2(1.0,-1.0), vec2(-1.0,1.0),
+                         vec2(-1.0, 1.0), vec2(1.0,-1.0), vec2( 1.0,1.0));
+    vec2 c = ab[corner];
+    vec2 offPix = perpPix * (c.x * u_halfLen) + dirPix * (c.y * u_halfThick);
+    vec2 offClip = vec2(offPix.x * 2.0 / u_W, offPix.y * 2.0 / u_H);
+    gl_Position = vec4(center + offClip, 0.0, 1.0);
+}`;
+
 // Textured fullscreen quad with an opacity multiply (used to fade the trail buffer
 // and to blit the trail buffer to the visible canvas).
 const SCREEN_FS = `#version 300 es
@@ -113,7 +155,7 @@ void main(){ fragColor = texture(u_tex, v_uv) * u_opacity; }`;
 
 // ---- helper --------------------------------------------------------------
 
-export function createParticleWindLayer(map, opts) {
+export function createParticleController(map, opts) {
     const {
         sectionKey = 'wind',
         initialConfig,
@@ -153,6 +195,15 @@ export function createParticleWindLayer(map, opts) {
         alpha = (cfg) => { const v = Number(cfg.particle_alpha);
                            const c = isFinite(v) ? Math.min(100, Math.max(0, v)) : 90;
                            return c / 100; },
+        // 'streaks' (wind: GL points + fading trail) or 'bars' (waves: oriented quads
+        // drawn perpendicular to the swell direction, no trail — the windy.com look).
+        drawMode = 'streaks',
+        // wind falls back to a static barbs PNG when not animated / no WebGL; waves has
+        // no such PNG (the heat tiles are its base), so it passes false -> 'none'.
+        staticFallback = true,
+        // bar_length: half-length of a swell bar in px (1-20), along the perpendicular.
+        barLength = (cfg) => { const v = Number(cfg.bar_length);
+                               return isFinite(v) ? Math.min(20, Math.max(1, v)) : 7; },
         // fired alongside the animated (particle) layer only — used for the speed legend
         onMount = () => {}, onRefresh = () => {}, onUnmount = () => {},
     } = opts;
@@ -167,7 +218,7 @@ export function createParticleWindLayer(map, opts) {
     let windReady = false;
 
     // GL objects
-    let updateProg = null, drawProg = null, screenProg = null;
+    let updateProg = null, drawProg = null, screenProg = null, barProg = null;
     let quadBuf = null, indexBuf = null;
     let windTex = null, cmapTex = null;
     let stateTex = [null, null], stateFbo = [null, null], stateCur = 0;
@@ -175,15 +226,16 @@ export function createParticleWindLayer(map, opts) {
 
     // live params (read each frame / draw)
     let curSpeed = 0.25, curFade = 0.96, curPoint = 1.5, curDropRate = 0.003,
-        curDropBump = 0.012, curMaxSpeed = 30.0, curAlpha = 0.9, curSubSteps = 1;
+        curDropBump = 0.012, curMaxSpeed = 30.0, curAlpha = 0.9, curSubSteps = 1, curBarLen = 7.0;
 
     // ---- static (barbs PNG) fallback ----
     const mountStatic = (cfg) => {
-        if (map.getSource(S_SRC)) return;
+        if (!staticFallback || map.getSource(S_SRC)) return;
         map.addSource(S_SRC, { type: 'image', url: `${staticUrl(cfg)}?t=${Date.now()}`, coordinates });
         map.addLayer({ id: S_LYR, type: 'raster', source: S_SRC, paint: { 'raster-opacity': 0.85, 'raster-fade-duration': 0 } });
     };
     const refreshStatic = (cfg) => {
+        if (!staticFallback) return;
         const s = map.getSource(S_SRC);
         if (s) s.updateImage({ url: `${staticUrl(cfg)}?t=${Date.now()}` });
     };
@@ -260,6 +312,7 @@ export function createParticleWindLayer(map, opts) {
         updateProg = program(QUAD_VS, UPDATE_FS);
         drawProg = program(DRAW_VS, DRAW_FS);
         screenProg = program(QUAD_VS, SCREEN_FS);
+        if (drawMode === 'bars') { barProg = program(BAR_VS, DRAW_FS); if (!barProg) return false; }
         if (!updateProg || !drawProg || !screenProg) return false;
 
         quadBuf = gl.createBuffer();
@@ -357,7 +410,40 @@ export function createParticleWindLayer(map, opts) {
         gl.drawArrays(gl.POINTS, 0, count);
     };
 
+
+    const drawBars = () => {
+        gl.useProgram(barProg);
+        const u = (n) => gl.getUniformLocation(barProg, n);
+        gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, stateTex[stateCur]);
+        gl.uniform1i(u('u_particles'), 0);
+        gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, windTex);
+        gl.uniform1i(u('u_wind'), 1);
+        gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, cmapTex);
+        gl.uniform1i(u('u_cmap'), 2);
+        gl.uniform1f(u('u_res'), RES);
+        gl.uniform1f(u('u_vmax'), vmax);
+        gl.uniform1f(u('u_W'), W);
+        gl.uniform1f(u('u_H'), H);
+        gl.uniform1f(u('u_halfLen'), curBarLen);
+        gl.uniform1f(u('u_halfThick'), Math.max(0.5, curPoint));
+        gl.uniform1f(u('u_maxspeed'), curMaxSpeed);
+        gl.uniform1f(u('u_alpha'), curAlpha);
+        gl.drawArrays(gl.TRIANGLES, 0, count * 6);          // 2 tris/particle, no attribs
+    };
+
     const frame = () => {
+        if (gl && windReady && drawMode === 'bars') {
+            // Bars: no trail. Advect one step, clear, draw oriented bars, blit.
+            updateParticles();
+            gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+            gl.viewport(0, 0, W, H);
+            gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
+            gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+            drawBars();
+            out2d.clearRect(0, 0, W, H); out2d.drawImage(glCanvas, 0, 0);
+            rafId = requestAnimationFrame(frame);
+            return;
+        }
         if (gl && windReady) {
             // Fade the previous trail buffer once per frame.
             gl.bindFramebuffer(gl.FRAMEBUFFER, screenFbo[1 - screenCur]);
@@ -396,6 +482,8 @@ export function createParticleWindLayer(map, opts) {
         // Lay down dots ~1 point-size apart per frame whatever the speed, so trail
         // sharpness is decoupled from speed. 20.48 = vmax(40 m/s) * 0.512 px-per-(m/s).
         curSubSteps = Math.min(4, Math.max(1, Math.ceil(20.48 * curSpeed / Math.max(0.5, curPoint))));
+        curBarLen = barLength(cfg);
+        if (drawMode === 'bars') curSubSteps = 1;           // bars don't trail
     };
 
     const cleanupGL = () => {
@@ -405,13 +493,13 @@ export function createParticleWindLayer(map, opts) {
             [windTex, cmapTex, ...stateTex, ...screenTex].forEach(t => t && gl.deleteTexture(t));
             [...stateFbo, ...screenFbo].forEach(f => f && gl.deleteFramebuffer(f));
             [quadBuf, indexBuf].forEach(b => b && gl.deleteBuffer(b));
-            [updateProg, drawProg, screenProg].forEach(p => p && gl.deleteProgram(p));
+            [updateProg, drawProg, screenProg, barProg].forEach(p => p && gl.deleteProgram(p));
             gl.getExtension('WEBGL_lose_context')?.loseContext();
         }
         if (outCanvas && outCanvas.parentNode) outCanvas.parentNode.removeChild(outCanvas);
         gl = null; glCanvas = null; outCanvas = null; out2d = null; windReady = false;
         windTex = cmapTex = quadBuf = indexBuf = null;
-        updateProg = drawProg = screenProg = null;
+        updateProg = drawProg = screenProg = barProg = null;
         stateTex = [null, null]; stateFbo = [null, null];
         screenTex = [null, null]; screenFbo = [null, null];
     };
@@ -423,7 +511,11 @@ export function createParticleWindLayer(map, opts) {
         count = particleCount(cfg); RES = Math.max(16, Math.round(Math.sqrt(count))); count = RES * RES;
         applyParams(cfg);
 
-        if (!initGL()) { webglFailed = true; cleanupGL(); mountStatic(cfg); mode = 'static'; return; }
+        if (!initGL()) {
+            webglFailed = true; cleanupGL();
+            if (staticFallback) { mountStatic(cfg); mode = 'static'; } else { mode = 'none'; }
+            return;
+        }
 
         outCanvas = document.createElement('canvas');
         outCanvas.width = W; outCanvas.height = H;
@@ -458,20 +550,23 @@ export function createParticleWindLayer(map, opts) {
     };
 
     // ---- dispatch ----
-    const wanted = (cfg) => (isAnimated(cfg) && !webglFailed) ? 'animated' : 'static';
+    const wanted = (cfg) => (isAnimated(cfg) && !webglFailed) ? 'animated' : (staticFallback ? 'static' : 'none');
     const switchTo = (want, cfg) => {
         if (want === 'animated') { unmountStatic(); mountAnimated(cfg); }
-        else { unmountAnimated(); mountStatic(cfg); }
+        else if (want === 'static') { unmountAnimated(); mountStatic(cfg); }
+        else { unmountAnimated(); unmountStatic(); }       // 'none'
         mode = want;
     };
     const mount = (cfg) => {
         mode = wanted(cfg);
-        if (mode === 'animated') mountAnimated(cfg); else mountStatic(cfg);
+        if (mode === 'animated') mountAnimated(cfg);
+        else if (mode === 'static') mountStatic(cfg);
     };
     const refresh = (cfg) => {
         const want = wanted(cfg);
         if (want !== mode) switchTo(want, cfg);
-        else if (mode === 'animated') refreshAnimated(cfg); else refreshStatic(cfg);
+        else if (mode === 'animated') refreshAnimated(cfg);
+        else if (mode === 'static') refreshStatic(cfg);
     };
     const unmount = () => {
         if (mode === 'static') unmountStatic();
@@ -479,9 +574,24 @@ export function createParticleWindLayer(map, opts) {
         mode = null;
     };
 
+    return {
+        mount, refresh, unmount,
+        imageUrl: (cfg) => (isAnimated(cfg) && !webglFailed) || !staticFallback
+            ? dataUrl(cfg) : staticUrl(cfg),
+    };
+}
+
+// Backwards-compatible wrapper (wind): build the controller and drive it from the
+// shared liveLayerSync. Layers that need to compose particles with other sources
+// (e.g. waves = heat tiles + bars) call createParticleController and drive it from
+// their own liveLayerSync instead.
+export function createParticleWindLayer(map, opts) {
+    const c = createParticleController(map, opts);
     liveLayerSync(map, {
-        sectionKey, initialConfig, mount, refresh, unmount,
-        imageUrl: (cfg) => (isAnimated(cfg) && !webglFailed) ? dataUrl(cfg) : staticUrl(cfg),
-        refreshMs, syncMs,
+        sectionKey: opts.sectionKey ?? 'wind',
+        initialConfig: opts.initialConfig,
+        mount: c.mount, refresh: c.refresh, unmount: c.unmount,
+        imageUrl: c.imageUrl,
+        refreshMs: opts.refreshMs, syncMs: opts.syncMs,
     });
 }
