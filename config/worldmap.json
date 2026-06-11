@@ -79,20 +79,6 @@
     "runs_per_day": 24,
     "cache_expiry_days": 3
   },
-  "sst": {
-    "enabled": false,
-    "url": "https://downloads.psl.noaa.gov/Datasets/noaa.oisst.v2.highres",
-    "outfile": "data/sst.png",
-    "level_of_detail": "2",
-    "mode": "anomaly",
-    "alpha": 100,
-    "palette": "vivid",
-    "min_c": 20,
-    "max_c": 32,
-    "key_fontsize": 8,
-    "runs_per_day": 2,
-    "cache_expiry_days": 3
-  },
   "currents": {
     "enabled": false,
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/rtofs/prod/",
@@ -154,6 +140,20 @@
     "level_of_detail": "3",
     "min_cape": 1200,
     "alpha": 50,
+    "key_fontsize": 8,
+    "runs_per_day": 2,
+    "cache_expiry_days": 3
+  },
+  "sst": {
+    "enabled": false,
+    "url": "https://downloads.psl.noaa.gov/Datasets/noaa.oisst.v2.highres",
+    "outfile": "data/sst.png",
+    "level_of_detail": "2",
+    "mode": "anomaly",
+    "alpha": 100,
+    "palette": "vivid",
+    "min_c": 20,
+    "max_c": 32,
     "key_fontsize": 8,
     "runs_per_day": 2,
     "cache_expiry_days": 3
@@ -224,13 +224,6 @@
     "expiry_days": 14,
     "runs_per_day": 24
   },
-  "satellites_collector": {
-    "enabled": false,
-    "url": "https://celestrak.org/NORAD/elements",
-    "groups": "stations,weather,science,resource",
-    "update_hours": 12,
-    "log_level": "INFO"
-  },
   "satellites": {
     "enabled": false,
     "sat_names": [
@@ -247,6 +240,20 @@
     "enabled": false,
     "marker_color": "White",
     "marker_fontsize": 11
+  },
+  "gfs_collector": {
+    "enabled": false,
+    "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
+    "update_hours": 1,
+    "cache_hours": 24,
+    "log_level": "INFO"
+  },
+  "satellites_collector": {
+    "enabled": false,
+    "url": "https://celestrak.org/NORAD/elements",
+    "groups": "stations,weather,science,resource",
+    "update_hours": 12,
+    "log_level": "INFO"
   },
   "shipping_collector": {
     "enabled": true,

@@ -22,9 +22,6 @@ logging.getLogger("gribapi.bindings").setLevel(logging.ERROR)
 logger = logging.getLogger(__name__)
 
 
-# --- WEBGL DATA ENCODER (multi-frame) ---
-
-
 class IsobarUpdater(Updater):
     def __init__(self, config: WorldMapConfig, map_data: MapData):
         super().__init__(config, "Isobars", map_data)
