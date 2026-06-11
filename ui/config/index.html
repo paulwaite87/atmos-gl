@@ -421,14 +421,14 @@
                                        oninput="document.getElementById('badge-${domId}').innerText = this.value">
                             `;
                         } else if (option === 'particle_size') {
-                            const v = parseFloat(value); const init = isFinite(v) ? Math.min(5, Math.max(1, v)) : 1.5;
+                            const initialPSize = parseFloat(value) !== undefined ? parseFloat(value) : 1.0;
                             col.innerHTML = `
                                 <div class="d-flex justify-content-between align-items-center mb-1">
-                                    <label class="form-label small text-white-50 fw-bold mb-0">Particle size</label>
-                                    <span class="badge bg-primary text-light fw-bold" id="badge-${domId}">${init}</span>
+                                    <label class="form-label small text-white-50 fw-bold mb-0">${customLabelText}</label>
+                                    <span class="badge bg-primary text-light fw-bold" id="badge-${domId}">${initialPSize.toFixed(2)}</span>
                                 </div>
-                                <input type="range" class="form-range dynamic-input" id="${domId}" min="1" max="5" step="0.5" value="${init}"
-                                       oninput="document.getElementById('badge-${domId}').innerText = this.value">
+                                <input type="range" class="form-range dynamic-input" id="${domId}" min="0.1" max="5.0" step="0.05" value="${initialPSize}"
+                                       oninput="document.getElementById('badge-${domId}').innerText = parseFloat(this.value).toFixed(2)">
                             `;
                         } else if (option.includes('_hours')) {
                             const initialHours = parseInt(value) || 3;

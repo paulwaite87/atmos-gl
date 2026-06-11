@@ -1,4 +1,4 @@
-import { createParticleWindLayer } from './_windparticles.js';
+import { createWindParticleGLLayer } from './_windparticles_gl.js';
 
 // Wind-speed colour ramp, calm -> strong, sampled across [0, max_speed_color] m/s.
 const PALETTE = [
@@ -52,7 +52,7 @@ export function loadLayer(map, config, fullConfig = {}) {
     };
     const removeLegend = () => document.getElementById(slotId)?.remove();
 
-    createParticleWindLayer(map, {
+    createWindParticleGLLayer(map, {
         sectionKey: 'wind',
         initialConfig: config,
         vmax: 40.0,                   // must match backend VMAX_WIND
