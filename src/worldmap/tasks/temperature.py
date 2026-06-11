@@ -111,7 +111,7 @@ class TemperatureUpdater(Updater):
             f"Plotting Temperature Data for {self.map_data.region.region_identifier}"
         )
 
-        alpha_setting = self.settings.get("alpha", 0.75)
+        alpha_setting = float(self.settings.get("alpha", 75) / 100)
         alpha_setting = np.clip(alpha_setting, 0.1, 1.0)
         mode = self.settings.get("mode", "absolute").strip().lower()
         show_freezing_line = self.settings.get("show_freezing_line", True)

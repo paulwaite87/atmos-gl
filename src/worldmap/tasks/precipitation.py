@@ -133,7 +133,7 @@ class PrecipitationUpdater(Updater):
         )
 
         min_rate = self.settings.get("min_mm_hr", 0.1)
-        alpha = self.settings.get("alpha", 0.5)
+        alpha = float(self.settings.get("alpha", 50) / 100)
         palette_name = self.settings.get("palette", "standard")
 
         # Load Dataset and Clip Immediately

@@ -101,6 +101,7 @@ export function loadLayer(map, config) {
         initialConfig: config,
         drawMode: 'bars',
         staticFallback: false,              // no barbs PNG; heat tiles are the base
+        viewport: true,                     // render the current view (sharp on zoom-in)
         vmax: VMAX_WAVES,                   // must match backend
         colormap: () => buildBarLUT(),
         maxSpeedColor: () => VMAX_WAVES,    // colour ramp spans 0..VMAX_WAVES metres

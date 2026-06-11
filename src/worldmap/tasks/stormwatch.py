@@ -74,7 +74,7 @@ class StormwatchUpdater(Updater):
 
         # Configuration (Default threshold of 1000 J/kg cuts out stable air)
         min_cape = self.settings.get("min_cape", 1000)
-        alpha = self.settings.get("alpha", 0.6)
+        alpha = float(self.settings.get("alpha", 60) / 100)
 
         # 1. Load Dataset and Clip Immediately
         ds = xr.open_dataset(self.grib_path, engine="cfgrib")
@@ -149,20 +149,10 @@ class StormwatchUpdater(Updater):
         # Transparent -> Yellow -> Orange -> Red -> Magenta -> Cyan -> White
         rgba_colors = [
             (1.0, 1.0, 0.0, alpha * 0.5),  # Faint Yellow (Marginal)
-            (
-                1.0,
-                0.6,
-                0.0,
-                alpha,
-            ),  # Orange (Slight - tweaked to 0.6 for better contrast)
+            (1.0, 0.6, 0.0, alpha),  # Orange (Slight - tweaked to 0.6 for better contrast)
             (1.0, 0.0, 0.0, alpha),  # Red (Enhanced/Moderate)
             (1.0, 0.0, 1.0, alpha),  # Magenta (High)
-            (
-                0.0,
-                1.0,
-                1.0,
-                alpha,
-            ),  # Electric Cyan (Extreme - Pops sharply against magenta)
+            (0.0, 1.0, 1.0, alpha),  # Electric Cyan (Extreme - Pops sharply against magenta)
             (1.0, 1.0, 1.0, alpha),  # Pure White (Off the charts - Unmissable)
         ]
 

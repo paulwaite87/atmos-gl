@@ -92,7 +92,7 @@ class CurrentsUpdater(Updater):
             palette_name = "thermal_red"
 
         # User configurable opacity ceiling (1.0 = completely solid neon vectors)
-        alpha_setting = self.settings.get("alpha", 1.0)
+        alpha_setting = float(self.settings.get("alpha", 100) / 100)
         alpha_setting = np.clip(alpha_setting, 0.1, 1.0)
 
         # User configurable line weight multiplier (e.g. 1.5 = 150% thicker lines)

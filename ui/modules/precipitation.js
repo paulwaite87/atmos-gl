@@ -94,7 +94,7 @@ export function loadLayer(map, config, fullConfig = {}) {
             }`,
         customUniforms: (cfg) => ({
             u_min: Number(cfg.min_mm_hr) >= 0 ? Number(cfg.min_mm_hr) : 0.1,
-            u_alpha: Number(cfg.alpha) > 0 ? Number(cfg.alpha) : 0.9,
+            u_alpha: Number(cfg.alpha) > 0 ? Number(cfg.alpha)/100 : 0.9,
         }),
         colormap: (cfg) => buildLUT(cfg.palette || 'standard'),
         onMount: addLegend,

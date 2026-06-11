@@ -160,14 +160,8 @@ class WavesUpdater(Updater):
         if palette_name not in self.PALETTES:
             palette_name = "ocean_storm"
 
-        alpha_setting = self.settings.get("alpha", 0.75)
+        alpha_setting = float(self.settings.get("alpha", 75) / 100)
         alpha_setting = np.clip(alpha_setting, 0.1, 1.0)
-
-        # Parse layout configurations
-        show_arrows = self.settings.get("show_arrows", True)
-        arrow_density_mod = self.settings.get("arrow_density", 1.0)
-        arrow_scale_mod = self.settings.get("arrow_scale", 1.0)
-        arrow_scale_mod = max(0.1, arrow_scale_mod)
 
         # Level of detail controls BOTH the processing grid density and the coastline
         # resolution used to cut land out of the field. The wave data itself is 0.25 deg
@@ -181,7 +175,7 @@ class WavesUpdater(Updater):
         # LOD controls the wave-field grid density (smoothness/detail). The coastline
         # mask always uses the most-detailed 10m geometry at high resolution (below),
         # independent of LOD, so land edges stay crisp at every level.
-        grid_n = {1: 300, 2: 600, 3: 1100}[lod]
+        grid_n = {1: 200, 2: 300, 3: 750}[lod]
 
         # Wave-height display threshold: heights below this (in metres) render fully
         # transparent, so calm water shows the base map instead of the lowest colour.
@@ -377,67 +371,6 @@ class WavesUpdater(Updater):
             aspect="auto",
         )
 
-        # 6. ENHANCEMENT: CONDITIONAL ARROW OVERLAY PROJECTION
-        if show_arrows:
-            geo_span = max(abs(lon_max - lon_min), abs(lat_max - lat_min))
-
-            if geo_span >= 60.0:
-                base_stride = 24
-                base_q_scale = 110.0
-            elif geo_span >= 25.0:
-                base_stride = 18
-                base_q_scale = 84.0
-            elif geo_span >= 8.0:
-                base_stride = 12
-                base_q_scale = 56.0
-            else:
-                base_stride = 6
-                base_q_scale = 36.0
-
-            calculated_stride = max(2, int(base_stride / arrow_density_mod))
-
-            fig_w_inches, _ = plot.fig.get_size_inches()
-            canvas_pixel_width = fig_w_inches * plot.fig.dpi
-            res_adjustment = max(0.75, min(1.3, canvas_pixel_width / 1200.0))
-
-            final_q_scale = (base_q_scale * res_adjustment) / arrow_scale_mod
-
-            q_lon = mesh_lon[::calculated_stride, ::calculated_stride]
-            q_lat = mesh_lat[::calculated_stride, ::calculated_stride]
-            q_u = u_grid[::calculated_stride, ::calculated_stride]
-            q_v = v_grid[::calculated_stride, ::calculated_stride]
-
-            q_valid = ~np.isnan(q_u) & ~np.isnan(q_v)
-
-            logger.debug(
-                f"Dynamic Wave Vectors -> Span: {geo_span:.1f}° | Stride: {calculated_stride} | "
-                f"Arrow Scale Denominator: {final_q_scale:.1f}"
-            )
-
-            if np.any(q_valid):
-                plot.ax.quiver(
-                    q_lon[q_valid],
-                    q_lat[q_valid],
-                    q_u[q_valid],
-                    q_v[q_valid],
-                    pivot="middle",
-                    color="white",
-                    edgecolor="black",
-                    linewidth=0.6,
-                    scale=final_q_scale,
-                    width=0.0022 * max(1.0, arrow_scale_mod * 0.75),
-                    headwidth=3.2,
-                    headlength=3.5,
-                    headaxislength=3.0,
-                    minshaft=1.5,
-                    transform=ccrs.PlateCarree(),
-                    zorder=4,
-                )
-        else:
-            logger.debug(
-                "Wave vector rendering skipped by user configuration settings."
-            )
-
         plot.save_figure(self.output_path)
         self.save_waves_key(self.output_path, cmap, norm, threshold=wave_threshold)
 
@@ -487,7 +420,7 @@ class WavesUpdater(Updater):
         palette_name = self.settings.get("palette", "ocean_storm")
         if palette_name not in self.PALETTES:
             palette_name = "ocean_storm"
-        alpha_setting = float(np.clip(self.settings.get("alpha", 0.75), 0.1, 1.0))
+        alpha_setting = float(np.clip(float(self.settings.get("alpha", 75) / 100), 0.1, 1.0))
         try:
             threshold = max(0.0, float(self.settings.get("min_wave_height", 0) or 0))
         except (TypeError, ValueError):

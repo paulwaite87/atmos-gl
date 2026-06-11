@@ -64,7 +64,7 @@ def test_currents_pipeline(test_env):
 
     # Force specific aesthetic configuration parameters to guarantee execution coverage
     updater.settings["palette"] = "electric_blue"
-    updater.settings["alpha"] = "0.8"
+    updater.settings["alpha"] = "80"
     updater.settings["width_factor"] = "1.5"
     updater.settings["key_position"] = "top-left"
 

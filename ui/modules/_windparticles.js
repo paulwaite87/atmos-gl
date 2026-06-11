@@ -12,6 +12,46 @@ const lodOf = (cfg) => { const n = parseInt(cfg.level_of_detail, 10); return (n 
 const LOD_RES = { 1: 2048, 2: 4096, 3: 8192 };
 const LOD_COUNT = { 1: 25000, 2: 65000, 3: 160000 };
 
+// --- viewport rendering (sharp on zoom) ----------------------------------
+// In 'viewport' mode the offscreen canvas covers the CURRENT view instead of the
+// whole world, so its fixed pixels resolve the visible region at much higher density
+// (no magnification blur). We pick a SQUARE-in-mercator box covering the view so the
+// canvas->box mapping is a uniform scale (bars stay perpendicular). Two uniforms carry
+// it: u_view remaps world-clip -> viewport-clip in the draw; u_bboxPos confines
+// particle respawns to the box so density stays up. World mode = identity (wind).
+const LAT_LIMIT_DEG = 85.0511;
+const ZOOM_VIEWPORT_MIN = 2.5;                 // below this, the world canvas is fine
+const VIEW_WORLD = { view: [0, 0, 1, 1], bboxPos: [0, 0, 1, 1], coords: null, barScale: 1, active: false };
+const _mercY = (latDeg) => Math.log(Math.tan(Math.PI / 4 + (latDeg * Math.PI / 180) / 2));
+const _latFromMercClip = (cy) => (2 * Math.atan(Math.exp(cy * Math.PI)) - Math.PI / 2) * 180 / Math.PI;
+
+function computeView(map, W) {
+    try {
+        if (map.getZoom() < ZOOM_VIEWPORT_MIN) return VIEW_WORLD;
+        const b = map.getBounds();
+        let west = b.getWest(), east = b.getEast();
+        let north = Math.min(LAT_LIMIT_DEG, b.getNorth()), south = Math.max(-LAT_LIMIT_DEG, b.getSouth());
+        if (east <= west || (east - west) >= 350 || north <= south) return VIEW_WORLD;  // dateline / too wide
+        // world-clip (mercator) bounds: clipX = lon/180, clipY = mercY/PI
+        const xW = west / 180, xE = east / 180, yN = _mercY(north) / Math.PI, yS = _mercY(south) / Math.PI;
+        const cx = (xW + xE) / 2, cy = (yN + yS) / 2, half = Math.max(xE - xW, yN - yS) / 2;
+        const x0 = cx - half, x1 = cx + half, y0 = cy - half, y1 = cy + half;   // square in clip
+        if (x0 < -1 || x1 > 1 || y0 < -1 || y1 > 1) return VIEW_WORLD;          // exceeds merc world
+        const sx = 2 / (x1 - x0), ox = -(x0 + x1) / (x1 - x0);
+        const sy = 2 / (y1 - y0), oy = -(y0 + y1) / (y1 - y0);
+        const lon0 = (x0 * 180 + 180) / 360, lon1 = (x1 * 180 + 180) / 360;
+        const latTop = _latFromMercClip(y1), latBot = _latFromMercClip(y0);
+        const latEq0 = (90 - latTop) / 180, latEq1 = (90 - latBot) / 180;
+        const cvs = map.getCanvas();
+        const P = Math.max(cvs.clientWidth || cvs.width, cvs.clientHeight || cvs.height) || W;
+        return {
+            view: [ox, oy, sx, sy], bboxPos: [lon0, latEq0, lon1, latEq1],
+            coords: [[x0 * 180, latTop], [x1 * 180, latTop], [x1 * 180, latBot], [x0 * 180, latBot]],
+            barScale: W / P, active: true,
+        };
+    } catch (e) { return VIEW_WORLD; }
+}
+
 // ---- shaders -------------------------------------------------------------
 
 const QUAD_VS = `#version 300 es
@@ -38,6 +78,7 @@ out vec4 fragColor;
 uniform sampler2D u_particles;
 uniform sampler2D u_wind;
 uniform float u_vmax, u_speed, u_dropRate, u_dropBump, u_dropSpeed, u_seed, u_landReset;
+uniform vec4 u_bboxPos;   // (lonMin, latEqMin, lonMax, latEqMax) in [0,1]; world = (0,0,1,1)
 const float PI = 3.141592653589793;
 // Scales an m/s velocity into a per-frame step in normalised [0,1] space. Picked so
 // the default u_speed gives a few pixels/frame; u_speed is the user-facing multiplier.
@@ -57,9 +98,12 @@ void main(){
     float speed = length(vel);
     float drop = u_dropRate + (1.0 - clamp(speed/u_dropSpeed, 0.0, 1.0)) * u_dropBump;
     vec2 seed = (pos + v_uv) * (u_seed + 1.0);
-    vec2 randPos = vec2(rand(seed + 1.3), rand(seed + 2.7));
+    vec2 bmin = u_bboxPos.xy, bmax = u_bboxPos.zw;
+    vec2 randPos = bmin + vec2(rand(seed + 1.3), rand(seed + 2.7)) * (bmax - bmin);  // respawn in view
+    bool outside = (npos.x < bmin.x) || (npos.x > bmax.x) || (npos.y < bmin.y) || (npos.y > bmax.y);
     bool reset = (rand(seed) < drop) || (npos.y <= 0.0) || (npos.y >= 1.0)
-                 || (u_landReset > 0.5 && w.a < 0.5);   // recycle land particles fast
+                 || (u_landReset > 0.5 && w.a < 0.5)    // recycle land particles fast
+                 || outside;                            // keep particles inside the view box
     fragColor = encodePos(reset ? randPos : npos);
 }`;
 
@@ -71,6 +115,7 @@ in float a_index;
 uniform sampler2D u_particles;
 uniform sampler2D u_wind;
 uniform float u_res, u_vmax, u_pointSize;
+uniform vec4 u_view;   // (offX, offY, scaleX, scaleY); world = (0,0,1,1)
 out float v_speed;
 const float PI = 3.141592653589793;
 const float LAT_MAX = 1.4844222297453324;   // 85.0511 deg
@@ -87,7 +132,8 @@ void main(){
     float lat = clamp((0.5 - pos.y) * PI, -LAT_MAX, LAT_MAX);
     float mercY = log(tan(PI*0.25 + lat*0.5));          // mercator northing (radians)
     float y01 = 0.5 - mercY / (2.0 * PI);               // 0 at north edge
-    gl_Position = vec4(pos.x*2.0 - 1.0, 1.0 - 2.0*y01, 0.0, 1.0);
+    vec2 cw = vec2(pos.x*2.0 - 1.0, 1.0 - 2.0*y01);
+    gl_Position = vec4(cw * u_view.zw + u_view.xy, 0.0, 1.0);   // world-clip -> viewport-clip
     gl_PointSize = u_pointSize;
 }`;
 
@@ -112,6 +158,7 @@ precision highp float;
 uniform sampler2D u_particles;
 uniform sampler2D u_wind;
 uniform float u_res, u_vmax, u_W, u_H, u_halfLen, u_halfThick;
+uniform vec4 u_view;
 out float v_speed;
 const float PI = 3.141592653589793;
 const float LAT_MAX = 1.4844222297453324;
@@ -134,6 +181,7 @@ void main(){
     float mercY = log(tan(PI*0.25 + lat*0.5));
     float y01 = 0.5 - mercY / (2.0 * PI);
     vec2 center = vec2(pos.x*2.0 - 1.0, 1.0 - 2.0*y01);
+    center = center * u_view.zw + u_view.xy;   // remap centre to the viewport box
 
     vec2 dirClip = (v_speed > 1e-4) ? normalize(vel) : vec2(0.0, 1.0);
     vec2 dirPix = normalize(vec2(dirClip.x * u_W, dirClip.y * u_H));   // -> pixel space
@@ -204,6 +252,9 @@ export function createParticleController(map, opts) {
         // wind falls back to a static barbs PNG when not animated / no WebGL; waves has
         // no such PNG (the heat tiles are its base), so it passes false -> 'none'.
         staticFallback = true,
+        // viewport: render the offscreen canvas for the CURRENT view (sharp on zoom)
+        // instead of the whole world. Wind leaves this false (world canvas).
+        viewport = false,
         // bar_length: half-length of a swell bar in px (1-20), along the perpendicular.
         barLength = (cfg) => { const v = Number(cfg.bar_length);
                                return isFinite(v) ? Math.min(20, Math.max(1, v)) : 7; },
@@ -230,6 +281,8 @@ export function createParticleController(map, opts) {
     // live params (read each frame / draw)
     let curSpeed = 0.25, curFade = 0.96, curPoint = 1.5, curDropRate = 0.003,
         curDropBump = 0.012, curMaxSpeed = 30.0, curAlpha = 0.9, curSubSteps = 1, curBarLen = 7.0;
+    let curView = VIEW_WORLD.view, curBboxPos = VIEW_WORLD.bboxPos, curBarScale = 1.0;
+    let viewMoveHandler = null;
 
     // ---- static (barbs PNG) fallback ----
     const mountStatic = (cfg) => {
@@ -392,6 +445,7 @@ export function createParticleController(map, opts) {
         gl.uniform1f(gl.getUniformLocation(updateProg, 'u_dropBump'), curDropBump / curSubSteps);
         gl.uniform1f(gl.getUniformLocation(updateProg, 'u_dropSpeed'), 10.0);
         gl.uniform1f(gl.getUniformLocation(updateProg, 'u_landReset'), drawMode === 'bars' ? 1.0 : 0.0);
+        gl.uniform4f(gl.getUniformLocation(updateProg, 'u_bboxPos'), curBboxPos[0], curBboxPos[1], curBboxPos[2], curBboxPos[3]);
         gl.uniform1f(gl.getUniformLocation(updateProg, 'u_seed'), Math.random());
         bindAttrib(updateProg, 'a_pos', quadBuf, 2);
         gl.drawArrays(gl.TRIANGLES, 0, 6);
@@ -408,6 +462,7 @@ export function createParticleController(map, opts) {
         gl.uniform1f(gl.getUniformLocation(drawProg, 'u_res'), RES);
         gl.uniform1f(gl.getUniformLocation(drawProg, 'u_vmax'), vmax);
         gl.uniform1f(gl.getUniformLocation(drawProg, 'u_pointSize'), curPoint);
+        gl.uniform4f(gl.getUniformLocation(drawProg, 'u_view'), curView[0], curView[1], curView[2], curView[3]);
         gl.uniform1f(gl.getUniformLocation(drawProg, 'u_maxspeed'), curMaxSpeed);
         gl.uniform1f(gl.getUniformLocation(drawProg, 'u_alpha'), curAlpha);
         bindAttrib(drawProg, 'a_index', indexBuf, 1);
@@ -428,7 +483,8 @@ export function createParticleController(map, opts) {
         gl.uniform1f(u('u_vmax'), vmax);
         gl.uniform1f(u('u_W'), W);
         gl.uniform1f(u('u_H'), H);
-        gl.uniform1f(u('u_halfLen'), curBarLen);
+        gl.uniform1f(u('u_halfLen'), curBarLen * curBarScale);
+        gl.uniform4f(u('u_view'), curView[0], curView[1], curView[2], curView[3]);
         gl.uniform1f(u('u_halfThick'), Math.max(0.5, curPoint));
         gl.uniform1f(u('u_maxspeed'), curMaxSpeed);
         gl.uniform1f(u('u_alpha'), curAlpha);
@@ -477,6 +533,18 @@ export function createParticleController(map, opts) {
             out2d.drawImage(glCanvas, 0, 0);
         }
         rafId = requestAnimationFrame(frame);
+    };
+
+    // Recompute the viewport box and re-point the canvas source at it. Cheap; runs on
+    // moveend. World mode (or non-viewport layers) -> identity + full-world corners.
+    const refreshView = () => {
+        if (!gl) return;
+        const v = viewport ? computeView(map, W) : VIEW_WORLD;
+        curView = v.view; curBboxPos = v.bboxPos; curBarScale = v.barScale;
+        const src = map.getSource(A_SRC);
+        if (src && typeof src.setCoordinates === 'function') {
+            try { src.setCoordinates(v.coords || coordinates); } catch (e) { /* ignore */ }
+        }
     };
 
     const applyParams = (cfg) => {
@@ -532,6 +600,13 @@ export function createParticleController(map, opts) {
         loadWind(cfg);
         map.addSource(A_SRC, { type: 'canvas', canvas: outCanvas, animate: true, coordinates });
         map.addLayer({ id: A_LYR, type: 'raster', source: A_SRC, paint: { 'raster-opacity': 1.0, 'raster-fade-duration': 0 } });
+        if (viewport) {
+            refreshView();
+            let deb = null;
+            viewMoveHandler = () => { clearTimeout(deb); deb = setTimeout(refreshView, 100); };
+            map.on('moveend', viewMoveHandler);
+            map.on('zoomend', viewMoveHandler);
+        }
         frame();
         onMount(cfg);
     };
@@ -547,6 +622,11 @@ export function createParticleController(map, opts) {
         onRefresh(cfg);
     };
     const unmountAnimated = () => {
+        if (viewMoveHandler) {
+            map.off('moveend', viewMoveHandler); map.off('zoomend', viewMoveHandler);
+            viewMoveHandler = null;
+        }
+        curView = VIEW_WORLD.view; curBboxPos = VIEW_WORLD.bboxPos; curBarScale = 1.0;
         if (map.getLayer(A_LYR)) map.removeLayer(A_LYR);
         if (map.getSource(A_SRC)) map.removeSource(A_SRC);
         cleanupGL();

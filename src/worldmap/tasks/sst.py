@@ -48,7 +48,7 @@ class SSTUpdater(Updater):
         logger.debug(f"Saved SST key to: {key_path}")
 
     def plot(self):
-        alpha = self.settings.get("alpha", 0.4)
+        alpha = float(self.settings.get("alpha", 40) / 100)
         bbox = self.map_region_bbox
 
         # --- Data Loading ---
