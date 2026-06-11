@@ -26,24 +26,30 @@ const _mercY = (latDeg) => Math.log(Math.tan(Math.PI / 4 + (latDeg * Math.PI / 1
 const _latFromMercClip = (cy) => (2 * Math.atan(Math.exp(cy * Math.PI)) - Math.PI / 2) * 180 / Math.PI;
 
 function computeView(map, W) {
+    // Box from CENTER + ZOOM (reliable on a globe; getBounds is wide/unreliable there).
+    // We size a SQUARE-in-mercator box covering the view so the canvas->box map is a
+    // uniform scale (bars stay perpendicular), then derive the draw remap + respawn box.
     try {
-        if (map.getZoom() < ZOOM_VIEWPORT_MIN) return VIEW_WORLD;
-        const b = map.getBounds();
-        let west = b.getWest(), east = b.getEast();
-        let north = Math.min(LAT_LIMIT_DEG, b.getNorth()), south = Math.max(-LAT_LIMIT_DEG, b.getSouth());
-        if (east <= west || (east - west) >= 350 || north <= south) return VIEW_WORLD;  // dateline / too wide
-        // world-clip (mercator) bounds: clipX = lon/180, clipY = mercY/PI
-        const xW = west / 180, xE = east / 180, yN = _mercY(north) / Math.PI, yS = _mercY(south) / Math.PI;
-        const cx = (xW + xE) / 2, cy = (yN + yS) / 2, half = Math.max(xE - xW, yN - yS) / 2;
-        const x0 = cx - half, x1 = cx + half, y0 = cy - half, y1 = cy + half;   // square in clip
-        if (x0 < -1 || x1 > 1 || y0 < -1 || y1 > 1) return VIEW_WORLD;          // exceeds merc world
+        const zoom = map.getZoom();
+        if (zoom < ZOOM_VIEWPORT_MIN) return VIEW_WORLD;
+        const c = map.getCenter();
+        const cvs = map.getCanvas();
+        const wPx = cvs.clientWidth || cvs.width, hPx = cvs.clientHeight || cvs.height;
+        const worldPx = 512 * Math.pow(2, zoom);          // full-world width (px) at this zoom
+        const halfX = wPx / worldPx;                      // half clip-width  ([-1,1] spans the world)
+        const halfY = hPx / worldPx;                      // half clip-height
+        const cxClip = c.lng / 180;
+        const clat = Math.max(-LAT_LIMIT_DEG, Math.min(LAT_LIMIT_DEG, c.lat));
+        const cyClip = _mercY(clat) / Math.PI;
+        const half = Math.max(halfX, halfY);              // square (uniform scale)
+        const x0 = cxClip - half, x1 = cxClip + half, y0 = cyClip - half, y1 = cyClip + half;
+        if (x0 < -1 || x1 > 1 || y0 < -1 || y1 > 1) return VIEW_WORLD;   // view too big -> world canvas
         const sx = 2 / (x1 - x0), ox = -(x0 + x1) / (x1 - x0);
         const sy = 2 / (y1 - y0), oy = -(y0 + y1) / (y1 - y0);
         const lon0 = (x0 * 180 + 180) / 360, lon1 = (x1 * 180 + 180) / 360;
         const latTop = _latFromMercClip(y1), latBot = _latFromMercClip(y0);
         const latEq0 = (90 - latTop) / 180, latEq1 = (90 - latBot) / 180;
-        const cvs = map.getCanvas();
-        const P = Math.max(cvs.clientWidth || cvs.width, cvs.clientHeight || cvs.height) || W;
+        const P = Math.max(wPx, hPx) || W;
         return {
             view: [ox, oy, sx, sy], bboxPos: [lon0, latEq0, lon1, latEq1],
             coords: [[x0 * 180, latTop], [x1 * 180, latTop], [x1 * 180, latBot], [x0 * 180, latBot]],
@@ -221,12 +227,12 @@ export function createParticleController(map, opts) {
         // particle_resolution / particle_count key still overrides (power-user escape hatch).
         resolution = (cfg) => {
             const explicit = parseInt(cfg.particle_resolution, 10);
-            const w = Math.max(1024, explicit > 0 ? explicit : (LOD_RES[lodOf(cfg)] || 4096));
+            const w = Math.max(1024, explicit > 0 ? explicit : ((lodRes || LOD_RES)[lodOf(cfg)] || 4096));
             return { w, h: Math.round(w / 2) };
         },
         particleCount = (cfg) => {
             const explicit = parseInt(cfg.particle_count, 10);
-            return Math.max(256, explicit > 0 ? explicit : (LOD_COUNT[lodOf(cfg)] || 65000));
+            return Math.max(256, explicit > 0 ? explicit : ((lodCount || LOD_COUNT)[lodOf(cfg)] || 65000));
         },
         // particle_speed is a friendly 0-100 "speed" (Slow..Fast). Mapped to the internal
         // advection multiplier and clamped, so negatives / over-range can't produce oddities.
@@ -255,6 +261,10 @@ export function createParticleController(map, opts) {
         // viewport: render the offscreen canvas for the CURRENT view (sharp on zoom)
         // instead of the whole world. Wind leaves this false (world canvas).
         viewport = false,
+        // Per-layer level_of_detail tables. Default to the shared wind tables; waves
+        // passes its own (bars read denser than streaks, so it wants lower counts).
+        lodCount = null,    // e.g. { 1: 4000, 2: 9000, 3: 18000 }  (particles)
+        lodRes = null,      // e.g. { 1: 2048, 2: 4096, 3: 8192 }   (canvas px width)
         // bar_length: half-length of a swell bar in px (1-20), along the perpendicular.
         barLength = (cfg) => { const v = Number(cfg.bar_length);
                                return isFinite(v) ? Math.min(20, Math.max(1, v)) : 7; },
@@ -485,7 +495,7 @@ export function createParticleController(map, opts) {
         gl.uniform1f(u('u_H'), H);
         gl.uniform1f(u('u_halfLen'), curBarLen * curBarScale);
         gl.uniform4f(u('u_view'), curView[0], curView[1], curView[2], curView[3]);
-        gl.uniform1f(u('u_halfThick'), Math.max(0.5, curPoint));
+        gl.uniform1f(u('u_halfThick'), Math.max(0.5, curPoint * curBarScale));
         gl.uniform1f(u('u_maxspeed'), curMaxSpeed);
         gl.uniform1f(u('u_alpha'), curAlpha);
         gl.drawArrays(gl.TRIANGLES, 0, count * 6);          // 2 tris/particle, no attribs
@@ -545,6 +555,10 @@ export function createParticleController(map, opts) {
         if (src && typeof src.setCoordinates === 'function') {
             try { src.setCoordinates(v.coords || coordinates); } catch (e) { /* ignore */ }
         }
+        if (window.WAVES_DEBUG) console.log('[particles view]', sectionKey, {
+            active: v.active, zoom: +map.getZoom().toFixed(2),
+            barScale: +(v.barScale).toFixed(2), coords: v.coords,
+        });
     };
 
     const applyParams = (cfg) => {

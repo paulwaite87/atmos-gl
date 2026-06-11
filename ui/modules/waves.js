@@ -102,6 +102,9 @@ export function loadLayer(map, config) {
         drawMode: 'bars',
         staticFallback: false,              // no barbs PNG; heat tiles are the base
         viewport: true,                     // render the current view (sharp on zoom-in)
+        // Particle density per level_of_detail (1/2/3). Bars read denser than wind
+        // streaks, so these are much lower than wind's defaults. Tune to taste.
+        lodCount: { 1: 4000, 2: 9000, 3: 18000 },
         vmax: VMAX_WAVES,                   // must match backend
         colormap: () => buildBarLUT(),
         maxSpeedColor: () => VMAX_WAVES,    // colour ramp spans 0..VMAX_WAVES metres
