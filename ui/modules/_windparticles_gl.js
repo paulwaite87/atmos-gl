@@ -243,14 +243,22 @@ export function createWindParticleGLController(map, opts) {
             if (!Number.isFinite(n) || !Number.isFinite(s)) return [0, 0, 1, 1];
             const padLat = Math.max(0, n - s) * 0.15;
             n = Math.min(89.9, n + padLat); s = Math.max(-89.9, s - padLat);
-            const yN = Math.max(0, (90 - n) / 180), yS = Math.min(1, (90 - s) / 180);
-            if (yS - yN < 0.02) return [0, 0, 1, 1];
+            let yN = Math.max(0, (90 - n) / 180), yS = Math.min(1, (90 - s) / 180);
+            // Keep a SMALL box at high zoom so particles stay concentrated in view, but
+            // never collapse to zero — enforce a minimum height around the centre. (Bailing
+            // to whole-world here is what made particles vanish above ~zoom 7.)
+            const MIN_H = 0.006;
+            if (yS - yN < MIN_H) {
+                const cy = Math.min(1 - MIN_H * 0.5, Math.max(MIN_H * 0.5, (yN + yS) * 0.5));
+                yN = cy - MIN_H * 0.5; yS = cy + MIN_H * 0.5;
+            }
             const c = map.getCenter();
             const cv = map.getCanvas();
             const vw = (cv && cv.clientWidth) || 1024;
             const worldPx = 512 * Math.pow(2, map.getZoom());
             let spanLon = (vw / worldPx) * 360 * 1.4;
             if (!Number.isFinite(spanLon) || spanLon >= 350) return [0, yN, 1, yS];
+            spanLon = Math.max(1.0, spanLon);                     // floor so it never collapses
             const cl = ((((c.lng + 180) % 360) + 360) % 360) / 360;
             const half = (spanLon / 360) / 2;
             let lonMin = ((((cl - half) % 1) + 1) % 1);
