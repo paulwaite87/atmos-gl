@@ -95,6 +95,17 @@ CREATE TABLE IF NOT EXISTS satellites (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS gfs_cache (
+    gfs_date   text        NOT NULL,
+    gfs_run    text        NOT NULL,
+    fhour      integer     NOT NULL,
+    product    text        NOT NULL,   -- 'atmos' | 'wave'
+    data       bytea       NOT NULL,
+    valid_time timestamptz,
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (gfs_date, gfs_run, fhour, product)
+);
+
 -- Indices for high-performance lookups
 CREATE INDEX IF NOT EXISTS idx_ships_geom ON ships USING GIST(geom);
 CREATE INDEX IF NOT EXISTS idx_map_region_boundary ON map_region USING GIST(boundary);
@@ -108,6 +119,9 @@ CREATE INDEX IF NOT EXISTS idx_quakes_time ON earthquakes(eq_time);
 CREATE INDEX IF NOT EXISTS idx_quakes_geom ON earthquakes USING GIST(geom);
 CREATE INDEX IF NOT EXISTS idx_storm_track_sid ON storm_track(sid);
 CREATE INDEX IF NOT EXISTS idx_satellites_name ON satellites(name);
+CREATE INDEX IF NOT EXISTS gfs_cache_run_idx  ON gfs_cache (gfs_date, gfs_run);
+CREATE INDEX IF NOT EXISTS gfs_cache_seen_idx ON gfs_cache (updated_at);
+
 
 -- Populate Regions
 INSERT INTO map_region (label, boundary) VALUES ('NZ_Aus', ST_MakeEnvelope(63.131759, -57.173648, 190.337125, 0.239941, 4326));

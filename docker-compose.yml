@@ -32,13 +32,13 @@ services:
       - wmap
 
   # Acquires GFS data and updates our database
-  gfs_collector:
-    container_name: gfs_collector
+  data_collector:
+    container_name: data_collector
     image: worldmap:latest
     build:
       context: .
       dockerfile: Dockerfile
-    command: python -m worldmap.gfs_collector --config /opt/project/config/worldmap.json
+    command: python -m worldmap.data_collector --config /opt/project/config/worldmap.json
     env_file:
       - .env
     environment:

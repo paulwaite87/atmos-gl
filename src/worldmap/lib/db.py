@@ -682,6 +682,78 @@ class Database:
             logger.error(f"Error fetching priority region list: {e}")
             return []
 
+    def gfs_grib_exists(self, gfs_date, gfs_run, fhour, product):
+        """Lightweight existence check (no blob transfer)."""
+        with self.conn.cursor() as cur:
+            cur.execute(
+                "SELECT 1 FROM gfs_cache "
+                "WHERE gfs_date=%s AND gfs_run=%s AND fhour=%s AND product=%s",
+                (gfs_date, gfs_run, int(fhour), product),
+            )
+            return cur.fetchone() is not None
+
+    def store_gfs_grib(self, gfs_date, gfs_run, fhour, product, data, valid_time=None):
+        """UPSERT a GRIB blob for (date, run, fhour, product)."""
+        sql = """
+            INSERT INTO gfs_cache
+                (gfs_date, gfs_run, fhour, product, data, valid_time, updated_at)
+            VALUES (%s, %s, %s, %s, %s, %s, now())
+            ON CONFLICT (gfs_date, gfs_run, fhour, product) DO UPDATE SET
+                data = EXCLUDED.data,
+                valid_time = EXCLUDED.valid_time,
+                updated_at = now();
+        """
+        try:
+            with self.conn.cursor() as cur:
+                cur.execute(
+                    sql,
+                    (gfs_date, gfs_run, int(fhour), product,
+                     psycopg2.Binary(data), valid_time),
+                )
+        except Exception as e:
+            logger.error(
+                f"Error storing GFS blob {gfs_date}/{gfs_run}/f{int(fhour):03d}/{product}: {e}"
+            )
+
+    def get_gfs_grib(self, gfs_date, gfs_run, fhour, product):
+        """Return the GRIB bytes for (date, run, fhour, product), or None if absent."""
+        with self.conn.cursor() as cur:
+            cur.execute(
+                "SELECT data FROM gfs_cache "
+                "WHERE gfs_date=%s AND gfs_run=%s AND fhour=%s AND product=%s",
+                (gfs_date, gfs_run, int(fhour), product),
+            )
+            row = cur.fetchone()
+        if not row or row["data"] is None:
+            return None
+        return bytes(row["data"])  # bytea -> memoryview -> bytes
+
+    def get_latest_gfs_run(self, product="atmos"):
+        """Return (gfs_date, gfs_run) of the newest cached run for a product, or None."""
+        with self.conn.cursor() as cur:
+            cur.execute(
+                "SELECT gfs_date, gfs_run FROM gfs_cache WHERE product=%s "
+                "ORDER BY gfs_date DESC, gfs_run DESC LIMIT 1",
+                (product,),
+            )
+            row = cur.fetchone()
+        return (row["gfs_date"], row["gfs_run"]) if row else None
+
+    def prune_gfs_cache_except(self, gfs_date, gfs_run):
+        """Delete every cached row that isn't part of the given (current) run."""
+        self.execute(
+            "DELETE FROM gfs_cache WHERE NOT (gfs_date=%s AND gfs_run=%s)",
+            (gfs_date, gfs_run),
+        )
+
+    def prune_gfs_cache(self, expiry_hours=48):
+        """Housekeeper hook: drop rows older than expiry_hours by updated_at."""
+        self.execute(
+            "DELETE FROM gfs_cache "
+            "WHERE updated_at < now() - make_interval(hours => %s)",
+            (int(expiry_hours),),
+        )
+
     def execute(self, sql, params=None):
         """Generic execution helper for simple queries (like manual deletes)."""
         with self.conn.cursor() as cur:
