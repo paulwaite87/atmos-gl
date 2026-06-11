@@ -35,7 +35,7 @@
     "cache_expiry_days": 3
   },
   "isobars": {
-    "enabled": false,
+    "enabled": true,
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
     "outfile": "data/isobars.png",
     "animated": false,
@@ -54,10 +54,10 @@
     "outfile": "data/wind.png",
     "animated": true,
     "level_of_detail": "2",
-    "particle_speed": 15,
+    "particle_speed": 50,
     "particle_alpha": 80,
     "particle_size": 1,
-    "trail_fade": 80,
+    "trail_fade": 65,
     "max_speed_color": "White",
     "vector_color": "White",
     "barb_length_base": 4,
@@ -105,7 +105,7 @@
     "cache_expiry_days": 3
   },
   "waves": {
-    "enabled": true,
+    "enabled": false,
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
     "outfile": "data/waves.png",
     "animated": true,
@@ -116,8 +116,8 @@
     "key_fontsize": 8,
     "runs_per_day": 2,
     "particle_speed": 50,
-    "particle_size": 1,
-    "bar_length": 4,
+    "particle_size": 1.5,
+    "bar_length": 3,
     "particle_alpha": 50,
     "cache_expiry_days": 3
   },

@@ -654,7 +654,7 @@
                                     <label class="form-label small text-white-50 fw-bold mb-0">${customLabelText}</label>
                                     <span class="badge bg-success text-dark fw-bold" id="badge-${domId}">${initialBarLen}</span>
                                 </div>
-                                <input type="range" class="form-range dynamic-input" id="${domId}" min="3" max="15" step="1" value="${initialBarLen}"
+                                <input type="range" class="form-range dynamic-input" id="${domId}" min="1" max="8" step="1" value="${initialBarLen}"
                                        oninput="document.getElementById('badge-${domId}').innerText = this.value">
                             `;
                         } else if (option === 'edge_softness') {
