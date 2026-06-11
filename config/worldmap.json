@@ -127,7 +127,7 @@
     "particle_speed": 28,
     "particle_size": 2,
     "bar_length": 7,
-    "particle_alpha": 1
+    "particle_alpha": 80
   },
   "temperature": {
     "enabled": false,

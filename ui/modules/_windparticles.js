@@ -37,7 +37,7 @@ in vec2 v_uv;
 out vec4 fragColor;
 uniform sampler2D u_particles;
 uniform sampler2D u_wind;
-uniform float u_vmax, u_speed, u_dropRate, u_dropBump, u_dropSpeed, u_seed;
+uniform float u_vmax, u_speed, u_dropRate, u_dropBump, u_dropSpeed, u_seed, u_landReset;
 const float PI = 3.141592653589793;
 // Scales an m/s velocity into a per-frame step in normalised [0,1] space. Picked so
 // the default u_speed gives a few pixels/frame; u_speed is the user-facing multiplier.
@@ -58,7 +58,8 @@ void main(){
     float drop = u_dropRate + (1.0 - clamp(speed/u_dropSpeed, 0.0, 1.0)) * u_dropBump;
     vec2 seed = (pos + v_uv) * (u_seed + 1.0);
     vec2 randPos = vec2(rand(seed + 1.3), rand(seed + 2.7));
-    bool reset = (rand(seed) < drop) || (npos.y <= 0.0) || (npos.y >= 1.0);
+    bool reset = (rand(seed) < drop) || (npos.y <= 0.0) || (npos.y >= 1.0)
+                 || (u_landReset > 0.5 && w.a < 0.5);   // recycle land particles fast
     fragColor = encodePos(reset ? randPos : npos);
 }`;
 
@@ -124,7 +125,9 @@ void main(){
     vec4 s = texelFetch(u_particles, ivec2(int(col), int(row)), 0);
     vec2 pos = decodePos(s);
     vec4 w = texture(u_wind, pos);
-    vec2 vel = (w.a < 0.5) ? vec2(0.0) : (w.rg * (2.0*u_vmax) - u_vmax);
+    // No swell over land/missing cells -> push the whole bar off-screen (culled).
+    if (w.a < 0.5) { v_speed = 0.0; gl_Position = vec4(2.0, 2.0, 2.0, 1.0); return; }
+    vec2 vel = w.rg * (2.0*u_vmax) - u_vmax;
     v_speed = length(vel);
 
     float lat = clamp((0.5 - pos.y) * PI, -LAT_MAX, LAT_MAX);
@@ -388,6 +391,7 @@ export function createParticleController(map, opts) {
         gl.uniform1f(gl.getUniformLocation(updateProg, 'u_dropRate'), curDropRate / curSubSteps);
         gl.uniform1f(gl.getUniformLocation(updateProg, 'u_dropBump'), curDropBump / curSubSteps);
         gl.uniform1f(gl.getUniformLocation(updateProg, 'u_dropSpeed'), 10.0);
+        gl.uniform1f(gl.getUniformLocation(updateProg, 'u_landReset'), drawMode === 'bars' ? 1.0 : 0.0);
         gl.uniform1f(gl.getUniformLocation(updateProg, 'u_seed'), Math.random());
         bindAttrib(updateProg, 'a_pos', quadBuf, 2);
         gl.drawArrays(gl.TRIANGLES, 0, 6);

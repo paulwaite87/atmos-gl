@@ -399,7 +399,7 @@
                                 <input type="range" class="form-range dynamic-input" id="${domId}" min="6" max="48" step="6" value="${initialFc}"
                                        oninput="document.getElementById('badge-${domId}').innerText = this.value + 'h ahead'">
                             `;
-                        } else if (section === 'wind' && option === 'particle_speed') {
+                        } else if (option === 'particle_speed') {
                             const v = parseInt(value, 10);
                             const init = isFinite(v) ? Math.min(100, Math.max(0, v)) : 50;
                             col.innerHTML = `
@@ -410,7 +410,7 @@
                                 <input type="range" class="form-range dynamic-input" id="${domId}" min="0" max="100" step="5" value="${init}"
                                        oninput="document.getElementById('badge-${domId}').innerText = this.value">
                             `;
-                        } else if (section === 'wind' && option === 'trail_fade') {
+                        } else if (option === 'trail_fade') {
                             const v = parseInt(value, 10); const init = isFinite(v) ? Math.min(100, Math.max(0, v)) : 80;
                             col.innerHTML = `
                                 <div class="d-flex justify-content-between align-items-center mb-1">
@@ -420,11 +420,11 @@
                                 <input type="range" class="form-range dynamic-input" id="${domId}" min="0" max="100" step="5" value="${init}"
                                        oninput="document.getElementById('badge-${domId}').innerText = this.value">
                             `;
-                        } else if (section === 'wind' && option === 'particle_alpha') {
+                        } else if (option.endsWith('_alpha')) {
                             const v = parseInt(value, 10); const init = isFinite(v) ? Math.min(100, Math.max(0, v)) : 90;
                             col.innerHTML = `
                                 <div class="d-flex justify-content-between align-items-center mb-1">
-                                    <label class="form-label small text-white-50 fw-bold mb-0">Particle opacity</label>
+                                    <label class="form-label small text-white-50 fw-bold mb-0">Opacity</label>
                                     <span class="badge bg-primary text-light fw-bold" id="badge-${domId}">${init}</span>
                                 </div>
                                 <input type="range" class="form-range dynamic-input" id="${domId}" min="0" max="100" step="5" value="${init}"
