@@ -205,7 +205,7 @@ def _published_path(config):
 def _settings(config):
     waves = config.get_section("waves")
     palette = waves.get("palette", "ocean_storm")
-    alpha255 = int(round(float(waves.get("alpha", 0.7)) * 255))
+    alpha255 = max(0, min(255, int(round(float(waves.get("alpha", 70)) / 100.0 * 255))))
     try:
         threshold = max(0.0, float(waves.get("min_wave_height", 0) or 0))
     except (TypeError, ValueError):
@@ -228,7 +228,7 @@ def current_version(config):
     waves = config.get_section("waves")
     raw = (
         f"{dataset_key(grib)}|{waves.get('palette', 'ocean_storm')}"
-        f"|{waves.get('alpha', 0.7)}|{waves.get('min_wave_height', 0)}"
+        f"|{waves.get('alpha', 70)}|{waves.get('min_wave_height', 0)}"
     )
     return hashlib.md5(raw.encode()).hexdigest()[:12]
 

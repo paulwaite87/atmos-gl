@@ -1,5 +1,5 @@
 import { liveLayerSync } from './_refresh.js';
-import { createParticleController } from './_windparticles.js';
+import { createWaveParticleController } from './_waveparticles.js';
 
 /**
  * Waves layer = Web-Mercator heat tiles (significant wave height) + an animated swell
@@ -8,7 +8,10 @@ import { createParticleController } from './_windparticles.js';
  * The heat tiles are pre-rendered + published by the backend and fetched as {z}/{x}/{y}
  * (see routes/tiles.py). The animation is a separate GPU particle layer that advects
  * particles along a global swell-velocity texture (data/waves_data.png) and draws each
- * as an oriented bar; it sits ABOVE the heat tiles. Both are driven by one liveLayerSync.
+ * as an oriented bar. The bars are a MapLibre CUSTOM WEBGL LAYER (see _waveparticles.js):
+ * they're drawn directly with the map's projection each frame, so they're sharp and
+ * scale naturally on the globe instead of being a fixed image stretched over the sphere.
+ * The bars sit ABOVE the heat tiles. Both are driven by one liveLayerSync.
  */
 
 export const VMAX_WAVES = 8.0;   // must match backend tasks/waves.py VMAX_WAVES
@@ -95,13 +98,10 @@ export function loadLayer(map, config) {
             .catch(() => { /* keep current tiles on failure */ });
     };
 
-    // Animated swell bars (GPU). Driven from this module's liveLayerSync, not its own.
-    const bars = createParticleController(map, {
+    // Animated swell bars (GPU custom layer). Driven from this module's liveLayerSync.
+    const bars = createWaveParticleController(map, {
         sectionKey: 'waves',
         initialConfig: config,
-        drawMode: 'bars',
-        staticFallback: false,              // no barbs PNG; heat tiles are the base
-        viewport: true,                     // render the current view (sharp on zoom-in)
         // Particle density per level_of_detail (1/2/3). Bars read denser than wind
         // streaks, so these are much lower than wind's defaults. Tune to taste.
         lodCount: { 1: 4000, 2: 9000, 3: 18000 },
