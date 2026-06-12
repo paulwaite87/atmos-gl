@@ -1,6 +1,7 @@
 import os
 import psycopg2
 from psycopg2.extras import RealDictCursor
+import numpy as np
 import logging
 from .shipping import get_vessel_class_from_type
 
@@ -692,65 +693,97 @@ class Database:
             )
             return cur.fetchone() is not None
 
-    def store_gfs_grib(self, gfs_date, gfs_run, fhour, product, data, valid_time=None):
-        """UPSERT a GRIB blob for (date, run, fhour, product)."""
+    def field_exists(self, gfs_date, gfs_run, fhour, product):
+        with self.conn.cursor() as cur:
+            cur.execute(
+                "SELECT 1 FROM layer_data "
+                "WHERE gfs_date=%s AND gfs_run=%s AND fhour=%s AND product=%s",
+                (gfs_date, gfs_run, int(fhour), product),
+            )
+            return cur.fetchone() is not None
+
+    @staticmethod
+    def _flat(field):
+        """2-D field -> flat python list of floats (row-major), or None."""
+        if field is None:
+            return None
+        return np.asarray(field, dtype=np.float32).ravel().tolist()
+
+    def store_field(self, gfs_date, gfs_run, fhour, product, unpacked, valid_time=None):
+        """UPSERT a pre-processed field set (dict from worldmap.lib.unpack)."""
+        lat = np.asarray(unpacked["lat"], dtype=np.float64)
+        lon = np.asarray(unpacked["lon"], dtype=np.float64)
+        nlat, nlon = int(lat.shape[0]), int(lon.shape[0])
         sql = """
-            INSERT INTO gfs_cache
-                (gfs_date, gfs_run, fhour, product, data, valid_time, updated_at)
-            VALUES (%s, %s, %s, %s, %s, %s, now())
+            INSERT INTO layer_data
+                (gfs_date, gfs_run, fhour, product, nlat, nlon,
+                 lat, lon, vals, vals2, u, v, valid_time, updated_at)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s, now())
             ON CONFLICT (gfs_date, gfs_run, fhour, product) DO UPDATE SET
-                data = EXCLUDED.data,
-                valid_time = EXCLUDED.valid_time,
-                updated_at = now();
+                nlat=EXCLUDED.nlat, nlon=EXCLUDED.nlon,
+                lat=EXCLUDED.lat, lon=EXCLUDED.lon,
+                vals=EXCLUDED.vals, vals2=EXCLUDED.vals2,
+                u=EXCLUDED.u, v=EXCLUDED.v,
+                valid_time=EXCLUDED.valid_time, updated_at=now();
         """
         try:
             with self.conn.cursor() as cur:
-                cur.execute(
-                    sql,
-                    (gfs_date, gfs_run, int(fhour), product,
-                     psycopg2.Binary(data), valid_time),
-                )
+                cur.execute(sql, (
+                    gfs_date, gfs_run, int(fhour), product, nlat, nlon,
+                    lat.tolist(), lon.tolist(),
+                    self._flat(unpacked.get("values")),
+                    self._flat(unpacked.get("values2")),
+                    self._flat(unpacked.get("u")),
+                    self._flat(unpacked.get("v")),
+                    valid_time,
+                ))
         except Exception as e:
             logger.error(
-                f"Error storing GFS blob {gfs_date}/{gfs_run}/f{int(fhour):03d}/{product}: {e}"
+                f"Error storing field {gfs_date}/{gfs_run}/f{int(fhour):03d}/{product}: {e}"
             )
 
-    def get_gfs_grib(self, gfs_date, gfs_run, fhour, product):
-        """Return the GRIB bytes for (date, run, fhour, product), or None if absent."""
+    def get_field(self, gfs_date, gfs_run, fhour, product):
+        """Return the field set as numpy arrays, or None if absent.
+
+        { 'lat': 1-D, 'lon': 1-D, 'values'|'values2'|'u'|'v': 2-D (nlat,nlon) or None,
+          'valid_time': datetime }
+        """
         with self.conn.cursor() as cur:
             cur.execute(
-                "SELECT data FROM gfs_cache "
+                "SELECT nlat,nlon,lat,lon,vals,vals2,u,v,valid_time FROM layer_data "
                 "WHERE gfs_date=%s AND gfs_run=%s AND fhour=%s AND product=%s",
                 (gfs_date, gfs_run, int(fhour), product),
             )
             row = cur.fetchone()
-        if not row or row["data"] is None:
+        if not row:
             return None
-        return bytes(row["data"])  # bytea -> memoryview -> bytes
+        nlat, nlon = row["nlat"], row["nlon"]
 
-    def get_latest_gfs_run(self, product="atmos"):
-        """Return (gfs_date, gfs_run) of the newest cached run for a product, or None."""
-        with self.conn.cursor() as cur:
-            cur.execute(
-                "SELECT gfs_date, gfs_run FROM gfs_cache WHERE product=%s "
-                "ORDER BY gfs_date DESC, gfs_run DESC LIMIT 1",
-                (product,),
-            )
-            row = cur.fetchone()
-        return (row["gfs_date"], row["gfs_run"]) if row else None
+        def grid(key):
+            a = row[key]
+            if a is None:
+                return None
+            return np.asarray(a, dtype=np.float32).reshape(nlat, nlon)
 
-    def prune_gfs_cache_except(self, gfs_date, gfs_run):
-        """Delete every cached row that isn't part of the given (current) run."""
+        return {
+            "lat": np.asarray(row["lat"], dtype=np.float64),
+            "lon": np.asarray(row["lon"], dtype=np.float64),
+            "values": grid("vals"),
+            "values2": grid("vals2"),
+            "u": grid("u"),
+            "v": grid("v"),
+            "valid_time": row["valid_time"],
+        }
+
+    def prune_layer_data_except(self, gfs_date, gfs_run):
         self.execute(
-            "DELETE FROM gfs_cache WHERE NOT (gfs_date=%s AND gfs_run=%s)",
+            "DELETE FROM layer_data WHERE NOT (gfs_date=%s AND gfs_run=%s)",
             (gfs_date, gfs_run),
         )
 
-    def prune_gfs_cache(self, expiry_hours=48):
-        """Housekeeper hook: drop rows older than expiry_hours by updated_at."""
+    def prune_layer_data(self, expiry_hours=48):
         self.execute(
-            "DELETE FROM gfs_cache "
-            "WHERE updated_at < now() - make_interval(hours => %s)",
+            "DELETE FROM layer_data WHERE updated_at < now() - make_interval(hours => %s)",
             (int(expiry_hours),),
         )
 
