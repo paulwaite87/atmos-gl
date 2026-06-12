@@ -448,6 +448,33 @@ class Updater:
         if output_path and os.path.exists(output_path) and os.path.isfile(output_path):
             os.remove(output_path)
 
+    def get_db_field(self, product_name: str) -> dict | None:
+        """Fetch a pre-processed field set from the database.
+
+        Requires that get_gfs_state() has been called first (so gfs_date_str, gfs_run,
+        forecast_hour_str are set). Returns the field dict with keys:
+          lat, lon, values, values2, u, v, valid_time
+        or None if the row doesn't exist (collector hasn't run yet, or the product failed
+        to unpack).
+        """
+        if not hasattr(self, "gfs_date_str") or not hasattr(self, "gfs_run"):
+            logger.warning(f"{self.section}: get_db_field called before get_gfs_state")
+            return None
+        fhour = int(self.forecast_hour_str)
+        try:
+            from worldmap.lib.db import Database
+            db = Database()
+            field = db.get_field(self.gfs_date_str, self.gfs_run, fhour, product_name)
+            if field:
+                logger.debug(
+                    f"{self.section}: loaded {product_name} from DB "
+                    f"({self.gfs_date_str}/{self.gfs_run}/f{fhour:03d})"
+                )
+            return field
+        except Exception as e:
+            logger.error(f"{self.section}: get_db_field({product_name}) failed: {e}")
+            return None
+
     def exit_if_disabled(self):
         if not self.enabled:
             logger.info(f"{self.section} task disabled; skipping")

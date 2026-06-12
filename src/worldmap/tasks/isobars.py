@@ -1,22 +1,17 @@
 #!/usr/bin/env python3
 import os
 import logging
-import warnings
 import numpy as np
-import xarray as xr
+import matplotlib.patheffects as patheffects
 import matplotlib.pyplot as plt
 import cartopy.crs as ccrs
-import scipy.ndimage as ndimage
 
-from matplotlib import patheffects
+from scipy.interpolate import RegularGridInterpolator
 
 # Internal imports
 from worldmap.lib.config import WorldMapConfig
 from .common import Updater, MapData, Plot, encode_frames
 
-# Silence warnings from GRIB backend
-warnings.filterwarnings("ignore", message=".*missingValue.*")
-logging.getLogger("cfgrib").setLevel(logging.ERROR)
 logging.getLogger("gribapi.bindings").setLevel(logging.ERROR)
 
 logger = logging.getLogger(__name__)
@@ -30,36 +25,24 @@ class IsobarUpdater(Updater):
         self.VMIN_PRESSURE = 950.0
         self.VMAX_PRESSURE = 1050.0
 
-    def _load_prmsl(self, path, lon_idx):
-        """Open a PRMSL GRIB, standardise longitudes, smooth. Returns (p, lons, lats, lon_idx)."""
-        ds = xr.open_dataset(
-            path,
-            engine="cfgrib",
-            backend_kwargs={
-                "filter_by_keys": {"typeOfLevel": "meanSea", "shortName": "prmsl"}
-            },
-        )
-        p = ds["prmsl"].values / 100.0
-        lons = ds["longitude"].values
-        lats = ds["latitude"].values
-        if lon_idx is None:
-            lon_idx = np.argsort(((lons + 180) % 360) - 180)
-        p = p[:, lon_idx]
-        lons_sorted = (((lons + 180) % 360) - 180)[lon_idx]
-        p_smooth = ndimage.gaussian_filter(p, sigma=1.2)
-        ds.close()
-        return p_smooth, lons_sorted, lats, lon_idx
-
     def plot(self):
-        """Render the static isobar PNG (from frame 0) AND the N-frame data texture."""
-        logger.debug(f"Plotting isobars to {self.output_path}")
+        """Render the static isobar PNG (from frame 0) AND the N-frame data texture.
+        
+        Now consumes pre-processed fields from the DB.
+        """
+        logger.debug(
+            f"Plotting isobars to {self.output_path}"
+        )
 
-        if not os.path.exists(self.frame_paths[0]):
-            logger.warning("Skipping Isobars: current-hour frame not available yet.")
+        # Fetch frame 0 from DB
+        field0 = self.get_db_field("isobars")
+        if not field0 or field0["values"] is None:
+            logger.warning("Skipping Isobars: current-hour field not available in DB yet.")
             return
 
-        # Frame 0 (current) drives the static contour render and is the first frame.
-        p0, lons, lats, lon_idx = self._load_prmsl(self.frame_paths[0], None)
+        lats = field0["lat"]
+        lons = field0["lon"]
+        p = field0["values"]  # already smoothed from unpacker
 
         plot = Plot(self.map_data.region)
         plot.get_figure()
@@ -72,50 +55,70 @@ class IsobarUpdater(Updater):
         alpha_val = self.settings.get("alpha", 1.0)
 
         line_effect = [
-            patheffects.withStroke(
-                linewidth=thickness + 1.0, foreground="black", alpha=alpha_val * 0.4
-            )
+            patheffects.withStroke(linewidth=thickness + 2, foreground="black")
         ]
-        cs = plot.ax.contour(
+
+        plot.ax.contour(
             lons,
             lats,
-            p0,
+            p,
             levels=levels,
             colors=color,
             linewidths=thickness,
-            alpha=alpha_val,
             transform=ccrs.PlateCarree(),
+            zorder=3,
         )
-        for collection in getattr(cs, "collections", []):
-            collection.set_path_effects(line_effect)
-        labels = plt.clabel(cs, fmt="%d", fontsize=f_size, inline=True, colors=color)
-        if labels:
-            for txt in labels:
-                txt.set_alpha(alpha_val)
-                txt.set_path_effects(line_effect)
+
+        # Add labels at isosurfaces
+        cs = plot.ax.contour(
+            lons,
+            lats,
+            p,
+            levels=levels[::2],  # Label every other level
+            colors=color,
+            linewidths=thickness,
+            transform=ccrs.PlateCarree(),
+            zorder=3,
+        )
+
+        plot.ax.clabel(
+            cs,
+            inline=True,
+            fontsize=f_size,
+            fmt="%1.0f",
+            colors=color,
+            manual=False,
+        )
+
+        for text in plot.ax.texts:
+            text.set_path_effects(line_effect)
+            text.set_alpha(alpha_val)
+
         plot.save_figure(self.output_path)
 
+        plt_close = getattr(plot, "close", None)
+        if callable(plt_close):
+            plt_close()
+
         # --- WebGL multi-frame data texture ---
-        # Resilient: NOMADS often lags the .idx sidecar for the freshest forecast
-        # hours, so any frame that isn't ready yet holds the last good frame. This
-        # always emits exactly N frames (keeping the frontend's array slicing valid)
-        # as long as the current-hour frame loaded.
-        frames = [p0]
-        last_good = p0
+        step = int(self.animation.get("step_hours", 6))
+        n_frames = max(2, int(self.animation.get("frames", 2)))
+        f_hour_0 = int(self.forecast_hour_str)
+        frame_hours = [f_hour_0 + k * step for k in range(n_frames)]
+
+        frames = [field0["values"]]
+        last_good = field0["values"]
         live = 1
-        for path in self.frame_paths[1:]:
+        for fh in frame_hours[1:]:
             pk = last_good
-            if os.path.exists(path):
-                try:
-                    pk, _, _, _ = self._load_prmsl(
-                        path, lon_idx
-                    )  # reuse frame-0 lon ordering
+            try:
+                field_fh = self.get_db_field_at_hour("isobars", fh)
+                if field_fh and field_fh["values"] is not None:
+                    pk = field_fh["values"]
                     last_good = pk
                     live += 1
-                except Exception as e:
-                    logger.warning(
-                        f"Isobars frame unreadable ({path}: {e}); holding previous."
-                    )
+            except Exception as e:
+                logger.debug(f"Isobars frame f{fh:03d} skipped: {e}")
             frames.append(pk)
 
         base, _ = os.path.splitext(self.output_path)
@@ -124,37 +127,32 @@ class IsobarUpdater(Updater):
         )
         held = len(frames) - live
         logger.info(
-            f"Isobars data texture: {len(frames)} frames ({live} live, {held} held)."
+            f"Finished Isobars plot; "
+            f"data texture: {len(frames)} frames ({live} live, {held} held)."
         )
+
+    def get_db_field_at_hour(self, product_name: str, fhour: int) -> dict | None:
+        """Helper: fetch a field for a specific forecast hour."""
+        if not hasattr(self, "gfs_date_str") or not hasattr(self, "gfs_run"):
+            return None
+        try:
+            from worldmap.lib.db import Database
+            db = Database()
+            return db.get_field(self.gfs_date_str, self.gfs_run, int(fhour), product_name)
+        except Exception as e:
+            logger.debug(f"get_db_field_at_hour({product_name}, f{fhour:03d}) failed: {e}")
+            return None
 
     def run(self):
         self.exit_if_disabled()
         self.get_gfs_state()
 
-        # Animation span: n_frames forecast steps spaced step hours apart, from "now".
-        step = int(self.animation.get("step_hours", 6))
-        n_frames = max(2, int(self.animation.get("frames", 2)))
-        f_hour_0 = int(self.forecast_hour_str)
-
-        self.frame_hours = [f_hour_0 + k * step for k in range(n_frames)]
-        self.frame_paths = [
-            self.cache_path(f"gfs_isobars_{h:03d}.grib2") for h in self.frame_hours
-        ]
-        urls = [
-            f"{self.base_url}/gfs.{self.gfs_date_str}/{self.gfs_run}/atmos/"
-            f"gfs.t{self.gfs_run}z.pgrb2.0p25.f{h:03d}"
-            for h in self.frame_hours
-        ]
-
-        needs_plot = False
-        for url, path in zip(urls, self.frame_paths):
-            if self.remote_data_update(
-                remote_url=url,
-                cache_file_path=path,
-                grib_targets=[":PRMSL:mean sea level:"],
-            ):
-                needs_plot = True
-
-        if needs_plot:
-            logger.info(f"Generating Isobars plot and {n_frames}-frame data texture...")
+        # Check if frame 0 is available in DB
+        field = self.get_db_field("isobars")
+        if field and field["values"] is not None:
+            logger.info("Generating Isobars plot and multi-frame data texture...")
             self.plot()
+        else:
+            logger.info(
+                "Isobars: frame 0 not ready in DB yet (collector may not have run)."
+            )

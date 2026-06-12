@@ -3,11 +3,11 @@ import os
 import logging
 import warnings
 import numpy as np
-import xarray as xr
 import matplotlib.colors as mcolors
 import cartopy.crs as ccrs
 
 from scipy.ndimage import gaussian_filter
+from scipy.interpolate import RegularGridInterpolator
 
 # Internal imports
 from worldmap.lib.config import WorldMapConfig
@@ -65,7 +65,6 @@ class PrecipitationUpdater(Updater):
         """Generates a standalone key image using a standardized naming strategy."""
         import matplotlib.pyplot as plt
         import matplotlib as mpl
-        import os
 
         # Standardize naming: take base name, add _key, append extension
         base, ext = os.path.splitext(output_path)
@@ -98,33 +97,18 @@ class PrecipitationUpdater(Updater):
         plt.close(fig)
         logger.debug(f"Saved precipitation key to: {key_path}")
 
-    def _load_prate_global(self, path):
-        """Global instantaneous precip rate in mm/hr.
-
-        Longitudes standardized to -180..180 ascending; latitude left in the GFS
-        native (descending) order so row 0 is the northern edge -- the row order
-        the WebGL data texture and shader expect (matches isobars)."""
-        ds = xr.open_dataset(path, engine="cfgrib")
-        ds = ds.assign_coords(longitude=(((ds.longitude + 180) % 360) - 180))
-        ds = ds.sortby("longitude")
-        prate = ds["prate"].values.squeeze() * 3600.0
-        ds.close()
-        del ds
-        # Smooth the native 0.25 deg field before it becomes a data-texture frame.
-        # Raw PRATE is very speckly; as a magnitude-keyed colour fill (unlike isobars'
-        # contour lines) that speckle crosses the min_mm_hr threshold differently each
-        # interpolated frame and shimmers globally. isobars smooths PRMSL the same way.
-        prate = gaussian_filter(prate, sigma=1.0)
-        return prate
-
     def plot(self):
-        """Static region render (frame 0) + colourbar key + global N-frame texture."""
-        from scipy.interpolate import RegularGridInterpolator
+        """Static region render (frame 0) + colourbar key + global N-frame texture.
+        
+        Now consumes pre-processed fields from the DB instead of opening GRIBs.
+        """
         import gc  # Garbage collector
 
-        if not os.path.exists(self.frame_paths[0]):
+        # Fetch frame 0 (current hour) from the DB
+        field0 = self.get_db_field("precipitation")
+        if not field0 or field0["values"] is None:
             logger.warning(
-                "Skipping Precipitation: current-hour frame not available yet."
+                "Skipping Precipitation: current-hour field not available in DB yet."
             )
             return
 
@@ -136,34 +120,24 @@ class PrecipitationUpdater(Updater):
         alpha = float(self.settings.get("alpha", 50) / 100)
         palette_name = self.settings.get("palette", "standard")
 
-        # Load Dataset and Clip Immediately
-        ds = xr.open_dataset(self.grib_path, engine="cfgrib")
-
-        # Standardize longitudes to -180..180
-        ds = ds.assign_coords(longitude=(((ds.longitude + 180) % 360) - 180))
-        ds = ds.sortby("longitude")
+        # --- Static region render (frame 0) ---
+        lats = field0["lat"]
+        lons = field0["lon"]
+        prate = field0["values"]
 
         # Define BBox with a small buffer for smooth edges
         lon_min, lat_min, lon_max, lat_max = self.map_region_bbox
         buf = 1.0
 
-        # SLICE EARLY: This is the primary memory-saving step
-        ds_clipped = ds.sel(
-            latitude=slice(lat_max + buf, lat_min - buf),
-            longitude=slice(lon_min - buf, lon_max + buf),
-        )
+        # Clip to region
+        lon_idx = (lons >= lon_min - buf) & (lons <= lon_max + buf)
+        lat_idx = (lats >= lat_min - buf) & (lats <= lat_max + buf)
+        prate_clip = prate[np.ix_(lat_idx, lon_idx)]
+        lons_clip = lons[lon_idx]
+        lats_clip = lats[lat_idx]
 
-        prate = ds_clipped["prate"].values.squeeze() * 3600.0
-        # Apply the minimum threshold to clip out trace noise
-        prate[prate < min_rate] = 0.0
-
-        lons = ds_clipped.longitude.values
-        lats = ds_clipped.latitude.values
-
-        # Explicit cleanup of the large dataset
-        ds.close()
-        del ds
-        gc.collect()
+        prate_clip = prate_clip.copy()
+        prate_clip[prate_clip < min_rate] = 0.0
 
         # 2. DYNAMIC RESAMPLING (Level of Detail Logic)
         if self.level_of_detail == 3:
@@ -179,17 +153,17 @@ class PrecipitationUpdater(Updater):
             filter_sigma = 0.0  # No smoothing
             self.lod_desc = "low"
 
-        new_lats = np.arange(lats.min(), lats.max() + step, step)
-        new_lons = np.arange(lons.min(), lons.max() + step, step)
+        new_lats = np.arange(lats_clip.min(), lats_clip.max() + step, step)
+        new_lons = np.arange(lons_clip.min(), lons_clip.max() + step, step)
 
         # Handle latitude ordering for Interpolator (must be strictly increasing)
-        if lats[0] > lats[-1]:
-            lats_inc, prate_inc = lats[::-1], prate[::-1, :]
+        if lats_clip[0] > lats_clip[-1]:
+            lats_inc, prate_inc = lats_clip[::-1], prate_clip[::-1, :]
         else:
-            lats_inc, prate_inc = lats, prate
+            lats_inc, prate_inc = lats_clip, prate_clip
 
         fn = RegularGridInterpolator(
-            (lats_inc, lons), prate_inc, bounds_error=False, fill_value=0
+            (lats_inc, lons_clip), prate_inc, bounds_error=False, fill_value=0
         )
 
         mesh_lats, mesh_lons = np.meshgrid(new_lats, new_lons, indexing="ij")
@@ -224,7 +198,6 @@ class PrecipitationUpdater(Updater):
         )
 
         plot.save_figure(self.output_path)
-
         self.save_precipitation_key(self.output_path)
 
         plt_close = getattr(plot, "close", None)
@@ -232,32 +205,27 @@ class PrecipitationUpdater(Updater):
             plt_close()
 
         # --- WebGL multi-frame data texture (global, sqrt-encoded) ---
-        # Global PRATE per forecast frame; the frontend interpolates between frames
-        # on the GPU and colourises via the palette LUT. Resilient like isobars:
-        # NOMADS often lags the .idx sidecar for the freshest hours, so any frame
-        # that isn't ready holds the last good frame -- always emitting exactly N
-        # frames (keeping the frontend's array slicing valid).
-        try:
-            p0 = self._load_prate_global(self.frame_paths[0])
-        except Exception as e:
-            logger.warning(
-                f"Precipitation: could not load current frame for texture ({e})."
-            )
-            return
-        frames = [p0]
-        last_good = p0
+        # Fetch all animation frames from the DB. If a frame is missing, hold the last
+        # good one (same resilience as before, but now from DB not file system).
+        step = int(self.animation.get("step_hours", 6))
+        n_frames = max(2, int(self.animation.get("frames", 2)))
+        f_hour_0 = int(self.forecast_hour_str)
+        frame_hours = [f_hour_0 + k * step for k in range(n_frames)]
+
+        frames = [field0["values"]]  # frame 0 is already loaded
+        last_good = field0["values"]
         live = 1
-        for path in self.frame_paths[1:]:
+        for fh in frame_hours[1:]:
             pk = last_good
-            if os.path.exists(path):
-                try:
-                    pk = self._load_prate_global(path)
+            try:
+                # Compute the actual forecast hour string for this frame
+                field_fh = self.get_db_field_at_hour("precipitation", fh)
+                if field_fh and field_fh["values"] is not None:
+                    pk = field_fh["values"]
                     last_good = pk
                     live += 1
-                except Exception as e:
-                    logger.warning(
-                        f"Precipitation frame unreadable ({path}: {e}); holding previous."
-                    )
+            except Exception as e:
+                logger.debug(f"Precipitation frame f{fh:03d} skipped: {e}")
             frames.append(pk)
 
         base, _ = os.path.splitext(self.output_path)
@@ -270,40 +238,32 @@ class PrecipitationUpdater(Updater):
             f"data texture: {len(frames)} frames ({live} live, {held} held)."
         )
 
+    def get_db_field_at_hour(self, product_name: str, fhour: int) -> dict | None:
+        """Helper: fetch a field for a specific forecast hour (not necessarily self.forecast_hour_str).
+        
+        Reuses the same DB key (gfs_date_str, gfs_run) as the updater.
+        """
+        if not hasattr(self, "gfs_date_str") or not hasattr(self, "gfs_run"):
+            return None
+        try:
+            from worldmap.lib.db import Database
+            db = Database()
+            return db.get_field(self.gfs_date_str, self.gfs_run, int(fhour), product_name)
+        except Exception as e:
+            logger.debug(f"get_db_field_at_hour({product_name}, f{fhour:03d}) failed: {e}")
+            return None
+
     def run(self):
         self.exit_if_disabled()
         # Get the GFS state for this updater
         self.get_gfs_state()
 
-        # Animation span: n_frames forecast steps spaced step hours apart, from "now".
-        step = int(self.animation.get("step_hours", 6))
-        n_frames = max(2, int(self.animation.get("frames", 2)))
-        f_hour_0 = int(self.forecast_hour_str)
-
-        self.frame_hours = [f_hour_0 + k * step for k in range(n_frames)]
-        self.frame_paths = [
-            self.cache_path(f"gfs_precip_{h:03d}.grib2") for h in self.frame_hours
-        ]
-        # Frame 0 (current hour) drives the static region render + colourbar key.
-        self.grib_path = self.frame_paths[0]
-
-        urls = [
-            f"{self.base_url}/gfs.{self.gfs_date_str}/{self.gfs_run}/atmos/"
-            f"gfs.t{self.gfs_run}z.pgrb2.0p25.f{h:03d}"
-            for h in self.frame_hours
-        ]
-
-        needs_plot = False
-        for url, path in zip(urls, self.frame_paths):
-            if self.remote_data_update(
-                remote_url=url,
-                cache_file_path=path,
-                grib_targets=[":PRATE:surface:"],
-            ):
-                needs_plot = True
-
-        if needs_plot:
-            logger.info(
-                f"Generating Precipitation plot and {n_frames}-frame data texture..."
-            )
+        # Check if frame 0 (current hour) is available in the DB
+        field = self.get_db_field("precipitation")
+        if field and field["values"] is not None:
+            logger.info("Generating Precipitation plot and multi-frame data texture...")
             self.plot()
+        else:
+            logger.info(
+                "Precipitation: frame 0 not ready in DB yet (collector may not have run)."
+            )

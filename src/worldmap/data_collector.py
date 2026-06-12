@@ -66,7 +66,6 @@ class DataCollector:
         f0 = max(0, hours_since_run)        # forecast hour valid 'now' (no user offset)
         f_end = f0 + self.cache_hours
 
-        self.db.ensure_layer_data_table()
         products = list(ATMOS_UNPACKERS.items())
         stored = 0
 

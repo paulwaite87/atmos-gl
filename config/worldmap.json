@@ -242,7 +242,7 @@
     "marker_fontsize": 11
   },
   "data_collector": {
-    "enabled": false,
+    "enabled": true,
     "datasources": {
       "gfs": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
       "sst": "https://downloads.psl.noaa.gov/Datasets/noaa.oisst.v2.highres",
@@ -250,7 +250,7 @@
     },
     "update_hours": 1,
     "cache_hours": 24,
-    "log_level": "INFO"
+    "log_level": "DEBUG"
   },
   "satellites_collector": {
     "enabled": false,

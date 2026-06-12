@@ -1,27 +1,16 @@
 #!/usr/bin/env python3
 import os
 import logging
-import warnings
-import gc
 import numpy as np
-import xarray as xr
-import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import cartopy.crs as ccrs
 
-from scipy.ndimage import gaussian_filter
 from scipy.interpolate import RegularGridInterpolator
 
-# Internal imports
 from worldmap.lib.config import WorldMapConfig
-from .common import Updater, MapData, Plot
+from .common import Updater, MapData, Plot, encode_frames
 
-# Silence GRIB warnings
-warnings.filterwarnings("ignore", message=".*missingValue.*")
 logging.getLogger("cfgrib").setLevel(logging.ERROR)
-gribapi_logger = logging.getLogger("gribapi.bindings")
-gribapi_logger.setLevel(logging.ERROR)
-gribapi_logger.propagate = False
 
 logger = logging.getLogger(__name__)
 
@@ -29,187 +18,168 @@ logger = logging.getLogger(__name__)
 class OzoneUpdater(Updater):
     def __init__(self, config: WorldMapConfig, map_data: MapData):
         super().__init__(config, "Ozone", map_data)
-        # Default to Medium resolution if not specified
-        self.level_of_detail = self.settings.get("level_of_detail", 2)
+        self.level_of_detail = self.settings.get("level_of_detail", 1)
         self.lod_desc = None
+        # Ozone units vary; these are typical for TOZNE (Dobson Units)
+        self.VMIN_OZONE = 200.0
+        self.VMAX_OZONE = 450.0
 
-    def save_ozone_key(self, output_path, cmap, norm, min_du, max_du):
-        """Generates a standalone key image using a standardized naming strategy."""
+    def save_ozone_key(self, output_path):
+        """Generates an ozone key image."""
         import matplotlib.pyplot as plt
         import matplotlib as mpl
 
-        # Standardize naming: take base name, add _key, append extension
         base, ext = os.path.splitext(output_path)
         key_path = f"{base}_key{ext}"
 
-        key_fontsize = self.settings.get("key_fontsize", 8)
-
         fig, ax = plt.subplots(figsize=(4, 0.3))
+        key_ticks = [200, 250, 300, 350, 400, 450]
 
-        # Calculate 5 evenly spaced ticks between min and max
-        calculated_ticks = np.linspace(min_du, max_du, 5)
+        cmap = mpl.cm.get_cmap("viridis")
+        norm = mpl.colors.Normalize(vmin=self.VMIN_OZONE, vmax=self.VMAX_OZONE)
 
         cbar = fig.colorbar(
             mpl.cm.ScalarMappable(norm=norm, cmap=cmap),
             cax=ax,
             orientation="horizontal",
-            ticks=calculated_ticks,
+            ticks=key_ticks,
         )
 
-        cbar.ax.xaxis.set_major_formatter(plt.FormatStrFormatter("%d"))
         cbar.ax.set_title(
-            "Total Ozone (Dobson Units)",
+            "Ozone (DU)",
             color="white",
-            fontsize=key_fontsize,
+            fontsize=self.settings.get("key_fontsize", 8),
             pad=2,
         )
-        cbar.ax.tick_params(colors="white", labelsize=8)
+        cbar.ax.tick_params(colors="white", labelsize=6)
 
-        # Save key separately
         fig.savefig(key_path, transparent=True, bbox_inches="tight")
         plt.close(fig)
-        logger.debug(f"Saved Ozone key to: {key_path}")
+        logger.debug(f"Saved ozone key to: {key_path}")
 
     def plot(self):
-        """Renders the ozone layer with dynamic resampling for smoother visuals."""
-        logger.debug(f"Plotting ozone layer to {self.output_path}...")
+        """Render the static ozone PNG (frame 0) + global N-frame texture.
+        
+        Now consumes pre-processed fields from the DB.
+        """
+        field0 = self.get_db_field("ozone")
+        if not field0 or field0["values"] is None:
+            logger.warning(
+                "Skipping Ozone: current-hour field not available in DB yet."
+            )
+            return
 
-        palette_key = self.settings.get("palette", "critical").lower()
-        bbox = self.map_region_bbox
-
-        # Load Data
-        ds = xr.open_dataset(self.grib_path, engine="cfgrib")
-
-        data_var = list(ds.data_vars)[0]
-        raw_matrix = ds[data_var].values.squeeze()
-
-        lat_raw = ds["latitude"].values
-        lon_raw = ds["longitude"].values
-
-        # Normalize and Sort Longitudes (-180 to 180)
-        lon_norm = ((lon_raw + 180) % 360) - 180
-        lon_sort_idx = np.argsort(lon_norm)
-        lon_norm = lon_norm[lon_sort_idx]
-        raw_matrix = raw_matrix[:, lon_sort_idx]
-
-        # Apply Localized Clipping Masks
-        lon_mask = (lon_norm >= bbox[0] - 1.0) & (lon_norm <= bbox[2] + 1.0)
-        lat_mask = (lat_raw >= bbox[1] - 1.0) & (lat_raw <= bbox[3] + 1.0)
-
-        lons_clipped = lon_norm[lon_mask]
-        lats_clipped = lat_raw[lat_mask]
-        display_data = raw_matrix[lat_mask, :][:, lon_mask]
-
-        ds.close()
-        del ds
-        gc.collect()
-
-        # DYNAMIC RESAMPLING (Level of Detail Logic)
-        if self.level_of_detail == 3:
-            step = 0.05  # High resolution (very smooth)
-            filter_sigma = 1.2
-            self.lod_desc = "high"
-        elif self.level_of_detail == 2:
-            step = 0.125  # Medium resolution
-            filter_sigma = 0.8
-            self.lod_desc = "medium"
-        else:
-            step = 0.25  # Low resolution (Native GFS grid size)
-            filter_sigma = 0.0  # No smoothing
-            self.lod_desc = "low"
-
-        # Ensure latitudes are strictly increasing for the Interpolator
-        if lats_clipped[0] > lats_clipped[-1]:
-            lats_inc, data_inc = lats_clipped[::-1], display_data[::-1, :]
-        else:
-            lats_inc, data_inc = lats_clipped, display_data
-
-        fn = RegularGridInterpolator(
-            (lats_inc, lons_clipped), data_inc, bounds_error=False, fill_value=0
+        logger.debug(
+            f"Plotting ozone for {self.map_data.region.region_identifier}"
         )
 
-        new_lats = np.arange(lats_clipped.min(), lats_clipped.max() + step, step)
-        new_lons = np.arange(lons_clipped.min(), lons_clipped.max() + step, step)
-        mesh_lats, mesh_lons = np.meshgrid(new_lats, new_lons, indexing="ij")
+        lats = field0["lat"]
+        lons = field0["lon"]
+        ozone = field0["values"]
 
-        smooth_data = fn((mesh_lats, mesh_lons))
+        # Regional clipping
+        lon_min, lat_min, lon_max, lat_max = self.map_region_bbox
+        buf = 1.0
+        lon_idx = (lons >= lon_min - buf) & (lons <= lon_max + buf)
+        lat_idx = (lats >= lat_min - buf) & (lats <= lat_max + buf)
+        ozone_clip = ozone[np.ix_(lat_idx, lon_idx)]
+        lons_clip = lons[lon_idx]
+        lats_clip = lats[lat_idx]
 
-        # Apply Gaussian smoothing only if LOD > 1
-        if filter_sigma > 0:
-            smooth_data = gaussian_filter(smooth_data, sigma=filter_sigma)
-
-        # Mode Styling & Custom Colormaps
-        min_du = 150
-        max_du = 500
-        norm = mcolors.Normalize(vmin=min_du, vmax=max_du)
-
-        if palette_key == "critical":
-            critical_du = self.settings.get("critical_du", 220.0)
-            span = max(1, max_du - min_du)
-            crit_point = max(0.0, min(1.0, (critical_du - min_du) / span))
-            fade_point = min(1.0, crit_point + 0.05)
-
-            color_stops = [0.0, crit_point, fade_point, 1.0]
-            colors = [
-                (1.0, 0.0, 1.0, 1.0),
-                (1.0, 1.0, 0.0, 0.9),
-                (0.0, 0.1, 0.3, 0.2),
-                (0.0, 0.1, 0.3, 0.2),
-            ]
-
-            cmap_data = list(zip(color_stops, colors))
-            cmap = mcolors.LinearSegmentedColormap.from_list(
-                "critical_mask", cmap_data, N=256
-            )
+        # LOD interpolation
+        if self.level_of_detail == 3:
+            step = 0.05
+            self.lod_desc = "high"
+        elif self.level_of_detail == 2:
+            step = 0.125
+            self.lod_desc = "medium"
         else:
-            palettes = {
-                "plasma": "plasma_r",
-                "viridis": "viridis_r",
-                "inferno": "inferno_r",
-                "turbo": "turbo_r",
-            }
-            cmap = plt.get_cmap(palettes.get(palette_key, "plasma_r"))
+            step = 0.25
+            self.lod_desc = "low"
 
-        # Canvas Initialization
+        new_lats = np.arange(lats_clip.min(), lats_clip.max() + step, step)
+        new_lons = np.arange(lons_clip.min(), lons_clip.max() + step, step)
+
+        if lats_clip[0] > lats_clip[-1]:
+            lats_inc, ozone_inc = lats_clip[::-1], ozone_clip[::-1, :]
+        else:
+            lats_inc, ozone_inc = lats_clip, ozone_clip
+
+        fn = RegularGridInterpolator(
+            (lats_inc, lons_clip), ozone_inc, bounds_error=False, fill_value=np.nan
+        )
+        mesh_lats, mesh_lons = np.meshgrid(new_lats, new_lons, indexing="ij")
+        ozone_smooth = fn((mesh_lats, mesh_lons))
+
         plot = Plot(self.map_data.region)
         plot.get_figure()
 
-        # Generate 150 discrete contour levels to simulate a perfectly smooth gradient
-        levels = np.linspace(min_du, max_du, 150)
+        cmap = __import__("matplotlib.cm", fromlist=["get_cmap"]).get_cmap("viridis")
+        norm = mcolors.Normalize(vmin=self.VMIN_OZONE, vmax=self.VMAX_OZONE)
 
-        # Replaced pcolormesh with contourf for smoothed rendering
         plot.ax.contourf(
-            new_lons,
-            new_lats,
-            smooth_data,
-            levels=levels,
-            cmap=cmap,
-            norm=norm,
+            new_lons, new_lats, ozone_smooth,
+            levels=20, cmap=cmap, norm=norm,
             transform=ccrs.PlateCarree(),
-            extend="both",
-            antialiased=True,
-            zorder=2,
+            extend="both", zorder=2
         )
 
-        # Save the map and the standalone key
         plot.save_figure(self.output_path)
-        self.save_ozone_key(self.output_path, cmap, norm, min_du, max_du)
+        self.save_ozone_key(self.output_path)
 
-        # Memory cleanup
         plt_close = getattr(plot, "close", None)
         if callable(plt_close):
             plt_close()
 
-        logger.debug("Finished Ozone plot. Memory cleared.")
+        # --- WebGL multi-frame data texture ---
+        step = int(self.animation.get("step_hours", 6))
+        n_frames = max(2, int(self.animation.get("frames", 2)))
+        f_hour_0 = int(self.forecast_hour_str)
+        frame_hours = [f_hour_0 + k * step for k in range(n_frames)]
+
+        frames = [field0["values"]]
+        last_good = field0["values"]
+        live = 1
+        for fh in frame_hours[1:]:
+            pk = last_good
+            try:
+                field_fh = self.get_db_field_at_hour("ozone", fh)
+                if field_fh and field_fh["values"] is not None:
+                    pk = field_fh["values"]
+                    last_good = pk
+                    live += 1
+            except Exception as e:
+                logger.debug(f"Ozone frame f{fh:03d} skipped: {e}")
+            frames.append(pk)
+
+        base, _ = os.path.splitext(self.output_path)
+        encode_frames(frames, f"{base}_data.png", self.VMIN_OZONE, self.VMAX_OZONE)
+        held = len(frames) - live
+        logger.info(
+            f"Finished Ozone plot ({self.lod_desc} resolution); "
+            f"data texture: {len(frames)} frames ({live} live, {held} held)."
+        )
+
+    def get_db_field_at_hour(self, product_name: str, fhour: int) -> dict | None:
+        if not hasattr(self, "gfs_date_str") or not hasattr(self, "gfs_run"):
+            return None
+        try:
+            from worldmap.lib.db import Database
+            db = Database()
+            return db.get_field(self.gfs_date_str, self.gfs_run, int(fhour), product_name)
+        except Exception as e:
+            logger.debug(f"get_db_field_at_hour({product_name}, f{fhour:03d}) failed: {e}")
+            return None
 
     def run(self):
         self.exit_if_disabled()
         self.get_gfs_state()
-        self.grib_path = self.cache_path(f"gfs_ozone_{self.forecast_hour_str}.grib2")
 
-        url = f"{self.base_url}/gfs.{self.gfs_date_str}/{self.gfs_run}/atmos/gfs.t{self.gfs_run}z.pgrb2.0p25.f{self.forecast_hour_str}"
-        if self.remote_data_update(
-            remote_url=url, cache_file_path=self.grib_path, grib_targets=[":TOZNE:"]
-        ):
+        field = self.get_db_field("ozone")
+        if field and field["values"] is not None:
+            logger.info("Generating Ozone plot and multi-frame data texture...")
             self.plot()
-            logger.info(f"Generated Ozone plot ({self.lod_desc} resolution)...")
+        else:
+            logger.info(
+                "Ozone: frame 0 not ready in DB yet (collector may not have run)."
+            )

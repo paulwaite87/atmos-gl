@@ -1,21 +1,12 @@
 #!/usr/bin/env python3
 import os
 import logging
-import warnings
 import numpy as np
-import xarray as xr
-import cartopy.crs as ccrs
 
-# Internal imports
 from worldmap.lib.config import WorldMapConfig
-from .common import Updater, MapData, Plot, encode_uv
+from .common import Updater, MapData, Plot, encode_data_texture
 
-# Silence warnings
-warnings.filterwarnings("ignore", message=".*missingValue.*")
 logging.getLogger("cfgrib").setLevel(logging.ERROR)
-gribapi_logger = logging.getLogger("gribapi.bindings")
-gribapi_logger.setLevel(logging.ERROR)
-gribapi_logger.propagate = False
 
 logger = logging.getLogger(__name__)
 
@@ -23,102 +14,106 @@ logger = logging.getLogger(__name__)
 class WindUpdater(Updater):
     def __init__(self, config: WorldMapConfig, map_data: MapData):
         super().__init__(config, "Wind", map_data)
-        # Top of the wind scale (m/s) the particle velocity texture is encoded
-        # against. Clips rare extremes; raise if you need storm cores exact.
         self.VMAX_WIND = 40.0
 
     def plot(self):
-        """Renders wind vectors with registration and type-hint fixes."""
-        logger.debug(f"Plotting wind vectors to {self.output_path}...")
+        """Render the static wind barbs PNG (frame 0) + global velocity texture.
+        
+        Now consumes pre-processed u/v fields from the DB.
+        """
+        logger.debug(f"Plotting wind to {self.output_path}")
 
-        bbox = self.map_region_bbox
-        vector_color = self.settings.get("vector_color", "cyan")
-        base_len = self.settings.get("barb_length_base", 5.0)
-        len_step = self.settings.get("barb_length_step", 1.0)
+        # Fetch frame 0 from DB
+        field0 = self.get_db_field("wind")
+        if not field0 or field0["u"] is None or field0["v"] is None:
+            logger.warning(
+                "Skipping Wind: current-hour u/v fields not available in DB yet."
+            )
+            return
 
-        # Spacing logic
-        lon_span = abs(bbox[2] - bbox[0]) if bbox else 360
-        calc_spacing = lon_span / self.settings.get("barb_density", 30.0)
-        spacing_deg = max(0.25, calc_spacing)
-        density_step = max(1, int(spacing_deg / 0.25))
+        lats = field0["lat"]
+        lons = field0["lon"]
+        u = field0["u"]  # m/s
+        v = field0["v"]  # m/s
 
-        # Load Data
-        ds = xr.open_dataset(
-            self.grib_path,
-            engine="cfgrib",
-            backend_kwargs={
-                "filter_by_keys": {"typeOfLevel": "heightAboveGround", "level": 10}
-            },
-        )
-
-        # Coordinate Standardization
-        lons = ds["longitude"].values
-        lats = ds["latitude"].values
-        u = ds["u10"].values.squeeze()
-        v = ds["v10"].values.squeeze()
-
-        # Wrap to -180..180 and sort
-        lons = ((lons + 180) % 360) - 180
-        idx = np.argsort(lons)
-        lons, u, v = lons[idx], u[:, idx], v[:, idx]
-
-        lon2d, lat2d = np.meshgrid(lons, lats)
-
-        # Flatten with calculated density step
-        lons_flat = lon2d[::density_step, ::density_step].flatten()
-        lats_flat = lat2d[::density_step, ::density_step].flatten()
-        u_flat = u[::density_step, ::density_step].flatten()
-        v_flat = v[::density_step, ::density_step].flatten()
-        speed_kph = np.sqrt(u_flat**2 + v_flat**2) * 3.6
-
-        # Setup Figure to match target canvas exactly
+        # Regional barbs render
         plot = Plot(self.map_data.region)
         plot.get_figure()
 
-        speed_bins = [
-            (0, 20, base_len),
-            (20, 40, base_len + len_step),
-            (40, 60, base_len + len_step * 2),
-            (60, 80, base_len + len_step * 3),
-            (80, 999, base_len + len_step * 4),
-        ]
+        # Subsample for visual density
+        subsample = self.settings.get("barb_density", 8)
+        lats_sub = lats[::subsample]
+        lons_sub = lons[::subsample]
+        u_sub = u[::subsample, ::subsample]
+        v_sub = v[::subsample, ::subsample]
 
-        for s_min, s_max, current_length in speed_bins:
-            mask = (speed_kph >= s_min) & (speed_kph < s_max)
-            if not np.any(mask):
-                continue
-
-            plot.ax.barbs(
-                lons_flat[mask],
-                lats_flat[mask],
-                u_flat[mask],
-                v_flat[mask],
-                length=current_length,
-                linewidth=0.6,
-                color=vector_color,
-                transform=ccrs.PlateCarree(),
-            )
+        plot.ax.barbs(
+            lons_sub, lats_sub, u_sub, v_sub,
+            transform=__import__("cartopy.crs", fromlist=["PlateCarree"]).PlateCarree(),
+            length=5, linewidth=0.5, alpha=0.8, zorder=2
+        )
 
         plot.save_figure(self.output_path)
 
-        # GPU particle layer: global U/V velocity texture (R=U east, G=V north).
-        base, _ = os.path.splitext(self.output_path)
-        encode_uv(u, v, f"{base}_data.png", self.VMAX_WIND)
+        plt_close = getattr(plot, "close", None)
+        if callable(plt_close):
+            plt_close()
 
-        ds.close()
-        logger.debug("Finished Wind plot...saving")
+        # --- WebGL multi-frame velocity texture ---
+        step = int(self.animation.get("step_hours", 6))
+        n_frames = max(2, int(self.animation.get("frames", 2)))
+        f_hour_0 = int(self.forecast_hour_str)
+        frame_hours = [f_hour_0 + k * step for k in range(n_frames)]
+
+        frames_u = [u]
+        frames_v = [v]
+        last_good_u, last_good_v = u, v
+        live = 1
+        for fh in frame_hours[1:]:
+            fu, fv = last_good_u, last_good_v
+            try:
+                field_fh = self.get_db_field_at_hour("wind", fh)
+                if field_fh and field_fh["u"] is not None and field_fh["v"] is not None:
+                    fu = field_fh["u"]
+                    fv = field_fh["v"]
+                    last_good_u, last_good_v = fu, fv
+                    live += 1
+            except Exception as e:
+                logger.debug(f"Wind frame f{fh:03d} skipped: {e}")
+            frames_u.append(fu)
+            frames_v.append(fv)
+
+        base, _ = os.path.splitext(self.output_path)
+        encode_data_texture(frames_u[0], frames_u[1] if len(frames_u) > 1 else frames_u[0],
+                            f"{base}_data.png", -self.VMAX_WIND, self.VMAX_WIND)
+        held = len(frames_u) - live
+        logger.info(
+            f"Finished Wind plot; "
+            f"data texture: {len(frames_u)} frames ({live} live, {held} held)."
+        )
+
+    def get_db_field_at_hour(self, product_name: str, fhour: int) -> dict | None:
+        """Helper: fetch a field for a specific forecast hour."""
+        if not hasattr(self, "gfs_date_str") or not hasattr(self, "gfs_run"):
+            return None
+        try:
+            from worldmap.lib.db import Database
+            db = Database()
+            return db.get_field(self.gfs_date_str, self.gfs_run, int(fhour), product_name)
+        except Exception as e:
+            logger.debug(f"get_db_field_at_hour({product_name}, f{fhour:03d}) failed: {e}")
+            return None
 
     def run(self):
         self.exit_if_disabled()
-        # Get the GFS state for this updater
         self.get_gfs_state()
-        self.grib_path = self.cache_path(f"gfs_wind_{self.forecast_hour_str}.grib2")
 
-        url = f"{self.base_url}/gfs.{self.gfs_date_str}/{self.gfs_run}/atmos/gfs.t{self.gfs_run}z.pgrb2.0p25.f{self.forecast_hour_str}"
-        if self.remote_data_update(
-            remote_url=url,
-            cache_file_path=self.grib_path,
-            grib_targets=[":UGRD:10 m above ground:", ":VGRD:10 m above ground:"],
-        ):
-            logger.info("Generating Wind Vectors plot...")
+        # Check if frame 0 is available in DB
+        field = self.get_db_field("wind")
+        if field and field["u"] is not None and field["v"] is not None:
+            logger.info("Generating Wind plot and multi-frame velocity texture...")
             self.plot()
+        else:
+            logger.info(
+                "Wind: frame 0 not ready in DB yet (collector may not have run)."
+            )
