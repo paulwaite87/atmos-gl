@@ -15,8 +15,6 @@ class LightningUpdater(Updater):
         self.strike_expiry_minutes = self.settings.get("strike_expiry_hours", 1) * 60
 
     async def run(self):
-        self.exit_if_disabled()
-
         db = Database()
         # Use the bbox from your common Updater class
         lon_min, lat_min, lon_max, lat_max = self.map_region_bbox

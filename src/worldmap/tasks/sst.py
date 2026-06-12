@@ -147,7 +147,6 @@ class SSTUpdater(Updater):
         logger.debug(f"Successfully rendered raw NOAA OISST map in {self.mode} mode.")
 
     def run(self):
-        self.exit_if_disabled()
         # Construct paths and target endpoints using the common base_url
         current_year = datetime.now().year
         if self.mode == "anomaly":

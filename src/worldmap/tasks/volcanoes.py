@@ -44,9 +44,8 @@ class VolcanoUpdater(Updater):
             return []
 
     def run(self):
-        self.exit_if_disabled()
-        records = self._fetch_volcano_data(self.get_base_url())
         db = Database()
+        records = self._fetch_volcano_data(self.get_base_url())
 
         for r in records:
             # We use an ID based on name or provided field if available

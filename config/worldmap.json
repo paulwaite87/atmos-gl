@@ -49,7 +49,7 @@
     "cache_expiry_days": 3
   },
   "wind": {
-    "enabled": true,
+    "enabled": false,
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
     "outfile": "data/wind.png",
     "animated": true,
@@ -67,7 +67,7 @@
     "cache_expiry_days": 3
   },
   "precipitation": {
-    "enabled": false,
+    "enabled": true,
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
     "outfile": "data/precipitation.png",
     "animated": false,
@@ -280,7 +280,7 @@
   "housekeeper": {
     "enabled": true,
     "days_between_runs": 1,
-    "field_expiry_hours": 48,
+    "field_expiry_hours": 24,
     "dry_run": false
   },
   "radio": {

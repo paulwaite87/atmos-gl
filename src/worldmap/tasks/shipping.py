@@ -18,8 +18,6 @@ class ShippingUpdater(Updater):
         super().__init__(config, "Shipping", map_data)
 
     async def run(self):
-        self.exit_if_disabled()
-
         ship_db = Database()
         region_filter = self.settings.get("region", None)
         expiry = self.settings.get("expiry_days", 14)

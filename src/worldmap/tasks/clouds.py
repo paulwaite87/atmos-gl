@@ -59,8 +59,6 @@ class CloudUpdater(Updater):
 
     def run(self):
         """Downloads the regional cloud layer from NASA GIBS with a baseline lookback."""
-        self.exit_if_disabled()
-
         base_url = self.get_base_url()
         expiry_hours = self.settings.get("expiry_hours", 3)
 

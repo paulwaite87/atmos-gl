@@ -434,7 +434,6 @@ class WavesUpdater(Updater):
         self.save_waves_key(self.output_path, cmap, norm, threshold=threshold)
 
     def run(self):
-        self.exit_if_disabled()
         # Get the GFS state for this updater
         self.get_gfs_state()
         self.grib_path = self.cache_path(f"gfs_waves_{self.forecast_hour_str}.grib2")

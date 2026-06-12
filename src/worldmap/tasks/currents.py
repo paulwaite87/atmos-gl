@@ -255,7 +255,6 @@ class CurrentsUpdater(Updater):
         logger.debug("Finished Currents plot. Memory cleared.")
 
     def run(self):
-        self.exit_if_disabled()
         # Get the GFS state for this updater
         self.get_gfs_state()
         self.nc_path = self.cache_path(f"rtofs_currents_{self.forecast_hour_str}.nc")

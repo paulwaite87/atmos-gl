@@ -16,8 +16,6 @@ class QuakeUpdater(Updater):
 
     def run(self):
         """Fetches USGS quake data and stores it in the database."""
-        self.exit_if_disabled()
-
         url = self.get_base_url()
         min_mag = self.settings.get("min_mag", 3.5)
 

@@ -31,11 +31,6 @@ class MockQuakeUpdater(QuakeUpdater):
     def __init__(self, config, map_data):
         super().__init__(config, map_data)
 
-    def exit_if_disabled(self):
-        """Bypass the enabled/disabled check during unit testing."""
-        pass
-
-
 def test_quake_url_inaccessible(test_env, caplog):
     """Test that the QuakeUpdater cleanly handles and logs an inaccessible URL."""
     updater = MockQuakeUpdater(test_env["config"], test_env["map_data"])

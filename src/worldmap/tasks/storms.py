@@ -234,7 +234,6 @@ class StormUpdater(Updater):
         return full_ring
 
     def run(self):
-        self.exit_if_disabled()
         db = Database()
 
         jtwc = self.settings.get("jtwc_url").strip()
