@@ -25,20 +25,15 @@ class IsobarUpdater(Updater):
         self.VMIN_PRESSURE = 950.0
         self.VMAX_PRESSURE = 1050.0
 
-    def plot(self):
+    def plot(self, field0):
         """Render the static isobar PNG (from frame 0) AND the N-frame data texture.
         
         Now consumes pre-processed fields from the DB.
+        Outputs are cached per-hour.
         """
         logger.debug(
-            f"Plotting isobars to {self.output_path}"
+            f"Plotting isobars to per-hour output path"
         )
-
-        # Fetch frame 0 from DB
-        field0 = self.get_db_field("isobars")
-        if not field0 or field0["values"] is None:
-            logger.warning("Skipping Isobars: current-hour field not available in DB yet.")
-            return
 
         lats = field0["lat"]
         lons = field0["lon"]
@@ -94,7 +89,9 @@ class IsobarUpdater(Updater):
             text.set_path_effects(line_effect)
             text.set_alpha(alpha_val)
 
-        plot.save_figure(self.output_path)
+        # Per-hour output path
+        output_path_for_hour = self.get_output_path_for_hour(self.forecast_hour_str)
+        plot.save_figure(output_path_for_hour)
 
         plt_close = getattr(plot, "close", None)
         if callable(plt_close):
@@ -121,7 +118,7 @@ class IsobarUpdater(Updater):
                 logger.debug(f"Isobars frame f{fh:03d} skipped: {e}")
             frames.append(pk)
 
-        base, _ = os.path.splitext(self.output_path)
+        base, _ = os.path.splitext(output_path_for_hour)
         encode_frames(
             frames, f"{base}_data.png", self.VMIN_PRESSURE, self.VMAX_PRESSURE
         )
@@ -131,28 +128,18 @@ class IsobarUpdater(Updater):
             f"data texture: {len(frames)} frames ({live} live, {held} held)."
         )
 
-    def get_db_field_at_hour(self, product_name: str, fhour: int) -> dict | None:
-        """Helper: fetch a field for a specific forecast hour."""
-        if not hasattr(self, "gfs_date_str") or not hasattr(self, "gfs_run"):
-            return None
-        try:
-            from worldmap.lib.db import Database
-            db = Database()
-            return db.get_field(self.gfs_date_str, self.gfs_run, int(fhour), product_name)
-        except Exception as e:
-            logger.debug(f"get_db_field_at_hour({product_name}, f{fhour:03d}) failed: {e}")
-            return None
-
     def run(self):
-        self.exit_if_disabled()
         self.get_gfs_state()
 
-        # Check if frame 0 is available in DB
+        # Check if frame 0 is available in DB AND is newer than cached output
         field = self.get_db_field("isobars")
-        if field and field["values"] is not None:
+        if field and field["values"] is not None and self.should_plot_for_hour("isobars"):
             logger.info("Generating Isobars plot and multi-frame data texture...")
-            self.plot()
+            self.plot(field)
         else:
-            logger.info(
-                "Isobars: frame 0 not ready in DB yet (collector may not have run)."
-            )
+            if not field or field["values"] is None:
+                logger.info(
+                    "Isobars: frame 0 not ready in DB yet (collector may not have run)."
+                )
+            else:
+                logger.debug("Isobars: cached output is fresh, skipping plot.")

@@ -124,8 +124,10 @@ class TemperatureUpdater(Updater):
             extend="both", zorder=2
         )
 
-        plot.save_figure(self.output_path)
-        self.save_temperature_key(self.output_path)
+        # Per-hour output path
+        output_path_for_hour = self.get_output_path_for_hour(self.forecast_hour_str)
+        plot.save_figure(output_path_for_hour)
+        self.save_temperature_key(output_path_for_hour)
 
         plt_close = getattr(plot, "close", None)
         if callable(plt_close):
@@ -152,7 +154,7 @@ class TemperatureUpdater(Updater):
                 logger.debug(f"Temperature frame f{fh:03d} skipped: {e}")
             frames.append(pk)
 
-        base, _ = os.path.splitext(self.output_path)
+        base, _ = os.path.splitext(output_path_for_hour)
         encode_frames(frames, f"{base}_data.png", self.VMIN_TEMP, self.VMAX_TEMP)
         held = len(frames) - live
         logger.info(
@@ -172,14 +174,16 @@ class TemperatureUpdater(Updater):
             return None
 
     def run(self):
-        self.exit_if_disabled()
         self.get_gfs_state()
 
         field = self.get_db_field("temperature")
-        if field and field["values"] is not None:
+        if field and field["values"] is not None and self.should_plot_for_hour("temperature"):
             logger.info("Generating Temperature plot and multi-frame data texture...")
             self.plot()
         else:
-            logger.info(
-                "Temperature: frame 0 not ready in DB yet (collector may not have run)."
-            )
+            if not field or field["values"] is None:
+                logger.info(
+                    "Temperature: frame 0 not ready in DB yet (collector may not have run)."
+                )
+            else:
+                logger.debug("Temperature: cached output is fresh, skipping plot.")

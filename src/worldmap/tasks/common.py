@@ -488,6 +488,94 @@ class Updater:
                         pass
             sys.exit(0)
 
+    def get_db_field_at_hour(self, product_name: str, fhour: int) -> dict | None:
+        """Fetch a pre-processed field from the DB for a specific forecast hour.
+        Used by animation frame loops and other multi-hour operations.
+        Args:
+            product_name: The product name (e.g., "precipitation", "wind")
+            fhour: The forecast hour (e.g., 3, 6, 9, ...)
+        Returns:
+            Field dict {lat, lon, values, values2, u, v, valid_time} or None
+        """
+        if not hasattr(self, "gfs_date_str") or not hasattr(self, "gfs_run"):
+            logger.debug(f"get_db_field_at_hour({product_name}, f{fhour:03d}): GFS state not set")
+            return None
+        try:
+            from worldmap.lib.db import Database
+            db = Database()
+            return db.get_field(self.gfs_date_str, self.gfs_run, int(fhour), product_name)
+        except Exception as e:
+            logger.debug(f"get_db_field_at_hour({product_name}, f{fhour:03d}) failed: {e}")
+            return None
+
+    def should_plot_for_hour(self, product_name: str, fhour: int | str = None) -> bool:
+        """Check if a per-hour output needs updating.
+
+        Returns True if:
+          - The output file doesn't exist, OR
+          - The DB field's updated_at is newer than the output file's mtime
+
+        Returns False if the file is already fresh. This prevents re-plotting
+        when data hasn't changed.
+        """
+        if fhour is None:
+            fhour = int(self.forecast_hour_str)
+        else:
+            fhour = int(fhour)
+
+        output_path = self.get_output_path_for_hour(fhour)
+
+        # If file doesn't exist, we need to plot
+        if not os.path.exists(output_path):
+            return True
+
+        # File exists — check if data is newer
+        try:
+            from worldmap.lib.db import Database
+            db = Database()
+            field = db.get_field(self.gfs_date_str, self.gfs_run, fhour, product_name)
+
+            if not field or field.get("valid_time") is None:
+                # No data in DB, don't plot (data isn't ready yet)
+                return False
+
+            # Get file's mtime and compare to field's updated_at
+            file_mtime = os.path.getmtime(output_path)
+            file_dt = datetime.fromtimestamp(file_mtime, tz=timezone.utc)
+
+            # field["valid_time"] is a datetime object from the DB
+            field_updated = field.get("valid_time")
+            if field_updated is None:
+                return False
+
+            # Ensure both are tz-aware for comparison
+            if field_updated.tzinfo is None:
+                field_updated = field_updated.replace(tzinfo=timezone.utc)
+
+            # Plot if data is newer (with a 1-second tolerance for clock skew)
+            return (field_updated - file_dt).total_seconds() > 1
+
+        except Exception as e:
+            logger.debug(f"should_plot_for_hour({product_name}, f{fhour:03d}) check failed: {e}")
+            # On error, be conservative — don't plot (file is probably fine)
+            return False
+
+    def get_output_path_for_hour(self, fhour: int | str = None) -> str:
+        """Return a per-hour output path for caching renders.
+
+        If fhour is None, uses self.forecast_hour_str. The path is:
+          {base_path}_f{fhour:03d}.png
+
+        Example: "/path/to/precipitation_f003.png"
+        """
+        if fhour is None:
+            fhour = int(self.forecast_hour_str)
+        else:
+            fhour = int(fhour)
+
+        base, ext = os.path.splitext(self.output_path)
+        return f"{base}_f{fhour:03d}{ext}"
+
     def get_gfs_state(self):
         """
         Lazy evaluation: The first updater to call this method performs a quick network

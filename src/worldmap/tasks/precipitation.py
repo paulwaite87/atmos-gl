@@ -97,21 +97,12 @@ class PrecipitationUpdater(Updater):
         plt.close(fig)
         logger.debug(f"Saved precipitation key to: {key_path}")
 
-    def plot(self):
+    def plot(self, field0):
         """Static region render (frame 0) + colourbar key + global N-frame texture.
         
         Now consumes pre-processed fields from the DB instead of opening GRIBs.
+        Outputs are cached per-hour: {basename}_f{fhour:03d}.png
         """
-        import gc  # Garbage collector
-
-        # Fetch frame 0 (current hour) from the DB
-        field0 = self.get_db_field("precipitation")
-        if not field0 or field0["values"] is None:
-            logger.warning(
-                "Skipping Precipitation: current-hour field not available in DB yet."
-            )
-            return
-
         logger.debug(
             f"Plotting precipitation for {self.map_data.region.region_identifier}"
         )
@@ -197,8 +188,10 @@ class PrecipitationUpdater(Updater):
             zorder=2,
         )
 
-        plot.save_figure(self.output_path)
-        self.save_precipitation_key(self.output_path)
+        # Per-hour output path: precipitation_f003.png (for f003 forecast hour)
+        output_path_for_hour = self.get_output_path_for_hour(self.forecast_hour_str)
+        plot.save_figure(output_path_for_hour)
+        self.save_precipitation_key(output_path_for_hour)
 
         plt_close = getattr(plot, "close", None)
         if callable(plt_close):
@@ -228,7 +221,7 @@ class PrecipitationUpdater(Updater):
                 logger.debug(f"Precipitation frame f{fh:03d} skipped: {e}")
             frames.append(pk)
 
-        base, _ = os.path.splitext(self.output_path)
+        base, _ = os.path.splitext(output_path_for_hour)
         encode_frames(
             frames, f"{base}_data.png", 0.0, self.VMAX_PRECIP, transform="sqrt"
         )
@@ -238,32 +231,18 @@ class PrecipitationUpdater(Updater):
             f"data texture: {len(frames)} frames ({live} live, {held} held)."
         )
 
-    def get_db_field_at_hour(self, product_name: str, fhour: int) -> dict | None:
-        """Helper: fetch a field for a specific forecast hour (not necessarily self.forecast_hour_str).
-        
-        Reuses the same DB key (gfs_date_str, gfs_run) as the updater.
-        """
-        if not hasattr(self, "gfs_date_str") or not hasattr(self, "gfs_run"):
-            return None
-        try:
-            from worldmap.lib.db import Database
-            db = Database()
-            return db.get_field(self.gfs_date_str, self.gfs_run, int(fhour), product_name)
-        except Exception as e:
-            logger.debug(f"get_db_field_at_hour({product_name}, f{fhour:03d}) failed: {e}")
-            return None
-
     def run(self):
-        self.exit_if_disabled()
-        # Get the GFS state for this updater
         self.get_gfs_state()
 
-        # Check if frame 0 (current hour) is available in the DB
+        # Check if frame 0 (current hour) is available in the DB AND is newer than cached output
         field = self.get_db_field("precipitation")
-        if field and field["values"] is not None:
+        if field and field["values"] is not None and self.should_plot_for_hour("precipitation"):
             logger.info("Generating Precipitation plot and multi-frame data texture...")
-            self.plot()
+            self.plot(field)
         else:
-            logger.info(
-                "Precipitation: frame 0 not ready in DB yet (collector may not have run)."
-            )
+            if not field or field["values"] is None:
+                logger.info(
+                    "Precipitation: frame 0 not ready in DB yet (collector may not have run)."
+                )
+            else:
+                logger.debug("Precipitation: cached output is fresh, skipping plot.")

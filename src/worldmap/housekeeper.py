@@ -57,6 +57,36 @@ class Housekeeper:
         except (TypeError, ValueError):
             return 0.0
 
+    def prune_image_files(self, pattern: str = "*.png", expiry_hours: int = 48):
+        """Delete image files older than expiry_hours."""
+        import glob
+        from datetime import datetime, timedelta, timezone
+
+        workdir = self.config.get_setting("common", "workdir", ".")
+        data_dir = os.path.join(workdir, "data")
+
+        if not os.path.isdir(data_dir):
+            return
+
+        now = datetime.now(timezone.utc)
+        expiry_delta = timedelta(hours=expiry_hours)
+        cutoff = now - expiry_delta
+
+        deleted_count = 0
+        for filepath in glob.glob(os.path.join(data_dir, pattern)):
+            basename = os.path.basename(filepath)
+            try:
+                mtime = datetime.fromtimestamp(os.path.getmtime(filepath), tz=timezone.utc)
+                if mtime < cutoff:
+                    os.remove(filepath)
+                    deleted_count += 1
+                    logger.debug(f"Pruned per-hour output: {basename}")
+            except OSError as e:
+                logger.warning(f"Failed to prune {filepath}: {e}")
+
+        if deleted_count > 0:
+            logger.info(f"Housekeeper pruned {deleted_count} per-hour output file(s) older than {expiry_hours}h.")
+
     def sweep(self):
         data_dir = self._data_dir()
         if not os.path.isdir(data_dir):
@@ -123,6 +153,7 @@ class Housekeeper:
                 if last_run is None or (now - last_run) >= interval:
                     logger.info("Housekeeper run started.")
                     self.sweep()
+                    self.prune_image_files()
                     last_run = now
             else:
                 logger.debug("Housekeeper disabled; skipping.")

@@ -16,20 +16,9 @@ class WindUpdater(Updater):
         super().__init__(config, "Wind", map_data)
         self.VMAX_WIND = 40.0
 
-    def plot(self):
-        """Render the static wind barbs PNG (frame 0) + global velocity texture.
-        
-        Now consumes pre-processed u/v fields from the DB.
-        """
+    def plot(self, field0):
+        """Render the static wind barbs PNG (frame 0) + global velocity texture."""
         logger.debug(f"Plotting wind to {self.output_path}")
-
-        # Fetch frame 0 from DB
-        field0 = self.get_db_field("wind")
-        if not field0 or field0["u"] is None or field0["v"] is None:
-            logger.warning(
-                "Skipping Wind: current-hour u/v fields not available in DB yet."
-            )
-            return
 
         lats = field0["lat"]
         lons = field0["lon"]
@@ -92,28 +81,18 @@ class WindUpdater(Updater):
             f"data texture: {len(frames_u)} frames ({live} live, {held} held)."
         )
 
-    def get_db_field_at_hour(self, product_name: str, fhour: int) -> dict | None:
-        """Helper: fetch a field for a specific forecast hour."""
-        if not hasattr(self, "gfs_date_str") or not hasattr(self, "gfs_run"):
-            return None
-        try:
-            from worldmap.lib.db import Database
-            db = Database()
-            return db.get_field(self.gfs_date_str, self.gfs_run, int(fhour), product_name)
-        except Exception as e:
-            logger.debug(f"get_db_field_at_hour({product_name}, f{fhour:03d}) failed: {e}")
-            return None
-
     def run(self):
-        self.exit_if_disabled()
         self.get_gfs_state()
 
-        # Check if frame 0 is available in DB
+        # Check if frame 0 is available in DB AND is newer than cached output
         field = self.get_db_field("wind")
-        if field and field["u"] is not None and field["v"] is not None:
+        if field and field["u"] is not None and field["v"] is not None and self.should_plot_for_hour("wind"):
             logger.info("Generating Wind plot and multi-frame velocity texture...")
-            self.plot()
+            self.plot(field)
         else:
-            logger.info(
-                "Wind: frame 0 not ready in DB yet (collector may not have run)."
-            )
+            if not field or field["u"] is None or field["v"] is None:
+                logger.info(
+                    "Wind: frame 0 not ready in DB yet (collector may not have run)."
+                )
+            else:
+                logger.debug("Wind: cached output is fresh, skipping plot.")

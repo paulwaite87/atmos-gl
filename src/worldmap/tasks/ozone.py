@@ -57,18 +57,11 @@ class OzoneUpdater(Updater):
         plt.close(fig)
         logger.debug(f"Saved ozone key to: {key_path}")
 
-    def plot(self):
+    def plot(self, field0):
         """Render the static ozone PNG (frame 0) + global N-frame texture.
         
         Now consumes pre-processed fields from the DB.
         """
-        field0 = self.get_db_field("ozone")
-        if not field0 or field0["values"] is None:
-            logger.warning(
-                "Skipping Ozone: current-hour field not available in DB yet."
-            )
-            return
-
         logger.debug(
             f"Plotting ozone for {self.map_data.region.region_identifier}"
         )
@@ -124,8 +117,10 @@ class OzoneUpdater(Updater):
             extend="both", zorder=2
         )
 
-        plot.save_figure(self.output_path)
-        self.save_ozone_key(self.output_path)
+        # Per-hour output path
+        output_path_for_hour = self.get_output_path_for_hour(self.forecast_hour_str)
+        plot.save_figure(output_path_for_hour)
+        self.save_ozone_key(output_path_for_hour)
 
         plt_close = getattr(plot, "close", None)
         if callable(plt_close):
@@ -152,7 +147,7 @@ class OzoneUpdater(Updater):
                 logger.debug(f"Ozone frame f{fh:03d} skipped: {e}")
             frames.append(pk)
 
-        base, _ = os.path.splitext(self.output_path)
+        base, _ = os.path.splitext(output_path_for_hour)
         encode_frames(frames, f"{base}_data.png", self.VMIN_OZONE, self.VMAX_OZONE)
         held = len(frames) - live
         logger.info(
@@ -160,26 +155,17 @@ class OzoneUpdater(Updater):
             f"data texture: {len(frames)} frames ({live} live, {held} held)."
         )
 
-    def get_db_field_at_hour(self, product_name: str, fhour: int) -> dict | None:
-        if not hasattr(self, "gfs_date_str") or not hasattr(self, "gfs_run"):
-            return None
-        try:
-            from worldmap.lib.db import Database
-            db = Database()
-            return db.get_field(self.gfs_date_str, self.gfs_run, int(fhour), product_name)
-        except Exception as e:
-            logger.debug(f"get_db_field_at_hour({product_name}, f{fhour:03d}) failed: {e}")
-            return None
-
     def run(self):
-        self.exit_if_disabled()
         self.get_gfs_state()
 
         field = self.get_db_field("ozone")
-        if field and field["values"] is not None:
+        if field and field["values"] is not None and self.should_plot_for_hour("ozone"):
             logger.info("Generating Ozone plot and multi-frame data texture...")
-            self.plot()
+            self.plot(field)
         else:
-            logger.info(
-                "Ozone: frame 0 not ready in DB yet (collector may not have run)."
-            )
+            if not field or field["values"] is None:
+                logger.info(
+                    "Ozone: frame 0 not ready in DB yet (collector may not have run)."
+                )
+            else:
+                logger.debug("Ozone: cached output is fresh, skipping plot.")
