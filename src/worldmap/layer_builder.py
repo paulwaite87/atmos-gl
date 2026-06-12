@@ -90,20 +90,11 @@ class LayerBuilder:
                 return True
         return False
 
-    def should_run(self, updater: Updater, clear_output=False) -> bool:
+    def should_run(self, updater: Updater) -> bool:
         """
         Determines if an updater task is due based on runs_per_day.
         Returns True if the elapsed time exceeds (86400 / runs_per_day).
         """
-        # If the updater is disabled, make it remove any output, then skip
-        if not updater.enabled:
-            if clear_output:
-                logger.debug(
-                    f"Clearing {updater.section} output file {updater.output_path}"
-                )
-                updater.remove_output_file()
-            return False
-
         # Refresh everything if config changed
         if self.starting_up or self.config.has_changed:
             return True
@@ -140,7 +131,7 @@ class LayerBuilder:
                     for section, task_class in self.task_registry:
                         logger.debug(f"Updater task '{section}' checking runnable")
                         updater = task_class(self.config, self.map_data)
-                        if self.should_run(updater, clear_output=True):
+                        if self.should_run(updater):
                             try:
                                 logger.info(f"Running scheduled task: '{section}'")
 

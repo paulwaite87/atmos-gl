@@ -95,21 +95,16 @@ CREATE TABLE IF NOT EXISTS satellites (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
-CREATE TABLE IF NOT EXISTS layer_data (
-    gfs_date   text        NOT NULL,
-    gfs_run    text        NOT NULL,
-    fhour      integer     NOT NULL,
-    product    text        NOT NULL,
-    nlat       integer     NOT NULL,
-    nlon       integer     NOT NULL,
-    lat        float8[]    NOT NULL,
-    lon        float8[]    NOT NULL,
-    vals       real[],
-    vals2      real[],
-    u          real[],
-    v          real[],
-    valid_time timestamptz,
-    updated_at timestamptz NOT NULL DEFAULT now(),
+CREATE TABLE IF NOT EXISTS field_catalog (
+    gfs_date    text        NOT NULL,
+    gfs_run     text        NOT NULL,
+    fhour       integer     NOT NULL,
+    product     text        NOT NULL,
+    nlat        integer,
+    nlon        integer,
+    valid_time  timestamptz,
+    storage_uri text,
+    updated_at  timestamptz NOT NULL DEFAULT now(),
     PRIMARY KEY (gfs_date, gfs_run, fhour, product)
 );
 
@@ -127,8 +122,8 @@ CREATE INDEX IF NOT EXISTS idx_quakes_time ON earthquakes(eq_time);
 CREATE INDEX IF NOT EXISTS idx_quakes_geom ON earthquakes USING GIST(geom);
 CREATE INDEX IF NOT EXISTS idx_storm_track_sid ON storm_track(sid);
 CREATE INDEX IF NOT EXISTS idx_satellites_name ON satellites(name);
-CREATE INDEX IF NOT EXISTS layer_data_run_idx  ON layer_data (gfs_date, gfs_run);
-CREATE INDEX IF NOT EXISTS layer_data_seen_idx ON layer_data (updated_at);
+CREATE INDEX IF NOT EXISTS field_catalog_run_idx  ON field_catalog (gfs_date, gfs_run);
+CREATE INDEX IF NOT EXISTS field_catalog_seen_idx ON field_catalog (updated_at);
 
 
 -- Populate Regions

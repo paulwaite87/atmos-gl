@@ -162,17 +162,6 @@ class TemperatureUpdater(Updater):
             f"data texture: {len(frames)} frames ({live} live, {held} held)."
         )
 
-    def get_db_field_at_hour(self, product_name: str, fhour: int) -> dict | None:
-        if not hasattr(self, "gfs_date_str") or not hasattr(self, "gfs_run"):
-            return None
-        try:
-            from worldmap.lib.db import Database
-            db = Database()
-            return db.get_field(self.gfs_date_str, self.gfs_run, int(fhour), product_name)
-        except Exception as e:
-            logger.debug(f"get_db_field_at_hour({product_name}, f{fhour:03d}) failed: {e}")
-            return None
-
     def run(self):
         self.get_gfs_state()
 

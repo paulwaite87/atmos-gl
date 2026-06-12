@@ -15,7 +15,6 @@ import logging
 import tempfile
 import numpy as np
 from pathlib import Path
-from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +30,7 @@ class FieldStore:
         """
         self.db = db
         self.workdir = Path(workdir)
-        self.fields_dir = self.workdir / "fields"
+        self.fields_dir = self.workdir / "data" / "fields"
         self.fields_dir.mkdir(parents=True, exist_ok=True)
 
     def field_path(

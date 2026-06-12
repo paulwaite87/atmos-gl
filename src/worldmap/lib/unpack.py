@@ -23,13 +23,14 @@ union file (the single-variable tasks used to open unfiltered).
 """
 
 import logging
+logging.getLogger("cfgrib.messages").setLevel(logging.ERROR)
+logging.getLogger("cfgrib.dataset").setLevel(logging.ERROR)
 
 import numpy as np
 import xarray as xr
 from scipy.ndimage import gaussian_filter
 
 logger = logging.getLogger(__name__)
-
 
 def _blank():
     return {"lat": None, "lon": None, "values": None, "values2": None, "u": None, "v": None}
