@@ -9,6 +9,7 @@ from datetime import datetime, timedelta, timezone
 from worldmap.lib.config import WorldMapConfig
 from worldmap.lib.db import Database
 from worldmap.lib.logging import set_loglevel
+from worldmap.lib import fieldstore
 from worldmap.lib.gfs import (
     ATMOS_TARGETS,
     resolve_gfs_baseline,
@@ -41,6 +42,11 @@ class DataCollector:
         self.config = WorldMapConfig(config_path)
         self.db = Database()
         self.refresh_settings()
+        # Bind the fieldstore to this process's workdir + db handle. Bulk field
+        # arrays live as compressed files under {workdir}/fields; the db keeps
+        # only the catalog rows.
+        workdir = self.config.get_setting("common", "workdir", ".")
+        self.store = fieldstore.get_store(workdir, db=self.db)
         logger.debug("Initializing Data Collector")
 
     def refresh_settings(self):
@@ -60,48 +66,48 @@ class DataCollector:
             logger.warning("Data Collector: could not resolve a GFS baseline; will retry.")
             return
 
-        date_str, run, ts = baseline["date_str"], baseline["run"], baseline["timestamp"]
+        gfs_date_str, gfs_run, gfs_timestamp = baseline["date_str"], baseline["run"], baseline["timestamp"]
         now = datetime.now(timezone.utc)
-        hours_since_run = int(round((now - ts).total_seconds() / 3600.0))
-        f0 = max(0, hours_since_run)        # forecast hour valid 'now' (no user offset)
-        f_end = f0 + self.cache_hours
+        hours_since_run = int(round((now - gfs_timestamp).total_seconds() / 3600.0))
+        fhour_0 = max(0, hours_since_run)        # forecast hour valid 'now' (no user offset)
+        fhour_end = fhour_0 + self.cache_hours
 
         products = list(ATMOS_UNPACKERS.items())
         stored = 0
 
-        for f in range(f0, f_end):
-            valid = ts + timedelta(hours=f)
+        for fhour in range(fhour_0, fhour_end):
+            valid = gfs_timestamp + timedelta(hours=fhour)
 
             # Which products still need this hour? Skip the download entirely if none.
-            missing = [(p, fn) for (p, fn) in products
-                       if not self.db.field_exists(date_str, run, f, p)]
+            missing = [(product, unpacker) for (product, unpacker) in products
+                       if not self.store.field_exists(gfs_date_str, gfs_run, fhour, product)]
             if not missing:
                 continue
 
-            aurl = build_atmos_url(base_url, date_str, run, f)
+            aurl = build_atmos_url(base_url, gfs_date_str, gfs_run, fhour)
             try:
                 ranges = gfs_index_ranges(aurl, ATMOS_TARGETS)
                 if not ranges:
-                    logger.debug(f"atmos f{f:03d}: index not ready yet")
+                    logger.debug(f"atmos f{fhour:03d}: index not ready yet")
                     continue
                 data = download_byte_ranges(aurl, ranges)
                 if not data:
                     continue
             except Exception as e:
-                logger.debug(f"atmos f{f:03d} download skipped: {e}")
+                logger.debug(f"atmos f{fhour:03d} download skipped: {e}")
                 continue
 
             tmp = tempfile.NamedTemporaryFile(suffix=".grib2", delete=False)
             tmp.write(data)
             tmp.close()
             try:
-                for product, unpack in missing:
+                for product, unpacker in missing:
                     try:
-                        fields = unpack(tmp.name)
-                        self.db.store_field(date_str, run, f, product, fields, valid)
+                        fields = unpacker(tmp.name)
+                        self.store.store_field(gfs_date_str, gfs_run, fhour, product, fields, valid)
                         stored += 1
                     except Exception as e:
-                        logger.debug(f"{product} f{f:03d} unpack/store failed: {e}")
+                        logger.debug(f"{product} f{fhour:03d} unpack/store failed: {e}")
             finally:
                 # Remove the temp GRIB and any cfgrib .idx sidecars it created.
                 for path in [tmp.name] + glob.glob(tmp.name + "*.idx"):
@@ -111,11 +117,11 @@ class DataCollector:
                         pass
 
         logger.info(
-            f"Data Collector (gfs): {date_str} {run}Z, hours {f0:03d}..{f_end - 1:03d}; "
+            f"Data Collector (gfs): {gfs_date_str} {gfs_run}Z, hours {fhour_0:03d}..{fhour_end - 1:03d}; "
             f"stored {stored} field(s)."
         )
         try:
-            self.db.prune_layer_data_except(date_str, run)
+            self.store.prune_except_run(gfs_date_str, gfs_run)
         except Exception as e:
             logger.debug(f"prune skipped: {e}")
 

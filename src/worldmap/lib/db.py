@@ -683,107 +683,130 @@ class Database:
             logger.error(f"Error fetching priority region list: {e}")
             return []
 
-    def gfs_grib_exists(self, gfs_date, gfs_run, fhour, product):
-        """Lightweight existence check (no blob transfer)."""
-        with self.conn.cursor() as cur:
-            cur.execute(
-                "SELECT 1 FROM gfs_cache "
-                "WHERE gfs_date=%s AND gfs_run=%s AND fhour=%s AND product=%s",
-                (gfs_date, gfs_run, int(fhour), product),
-            )
-            return cur.fetchone() is not None
-
-    def field_exists(self, gfs_date, gfs_run, fhour, product):
-        with self.conn.cursor() as cur:
-            cur.execute(
-                "SELECT 1 FROM layer_data "
-                "WHERE gfs_date=%s AND gfs_run=%s AND fhour=%s AND product=%s",
-                (gfs_date, gfs_run, int(fhour), product),
-            )
-            return cur.fetchone() is not None
-
-    @staticmethod
-    def _flat(field):
-        """2-D field -> flat python list of floats (row-major), or None."""
-        if field is None:
-            return None
-        return np.asarray(field, dtype=np.float32).ravel().tolist()
-
-    def store_field(self, gfs_date, gfs_run, fhour, product, unpacked, valid_time=None):
-        """UPSERT a pre-processed field set (dict from worldmap.lib.unpack)."""
-        lat = np.asarray(unpacked["lat"], dtype=np.float64)
-        lon = np.asarray(unpacked["lon"], dtype=np.float64)
-        nlat, nlon = int(lat.shape[0]), int(lon.shape[0])
+    def upsert_field_catalog(
+            self,
+            gfs_date: str,
+            gfs_run: str,
+            fhour: int,
+            product: str,
+            nlat: int,
+            nlon: int,
+            valid_time=None,
+            storage_uri: str = None,
+    ):
+        """Upsert a field catalog row (metadata only, no arrays)."""
         sql = """
-            INSERT INTO layer_data
-                (gfs_date, gfs_run, fhour, product, nlat, nlon,
-                 lat, lon, vals, vals2, u, v, valid_time, updated_at)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s, now())
+            INSERT INTO field_catalog
+                (gfs_date, gfs_run, fhour, product, nlat, nlon, valid_time, storage_uri, updated_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, now())
             ON CONFLICT (gfs_date, gfs_run, fhour, product) DO UPDATE SET
-                nlat=EXCLUDED.nlat, nlon=EXCLUDED.nlon,
-                lat=EXCLUDED.lat, lon=EXCLUDED.lon,
-                vals=EXCLUDED.vals, vals2=EXCLUDED.vals2,
-                u=EXCLUDED.u, v=EXCLUDED.v,
-                valid_time=EXCLUDED.valid_time, updated_at=now();
+                nlat=EXCLUDED.nlat,
+                nlon=EXCLUDED.nlon,
+                valid_time=EXCLUDED.valid_time,
+                storage_uri=EXCLUDED.storage_uri,
+                updated_at=now();
         """
         try:
             with self.conn.cursor() as cur:
-                cur.execute(sql, (
-                    gfs_date, gfs_run, int(fhour), product, nlat, nlon,
-                    lat.tolist(), lon.tolist(),
-                    self._flat(unpacked.get("values")),
-                    self._flat(unpacked.get("values2")),
-                    self._flat(unpacked.get("u")),
-                    self._flat(unpacked.get("v")),
-                    valid_time,
-                ))
+                cur.execute(
+                    sql,
+                    (gfs_date, gfs_run, int(fhour), product, nlat, nlon, valid_time, storage_uri),
+                )
         except Exception as e:
-            logger.error(
-                f"Error storing field {gfs_date}/{gfs_run}/f{int(fhour):03d}/{product}: {e}"
-            )
+            logger.error(f"Error upserting field catalog: {e}")
+            raise
 
-    def get_field(self, gfs_date, gfs_run, fhour, product):
-        """Return the field set as numpy arrays, or None if absent.
-
-        { 'lat': 1-D, 'lon': 1-D, 'values'|'values2'|'u'|'v': 2-D (nlat,nlon) or None,
-          'valid_time': datetime }
-        """
+    def get_field_catalog(self, gfs_date: str, gfs_run: str, fhour: int, product: str) -> dict | None:
+        """Fetch a catalog row (metadata only)."""
         with self.conn.cursor() as cur:
             cur.execute(
-                "SELECT nlat,nlon,lat,lon,vals,vals2,u,v,valid_time FROM layer_data "
-                "WHERE gfs_date=%s AND gfs_run=%s AND fhour=%s AND product=%s",
+                """
+                SELECT gfs_date, gfs_run, fhour, product, nlat, nlon, valid_time, storage_uri
+                FROM field_catalog
+                WHERE gfs_date=%s AND gfs_run=%s AND fhour=%s AND product=%s
+                """,
                 (gfs_date, gfs_run, int(fhour), product),
             )
             row = cur.fetchone()
-        if not row:
-            return None
-        nlat, nlon = row["nlat"], row["nlon"]
+        return dict(row) if row else None
 
-        def grid(key):
-            a = row[key]
-            if a is None:
-                return None
-            return np.asarray(a, dtype=np.float32).reshape(nlat, nlon)
+    def field_catalog_exists(self, gfs_date: str, gfs_run: str, fhour: int, product: str) -> bool:
+        """Check if a catalog row exists (fast, indexed)."""
+        with self.conn.cursor() as cur:
+            cur.execute(
+                "SELECT 1 FROM field_catalog WHERE gfs_date=%s AND gfs_run=%s AND fhour=%s AND product=%s",
+                (gfs_date, gfs_run, int(fhour), product),
+            )
+            return cur.fetchone() is not None
 
-        return {
-            "lat": np.asarray(row["lat"], dtype=np.float64),
-            "lon": np.asarray(row["lon"], dtype=np.float64),
-            "values": grid("vals"),
-            "values2": grid("vals2"),
-            "u": grid("u"),
-            "v": grid("v"),
-            "valid_time": row["valid_time"],
-        }
+    def delete_field_catalog(self, gfs_date: str, gfs_run: str, fhour: int, product: str):
+        """Delete a catalog row."""
+        with self.conn.cursor() as cur:
+            cur.execute(
+                "DELETE FROM field_catalog WHERE gfs_date=%s AND gfs_run=%s AND fhour=%s AND product=%s",
+                (gfs_date, gfs_run, int(fhour), product),
+            )
 
-    def prune_layer_data_except(self, gfs_date, gfs_run):
+    def get_orphan_field_rows(self, workdir_path) -> list:
+        """Find catalog rows whose files are missing (for reconciliation).
+        This is a helper for fieldstore.reconcile(). You'll need to pass
+        the workdir Path and check which files exist on disk.
+        """
+        with self.conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT gfs_date, gfs_run, fhour, product, storage_uri
+                FROM field_catalog
+                ORDER BY updated_at DESC
+                """
+            )
+            rows = cur.fetchall()
+
+        # Check which files exist
+        import os
+        orphans = []
+        for row in rows:
+            path = workdir_path / row["storage_uri"]
+            if not path.exists():
+                orphans.append(dict(row))
+        return orphans
+
+    def get_field_rows_except(self, gfs_date, gfs_run):
+        """Return catalog rows NOT belonging to (gfs_date, gfs_run).
+        Used by the data_collector to prune superseded runs (row + file).
+        Each row includes storage_uri so the caller can unlink the file.
+        """
+        with self.conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT gfs_date, gfs_run, fhour, product, storage_uri
+                FROM field_catalog
+                WHERE NOT (gfs_date=%s AND gfs_run=%s)
+                """,
+                (gfs_date, gfs_run),
+            )
+            return [dict(r) for r in cur.fetchall()]
+
+    def get_expired_field_rows(self, expiry_hours=48):
+        """Return catalog rows older than expiry_hours.
+        Used by the housekeeper to expire stale fields (row + file).
+        Each row includes storage_uri so the caller can unlink the file.
+        """
+        with self.conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT gfs_date, gfs_run, fhour, product, storage_uri
+                FROM field_catalog
+                WHERE updated_at < now() - make_interval(hours => %s)
+                """,
+                (int(expiry_hours),),
+            )
+            return [dict(r) for r in cur.fetchall()]
+
+    def prune_field_catalog(self, expiry_hours: int = 48):
+        """Delete catalog rows (and their files should be deleted separately) older than threshold."""
         self.execute(
-            "DELETE FROM layer_data WHERE NOT (gfs_date=%s AND gfs_run=%s)",
-            (gfs_date, gfs_run),
-        )
-
-    def prune_layer_data(self, expiry_hours=48):
-        self.execute(
-            "DELETE FROM layer_data WHERE updated_at < now() - make_interval(hours => %s)",
+            "DELETE FROM field_catalog WHERE updated_at < now() - make_interval(hours => %s)",
             (int(expiry_hours),),
         )
 

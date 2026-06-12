@@ -17,6 +17,7 @@ import argparse
 
 from worldmap.lib.config import WorldMapConfig
 from worldmap.lib.logging import setup_logging, set_loglevel
+from worldmap.lib import fieldstore
 
 logger = logging.getLogger("worldmap.housekeeper")
 
@@ -87,6 +88,37 @@ class Housekeeper:
         if deleted_count > 0:
             logger.info(f"Housekeeper pruned {deleted_count} per-hour output file(s) older than {expiry_hours}h.")
 
+    def prune_fields(self, expiry_hours: int = 48):
+        """Prune expired fieldstore entries (catalog row + .npz file) and
+        reconcile any catalog/file divergence.
+
+        The data_collector already drops superseded *runs* each cycle; this is the
+        safety net that expires anything older than expiry_hours and clears orphan
+        rows left by interrupted writes.
+        """
+        workdir = self.config.get_setting("common", "workdir", ".")
+        try:
+            store = fieldstore.get_store(workdir)
+        except Exception as e:
+            logger.warning(f"Housekeeper: could not open fieldstore: {e}")
+            return
+
+        # Remove catalog rows whose files have vanished (and vice-versa).
+        try:
+            store.reconcile()
+        except Exception as e:
+            logger.warning(f"Housekeeper: fieldstore reconcile failed: {e}")
+
+        # Expire old fields (row + file).
+        try:
+            removed = store.prune_expired(expiry_hours=expiry_hours)
+            if removed:
+                logger.info(
+                    f"Housekeeper pruned {removed} fieldstore field(s) older than {expiry_hours}h."
+                )
+        except Exception as e:
+            logger.warning(f"Housekeeper: fieldstore prune failed: {e}")
+
     def sweep(self):
         data_dir = self._data_dir()
         if not os.path.isdir(data_dir):
@@ -154,6 +186,8 @@ class Housekeeper:
                     logger.info("Housekeeper run started.")
                     self.sweep()
                     self.prune_image_files()
+                    field_expiry_h = int(self.settings.get("field_expiry_hours", 48))
+                    self.prune_fields(expiry_hours=field_expiry_h)
                     last_run = now
             else:
                 logger.debug("Housekeeper disabled; skipping.")

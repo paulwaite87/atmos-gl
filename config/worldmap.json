@@ -280,6 +280,7 @@
   "housekeeper": {
     "enabled": true,
     "days_between_runs": 1,
+    "field_expiry_hours": 48,
     "dry_run": false
   },
   "radio": {

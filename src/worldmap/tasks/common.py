@@ -16,6 +16,7 @@ from pathlib import Path
 # Internal library import
 from worldmap.lib.config import WorldMapConfig
 from worldmap.lib.db import Database
+from worldmap.lib import fieldstore
 
 logger = logging.getLogger(__name__)
 
@@ -449,25 +450,24 @@ class Updater:
             os.remove(output_path)
 
     def get_db_field(self, product_name: str) -> dict | None:
-        """Fetch a pre-processed field set from the database.
+        """Fetch a pre-processed field set from the fieldstore (catalog + file).
 
         Requires that get_gfs_state() has been called first (so gfs_date_str, gfs_run,
         forecast_hour_str are set). Returns the field dict with keys:
           lat, lon, values, values2, u, v, valid_time
-        or None if the row doesn't exist (collector hasn't run yet, or the product failed
-        to unpack).
+        or None if the field doesn't exist (collector hasn't run yet, or the product
+        failed to unpack).
         """
         if not hasattr(self, "gfs_date_str") or not hasattr(self, "gfs_run"):
             logger.warning(f"{self.section}: get_db_field called before get_gfs_state")
             return None
         fhour = int(self.forecast_hour_str)
         try:
-            from worldmap.lib.db import Database
-            db = Database()
-            field = db.get_field(self.gfs_date_str, self.gfs_run, fhour, product_name)
+            fs = fieldstore.get_store(self.workdir)
+            field = fs.get_field(self.gfs_date_str, self.gfs_run, fhour, product_name)
             if field:
                 logger.debug(
-                    f"{self.section}: loaded {product_name} from DB "
+                    f"{self.section}: loaded {product_name} from fieldstore "
                     f"({self.gfs_date_str}/{self.gfs_run}/f{fhour:03d})"
                 )
             return field
@@ -489,7 +489,7 @@ class Updater:
             sys.exit(0)
 
     def get_db_field_at_hour(self, product_name: str, fhour: int) -> dict | None:
-        """Fetch a pre-processed field from the DB for a specific forecast hour.
+        """Fetch a pre-processed field from the fieldstore for a specific forecast hour.
         Used by animation frame loops and other multi-hour operations.
         Args:
             product_name: The product name (e.g., "precipitation", "wind")
@@ -501,9 +501,8 @@ class Updater:
             logger.debug(f"get_db_field_at_hour({product_name}, f{fhour:03d}): GFS state not set")
             return None
         try:
-            from worldmap.lib.db import Database
-            db = Database()
-            return db.get_field(self.gfs_date_str, self.gfs_run, int(fhour), product_name)
+            fs = fieldstore.get_store(self.workdir)
+            return fs.get_field(self.gfs_date_str, self.gfs_run, int(fhour), product_name)
         except Exception as e:
             logger.debug(f"get_db_field_at_hour({product_name}, f{fhour:03d}) failed: {e}")
             return None
@@ -513,10 +512,10 @@ class Updater:
 
         Returns True if:
           - The output file doesn't exist, OR
-          - The DB field's updated_at is newer than the output file's mtime
+          - The field's valid_time is newer than the output file's mtime
 
         Returns False if the file is already fresh. This prevents re-plotting
-        when data hasn't changed.
+        when data hasn't changed. Uses the catalog metadata only (no array load).
         """
         if fhour is None:
             fhour = int(self.forecast_hour_str)
@@ -529,22 +528,20 @@ class Updater:
         if not os.path.exists(output_path):
             return True
 
-        # File exists — check if data is newer
+        # File exists — check if data is newer (catalog metadata only, no array file read)
         try:
-            from worldmap.lib.db import Database
-            db = Database()
-            field = db.get_field(self.gfs_date_str, self.gfs_run, fhour, product_name)
+            fs = fieldstore.get_store(self.workdir)
+            meta = fs.get_field_meta(self.gfs_date_str, self.gfs_run, fhour, product_name)
 
-            if not field or field.get("valid_time") is None:
-                # No data in DB, don't plot (data isn't ready yet)
+            if not meta or meta.get("valid_time") is None:
+                # No data catalogued, don't plot (data isn't ready yet)
                 return False
 
-            # Get file's mtime and compare to field's updated_at
+            # Get file's mtime and compare to the field's valid_time
             file_mtime = os.path.getmtime(output_path)
             file_dt = datetime.fromtimestamp(file_mtime, tz=timezone.utc)
 
-            # field["valid_time"] is a datetime object from the DB
-            field_updated = field.get("valid_time")
+            field_updated = meta.get("valid_time")
             if field_updated is None:
                 return False
 
