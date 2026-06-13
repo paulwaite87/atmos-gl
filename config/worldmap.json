@@ -35,7 +35,7 @@
     "enabled": true,
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
     "outfile": "data/isobars.png",
-    "level_of_detail": "2",
+    "level_of_detail": "3",
     "isobar_color": "White",
     "linewidth": 1,
     "alpha": 100,
@@ -49,7 +49,7 @@
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
     "outfile": "data/wind.png",
     "level_of_detail": "2",
-    "particle_speed": 10,
+    "particle_speed": 30,
     "particle_alpha": 80,
     "particle_size": 0.45,
     "trail_fade": 15,
@@ -62,7 +62,7 @@
     "cache_expiry_days": 3
   },
   "precipitation": {
-    "enabled": false,
+    "enabled": true,
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
     "outfile": "data/precipitation.png",
     "level_of_detail": "1",
@@ -218,7 +218,7 @@
     "runs_per_day": 24
   },
   "satellites": {
-    "enabled": false,
+    "enabled": true,
     "sat_names": [
       "ISS (ZARYA)",
       "HST"
@@ -230,7 +230,7 @@
     "color": ""
   },
   "markers": {
-    "enabled": false,
+    "enabled": true,
     "marker_color": "White",
     "marker_fontsize": 11
   },

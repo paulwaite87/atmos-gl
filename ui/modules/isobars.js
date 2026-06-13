@@ -9,6 +9,8 @@ export function loadLayer(map, config, fullConfig = {}) {
         vmin: 950.0,
         vspan: 100.0,                          // 1050 - 950, matches backend encode
         opacity: 0.85,
+        // 16-bit value decode is the default in _webglanim, giving ~0.0015 hPa
+        // precision so contour lines aren't quantised into ~0.4 hPa steps.
         // resolution from cfg.level_of_detail; timing/sharpness from the global [animation] section
         fragmentBody: `
             uniform float u_interval;          // hPa between isobars

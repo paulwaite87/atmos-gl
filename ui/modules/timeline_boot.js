@@ -51,10 +51,12 @@ export async function initForecastTimeline(configData) {
     const data = await fetchState();
     if (data) {
         timeline.configure({
+            minHour: data.fmin,
             maxHour: data.max_hour,
             secondsPerHour,
             runEpochUtc: data.run_epoch_utc,
             validTimes: data.valid_times_utc,
+            initialise: true,        // start at 'now' = earliest available hour
         });
         lastSig = signatureOf(data);
     } else {
@@ -77,6 +79,7 @@ export async function initForecastTimeline(configData) {
             // New run or changed availability: hold the user's forecast hour, but
             // bust caches + update epoch/labels so layers reload fresher data.
             timeline.onDataRefresh({
+                minHour: d.fmin,
                 maxHour: d.max_hour,
                 runEpochUtc: d.run_epoch_utc,
                 validTimes: d.valid_times_utc,

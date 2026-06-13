@@ -31,6 +31,10 @@ class OzoneUpdater(Updater):
 
         base, ext = os.path.splitext(output_path)
         key_path = f"{base}_key{ext}"
+        # Hour-independent; write once. Skip if present (clear the file to
+        # force regeneration after a colour-scale/config change).
+        if os.path.exists(key_path):
+            return
 
         fig, ax = plt.subplots(figsize=(4, 0.3))
         key_ticks = [200, 250, 300, 350, 400, 450]
@@ -120,7 +124,9 @@ class OzoneUpdater(Updater):
         # Per-hour output path
         output_path_for_hour = self.get_output_path_for_hour(self.forecast_hour_str)
         plot.save_figure(output_path_for_hour)
-        self.save_ozone_key(output_path_for_hour)
+        # Key (colourbar) is hour-independent — write it once at the BASE name
+        # (ozone_key.png) that the frontend requests, not per-hour.
+        self.save_ozone_key(self.output_path)
 
         plt_close = getattr(plot, "close", None)
         if callable(plt_close):

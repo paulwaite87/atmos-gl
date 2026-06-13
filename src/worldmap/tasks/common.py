@@ -24,16 +24,22 @@ WEB_MERCATOR = ccrs.Mercator.GOOGLE  # EPSG:3857
 MERCATOR_LAT_LIMIT = 85.0511  # NOTE: just *inside* GOOGLE's 85.0511288 max
 
 
-def encode_frames(frames, output_path, vmin, vmax, transform=None):
+def encode_frames(frames, output_path, vmin, vmax, transform=None, bits=16):
     """
     Stack N scalar fields vertically into a single RGBA PNG, for upload as a
     WebGL2 2D-array texture (one array layer per frame, frame 0 on top).
-    Per frame: R = normalised value (0..1 -> 0..255), G=B=0, A = 255 (0 where NaN).
+
+    bits=16 (default): R = high byte, G = low byte of a 16-bit normalised value
+      (65535 levels), B=0, A = mask. Decode on the GPU: norm = (R*256 + G)/65535.
+      65535 levels eliminates the visible value-stepping that 8-bit (256 levels)
+      causes — most obvious on thin contour lines (isobars), but it also removes
+      faint banding in colour ramps. This is the default for all raster layers.
+    bits=8: R = normalised value (0..1 -> 0..255), G=B=0, A = mask. Legacy/compact.
 
     transform:
       None    -> linear normalisation (m - vmin) / (vmax - vmin)
-      'sqrt'  -> sqrt of the linear norm; gives the low end far more 8-bit
-                 precision (e.g. precipitation, where most values are small).
+      'sqrt'  -> sqrt of the linear norm; gives the low end far more precision
+                 (e.g. precipitation). Combines with 16-bit for even finer low end.
     Decode on the GPU as: value = norm (then square it for 'sqrt' layers).
     """
     span = float(vmax - vmin)
@@ -49,14 +55,21 @@ def encode_frames(frames, output_path, vmin, vmax, transform=None):
         if transform == "sqrt":
             norm = np.sqrt(norm)
         norm = np.nan_to_num(norm, nan=0.0)  # NaN -> 0 (masked out via alpha)
-        r = (norm * 255.0).astype(np.uint8)
-        z = np.zeros_like(r)
         a = np.where(np.isnan(m), 0, 255).astype(np.uint8)
-        slabs.append(np.dstack((r, z, z, a)))
+        if bits == 16:
+            q = np.clip(np.round(norm * 65535.0), 0, 65535).astype(np.uint32)
+            hi = (q >> 8).astype(np.uint8)            # R = high byte
+            lo = (q & 0xFF).astype(np.uint8)          # G = low byte
+            z = np.zeros_like(hi)
+            slabs.append(np.dstack((hi, lo, z, a)))
+        else:
+            r = (norm * 255.0).astype(np.uint8)
+            z = np.zeros_like(r)
+            slabs.append(np.dstack((r, z, z, a)))
     filmstrip = np.vstack(slabs)  # (N*H, W, 4)
     Image.fromarray(filmstrip, mode="RGBA").save(output_path, format="PNG")
     logger.debug(
-        f"Saved {len(frames)}-frame data texture to {output_path} {filmstrip.shape}"
+        f"Saved {len(frames)}-frame data texture ({bits}-bit) to {output_path} {filmstrip.shape}"
     )
     return True
 
