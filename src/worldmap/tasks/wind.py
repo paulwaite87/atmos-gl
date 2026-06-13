@@ -15,6 +15,8 @@ class WindUpdater(Updater):
     def __init__(self, config: WorldMapConfig, map_data: MapData):
         super().__init__(config, "Wind", map_data)
         self.VMAX_WIND = 40.0
+        # Wind has NO static PNG — only the GPU velocity texture.
+        self.per_hour_outputs = ["_data.png"]
 
     def plot(self, field0):
         """Render the per-hour wind velocity texture (R=U east, G=V north).

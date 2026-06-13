@@ -397,6 +397,13 @@ class Updater:
         self.output_path = None
         self.enabled = self.settings.get("enabled", False)
         self.forecast_hour = max(self.common.get("forecast_hour", 1), 1)
+        # Per-hour output suffixes a COMPLETE render produces for this layer, relative
+        # to the per-hour base (e.g. "isobars_f004"). should_plot_for_hour treats an
+        # hour as stale if ANY of these is missing, so deleting (say) a _data.png
+        # forces a re-render even when the static .png still exists. Subclasses
+        # override this to match what their plot() actually writes. Default: a single
+        # static PNG (legacy/plain layers).
+        self.per_hour_outputs = [".png"]
 
         # Copy map data up to this class for convenience
         self.target_width = map_data.region.target_width
@@ -536,12 +543,22 @@ class Updater:
             fhour = int(fhour)
 
         output_path = self.get_output_path_for_hour(fhour)
+        base, ext = os.path.splitext(output_path)
 
-        # If file doesn't exist, we need to plot
-        if not os.path.exists(output_path):
+        # A complete render produces every suffix in self.per_hour_outputs. If ANY is
+        # missing, re-plot to fill the gap (this is what makes "delete a _data.png to
+        # force regeneration" work even when the static .png is still present).
+        required_paths = []
+        for suffix in (self.per_hour_outputs or [".png"]):
+            # ".png" -> the static per-hour file; "_data.png"/"_labels.geojson" -> base+suffix.
+            required_paths.append(output_path if suffix == ext else f"{base}{suffix}")
+        missing = [p for p in required_paths if not os.path.exists(p)]
+        if missing:
             return True
 
-        # File exists — check if data is newer (catalog metadata only, no array file read)
+        # All outputs exist — check freshness against when the data was written.
+        # Use the static PNG's mtime as the reference (oldest-equivalent; all outputs
+        # are written together in one plot() call).
         try:
             fs = fieldstore.get_store(self.workdir)
             meta = fs.get_field_meta(self.gfs_date_str, self.gfs_run, fhour, product_name)
@@ -554,7 +571,7 @@ class Updater:
             # NOTE: use updated_at (when the field was stored), NOT valid_time (the
             # forecast's validity time, which is usually in the future and would make
             # every hour look "newer" than its PNG, forcing a re-plot every cycle).
-            file_mtime = os.path.getmtime(output_path)
+            file_mtime = min(os.path.getmtime(p) for p in required_paths)
             file_dt = datetime.fromtimestamp(file_mtime, tz=timezone.utc)
 
             field_updated = meta.get("updated_at")

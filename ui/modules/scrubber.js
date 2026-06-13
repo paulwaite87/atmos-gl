@@ -52,18 +52,24 @@ const injectStyle = () => {
   document.head.appendChild(s);
 };
 
-const fmtFHour = (h) => `f+${String(h).padStart(2, '0')}h`;
+// Offset is relative to the widget's start ('now' = minHour), NOT the underlying
+// forecast hour. At the first position the offset is suppressed; thereafter +1h, +2h...
+const fmtOffset = (snap) => {
+  const rel = snap.hour - snap.minHour;
+  if (rel <= 0) return '';                 // 'now' — no offset shown
+  return `+${rel}h`;
+};
 
 const fmtValid = (snap) => {
   const iso = snap.validTimes && snap.validTimes[String(snap.hour)];
   if (!iso) return '';
-  const d = new Date(iso);
+  const d = new Date(iso);                  // ISO has 'Z' -> parsed as UTC instant
   if (isNaN(d)) return '';
-  // e.g. "Sat 18:00 UTC"
-  const day = d.toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' });
-  const hh = String(d.getUTCHours()).padStart(2, '0');
-  const mm = String(d.getUTCMinutes()).padStart(2, '0');
-  return `${day} ${hh}:${mm} UTC`;
+  // Render in the browser's LOCAL timezone (no timeZone override => local).
+  const day = d.toLocaleDateString(undefined, { weekday: 'short' });
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  return `${day} ${hh}:${mm}`;
 };
 
 const ensureDom = () => {
@@ -76,7 +82,7 @@ const ensureDom = () => {
     <button class="sc-btn sc-play" title="Play / pause">▶</button>
     <button class="sc-btn sc-step-fwd" title="Step forward 1 hour">⏭</button>
     <input class="sc-slider" type="range" min="0" max="23" step="1" value="0" title="Scrub forecast hour">
-    <span class="sc-label"><span class="sc-fhour">f+00h</span><span class="sc-valid"></span></span>
+    <span class="sc-label"><span class="sc-fhour"></span><span class="sc-valid"></span></span>
   `;
   document.body.appendChild(bar);
 
@@ -110,8 +116,10 @@ const render = (snap) => {
     els.slider.value = String(Math.round(pos));
   }
   els.play.textContent = snap.playing ? '⏸' : '▶';
-  els.fhour.textContent = fmtFHour(snap.hour);
-  els.valid.textContent = fmtValid(snap) ? ' · ' + fmtValid(snap) : '';
+  const off = fmtOffset(snap);
+  const valid = fmtValid(snap);
+  els.fhour.textContent = off;                          // '' at 'now', else '+Nh'
+  els.valid.textContent = (off && valid) ? ' · ' + valid : valid;
 };
 
 const setVisible = (v) => {

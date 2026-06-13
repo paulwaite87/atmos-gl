@@ -23,6 +23,7 @@ class OzoneUpdater(Updater):
         # Ozone units vary; these are typical for TOZNE (Dobson Units)
         self.VMIN_OZONE = 200.0
         self.VMAX_OZONE = 450.0
+        self.per_hour_outputs = [".png", "_data.png"]
 
     def save_ozone_key(self, output_path):
         """Generates an ozone key image."""

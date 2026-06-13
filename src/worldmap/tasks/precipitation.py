@@ -30,6 +30,8 @@ class PrecipitationUpdater(Updater):
         # The data texture is sqrt-encoded against this, so most of the 8-bit range
         # is spent on the low rates where precip actually lives (see encode_frames).
         self.VMAX_PRECIP = 100.0
+        # Static PNG + GPU data texture.
+        self.per_hour_outputs = [".png", "_data.png"]
 
         self.PALETTES = {
             "standard": [

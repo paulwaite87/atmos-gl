@@ -25,6 +25,8 @@ class IsobarUpdater(Updater):
         # 950hPa (severe cyclone) to 1050hPa (strong anticyclone).
         self.VMIN_PRESSURE = 950.0
         self.VMAX_PRESSURE = 1050.0
+        # Static PNG + GPU data texture + vector pressure labels.
+        self.per_hour_outputs = [".png", "_data.png", "_labels.geojson"]
 
     def plot(self, field0):
         """Render the static isobar PNG (from frame 0) AND the N-frame data texture.

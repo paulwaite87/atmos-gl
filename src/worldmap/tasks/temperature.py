@@ -22,6 +22,7 @@ class TemperatureUpdater(Updater):
         self.lod_desc = None
         self.VMIN_TEMP = -40.0
         self.VMAX_TEMP = 50.0
+        self.per_hour_outputs = [".png", "_data.png"]
 
     def save_temperature_key(self, output_path):
         """Generates a temperature key image."""
