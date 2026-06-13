@@ -186,6 +186,8 @@ class Housekeeper:
                     logger.info("Housekeeper run started.")
                     self.sweep()
                     self.prune_image_files()
+                    # Per-hour isobar label GeoJSONs age out like the PNG outputs.
+                    self.prune_image_files(pattern="*.geojson")
                     field_expiry_h = int(self.settings.get("field_expiry_hours", 48))
                     self.prune_fields(expiry_hours=field_expiry_h)
                     last_run = now

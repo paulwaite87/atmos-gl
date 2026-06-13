@@ -39,7 +39,7 @@
     "isobar_color": "White",
     "linewidth": 1,
     "alpha": 100,
-    "label_fontsize": 8,
+    "label_fontsize": 12,
     "label_outline": false,
     "runs_per_day": 24,
     "cache_expiry_days": 3
@@ -62,7 +62,7 @@
     "cache_expiry_days": 3
   },
   "precipitation": {
-    "enabled": true,
+    "enabled": false,
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
     "outfile": "data/precipitation.png",
     "level_of_detail": "1",
@@ -235,7 +235,7 @@
     "marker_fontsize": 11
   },
   "data_collector": {
-    "enabled": true,
+    "enabled": false,
     "datasources": {
       "gfs": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
       "sst": "https://downloads.psl.noaa.gov/Datasets/noaa.oisst.v2.highres",
@@ -246,7 +246,7 @@
     "log_level": "DEBUG"
   },
   "satellites_collector": {
-    "enabled": true,
+    "enabled": false,
     "url": "https://celestrak.org/NORAD/elements",
     "groups": "stations,weather,science,resource",
     "update_hours": 12,
