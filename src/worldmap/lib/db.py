@@ -683,6 +683,64 @@ class Database:
             logger.error(f"Error fetching priority region list: {e}")
             return []
 
+    def get_latest_run_hours(self, products=None):
+        """Return availability summary for the freshest (date, run) in the catalog.
+
+        Args:
+            products: optional list of product names to require. If given, an hour
+                      counts as 'available' only when ALL listed products have it
+                      (so the scrubber never lands on an hour some layer lacks).
+
+        Returns dict:
+            { "gfs_date": "20260613", "gfs_run": "18",
+              "fmin": 0, "fmax": 23, "hours": [0,1,2,...,23], "n_products": 6 }
+        or None if the catalog is empty.
+        """
+        with self.conn.cursor() as cur:
+            # Freshest run = max(updated_at)'s (gfs_date, gfs_run).
+            cur.execute("""
+                SELECT gfs_date, gfs_run
+                FROM field_catalog
+                ORDER BY gfs_date DESC, gfs_run DESC
+                LIMIT 1
+            """)
+            row = cur.fetchone()
+            if not row:
+                return None
+            d = dict(row) if hasattr(row, "keys") else {"gfs_date": row[0], "gfs_run": row[1]}
+            gfs_date, gfs_run = d["gfs_date"], d["gfs_run"]
+
+            if products:
+                # Hours where the COUNT of distinct required products == len(products)
+                cur.execute("""
+                    SELECT fhour
+                    FROM field_catalog
+                    WHERE gfs_date=%s AND gfs_run=%s AND product = ANY(%s)
+                    GROUP BY fhour
+                    HAVING COUNT(DISTINCT product) = %s
+                    ORDER BY fhour
+                """, (gfs_date, gfs_run, list(products), len(products)))
+            else:
+                cur.execute("""
+                    SELECT DISTINCT fhour
+                    FROM field_catalog
+                    WHERE gfs_date=%s AND gfs_run=%s
+                    ORDER BY fhour
+                """, (gfs_date, gfs_run))
+            hours = [r[0] if not hasattr(r, "keys") else r["fhour"] for r in cur.fetchall()]
+
+        if not hours:
+            return {"gfs_date": gfs_date, "gfs_run": gfs_run,
+                    "fmin": None, "fmax": None, "hours": [], "n_products": 0}
+
+        return {
+            "gfs_date": gfs_date,
+            "gfs_run": gfs_run,
+            "fmin": hours[0],
+            "fmax": hours[-1],
+            "hours": hours,
+        }
+
     def upsert_field_catalog(
             self,
             gfs_date: str,

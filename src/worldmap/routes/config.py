@@ -3,9 +3,36 @@ import os
 from fastapi import APIRouter, HTTPException
 from worldmap.lib.db import Database
 from worldmap.lib.config import WorldMapConfig
+from datetime import datetime, timezone, timedelta, date
 
 router = APIRouter(prefix="/api", tags=["System Configuration"])
 
+# The animated layers the scrubber controls. An hour is only offered when every
+# one of these (that is enabled) has data for it. Keep in sync with the frontend.
+SCRUBBER_PRODUCTS = ["isobars", "precipitation", "wind", "temperature", "ozone", "stormwatch"]
+
+def _run_epoch_utc(gfs_date, gfs_run):
+    """Build the f000 valid-time (UTC) from gfs_date (str 'YYYYMMDD' or a date/
+    datetime) and gfs_run (str/int hour). Tolerant of the catalog column being
+    either text or DATE."""
+    run_hour = int(gfs_run)
+
+    if isinstance(gfs_date, datetime):
+        d = gfs_date.date()
+    elif isinstance(gfs_date, date):
+        d = gfs_date
+    else:
+        # string like "20260613" (or "2026-06-13" just in case)
+        s = str(gfs_date).strip()
+        if "-" in s:
+            d = datetime.strptime(s, "%Y-%m-%d").date()
+        else:
+            d = datetime.strptime(s, "%Y%m%d").date()
+
+    return datetime(
+        d.year, d.month, d.day, run_hour, 0, 0,
+        tzinfo=timezone.utc,
+    )
 
 def load_config():
     config_path = os.getenv("CONFIG_PATH", "./config/worldmap.json")
@@ -14,6 +41,68 @@ def load_config():
     config = WorldMapConfig(config_path)
     config.load()
     return config
+
+
+@router.get("/forecast_state")
+def get_forecast_state():
+    """Run epoch + available forecast hours for the scrubber.
+
+    Returns:
+      {
+        "status": "success",
+        "data": {
+          "gfs_date": "20260613",
+          "gfs_run": "18",
+          "run_epoch_utc": "2026-06-13T18:00:00Z",   # valid time of f000
+          "fmin": 0, "fmax": 23,
+          "hours": [0,1,...,23],
+          "max_hour": 23,                             # convenience = fmax
+          "valid_times_utc": { "0": "...Z", "1": "...Z", ... }  # per-hour valid time
+        }
+      }
+    """
+    try:
+        cfg = load_config()
+        # Only require products that are actually enabled, so a disabled layer
+        # doesn't shrink the scrubber's range for everyone else.
+        required = []
+        for p in SCRUBBER_PRODUCTS:
+            section = cfg.config.get(p, {})
+            if section.get("animated") and section.get("enabled", True):
+                required.append(p)
+
+        db = Database()
+        summary = db.get_latest_run_hours(products=required or None)
+        if not summary or not summary.get("hours"):
+            return {"status": "success", "data": None}
+
+        # Run epoch (valid time of f000) from gfs_date + gfs_run.
+        gfs_date = summary["gfs_date"]
+        gfs_run = summary["gfs_run"]
+        run_epoch = _run_epoch_utc(gfs_date, gfs_run)
+
+        def z(dt):
+            return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        valid_times = {
+            str(h): z(run_epoch + timedelta(hours=int(h))) for h in summary["hours"]
+        }
+
+        return {
+            "status": "success",
+            "data": {
+                "gfs_date": (gfs_date if isinstance(gfs_date, str) else gfs_date.strftime("%Y%m%d")),
+                "gfs_run": gfs_run,
+                "run_epoch_utc": z(run_epoch),
+                "fmin": summary["fmin"],
+                "fmax": summary["fmax"],
+                "max_hour": summary["fmax"],
+                "hours": summary["hours"],
+                "valid_times_utc": valid_times,
+            },
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/regions")

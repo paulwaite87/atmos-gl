@@ -96,15 +96,15 @@ CREATE TABLE IF NOT EXISTS satellites (
 );
 
 CREATE TABLE IF NOT EXISTS field_catalog (
-    gfs_date    text        NOT NULL,
-    gfs_run     text        NOT NULL,
-    fhour       integer     NOT NULL,
-    product     text        NOT NULL,
+    gfs_date    date                     NOT NULL,
+    gfs_run     varchar(2)               NOT NULL,
+    fhour       integer                  NOT NULL,
+    product     varchar(32)              NOT NULL,
     nlat        integer,
     nlon        integer,
     valid_time  timestamptz,
-    storage_uri text,
-    updated_at  timestamptz NOT NULL DEFAULT now(),
+    updated_at  timestamptz              DEFAULT now(),
+    storage_uri varchar(256),
     PRIMARY KEY (gfs_date, gfs_run, fhour, product)
 );
 
@@ -122,8 +122,8 @@ CREATE INDEX IF NOT EXISTS idx_quakes_time ON earthquakes(eq_time);
 CREATE INDEX IF NOT EXISTS idx_quakes_geom ON earthquakes USING GIST(geom);
 CREATE INDEX IF NOT EXISTS idx_storm_track_sid ON storm_track(sid);
 CREATE INDEX IF NOT EXISTS idx_satellites_name ON satellites(name);
-CREATE INDEX IF NOT EXISTS field_catalog_run_idx  ON field_catalog (gfs_date, gfs_run);
-CREATE INDEX IF NOT EXISTS field_catalog_seen_idx ON field_catalog (updated_at);
+CREATE INDEX IF NOT EXISTS idx_field_catalog_product ON field_catalog (product);
+CREATE INDEX IF NOT EXISTS idx_field_catalog_updated ON field_catalog (updated_at DESC);
 
 
 -- Populate Regions

@@ -57,7 +57,7 @@
     "particle_speed": 10,
     "particle_alpha": 80,
     "particle_size": 0.45,
-    "trail_fade": 30,
+    "trail_fade": 15,
     "max_speed_color": "White",
     "vector_color": "White",
     "barb_length_base": 4,
@@ -67,11 +67,11 @@
     "cache_expiry_days": 3
   },
   "precipitation": {
-    "enabled": true,
+    "enabled": false,
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
     "outfile": "data/precipitation.png",
     "animated": false,
-    "level_of_detail": "2",
+    "level_of_detail": "1",
     "min_mm_hr": 0.2,
     "alpha": 100,
     "palette": "standard",

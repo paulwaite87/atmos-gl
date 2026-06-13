@@ -165,6 +165,16 @@
                     window.MAP_UI = "http://localhost:9000";
                     window.WM_API = "http://localhost:9000/api";
 
+                    // Boot the shared forecast timeline + scrubber widget BEFORE
+                    // layers mount, so animated layers find a configured timeline to
+                    // subscribe to. Non-blocking if forecast_state isn't ready yet.
+                    try {
+                        const { initForecastTimeline } = await import(`/modules/timeline_boot.js?t=${Date.now()}`);
+                        await initForecastTimeline(configData);
+                    } catch (err) {
+                        console.warn('Could not init forecast timeline', err);
+                    }
+
                     // Sequentially initialize backend active feature modules
                     // Best practice ordering: Base textures first, vector
                     // data points on top

@@ -4,7 +4,7 @@ import logging
 import numpy as np
 
 from worldmap.lib.config import WorldMapConfig
-from .common import Updater, MapData, Plot, encode_data_texture
+from .common import Updater, MapData, Plot, encode_uv
 
 logging.getLogger("cfgrib").setLevel(logging.ERROR)
 
@@ -48,38 +48,15 @@ class WindUpdater(Updater):
         if callable(plt_close):
             plt_close()
 
-        # --- WebGL multi-frame velocity texture ---
-        step = int(self.animation.get("step_hours", 6))
-        n_frames = max(2, int(self.animation.get("frames", 2)))
-        f_hour_0 = int(self.forecast_hour_str)
-        frame_hours = [f_hour_0 + k * step for k in range(n_frames)]
-
-        frames_u = [u]
-        frames_v = [v]
-        last_good_u, last_good_v = u, v
-        live = 1
-        for fh in frame_hours[1:]:
-            fu, fv = last_good_u, last_good_v
-            try:
-                field_fh = self.get_db_field_at_hour("wind", fh)
-                if field_fh and field_fh["u"] is not None and field_fh["v"] is not None:
-                    fu = field_fh["u"]
-                    fv = field_fh["v"]
-                    last_good_u, last_good_v = fu, fv
-                    live += 1
-            except Exception as e:
-                logger.debug(f"Wind frame f{fh:03d} skipped: {e}")
-            frames_u.append(fu)
-            frames_v.append(fv)
-
+        # --- WebGL global velocity texture (R=U east, G=V north) ---
+        # The particle shader (ui/modules/_windparticles.js) samples ONE velocity
+        # field and advects particles along it; motion comes from the particles, not
+        # from interpolating the texture. So we encode frame 0's u/v with encode_uv
+        # (NOT encode_data_texture, which packs two timesteps of a single scalar and
+        # leaves the shader reading u as both components -> particles fly off-pattern).
         base, _ = os.path.splitext(self.output_path)
-        encode_data_texture(frames_u[0], frames_u[1] if len(frames_u) > 1 else frames_u[0],
-                            f"{base}_data.png", -self.VMAX_WIND, self.VMAX_WIND)
-        held = len(frames_u) - live
-        logger.info(
-            f"Finished Wind plot; "
-            f"data texture: {len(frames_u)} frames ({live} live, {held} held)."
-        )
+        encode_uv(u, v, f"{base}_data.png", self.VMAX_WIND)
+        logger.info("Finished Wind plot; velocity texture written (R=U, G=V).")
 
     def run(self):
         self.get_gfs_state()

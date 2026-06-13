@@ -1,4 +1,6 @@
 import { liveLayerSync } from './_refresh.js';
+import { timeline } from './timeline.js';
+import { scrubber } from './scrubber.js';
 
 /**
  * Wind particles as a MapLibre v5 CUSTOM WEBGL LAYER (sharp, globe-correct).
@@ -180,6 +182,12 @@ export function createWindParticleGLController(map, opts) {
         lodCount = null,
         staticUrl = (cfg) => `${window.MAP_UI}/${cfg.outfile}`,
         dataUrl = (cfg) => `${window.MAP_UI}/${cfg.outfile.replace(/\.png$/, '_data.png')}`,
+        // Per-hour velocity texture, driven by the shared timeline.
+        hourDataUrl = (cfg, hour, bust) => {
+            const base = cfg.outfile.replace(/\.png$/, '');
+            const f = String(hour).padStart(3, '0');
+            return `${window.MAP_UI}/${base}_f${f}_data.png?t=${bust}`;
+        },
         staticFallback = true,                            // barbs PNG when not animated / no WebGL
         particleCount = (cfg) => {
             const explicit = parseInt(cfg.particle_count, 10);
@@ -213,6 +221,10 @@ export function createWindParticleGLController(map, opts) {
     const isAnimated = (cfg) => !!cfg.animated;
 
     let mode = null, webglFailed = false, layerAdded = false;
+    let unsubTimeline = null;     // timeline subscription
+    let curCfgWind = null;        // latest cfg, for timeline-driven reloads
+    let lastWindHour = -1;        // detect hour changes
+    let lastWindBust = -1;        // detect data-refresh busts
     let glRef = null;
 
     let updateProg = null, screenQuad = null, vaoUpdate = null, vaoStreaks = null;
@@ -333,11 +345,12 @@ export function createWindParticleGLController(map, opts) {
         windReady = true;
     };
     const loadWind = (cfg) => {
+        const snap = timeline.get();
         const img = new Image();
         img.crossOrigin = 'anonymous';
         img.onload = () => { pendingWindImg = img; map.triggerRepaint(); };
-        img.onerror = () => console.warn(`[${sectionKey}] velocity texture not ready: ${dataUrl(cfg)}`);
-        img.src = `${dataUrl(cfg)}?t=${Date.now()}`;
+        img.onerror = () => console.warn(`[${sectionKey}] velocity texture not ready (f${String(snap.hour).padStart(3,'0')})`);
+        img.src = hourDataUrl(cfg, snap.hour, snap.refreshEpoch);
     };
 
     const getStreakProg = (gl, shaderData) => {
@@ -496,6 +509,7 @@ export function createWindParticleGLController(map, opts) {
         if (layerAdded || map.getLayer(A_LYR)) return;
         const sz = sizeFor(cfg); RES = sz.RES; count = sz.count;
         webglFailed = false; streakProgFailed = false; windReady = false;
+        curCfgWind = cfg;
         map.addLayer(makeLayer(cfg));
         layerAdded = true;
         if (webglFailed) {                                 // onAdd failed to compile -> fall back
@@ -503,11 +517,24 @@ export function createWindParticleGLController(map, opts) {
             if (staticFallback) { mountStatic(cfg); mode = 'static'; } else { mode = 'none'; }
             return;
         }
+        // Drive the velocity field from the shared timeline: reload the wind texture
+        // whenever the forecast hour changes or a data refresh busts the cache. The
+        // particles keep flowing; only the underlying field swaps (hard cut per hour).
+        const snap0 = timeline.get();
+        lastWindHour = snap0.hour; lastWindBust = snap0.refreshEpoch;
+        unsubTimeline = timeline.subscribe((snap) => {
+            if (snap.hour !== lastWindHour || snap.refreshEpoch !== lastWindBust) {
+                lastWindHour = snap.hour; lastWindBust = snap.refreshEpoch;
+                if (curCfgWind) loadWind(curCfgWind);
+            }
+        });
+        scrubber.layerActivated();
         onMount(cfg);
     };
     const refreshAnimated = (cfg) => {
         const sz = sizeFor(cfg);
         if (sz.RES !== RES) { RES = sz.RES; count = sz.count; pendingRebuild = true; }
+        curCfgWind = cfg;
         applyParams(cfg);
         if (colormap) pendingLut = colormap(cfg);
         loadWind(cfg);
@@ -515,6 +542,8 @@ export function createWindParticleGLController(map, opts) {
         onRefresh(cfg);
     };
     const unmountAnimated = () => {
+        if (unsubTimeline) { unsubTimeline(); unsubTimeline = null; }
+        if (layerAdded) scrubber.layerDeactivated();
         if (map.getLayer(A_LYR)) map.removeLayer(A_LYR);   // triggers onRemove cleanup
         layerAdded = false;
         onUnmount();
@@ -548,7 +577,7 @@ export function createWindParticleGLController(map, opts) {
     return {
         mount, refresh, unmount,
         imageUrl: (cfg) => (isAnimated(cfg) && !webglFailed) || !staticFallback
-            ? dataUrl(cfg) : staticUrl(cfg),
+            ? hourDataUrl(cfg, timeline.get().hour, timeline.get().refreshEpoch) : staticUrl(cfg),
     };
 }
 

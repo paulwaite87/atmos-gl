@@ -573,6 +573,41 @@ class Updater:
         base, ext = os.path.splitext(self.output_path)
         return f"{base}_f{fhour:03d}{ext}"
 
+    def publish_current_hour(self, fhour: int | str = None):
+        """Publish the current forecast hour's render to the STABLE base filename.
+
+        The backend caches per-hour ({base}_fNNN.png and {base}_fNNN_data.png), but the
+        frontend fetches the run-agnostic base names ({base}.png and {base}_data.png) —
+        it has no way to know which forecast hour is valid "now". This copies the
+        per-hour outputs to those base names so the frontend always sees the latest hour.
+
+        Copies whichever of the two artifacts exist (static PNG and/or _data.png texture),
+        using atomic replace so the frontend never reads a half-written file.
+        """
+        if fhour is None:
+            fhour = int(self.forecast_hour_str)
+        else:
+            fhour = int(fhour)
+
+        base, ext = os.path.splitext(self.output_path)
+        per_hour = f"{base}_f{fhour:03d}{ext}"
+
+        pairs = [
+            (per_hour, self.output_path),                       # static raster
+            (f"{base}_f{fhour:03d}_data.png", f"{base}_data.png"),  # multi-frame texture
+        ]
+        import shutil
+        for src, dst in pairs:
+            if not os.path.exists(src):
+                continue
+            try:
+                tmp = f"{dst}.tmp"
+                shutil.copy2(src, tmp)
+                os.replace(tmp, dst)
+                logger.debug(f"{self.section}: published {os.path.basename(src)} -> {os.path.basename(dst)}")
+            except Exception as e:
+                logger.warning(f"{self.section}: failed to publish {src} -> {dst}: {e}")
+
     def get_gfs_state(self):
         """
         Lazy evaluation: The first updater to call this method performs a quick network
