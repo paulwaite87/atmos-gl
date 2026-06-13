@@ -133,46 +133,20 @@ class TemperatureUpdater(Updater):
         if callable(plt_close):
             plt_close()
 
-        # --- WebGL multi-frame data texture ---
-        step = int(self.animation.get("step_hours", 6))
-        n_frames = max(2, int(self.animation.get("frames", 2)))
-        f_hour_0 = int(self.forecast_hour_str)
-        frame_hours = [f_hour_0 + k * step for k in range(n_frames)]
-
-        frames = [field0["values"]]
-        last_good = field0["values"]
-        live = 1
-        for fh in frame_hours[1:]:
-            pk = last_good
-            try:
-                field_fh = self.get_db_field_at_hour("temperature", fh)
-                if field_fh and field_fh["values"] is not None:
-                    pk = field_fh["values"]
-                    last_good = pk
-                    live += 1
-            except Exception as e:
-                logger.debug(f"Temperature frame f{fh:03d} skipped: {e}")
-            frames.append(pk)
-
+        # --- WebGL single-hour data texture (one frame per forecast hour;
+        # the frontend scrubber assembles the animation from consecutive hours) ---
         base, _ = os.path.splitext(output_path_for_hour)
-        encode_frames(frames, f"{base}_data.png", self.VMIN_TEMP, self.VMAX_TEMP)
-        held = len(frames) - live
-        logger.info(
-            f"Finished Temperature plot ({self.lod_desc} resolution); "
-            f"data texture: {len(frames)} frames ({live} live, {held} held)."
-        )
+        encode_frames([field0["values"]], f"{base}_data.png", self.VMIN_TEMP, self.VMAX_TEMP)
+        logger.info(f"Finished Temperature texture "
+                    f"f{int(self.forecast_hour_str):03d}.")
+
 
     def run(self):
         self.get_gfs_state()
-
-        field = self.get_db_field("temperature")
-        if field and field["values"] is not None and self.should_plot_for_hour("temperature"):
-            logger.info("Generating Temperature plot and multi-frame data texture...")
-            self.plot()
-        else:
-            if not field or field["values"] is None:
-                logger.info(
-                    "Temperature: frame 0 not ready in DB yet (collector may not have run)."
-                )
-            else:
-                logger.debug("Temperature: cached output is fresh, skipping plot.")
+        # Render EVERY available forecast hour (gap-filling), so the scrubber has
+        # a PNG for each hour. should_plot_for_hour skips hours already fresh.
+        self.render_all_hours(
+            "temperature",
+            plot_fn=self.plot,
+            field_ready=lambda f: f.get("values") is not None,
+        )

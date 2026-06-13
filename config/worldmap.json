@@ -10,11 +10,8 @@
     "log_level": "DEBUG"
   },
   "animation": {
-    "seconds": 15,
-    "forecast_hours": 12,
-    "frames": 7,
-    "step_hours": 2,
-    "bounce": false,
+    "forecast_stepping": true,
+    "hour_seconds": 0.8,
     "sharp": false
   },
   "terminator": {
@@ -38,7 +35,6 @@
     "enabled": true,
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
     "outfile": "data/isobars.png",
-    "animated": false,
     "level_of_detail": "2",
     "isobar_color": "White",
     "linewidth": 1,
@@ -52,7 +48,6 @@
     "enabled": false,
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
     "outfile": "data/wind.png",
-    "animated": true,
     "level_of_detail": "2",
     "particle_speed": 10,
     "particle_alpha": 80,
@@ -70,7 +65,6 @@
     "enabled": false,
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
     "outfile": "data/precipitation.png",
-    "animated": false,
     "level_of_detail": "1",
     "min_mm_hr": 0.2,
     "alpha": 100,
@@ -94,7 +88,6 @@
     "enabled": false,
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
     "outfile": "data/waves.png",
-    "animated": true,
     "level_of_detail": "2",
     "palette": "neon_surge",
     "alpha": 80,

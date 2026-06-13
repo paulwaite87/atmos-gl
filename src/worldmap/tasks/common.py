@@ -533,15 +533,18 @@ class Updater:
             fs = fieldstore.get_store(self.workdir)
             meta = fs.get_field_meta(self.gfs_date_str, self.gfs_run, fhour, product_name)
 
-            if not meta or meta.get("valid_time") is None:
+            if not meta or meta.get("updated_at") is None:
                 # No data catalogued, don't plot (data isn't ready yet)
                 return False
 
-            # Get file's mtime and compare to the field's valid_time
+            # Get file's mtime and compare to when the DATA ROW was last written.
+            # NOTE: use updated_at (when the field was stored), NOT valid_time (the
+            # forecast's validity time, which is usually in the future and would make
+            # every hour look "newer" than its PNG, forcing a re-plot every cycle).
             file_mtime = os.path.getmtime(output_path)
             file_dt = datetime.fromtimestamp(file_mtime, tz=timezone.utc)
 
-            field_updated = meta.get("valid_time")
+            field_updated = meta.get("updated_at")
             if field_updated is None:
                 return False
 
@@ -607,6 +610,69 @@ class Updater:
                 logger.debug(f"{self.section}: published {os.path.basename(src)} -> {os.path.basename(dst)}")
             except Exception as e:
                 logger.warning(f"{self.section}: failed to publish {src} -> {dst}: {e}")
+
+    def render_all_hours(self, product_name, plot_fn, field_ready):
+        """Gap-filling per-hour render loop.
+
+        The scrubber needs a rendered PNG for every forecast hour that has data, not
+        just the current one. This loops over the hours present in the catalog for
+        this run and plots any whose output is missing or stale (should_plot_for_hour
+        decides per hour). Hours already rendered and fresh are skipped cheaply, so
+        steady state is N metadata checks and zero re-renders; only newly-arrived or
+        deleted hours actually plot.
+
+        Args:
+            product_name: catalog product key (e.g. "isobars").
+            plot_fn: callable(field) that renders + writes the per-hour outputs for
+                     the hour currently set in self.forecast_hour_str.
+            field_ready: callable(field) -> bool; whether the fetched field has the
+                     data this layer needs (e.g. values is not None; u/v for wind).
+
+        Returns the number of hours actually (re)plotted.
+        """
+        try:
+            from worldmap.lib.db import Database
+            db = Database()
+            hours = db.get_product_hours(self.gfs_date_str, self.gfs_run, product_name)
+        except Exception as e:
+            logger.warning(f"{self.section}: could not list hours: {e}")
+            hours = []
+
+        if not hours:
+            logger.info(f"{self.section}: no hours in catalog yet (collector may not have run).")
+            return 0
+
+        # Preserve the task's notion of 'current hour' so we can restore it after.
+        saved_fhour = getattr(self, "forecast_hour_str", None)
+        plotted = 0
+        try:
+            for fh in hours:
+                # Point the per-hour-aware helpers (get_output_path_for_hour, plot's
+                # save paths, should_plot_for_hour, publish) at THIS hour.
+                self.forecast_hour_str = f"{int(fh):03d}"
+                if not self.should_plot_for_hour(product_name, fh):
+                    continue
+                field = self.get_db_field_at_hour(product_name, fh)
+                if not field or not field_ready(field):
+                    continue
+                try:
+                    plot_fn(field)
+                    plotted += 1
+                except Exception as e:
+                    logger.warning(f"{self.section}: plot f{int(fh):03d} failed: {e}")
+        finally:
+            if saved_fhour is not None:
+                self.forecast_hour_str = saved_fhour
+
+        if plotted:
+            logger.info(f"{self.section}: rendered {plotted} hour(s) "
+                        f"({len(hours)} available, {len(hours)-plotted} already fresh).")
+        else:
+            logger.debug(f"{self.section}: all {len(hours)} hour(s) fresh; nothing to render.")
+
+        # Keep the stable base-name static current (for forecast_stepping=off / fallback).
+        self.publish_current_hour()
+        return plotted
 
     def get_gfs_state(self):
         """

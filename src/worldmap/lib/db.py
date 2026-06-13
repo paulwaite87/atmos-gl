@@ -779,7 +779,7 @@ class Database:
         with self.conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT gfs_date, gfs_run, fhour, product, nlat, nlon, valid_time, storage_uri
+                SELECT gfs_date, gfs_run, fhour, product, nlat, nlon, valid_time, updated_at, storage_uri
                 FROM field_catalog
                 WHERE gfs_date=%s AND gfs_run=%s AND fhour=%s AND product=%s
                 """,
@@ -787,6 +787,23 @@ class Database:
             )
             row = cur.fetchone()
         return dict(row) if row else None
+
+    def get_product_hours(self, gfs_date, gfs_run, product):
+        """Return the sorted list of forecast hours present for one product in a run.
+
+        Drives each task's per-hour render loop (the scrubber needs a PNG for every
+        hour that has data). Cheap, indexed query against the catalog.
+        """
+        with self.conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT fhour FROM field_catalog
+                WHERE gfs_date=%s AND gfs_run=%s AND product=%s
+                ORDER BY fhour
+                """,
+                (gfs_date, gfs_run, product),
+            )
+            return [r[0] if not hasattr(r, "keys") else r["fhour"] for r in cur.fetchall()]
 
     def field_catalog_exists(self, gfs_date: str, gfs_run: str, fhour: int, product: str) -> bool:
         """Check if a catalog row exists (fast, indexed)."""

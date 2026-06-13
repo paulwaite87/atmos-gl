@@ -209,7 +209,10 @@ export function createWaveParticleController(map, opts) {
     } = opts;
 
     const A_LYR = `${sectionKey}-anim-layer`;
-    const isAnimated = (cfg) => !!cfg.animated;
+    // Particles are a visualisation methodology, not forecast stepping: this layer
+    // always renders its particles when enabled (gated only by WebGL availability),
+    // independent of the global [animation].forecast_stepping switch.
+    const isAnimated = () => true;
 
     let mode = null;                                      // 'animated' | 'none' | null
     let glRef = null, layerAdded = false, webglFailed = false;
@@ -515,7 +518,7 @@ export function createWaveParticleController(map, opts) {
         onRefresh(cfg);
     };
 
-    const wanted = (cfg) => (isAnimated(cfg) && !webglFailed) ? 'animated' : 'none';
+    const wanted = (cfg) => (isAnimated() && !webglFailed) ? 'animated' : 'none';
     const mount = (cfg) => {
         mode = wanted(cfg);
         if (mode === 'animated') mountAnimated(cfg);

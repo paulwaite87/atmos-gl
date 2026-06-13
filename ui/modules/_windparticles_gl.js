@@ -218,7 +218,10 @@ export function createWindParticleGLController(map, opts) {
 
     const S_SRC = `${sectionKey}-source`, S_LYR = `${sectionKey}-layer`;
     const A_LYR = `${sectionKey}-anim-layer`;
-    const isAnimated = (cfg) => !!cfg.animated;
+    // Particles are a visualisation methodology, not forecast stepping: this layer
+    // always renders its particles when enabled (gated only by WebGL availability),
+    // independent of the global [animation].forecast_stepping switch.
+    const isAnimated = () => true;
 
     let mode = null, webglFailed = false, layerAdded = false;
     let unsubTimeline = null;     // timeline subscription
@@ -550,7 +553,7 @@ export function createWindParticleGLController(map, opts) {
     };
 
     // ---- dispatch ----
-    const wanted = (cfg) => (isAnimated(cfg) && !webglFailed) ? 'animated' : (staticFallback ? 'static' : 'none');
+    const wanted = (cfg) => (isAnimated() && !webglFailed) ? 'animated' : (staticFallback ? 'static' : 'none');
     const switchTo = (want, cfg) => {
         if (want === 'animated') { unmountStatic(); mountAnimated(cfg); }
         else if (want === 'static') { unmountAnimated(); mountStatic(cfg); }
@@ -576,7 +579,7 @@ export function createWindParticleGLController(map, opts) {
 
     return {
         mount, refresh, unmount,
-        imageUrl: (cfg) => (isAnimated(cfg) && !webglFailed) || !staticFallback
+        imageUrl: (cfg) => (isAnimated() && !webglFailed) || !staticFallback
             ? hourDataUrl(cfg, timeline.get().hour, timeline.get().refreshEpoch) : staticUrl(cfg),
     };
 }

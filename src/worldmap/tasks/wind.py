@@ -17,59 +17,31 @@ class WindUpdater(Updater):
         self.VMAX_WIND = 40.0
 
     def plot(self, field0):
-        """Render the static wind barbs PNG (frame 0) + global velocity texture."""
-        logger.debug(f"Plotting wind to {self.output_path}")
+        """Render the per-hour wind velocity texture (R=U east, G=V north).
 
-        lats = field0["lat"]
-        lons = field0["lon"]
+        Barbs are no longer rendered — wind is shown purely as animated particles on
+        the frontend, which advect against this velocity field. The particle shader
+        (_windparticles_gl.js) decodes w.rg as (u, v) via `w.rg * (2*vmax) - vmax`,
+        which is exactly what encode_uv writes.
+
+        Per-hour file ({base}_f{NNN}_data.png) — the frontend scrubber fetches the
+        hour it needs directly.
+        """
         u = field0["u"]  # m/s
         v = field0["v"]  # m/s
 
-        # Regional barbs render
-        plot = Plot(self.map_data.region)
-        plot.get_figure()
-
-        # Subsample for visual density
-        subsample = self.settings.get("barb_density", 8)
-        lats_sub = lats[::subsample]
-        lons_sub = lons[::subsample]
-        u_sub = u[::subsample, ::subsample]
-        v_sub = v[::subsample, ::subsample]
-
-        plot.ax.barbs(
-            lons_sub, lats_sub, u_sub, v_sub,
-            transform=__import__("cartopy.crs", fromlist=["PlateCarree"]).PlateCarree(),
-            length=5, linewidth=0.5, alpha=0.8, zorder=2
-        )
-
-        plot.save_figure(self.output_path)
-
-        plt_close = getattr(plot, "close", None)
-        if callable(plt_close):
-            plt_close()
-
-        # --- WebGL global velocity texture (R=U east, G=V north) ---
-        # The particle shader (ui/modules/_windparticles.js) samples ONE velocity
-        # field and advects particles along it; motion comes from the particles, not
-        # from interpolating the texture. So we encode frame 0's u/v with encode_uv
-        # (NOT encode_data_texture, which packs two timesteps of a single scalar and
-        # leaves the shader reading u as both components -> particles fly off-pattern).
-        base, _ = os.path.splitext(self.output_path)
+        out_for_hour = self.get_output_path_for_hour(self.forecast_hour_str)
+        base, _ = os.path.splitext(out_for_hour)
         encode_uv(u, v, f"{base}_data.png", self.VMAX_WIND)
-        logger.info("Finished Wind plot; velocity texture written (R=U, G=V).")
+        logger.info(
+            f"Finished Wind velocity texture f{int(self.forecast_hour_str):03d} (R=U, G=V)."
+        )
 
     def run(self):
         self.get_gfs_state()
-
-        # Check if frame 0 is available in DB AND is newer than cached output
-        field = self.get_db_field("wind")
-        if field and field["u"] is not None and field["v"] is not None and self.should_plot_for_hour("wind"):
-            logger.info("Generating Wind plot and multi-frame velocity texture...")
-            self.plot(field)
-        else:
-            if not field or field["u"] is None or field["v"] is None:
-                logger.info(
-                    "Wind: frame 0 not ready in DB yet (collector may not have run)."
-                )
-            else:
-                logger.debug("Wind: cached output is fresh, skipping plot.")
+        # Render every available forecast hour's velocity texture (gap-filling).
+        self.render_all_hours(
+            "wind",
+            plot_fn=self.plot,
+            field_ready=lambda f: f.get("u") is not None and f.get("v") is not None,
+        )

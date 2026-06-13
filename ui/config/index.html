@@ -296,8 +296,7 @@
                     row.className = 'row g-3';
 
                     for (const [option, value] of Object.entries(sectionData)) {
-                        if ((option === 'enabled' && section !== 'housekeeper') || option.startsWith('RULE__')
-                            || (section === 'animation' && (option === 'frames' || option === 'step_hours'))) continue;
+                        if ((option === 'enabled' && section !== 'housekeeper') || option.startsWith('RULE__')) continue;
 
                         const col = document.createElement('div');
                         col.className = 'col-md-6';
@@ -308,10 +307,9 @@
                         else if (section === "quakes" && option === "min_mag") customLabelText = "Minimum magnitude";
                         else if (section === "shipping" && option === "track_min_dist") customLabelText = "Track minimum distance";
                         else if (option === "animated" && (section === "precipitation" || section === "isobars")) customLabelText = "Animated forecast";
-                        else if (section === "animation" && option === "seconds") customLabelText = "Loop seconds";
+                        else if (section === "animation" && option === "forecast_stepping") customLabelText = "Forecast stepping (hourly playback)";
+                        else if (section === "animation" && option === "hour_seconds") customLabelText = "Play speed (sec per hour)";
                         else if (section === "animation" && option === "sharp") customLabelText = "Sharp (no smoothing)";
-                        else if (section === "animation" && option === "forecast_hours") customLabelText = "Forecast hours ahead";
-                        else if (section === "animation" && option === "bounce") customLabelText = "Ping-pong loop (off = forward)";
                         else {
                             const spaced = option.replace(/_/g, ' ');
                             customLabelText = spaced.charAt(0).toUpperCase() + spaced.slice(1);
@@ -384,26 +382,6 @@
                                 </div>
                                 <input type="range" class="form-range dynamic-input" id="${domId}" min="0" max="96" step="1" value="${initialFcstHour}"
                                        oninput="document.getElementById('badge-${domId}').innerText = parseInt(this.value) + 'h'">
-                            `;
-                        } else if (section === 'animation' && option === 'seconds') {
-                            const initialAnimSecs = parseInt(value) || 8;
-                            col.innerHTML = `
-                                <div class="d-flex justify-content-between align-items-center mb-1">
-                                    <label class="form-label small text-white-50 fw-bold mb-0">Animation Duration (Secs)</label>
-                                    <span class="badge bg-primary text-light fw-bold" id="badge-${domId}">${initialAnimSecs} sec</span>
-                                </div>
-                                <input type="range" class="form-range dynamic-input" id="${domId}" min="2" max="30" step="1" value="${initialAnimSecs}"
-                                       oninput="document.getElementById('badge-${domId}').innerText = parseInt(this.value) + ' sec'">
-                            `;
-                        } else if (section === 'animation' && option === 'forecast_hours') {
-                            const initialFc = parseInt(value) || 24;
-                            col.innerHTML = `
-                                <div class="d-flex justify-content-between align-items-center mb-1">
-                                    <label class="form-label small text-white-50 fw-bold mb-0">${customLabelText}</label>
-                                    <span class="badge bg-success text-dark fw-bold" id="badge-${domId}">${initialFc}h ahead</span>
-                                </div>
-                                <input type="range" class="form-range dynamic-input" id="${domId}" min="6" max="48" step="6" value="${initialFc}"
-                                       oninput="document.getElementById('badge-${domId}').innerText = this.value + 'h ahead'">
                             `;
                         } else if (option === 'particle_speed') {
                             const v = parseInt(value, 10);
@@ -939,6 +917,14 @@
                                 </select>
                                 <div class="text-white-50" style="font-size: 11px; margin-top: 4px;">💡 Hold Ctrl (or Cmd ⌘) to select multiple timelines.</div>
                             `;
+                        } else if (typeof value === 'boolean') {
+                            col.innerHTML = `
+                                <div class="form-check form-switch mt-3">
+                                    <input class="form-check-input dynamic-input" type="checkbox"
+                                           id="${domId}" ${value ? 'checked' : ''}>
+                                    <label class="form-check-label small text-white-50 fw-bold ms-2" for="${domId}">${customLabelText}</label>
+                                </div>
+                            `;
                         } else {
                             const valStr = String(value);
                             const isLong = valStr.length > 35 || option.includes('url');
@@ -1055,18 +1041,6 @@
                     }
                 }
             });
-
-            // Translate the single user-facing "hours ahead" into the hidden frame/step
-            // pair. Now layer-agnostic: one shared [animation] section drives every layer.
-            const anim = payload.animation;
-            if (anim && anim.forecast_hours != null) {
-                const T = Math.max(1, parseInt(anim.forecast_hours, 10) || 6);
-                const MAX = 8;
-                let step = Math.ceil(T / (MAX - 1));
-                for (const c of [1, 2, 3, 6, 12, 24]) { if (c >= step) { step = c; break; } }
-                anim.frames = Math.max(2, Math.min(MAX, Math.floor(T / step) + 1));
-                anim.step_hours = step;
-            }
 
             try {
                 const response = await fetch(CONFIG_API_URL, {

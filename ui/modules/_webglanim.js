@@ -100,7 +100,12 @@ export function createAnimatedRasterLayer(map, opts) {
             const f = String(hour).padStart(3, '0');
             return `${window.MAP_UI}/${base}_f${f}_data.png?t=${bust}`;
         },
-        isAnimated = (cfg) => !!cfg.animated,
+        // Forecast stepping is a GLOBAL setting, not per-layer. When on, this layer
+        // runs the GPU scrubber (timeline-driven, per-hour textures). When off, it
+        // shows the current hour (f000) only, via the static base-name image.
+        // (Particle layers like wind/waves are a separate visualisation methodology
+        // and are NOT gated by this — they live in their own modules.)
+        forecastStepping = (anim) => (anim && anim.forecast_stepping !== false),
     } = opts;
 
     const S_SRC = `${sectionKey}-source`;
@@ -399,7 +404,7 @@ export function createAnimatedRasterLayer(map, opts) {
     };
 
     // ---------- dispatch ----------
-    const wanted = (cfg) => (isAnimated(cfg) && !webglFailed) ? 'animated' : 'static';
+    const wanted = () => (forecastStepping(curAnim) && !webglFailed) ? 'animated' : 'static';
     const switchTo = (target, cfg) => {
         if (mode === target) return;
         if (mode === 'static') unmountStatic();
@@ -410,14 +415,14 @@ export function createAnimatedRasterLayer(map, opts) {
     const mount = (cfg, globals) => {
         curAnim = (globals && globals.animation) || {};
         curCommon = (globals && globals.common) || {};
-        mode = wanted(cfg);
+        mode = wanted();
         if (mode === 'animated') mountAnimated(cfg); else mountStatic(cfg);
         onMount(cfg);
     };
     const refresh = (cfg, globals) => {
         curAnim = (globals && globals.animation) || {};
         curCommon = (globals && globals.common) || {};
-        const want = wanted(cfg);
+        const want = wanted();
         if (want !== mode) switchTo(want, cfg);
         else if (mode === 'animated') refreshAnimated(cfg); else refreshStatic(cfg);
         onRefresh(cfg);
@@ -434,8 +439,8 @@ export function createAnimatedRasterLayer(map, opts) {
         initialGlobals: { animation: initialAnimation, common: initialCommon },
         globalKeys: ['animation', 'common'],
         mount, refresh, unmount,
-        // Probe the current hour's texture for availability.
-        imageUrl: (cfg) => (isAnimated(cfg) && !webglFailed)
+        // Probe the current hour's texture (stepping on) or the static base (off).
+        imageUrl: (cfg) => (forecastStepping(curAnim) && !webglFailed)
             ? hourDataUrl(cfg, timeline.get().hour, bustKey)
             : staticUrl(cfg),
         refreshMs, syncMs,
