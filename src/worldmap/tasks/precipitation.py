@@ -101,7 +101,7 @@ class PrecipitationUpdater(Updater):
 
     def plot(self, field0):
         """Static region render (frame 0) + colourbar key + global N-frame texture.
-        
+
         Now consumes pre-processed fields from the DB instead of opening GRIBs.
         Outputs are cached per-hour: {basename}_f{fhour:03d}.png
         """
@@ -201,11 +201,55 @@ class PrecipitationUpdater(Updater):
 
         # --- WebGL single-hour data texture (one frame per forecast hour;
         # the frontend scrubber assembles the animation from consecutive hours) ---
+        # Smooth the GLOBAL field before encoding so the banded LUT produces smooth
+        # band boundaries instead of tracing the raw 0.25-deg grid (the old static
+        # render smoothed its regional clip the same way; the texture never did).
         base, _ = os.path.splitext(output_path_for_hour)
-        encode_frames([field0["values"]], f"{base}_data.png", 0.0, self.VMAX_PRECIP, transform="sqrt")
+        smoothed = self._smooth_global_field(field0["lat"], field0["lon"], field0["values"])
+        encode_frames([smoothed], f"{base}_data.png", 0.0, self.VMAX_PRECIP, transform="sqrt")
         logger.info(f"Finished Precipitation texture "
-                    f"f{int(self.forecast_hour_str):03d}.")
+                    f"f{int(self.forecast_hour_str):03d} ({self.lod_desc} smoothing).")
 
+    def _smooth_global_field(self, lats, lons, values):
+        """Upsample + Gaussian-blur the global precip field for a smooth texture.
+
+        Tied to level_of_detail (reusing that setting's 3 levels), bounded for a
+        GLOBAL grid so the texture stays a sane size:
+            LOD 1 (low):    1x native 0.25 deg, light blur   (~4 MB/hr)
+            LOD 2 (medium): 2x -> 0.125 deg,    medium blur   (~17 MB/hr)
+            LOD 3 (high):   3x -> 0.083 deg,     stronger blur (~37 MB/hr)
+        Blur sigma scales with the upsample factor so the PHYSICAL smoothing radius
+        (~1.2 native cells) stays roughly constant across levels. The GPU also
+        bilinear-filters the texture at render time, so even 1x looks smooth.
+        """
+        lod = int(getattr(self, "level_of_detail", 1) or 1)
+        if lod >= 3:
+            factor, base_sigma = 3, 1.2
+        elif lod == 2:
+            factor, base_sigma = 2, 1.2
+        else:
+            factor, base_sigma = 1, 1.2
+
+        arr = np.nan_to_num(np.asarray(values, dtype=np.float32), nan=0.0)
+
+        if factor > 1:
+            # Bilinear upsample onto a regular factor-x denser global grid.
+            lat_inc = lats[::-1] if (len(lats) > 1 and lats[0] > lats[-1]) else lats
+            src = arr[::-1, :] if (len(lats) > 1 and lats[0] > lats[-1]) else arr
+            fn = RegularGridInterpolator(
+                (lat_inc, lons), src, bounds_error=False, fill_value=0.0
+            )
+            new_lats = np.linspace(lat_inc[0], lat_inc[-1], (len(lat_inc) - 1) * factor + 1)
+            new_lons = np.linspace(lons[0], lons[-1], (len(lons) - 1) * factor + 1)
+            mlat, mlon = np.meshgrid(new_lats, new_lons, indexing="ij")
+            arr = fn((mlat, mlon)).astype(np.float32)
+            if (len(lats) > 1 and lats[0] > lats[-1]):
+                arr = arr[::-1, :]  # restore north-first row order for the texture
+
+        sigma = base_sigma * factor
+        if sigma > 0:
+            arr = gaussian_filter(arr, sigma=sigma)
+        return arr
 
     def run(self):
         self.get_gfs_state()
