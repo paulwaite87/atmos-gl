@@ -2,7 +2,7 @@
  * Shared forecast progress bar for the animated raster layers (isobars, precipitation).
  *
  * All animated layers share one [animation] timeline and one clock (driven from
- * performance.now() in _webglanim.js), so a single bar represents them all. Layers
+ * the shared timeline in timeline.js), so a single bar represents them all. Layers
  * register via forecastHud.set(key, params) when they enter animated mode and
  * forecastHud.clear(key) when they leave. The bar lives in the #legend-stack key-slot
  * container and a marker tracks the animation using the same phase formula the layers
@@ -72,7 +72,7 @@ const ensureDom = () => {
 const phaseFor = (loopMs, bounce, now) => {
     if (bounce) {
         const p = (now % (2 * loopMs)) / loopMs;       // 0..2
-        return p <= 1 ? p : 2 - p;                     // matches _webglanim loop()
+        return p <= 1 ? p : 2 - p;                     // matches the layer loop phase
     }
     return (now % loopMs) / loopMs;                    // forward
 };

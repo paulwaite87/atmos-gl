@@ -31,7 +31,11 @@ rebuild: stop
 
 ## logs: Tail logs for all containers
 logs:
+ifndef service
 	docker compose logs -f
+else
+	docker compose logs -f ${service}
+endif
 
 ## test: Run all tests (optional: make test include=pattern)
 test:

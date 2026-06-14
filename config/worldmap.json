@@ -62,10 +62,10 @@
     "cache_expiry_days": 3
   },
   "precipitation": {
-    "enabled": false,
+    "enabled": true,
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
     "outfile": "data/precipitation.png",
-    "level_of_detail": "2",
+    "level_of_detail": "1",
     "min_mm_hr": 0.2,
     "alpha": 100,
     "palette": "standard",
@@ -101,7 +101,7 @@
     "cache_expiry_days": 3
   },
   "temperature": {
-    "enabled": true,
+    "enabled": false,
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
     "outfile": "data/temperature.png",
     "level_of_detail": "2",
@@ -117,10 +117,10 @@
     "enabled": false,
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
     "outfile": "data/ozone.png",
-    "level_of_detail": "3",
+    "level_of_detail": "1",
     "palette": "critical",
     "critical_du": 220,
-    "alpha": 100,
+    "alpha": 45,
     "key_fontsize": 8,
     "runs_per_day": 2,
     "stormwatch": true,

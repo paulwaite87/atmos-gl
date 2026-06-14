@@ -75,7 +75,7 @@ export function createFillLayer(map, opts) {
     let curAnim = initialAnimation || {}, curCommon = initialCommon || {}, curCfg = initialConfig || {};
     let texSize = [1440, 721];
 
-    // per-hour decoded-value textures (same scheme as _webglanim)
+    // per-hour decoded-value textures (one single-frame texture per forecast hour)
     const texCache = new Map();
     let bustKey = timeline.get().refreshEpoch || Date.now();
     let unsubTimeline = null;
@@ -380,7 +380,7 @@ void main(){
         layerAdded = false;
     };
 
-    // ---------- dispatch (mirrors _webglanim) ----------
+    // ---------- dispatch: choose fill (forecast-stepping) vs static fallback ----------
     const wanted = () => (forecastStepping(curAnim) && !webglFailed) ? 'fill' : 'static';
     const switchTo = (target, cfg) => {
         if (mode === target) return;

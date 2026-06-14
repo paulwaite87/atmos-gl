@@ -61,14 +61,13 @@ class TemperatureUpdater(Updater):
         plt.close(fig)
         logger.debug(f"Saved temperature key to: {key_path}")
 
-    def plot(self):
-        """Render the static temperature PNG (frame 0) + global N-frame texture.
-        
-        Now consumes pre-processed fields from the DB.
+    def plot(self, field0):
+        """Render the static temperature PNG (this hour) + global data texture.
+
+        Consumes the per-hour field passed by render_all_hours (which fetches the
+        correct hour and skips fresh ones), matching the precipitation pattern.
         """
-        # Fetch frame 0 from DB
-        field0 = self.get_db_field("temperature")
-        if not field0 or field0["values"] is None:
+        if not field0 or field0.get("values") is None:
             logger.warning(
                 "Skipping Temperature: current-hour field not available in DB yet."
             )
