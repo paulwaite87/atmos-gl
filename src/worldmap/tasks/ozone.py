@@ -32,10 +32,8 @@ class OzoneUpdater(Updater):
 
         base, ext = os.path.splitext(output_path)
         key_path = f"{base}_key{ext}"
-        # Hour-independent; write once. Skip if present (clear the file to
-        # force regeneration after a colour-scale/config change).
-        if os.path.exists(key_path):
-            return
+        # Hour-independent, but regenerated each render cycle so palette / range /
+        # font config changes are reflected without manual file deletion.
 
         fig, ax = plt.subplots(figsize=(4, 0.3))
         key_ticks = [200, 250, 300, 350, 400, 450]

@@ -71,12 +71,17 @@ class PrecipitationUpdater(Updater):
         # Standardize naming: take base name, add _key, append extension
         base, ext = os.path.splitext(output_path)
         key_path = f"{base}_key{ext}"
+        # Hour-independent, but regenerated each render cycle so palette / range /
+        # font config changes are reflected without manual file deletion.
 
         fig, ax = plt.subplots(figsize=(4, 0.3))
         key_ticks = [0.1, 1.0, 5.0, 15.0, 50.0, 100.0]
 
-        # Use your existing colormap logic
-        cmap = mpl.colors.ListedColormap(self.PALETTES["standard"])
+        # Honour the configured palette (matches the map render + the GPU layer),
+        # falling back to 'standard' if an unknown palette is set.
+        palette_name = self.settings.get("palette", "standard")
+        base_colors = self.PALETTES.get(palette_name, self.PALETTES["standard"])
+        cmap = mpl.colors.ListedColormap(base_colors)
         norm = mpl.colors.BoundaryNorm(key_ticks, cmap.N)
 
         cbar = fig.colorbar(
@@ -193,7 +198,9 @@ class PrecipitationUpdater(Updater):
         # Per-hour output path: precipitation_f003.png (for f003 forecast hour)
         output_path_for_hour = self.get_output_path_for_hour(self.forecast_hour_str)
         plot.save_figure(output_path_for_hour)
-        self.save_precipitation_key(output_path_for_hour)
+        # Key (colourbar) is hour-independent — write at the BASE name
+        # (precipitation_key.png) that the frontend requests, not per-hour.
+        self.save_precipitation_key(self.output_path)
 
         plt_close = getattr(plot, "close", None)
         if callable(plt_close):
