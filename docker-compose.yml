@@ -1,8 +1,8 @@
 services:
-  # Listens to AIS stream 24/7 and populates Ship positions
   shipping_collector:
     container_name: shipping_collector
     image: worldmap:latest
+    user: "${UID:-1000}:${GID:-1000}"
     build:
       context: .
       dockerfile: Dockerfile
@@ -31,10 +31,10 @@ services:
     networks:
       - wmap
 
-  # Acquires GFS data and updates our database
   data_collector:
     container_name: data_collector
     image: worldmap:latest
+    user: "${UID:-1000}:${GID:-1000}"
     build:
       context: .
       dockerfile: Dockerfile
@@ -62,10 +62,10 @@ services:
     networks:
       - wmap
 
-  # Acquires satellites from Celestrak and updates our database
   satellites_collector:
     container_name: satellites_collector
     image: worldmap:latest
+    user: "${UID:-1000}:${GID:-1000}"
     build:
       context: .
       dockerfile: Dockerfile
@@ -93,10 +93,10 @@ services:
     networks:
       - wmap
 
-  # Scans the World for lightning strikes and populates DB
   weather_scanner:
     container_name: weather_scanner
     image: worldmap:latest
+    user: "${UID:-1000}:${GID:-1000}"
     build:
       context: .
       dockerfile: Dockerfile
@@ -125,10 +125,10 @@ services:
     networks:
       - wmap
 
-  # Manages map assets and rendering on a schedule
   layer_builder:
     container_name: layer_builder
     image: worldmap:latest
+    user: "${UID:-1000}:${GID:-1000}"
     build:
       context: .
       dockerfile: Dockerfile
@@ -159,6 +159,7 @@ services:
   housekeeper:
     container_name: housekeeper
     image: worldmap:latest
+    user: "${UID:-1000}:${GID:-1000}"
     build:
       context: .
       dockerfile: Dockerfile
@@ -178,17 +179,16 @@ services:
     networks:
       - wmap
 
-  # API Core (Bridges config/db to your UI browser inputs)
   map_api:
     container_name: map_api
     image: worldmap:latest
+    user: "${UID:-1000}:${GID:-1000}"
     build:
       context: .
       dockerfile: Dockerfile
-    # Installs API runtime dependencies and targets our new api
-    # module with dynamic reload enabled
+    # Updated to install packages locally to the user to avoid permission denied on root site-packages
     command: >
-      bash -c "pip install fastapi uvicorn && uvicorn worldmap.api:app --host 0.0.0.0 --port 9000"
+      bash -c "pip install --user fastapi uvicorn && python -m uvicorn worldmap.api:app --host 0.0.0.0 --port 9000"
     ports:
       - "9000:9000"
     env_file:
@@ -216,23 +216,41 @@ services:
     networks:
       - wmap
 
-  # Static UI Container
   map_ui:
     container_name: map_ui
-    image: nginx:alpine
+    # Swapped to an unprivileged Nginx image
+    image: nginxinc/nginx-unprivileged:alpine
     ports:
-      - "8180:80"
+      # Swapped internal port to 8080 (non-root)
+      - "8180:8080"
     volumes:
       - ./ui:/usr/share/nginx/html:ro
-      - ./config/nginx.conf:/etc/nginx/nginx.conf
+      - ./config/nginx.conf:/etc/nginx/nginx.conf:ro
     depends_on:
       - map_api
+    networks:
+      - wmap
+
+  worldmap_db_init:
+    container_name: worldmap_db_init
+    image: alpine:latest
+    # Runs as root by default to fix Docker's volume permissions
+    command: >
+      sh -c "chown ${UID:-1000}:${GID:-1000} /var/lib/postgresql/data && 
+             chown ${UID:-1000}:${GID:-1000} /var/log/postgresql"
+    volumes:
+      - wmap-pgdata:/var/lib/postgresql/data
+      - postgres_logs:/var/log/postgresql
     networks:
       - wmap
 
   worldmap_db:
     container_name: worldmap_db
     image: postgis/postgis:15-3.3
+    user: "${UID:-1000}:${GID:-1000}"
+    depends_on:
+      worldmap_db_init:
+        condition: service_completed_successfully
     environment:
       POSTGRES_USER: wmap
       POSTGRES_PASSWORD: wmap

@@ -85,16 +85,15 @@ restore:
 	@if [ ! -f $(DUMP_FILE) ]; then echo "Error: $(DUMP_FILE) not found."; exit 1; fi
 	@read -p "Are you sure? [y/N] " ans; \
 	if [ "$${ans:-N}" = "y" ] || [ "$${ans:-N}" = "Y" ]; then \
-	   echo "Stopping services"; \
-	   docker compose stop $(SHIP_COLLECTOR_SERVICE) $(WEATHER_SCANNER_SERVICE) $(SATELLITES_COLLECTOR_SERVICE) $(BUILDER_SERVICE); \
-	   echo "Ensuring worldmap database is running..."; \
-	   docker compose up $(DB_SERVICE) -d; \
-	   sleep 5 \
-	   echo "Restoring database..."; \
-	   cat $(DUMP_FILE) | docker compose exec -T $(DB_SERVICE) pg_restore -U $(DB_USER) -d postgres --clean --create --if-exists; \
-	   echo "Restore complete."; \
-	   echo "Stopping worldmap database."; \
-	   docker compose stop $(DB_SERVICE); \
+		echo "Stopping services" ; \
+		docker compose stop $(SHIP_COLLECTOR_SERVICE) $(WEATHER_SCANNER_SERVICE) $(SATELLITES_COLLECTOR_SERVICE) $(BUILDER_SERVICE); \
+		echo "Ensuring worldmap database is running..." ; \
+		docker compose up $(DB_SERVICE) -d && sleep 5 ; \
+		echo "Restoring database..." ; \
+		cat $(DUMP_FILE) | docker compose exec -T $(DB_SERVICE) pg_restore -U $(DB_USER) -d postgres --clean --create --if-exists ; \
+		echo "Restore complete." ; \
+		echo "Stopping worldmap database." ; \
+		docker compose stop $(DB_SERVICE) ; \
 	fi
 
 ## clean: Stop containers, remove images
