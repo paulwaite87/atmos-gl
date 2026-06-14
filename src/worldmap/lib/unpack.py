@@ -26,6 +26,7 @@ import logging
 import numpy as np
 import xarray as xr
 from scipy.ndimage import gaussian_filter
+from scipy.spatial import cKDTree
 
 
 logging.getLogger("cfgrib.messages").setLevel(logging.ERROR)
@@ -175,6 +176,99 @@ def stormwatch_data_unpack(path):
 # Registry: product name -> unpack function. The collector iterates this for everything
 # carried by the atmospheric (pgrb2.0p25) union file. waves (GFS wave product) and the
 # non-GFS sources (currents=RTOFS, sst=OISST) get their own unpackers in later passes.
+# -- RTOFS currents (NetCDF, native tripolar grid -> regular lat/lon) -----------
+
+# Target regular grid for currents. RTOFS native is ~0.08 deg on a curvilinear
+# tripolar grid; we regrid to a regular 0.1 deg lat/lon so currents drop into the
+# same fieldstore/encode_frames/fill-layer pipeline as every other layer. 0.1 deg
+# keeps the eddy / western-boundary-current structure (the detail that makes this
+# layer worth showing) at a manageable ~25 MB/hr texture.
+CURRENTS_STEP = 0.1
+CURRENTS_LAT_MIN, CURRENTS_LAT_MAX = -80.0, 90.0   # RTOFS covers ~ -78.6 .. 90
+
+
+def _regrid_curvilinear_nn(lat2d, lon2d, fields, step, lat_min, lat_max):
+    """Nearest-neighbour regrid of 2-D curvilinear fields onto a regular lat/lon grid.
+
+    RTOFS Latitude/Longitude are 2-D (Y,X): regular Mercator south of ~47N, tripolar
+    (curvilinear) above it, longitudes running ~74..434E with a junk-filled last
+    column. We:
+      - unwrap longitude to [-180,180),
+      - mask invalid / fill / junk-column points,
+      - subsample the source ~2x (still denser than a 0.1 deg target) to keep the
+        KD-tree small and memory bounded,
+      - nearest-neighbour map onto the target grid with a distance cap so land/gaps
+        stay NaN instead of smearing currents across continents.
+
+    TODO(perf/quality): nearest-neighbour shows slight blockiness where the target
+    approaches source resolution. A linear/bicubic scattered interpolation (or a
+    structured regrid like xESMF) would be smoother; deferred to keep ingest light
+    and dependency-free. The fill-layer's bicubic sampling hides most of it at
+    typical zooms.
+
+    Args:
+        lat2d, lon2d: (Y,X) coordinate arrays (degrees).
+        fields: dict name->(Y,X) array to regrid together (e.g. {"u":..,"v":..}).
+        step, lat_min, lat_max: target grid definition.
+    Returns:
+        (tlat, tlon, {name: regridded 2-D array}) on the regular grid.
+    """
+    lon180 = ((np.asarray(lon2d, dtype=np.float64) + 180.0) % 360.0) - 180.0
+    lat = np.asarray(lat2d, dtype=np.float64)
+
+    # Valid where every field is finite and physical, and not the junk lon column.
+    valid = (lon2d < 500.0)
+    for arr in fields.values():
+        a = np.asarray(arr)
+        valid = valid & np.isfinite(a) & (np.abs(a) < 100.0)
+
+    # Subsample source (~2x) to bound the KD-tree; still denser than a 0.1 deg target.
+    sub = (slice(None, None, 2), slice(None, None, 2))
+    vm = valid[sub]
+    src = np.column_stack([lat[sub][vm].ravel(), lon180[sub][vm].ravel()])
+
+    tlat = np.arange(lat_min, lat_max + step, step)
+    tlon = np.arange(-180.0, 180.0, step)
+    mlat, mlon = np.meshgrid(tlat, tlon, indexing="ij")
+    tgt = np.column_stack([mlat.ravel(), mlon.ravel()])
+
+    tree = cKDTree(src)
+    # distance_upper_bound in degrees; ~2.5 target cells. Beyond -> no source -> NaN.
+    dist, idx = tree.query(tgt, k=1, distance_upper_bound=step * 2.5)
+    hit = np.isfinite(dist) & (idx < src.shape[0])
+
+    out = {}
+    for name, arr in fields.items():
+        vals = np.asarray(arr)[sub][vm].ravel()
+        safe_idx = np.clip(idx, 0, vals.size - 1)
+        regridded = np.where(hit, vals[safe_idx], np.nan).reshape(mlat.shape)
+        out[name] = regridded.astype(np.float32)
+    return tlat, tlon, out
+
+
+def currents_data_unpack(path):
+    """RTOFS 2ds prog NetCDF -> u, v surface currents (m/s) on a regular 0.1 deg grid.
+
+    Source variables: u_velocity / v_velocity, dims (MT, Layer, Y, X) with singleton
+    MT (time) and Layer; coordinates Latitude/Longitude are 2-D curvilinear. We squeeze
+    the singleton dims and regrid to a regular lat/lon grid (see _regrid_curvilinear_nn).
+    """
+    ds = xr.open_dataset(path)
+    u = ds["u_velocity"].values.squeeze()   # (Y,X) after dropping MT, Layer
+    v = ds["v_velocity"].values.squeeze()
+    lat2d = ds["Latitude"].values            # (Y,X)
+    lon2d = ds["Longitude"].values           # (Y,X)
+    ds.close()
+
+    tlat, tlon, reg = _regrid_curvilinear_nn(
+        lat2d, lon2d, {"u": u, "v": v},
+        CURRENTS_STEP, CURRENTS_LAT_MIN, CURRENTS_LAT_MAX,
+    )
+    out = _blank()
+    out.update(lat=tlat, lon=tlon, u=reg["u"], v=reg["v"])
+    return out
+
+
 ATMOS_UNPACKERS = {
     "isobars": isobars_data_unpack,
     "precipitation": precipitation_data_unpack,
@@ -182,4 +276,10 @@ ATMOS_UNPACKERS = {
     "ozone": ozone_data_unpack,
     "wind": wind_data_unpack,
     "stormwatch": stormwatch_data_unpack,
+}
+
+# RTOFS (ocean) products are downloaded per-file (NetCDF), not from the GFS atmos
+# union, so they live in their own registry the collector's currents handler uses.
+CURRENTS_UNPACKERS = {
+    "currents": currents_data_unpack,
 }

@@ -250,10 +250,15 @@ class FieldStore:
 
         logger.info("Fieldstore reconciliation complete.")
 
-    def prune_except_run(self, gfs_date: str, gfs_run: str):
-        """Delete every catalogued field NOT belonging to (gfs_date, gfs_run),
-        removing both the catalog row and its file. Used by the collector after a
-        successful refresh to drop superseded runs.
+    def prune_except_run(self, gfs_date: str, gfs_run: str, products=None):
+        """Delete catalogued fields NOT belonging to (gfs_date, gfs_run).
+
+        Used by collectors after a successful refresh to drop superseded runs. When
+        `products` is given (an iterable of product names), only fields in that set
+        are eligible for pruning — so a collector prunes ONLY its own product family
+        and can't delete another datasource's fields (GFS runs and RTOFS currents
+        live under different (date, run) keys in the same catalog). When `products`
+        is None the old behaviour (prune everything not matching) is retained.
         """
         try:
             rows = self.db.get_field_rows_except(gfs_date, gfs_run)
@@ -261,9 +266,12 @@ class FieldStore:
             logger.debug(f"prune_except_run: catalog query failed: {e}")
             return
 
+        product_filter = set(products) if products is not None else None
         removed = 0
         for row in rows:
             d, r, fh, p = row["gfs_date"], row["gfs_run"], row["fhour"], row["product"]
+            if product_filter is not None and p not in product_filter:
+                continue  # not our product family; leave it for its own collector
             # Delete the file (path comes from the catalog's storage_uri)
             uri = row.get("storage_uri")
             if uri:

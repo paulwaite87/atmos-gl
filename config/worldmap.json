@@ -235,11 +235,11 @@
     "marker_fontsize": 11
   },
   "data_collector": {
-    "enabled": false,
+    "enabled": true,
     "datasources": {
       "gfs": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
       "sst": "https://downloads.psl.noaa.gov/Datasets/noaa.oisst.v2.highres",
-      "currents": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/rtofs/prod/"
+      "currents": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/rtofs/prod"
     },
     "update_hours": 1,
     "cache_hours": 24,
