@@ -2,10 +2,12 @@ services:
   shipping_collector:
     container_name: shipping_collector
     image: worldmap:latest
-    user: "${UID:-1000}:${GID:-1000}"
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        UID: "${UID:-1000}"
+        GID: "${GID:-1000}"
     command: python -m worldmap.shipping_collector --config /opt/project/config/worldmap.json
     env_file:
       - .env
@@ -34,10 +36,12 @@ services:
   data_collector:
     container_name: data_collector
     image: worldmap:latest
-    user: "${UID:-1000}:${GID:-1000}"
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        UID: "${UID:-1000}"
+        GID: "${GID:-1000}"
     command: python -m worldmap.data_collector --config /opt/project/config/worldmap.json
     env_file:
       - .env
@@ -65,10 +69,12 @@ services:
   satellites_collector:
     container_name: satellites_collector
     image: worldmap:latest
-    user: "${UID:-1000}:${GID:-1000}"
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        UID: "${UID:-1000}"
+        GID: "${GID:-1000}"
     command: python -m worldmap.satellites_collector --config /opt/project/config/worldmap.json
     env_file:
       - .env
@@ -96,10 +102,12 @@ services:
   weather_scanner:
     container_name: weather_scanner
     image: worldmap:latest
-    user: "${UID:-1000}:${GID:-1000}"
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        UID: "${UID:-1000}"
+        GID: "${GID:-1000}"
     command: python -m worldmap.weather_scanner --config /opt/project/config/worldmap.json
     env_file:
       - .env
@@ -128,10 +136,12 @@ services:
   layer_builder:
     container_name: layer_builder
     image: worldmap:latest
-    user: "${UID:-1000}:${GID:-1000}"
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        UID: "${UID:-1000}"
+        GID: "${GID:-1000}"
     command: python -m worldmap.layer_builder --config /opt/project/config/worldmap.json
     env_file:
       - .env
@@ -159,10 +169,12 @@ services:
   housekeeper:
     container_name: housekeeper
     image: worldmap:latest
-    user: "${UID:-1000}:${GID:-1000}"
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        UID: "${UID:-1000}"
+        GID: "${GID:-1000}"
     command: python -m worldmap.housekeeper --config /opt/project/config/worldmap.json
     env_file:
       - .env
@@ -182,13 +194,15 @@ services:
   map_api:
     container_name: map_api
     image: worldmap:latest
-    user: "${UID:-1000}:${GID:-1000}"
     build:
       context: .
       dockerfile: Dockerfile
-    # Updated to install packages locally to the user to avoid permission denied on root site-packages
+      args:
+        UID: "${UID:-1000}"
+        GID: "${GID:-1000}"
+    # Reverted to a simpler runtime installation since wmapuser now owns the virtual environment
     command: >
-      bash -c "pip install --user fastapi uvicorn && python -m uvicorn worldmap.api:app --host 0.0.0.0 --port 9000"
+      bash -c "uv pip install fastapi uvicorn && python -m uvicorn worldmap.api:app --host 0.0.0.0 --port 9000"
     ports:
       - "9000:9000"
     env_file:
@@ -218,10 +232,8 @@ services:
 
   map_ui:
     container_name: map_ui
-    # Swapped to an unprivileged Nginx image
     image: nginxinc/nginx-unprivileged:alpine
     ports:
-      # Swapped internal port to 8080 (non-root)
       - "8180:8080"
     volumes:
       - ./ui:/usr/share/nginx/html:ro
@@ -234,7 +246,6 @@ services:
   worldmap_db_init:
     container_name: worldmap_db_init
     image: alpine:latest
-    # Runs as root by default to fix Docker's volume permissions
     command: >
       sh -c "chown ${UID:-1000}:${GID:-1000} /var/lib/postgresql/data && 
              chown ${UID:-1000}:${GID:-1000} /var/log/postgresql"
@@ -247,6 +258,7 @@ services:
   worldmap_db:
     container_name: worldmap_db
     image: postgis/postgis:15-3.3
+    # The database STILL needs the user directive because it uses a pre-built image, not your custom Dockerfile
     user: "${UID:-1000}:${GID:-1000}"
     depends_on:
       worldmap_db_init:

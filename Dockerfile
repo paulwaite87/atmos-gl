@@ -1,5 +1,9 @@
 FROM python:3.12-slim
 
+# Define build arguments for host UID/GID mapping (defaults to 1000)
+ARG UID=1000
+ARG GID=1000
+
 # 1. Environment & Global Settings
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -25,6 +29,10 @@ RUN sed -i 's/domain="coder" rights="none" pattern="PDF"/domain="coder" rights="
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone \
     && echo 'en_NZ.UTF-8 UTF-8' > /etc/locale.gen && locale-gen en_NZ.UTF-8
 
+# Create the non-root user and group
+RUN groupadd -g ${GID} wmapgroup && \
+    useradd -u ${UID} -g wmapgroup -m wmapuser
+
 # 3. Virtual Environment & Tooling Setup
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
@@ -39,16 +47,19 @@ COPY pyproject.toml uv.lock README.md ./
 RUN uv sync --frozen --no-install-project --no-dev
 
 # 5. Application Code & Assets
-# Note: Copy the whole src directory to ensure the 'worldmap' package is findable
 COPY src/ ./src/
 COPY ui/images/ ./images/
 COPY markers/ ./markers/
 
 # 6. Final Sync & Script Installation
-# This ensures all dependencies are synced AND the
-# scripts are created in /opt/venv/bin/
 RUN uv sync --frozen --no-dev --editable \
     && uv pip install -e .
+
+# Grant the non-root user ownership of both the project and the virtual environment
+RUN chown -R wmapuser:wmapgroup /opt/project /opt/venv
+
+# Switch to the non-root user
+USER wmapuser
 
 # 7. Runtime Configuration
 ENV PYTHONPATH="/opt/project/src"
