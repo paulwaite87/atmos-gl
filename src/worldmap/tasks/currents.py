@@ -260,7 +260,7 @@ class CurrentsUpdater(Updater):
         self.nc_path = self.cache_path(f"rtofs_currents_{self.forecast_hour_str}.nc")
 
         urls_to_try = [
-            f"{self.base_url}/rtofs.{self.gfs_date_str}/rtofs_glo_2ds_n{self.forecast_hour_str}_prog.nc",
+            f"{self.base_url}/rtofs.{self.gfs_date_str}/rtofs_glo_2ds_f{self.forecast_hour_str}_prog.nc",
             f"{self.base_url}/rtofs.{self.gfs_date_str}/rtofs_glo_2ds_n000_prog.nc",
         ]
 
