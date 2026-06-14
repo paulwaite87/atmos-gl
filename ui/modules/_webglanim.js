@@ -49,7 +49,7 @@ void main() {
 //     vec4 shade(float value, vec2 uv)   // returns STRAIGHT-alpha rgba
 // Two single-hour textures (u_tex0 = current hour, u_tex1 = next hour) are
 // cross-faded by u_frac. R = normalised value, A = mask.
-const fragSource = (body, valueDecode) => `#version 300 es
+const fragSource = (body, valueDecode, bicubic) => `#version 300 es
 precision highp float;
 in vec2 v_uv;
 out vec4 fragColor;
@@ -58,21 +58,64 @@ uniform sampler2D u_tex1;          // next hour
 uniform float u_frac;              // 0..1 cross-fade current->next
 uniform float u_vmin;
 uniform float u_span;
+uniform vec2 u_texsize;            // data texture dimensions (px), for bicubic taps
 uniform sampler2D u_cmap;          // optional 256x1 colour LUT (unused by some layers)
 const float PI = 3.141592653589793;
 // Per-layer normalised-value extractor from a texel. Default: 16-bit, R=high byte,
 // G=low byte (65535 levels) — matches encode_frames' default and removes value
 // stepping. A layer can override valueDecode (e.g. 'd.r' for a legacy 8-bit texture).
 float decodeNorm(vec4 d) { return ${valueDecode || '(d.r * 65280.0 + d.g * 255.0) / 65535.0'}; }
+
+// Sample one texture's DECODED value (nearest texel). Used as the bicubic tap.
+float tapVal(sampler2D t, vec2 uv) { return decodeNorm(texture(t, uv)); }
+
+// Catmull-Rom cubic weights for fractional position f (one axis).
+vec4 cubicW(float f) {
+    float f2 = f * f, f3 = f2 * f;
+    return vec4(
+        -0.5*f3 + f2 - 0.5*f,
+         1.5*f3 - 2.5*f2 + 1.0,
+        -1.5*f3 + 2.0*f2 + 0.5*f,
+         0.5*f3 - 0.5*f2
+    );
+}
+
+// Bicubic interpolation of the DECODED value (16 taps). Interpolating the decoded
+// scalar — not raw bytes — keeps 16-bit layers correct. Smooth gradient across
+// cell boundaries -> smooth band contours even at high zoom (no resolution bump).
+float bicubicVal(sampler2D t, vec2 uv) {
+    vec2 tsz = u_texsize;
+    vec2 coord = uv * tsz - 0.5;
+    vec2 fxy = fract(coord);
+    vec2 base = (coord - fxy + 0.5) / tsz;     // texel-centre of the -1 sample
+    vec4 wx = cubicW(fxy.x);
+    vec4 wy = cubicW(fxy.y);
+    float result = 0.0;
+    for (int j = 0; j < 4; j++) {
+        float v = 0.0;
+        for (int i = 0; i < 4; i++) {
+            vec2 off = vec2(float(i - 1), float(j - 1)) / tsz;
+            v += wx[i] * tapVal(t, base + off);
+        }
+        result += wy[j] * v;
+    }
+    return result;
+}
+
+// Decoded value for a tap, honouring the per-layer interpolation mode.
+float sampleVal(sampler2D t, vec2 uv) {
+    return ${bicubic ? 'bicubicVal(t, uv)' : 'decodeNorm(texture(t, uv))'};
+}
 ${body}
 void main() {
     float latRad = atan(sinh(PI * (1.0 - 2.0 * v_uv.y)));   // mercator row -> latitude
     float texV = (PI * 0.5 - latRad) / PI;                  // -> equirectangular V
     vec2 uv = vec2(v_uv.x, texV);
+    // Mask still read from the nearest texel of each hour (alpha is binary).
     vec4 d0 = texture(u_tex0, uv);
     vec4 d1 = texture(u_tex1, uv);
     if (d0.a < 0.5 || d1.a < 0.5) discard;                  // missing data
-    float value = mix(decodeNorm(d0), decodeNorm(d1), u_frac) * u_span + u_vmin;
+    float value = mix(sampleVal(u_tex0, uv), sampleVal(u_tex1, uv), u_frac) * u_span + u_vmin;
     fragColor = shade(value, uv);
 }`;
 
@@ -84,6 +127,7 @@ export function createAnimatedRasterLayer(map, opts) {
         vmin, vspan,
         fragmentBody,
         valueDecode = null,           // optional GLSL expr over vec4 'd' (e.g. 16-bit decode)
+        bicubic = false,              // bicubic value interpolation (smooth contours at high zoom)
         customUniforms = () => ({}),
         opacity = 0.85,
         initialAnimation = {},
@@ -168,7 +212,7 @@ export function createAnimatedRasterLayer(map, opts) {
         gl = glCanvas.getContext('webgl2', { premultipliedAlpha: false, antialias: true });
         if (!gl) return false;
         const vs = compile(gl.VERTEX_SHADER, VERT);
-        const fs = compile(gl.FRAGMENT_SHADER, fragSource(fragmentBody, valueDecode));
+        const fs = compile(gl.FRAGMENT_SHADER, fragSource(fragmentBody, valueDecode, bicubic));
         if (!vs || !fs) return false;
         program = gl.createProgram();
         gl.attachShader(program, vs); gl.attachShader(program, fs); gl.linkProgram(program);
@@ -187,6 +231,9 @@ export function createAnimatedRasterLayer(map, opts) {
         gl.useProgram(program);
         gl.uniform1f(gl.getUniformLocation(program, 'u_vmin'), vmin);
         gl.uniform1f(gl.getUniformLocation(program, 'u_span'), vspan);
+        // Default data-texture size (GFS 0.25° source grid); refined on image load.
+        const tsLoc = gl.getUniformLocation(program, 'u_texsize');
+        if (tsLoc) gl.uniform2f(tsLoc, 1440.0, 721.0);
 
         // Colour LUT texture (256x1). Defaults to white.
         cmapTex = gl.createTexture();
@@ -250,6 +297,13 @@ export function createAnimatedRasterLayer(map, opts) {
             gl.bindTexture(gl.TEXTURE_2D, entry.tex);
             gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
             entry.ready = true; entry.loading = false;
+            // Record the data-texture size for bicubic tap offsets (all hours share
+            // the same source grid; set once when the first image arrives).
+            if (bicubic && program && (img.naturalWidth | 0) > 1) {
+                gl.useProgram(program);
+                const loc = gl.getUniformLocation(program, 'u_texsize');
+                if (loc) gl.uniform2f(loc, img.naturalWidth, img.naturalHeight);
+            }
             drawPending = true;
         };
         img.onerror = () => {

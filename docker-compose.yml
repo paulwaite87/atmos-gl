@@ -247,8 +247,8 @@ services:
     container_name: worldmap_db_init
     image: alpine:latest
     command: >
-      sh -c "chown ${UID:-1000}:${GID:-1000} /var/lib/postgresql/data && 
-             chown ${UID:-1000}:${GID:-1000} /var/log/postgresql"
+      sh -c "chown -R ${UID:-1000}:${GID:-1000} /var/lib/postgresql/data && 
+             chown -R ${UID:-1000}:${GID:-1000} /var/log/postgresql"
     volumes:
       - wmap-pgdata:/var/lib/postgresql/data
       - postgres_logs:/var/log/postgresql

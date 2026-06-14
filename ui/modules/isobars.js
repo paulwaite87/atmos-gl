@@ -1,4 +1,4 @@
-import { createAnimatedRasterLayer, cssToRgb } from './_webglanim.js';
+import { createFillLayer, cssToRgb } from './_webglfill.js';
 import { timeline } from './timeline.js';
 
 export function loadLayer(map, config, fullConfig = {}) {
@@ -7,7 +7,7 @@ export function loadLayer(map, config, fullConfig = {}) {
     const labels = makePressureLabels(map, config);
 
     // --- GPU isobar LINES (unchanged): crisp, animated, cross-faded ---
-    createAnimatedRasterLayer(map, {
+    createFillLayer(map, {
         sectionKey: 'isobars',
         initialConfig: config,
         initialAnimation: fullConfig.animation || {},
@@ -15,17 +15,18 @@ export function loadLayer(map, config, fullConfig = {}) {
         vmin: 950.0,
         vspan: 100.0,                          // 1050 - 950, matches backend encode
         opacity: 0.85,
-        // 16-bit value decode is the default in _webglanim, giving ~0.0015 hPa
-        // precision so contour lines aren't quantised into ~0.4 hPa steps.
-        // resolution from cfg.level_of_detail; timing/sharpness from the global [animation] section
+        bicubic: true,                         // smooth contour paths at high zoom
+        // 16-bit value decode is the default, giving ~0.0015 hPa precision so contour
+        // lines aren't quantised. Rendered as a custom layer at SCREEN resolution, so
+        // lines stay crisp at any zoom and line width is in true screen pixels.
         fragmentBody: `
             uniform float u_interval;          // hPa between isobars
-            uniform float u_linewidth;         // line width in canvas px
+            uniform float u_linewidth;         // line width in SCREEN px
             uniform vec3  u_linecolor;
             vec4 shade(float value, vec2 uv) {
                 float f = value / u_interval;
                 float distToLine = abs(fract(f + 0.5) - 0.5);   // f-units to nearest contour
-                float aa = fwidth(f);                            // f-units per canvas pixel
+                float aa = fwidth(f);                            // f-units per screen pixel
                 if (aa <= 0.0) discard;
                 float px = distToLine / aa;                      // pixels to nearest contour
                 float halfW = max(u_linewidth, 0.5) * 0.5;

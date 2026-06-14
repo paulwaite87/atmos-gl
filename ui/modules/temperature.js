@@ -1,4 +1,4 @@
-import { createAnimatedRasterLayer } from './_webglanim.js';
+import { createFillLayer } from './_webglfill.js';
 import { CMAP_RDYLBU_R, rgbToRgba } from './_colormaps.js';
 
 // GPU scrubber layer. Linear RdYlBu_r ramp over [-40, 50] °C, matching the static
@@ -28,7 +28,7 @@ export function loadLayer(map, config, fullConfig = {}) {
     };
     const removeLegend = () => document.getElementById(slotId)?.remove();
 
-    createAnimatedRasterLayer(map, {
+    createFillLayer(map, {
         sectionKey: 'temperature',
         initialConfig: config,
         initialAnimation: fullConfig.animation || {},
@@ -36,6 +36,7 @@ export function loadLayer(map, config, fullConfig = {}) {
         vmin: VMIN,
         vspan: VMAX - VMIN,                    // value = real °C
         opacity: 1.0,                          // per-pixel alpha from u_alpha
+        bicubic: true,                         // smooth gradient at high zoom
         fragmentBody: `
             uniform float u_alpha;
             vec4 shade(float value, vec2 uv) {

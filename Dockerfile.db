@@ -1,3 +1,0 @@
-FROM postgis/postgis:15-3.3
-# Copy the initialization scripts so they run automatically on first boot
-COPY ./config/database /docker-entrypoint-initdb.d/

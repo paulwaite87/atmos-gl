@@ -1,4 +1,4 @@
-import { createAnimatedRasterLayer } from './_webglanim.js';
+import { createFillLayer } from './_webglfill.js';
 import { CMAP_YLORRD, rgbToRgba } from './_colormaps.js';
 
 // GPU scrubber layer (CAPE). Linear YlOrRd ramp over [0, 5000] J/kg, matching the
@@ -29,7 +29,7 @@ export function loadLayer(map, config, fullConfig = {}) {
     };
     const removeLegend = () => document.getElementById(slotId)?.remove();
 
-    createAnimatedRasterLayer(map, {
+    createFillLayer(map, {
         sectionKey: 'stormwatch',
         initialConfig: config,
         initialAnimation: fullConfig.animation || {},
@@ -37,6 +37,7 @@ export function loadLayer(map, config, fullConfig = {}) {
         vmin: VMIN,
         vspan: VMAX - VMIN,
         opacity: 1.0,
+        bicubic: true,                         // smooth gradient at high zoom
         fragmentBody: `
             uniform float u_alpha;
             uniform float u_min;               // J/kg threshold; below -> transparent
