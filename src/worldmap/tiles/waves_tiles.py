@@ -21,6 +21,7 @@ the index and skip the containment test entirely; coastal tiles test only the fe
 local polygons that overlap them. That's what keeps both the warm and the on-demand
 renders fast.
 """
+
 import os
 import io
 import json
@@ -38,11 +39,11 @@ logger = logging.getLogger("worldmap.tiles.waves")
 LAT_LIMIT = 85.0511
 TILE_PX = 256
 VMAX = 8.0
-PREBUILD_MAXZOOM_DEFAULT = 6     # base pyramid depth warmed on refresh
-ONDEMAND_MAXZOOM = 9             # real tiles served to here (deeper still renders)
+PREBUILD_MAXZOOM_DEFAULT = 6  # base pyramid depth warmed on refresh
+ONDEMAND_MAXZOOM = 9  # real tiles served to here (deeper still renders)
 
 _lut_cache: dict[str, np.ndarray] = {}
-_field_mem: dict[str, tuple] = {}        # version -> (field, meta), API-side
+_field_mem: dict[str, tuple] = {}  # version -> (field, meta), API-side
 _coast_tree = None
 _coast_polys = None
 _coast_lock = threading.Lock()
@@ -52,7 +53,7 @@ _coast_lock = threading.Lock()
 # Tile geometry / palette / sampling (pure, unit-tested)
 # --------------------------------------------------------------------------- #
 def tile_pixel_lonlat(z: int, x: int, y: int, px: int = TILE_PX):
-    n = 2.0 ** z
+    n = 2.0**z
     col = (np.arange(px) + 0.5) / px
     lon = (x + col) / n * 360.0 - 180.0
     row = (np.arange(px) + 0.5) / px
@@ -76,13 +77,17 @@ def build_lut(palette_name: str) -> np.ndarray:
 
 def sample_field(field, meta, lon2d, lat2d):
     from scipy.ndimage import map_coordinates
+
     col = ((lon2d - meta["lon0"]) / meta["dlon"]) % meta["nlon"]
     row = np.clip((lat2d - meta["lat0"]) / meta["dlat"], 0, meta["nlat"] - 1)
-    return map_coordinates(field, [row, col], order=1, mode="grid-wrap", prefilter=False)
+    return map_coordinates(
+        field, [row, col], order=1, mode="grid-wrap", prefilter=False
+    )
 
 
-def compose_tile_rgba(field, meta, lut, alpha255, threshold, z, x, y,
-                      land_fn=None, px=TILE_PX):
+def compose_tile_rgba(
+    field, meta, lut, alpha255, threshold, z, x, y, land_fn=None, px=TILE_PX
+):
     lon, lat = tile_pixel_lonlat(z, x, y, px)
     lon2d, lat2d = np.meshgrid(lon, lat)
     swh = sample_field(field, meta, lon2d, lat2d)
@@ -136,8 +141,14 @@ def land_mask(lon2d, lat2d):
 
         tree, polys = _coastline()
         lon = ((lon2d + 180.0) % 360.0) - 180.0
-        idx = tree.query(box(float(lon.min()), float(lat2d.min()),
-                             float(lon.max()), float(lat2d.max())))
+        idx = tree.query(
+            box(
+                float(lon.min()),
+                float(lat2d.min()),
+                float(lon.max()),
+                float(lat2d.max()),
+            )
+        )
         if len(idx) == 0:
             return None
         local = shapely.union_all([polys[i] for i in np.asarray(idx)])
@@ -169,7 +180,8 @@ def bake_field(grib_path: str):
     from scipy.ndimage import distance_transform_edt
 
     ds = xr.open_dataset(
-        grib_path, engine="cfgrib",
+        grib_path,
+        engine="cfgrib",
         backend_kwargs={"filter_by_keys": {"typeOfLevel": "surface"}},
     )
     lat = np.asarray(ds["latitude"].values, dtype=np.float64)
@@ -183,9 +195,12 @@ def bake_field(grib_path: str):
     idx = distance_transform_edt(bad, return_distances=False, return_indices=True)
     field = swh[tuple(idx)].astype(np.float32)
     meta = {
-        "lat0": float(lat[0]), "dlat": float(lat[1] - lat[0]),
-        "lon0": float(lon[0]), "dlon": float(lon[1] - lon[0]),
-        "nlat": int(field.shape[0]), "nlon": int(field.shape[1]),
+        "lat0": float(lat[0]),
+        "dlat": float(lat[1] - lat[0]),
+        "lon0": float(lon[0]),
+        "dlon": float(lon[1] - lon[0]),
+        "nlat": int(field.shape[0]),
+        "nlon": int(field.shape[1]),
     }
     return field, meta
 
@@ -222,7 +237,9 @@ def current_version(config):
     intentionally excluded, so editing those never forces a tile rebuild. Also used as
     the frontend tile cache-buster.
     """
-    grib = current_grib(os.path.join(config.get_setting("common", "workdir", "."), "data"))
+    grib = current_grib(
+        os.path.join(config.get_setting("common", "workdir", "."), "data")
+    )
     if not grib:
         return None
     waves = config.get_section("waves")
@@ -254,6 +271,7 @@ def published_version(config):
 # --------------------------------------------------------------------------- #
 def _write_png(rgba, path):
     from PIL import Image
+
     buf = io.BytesIO()
     Image.fromarray(rgba, mode="RGBA").save(buf, format="PNG")
     os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -290,11 +308,14 @@ def publish_dataset(config, grib_path):
     with open(os.path.join(vdir, "meta.json"), "w") as fh:
         json.dump(meta, fh)
 
-    prebuild = int(config.get_section("waves").get(
-        "prebuild_maxzoom", PREBUILD_MAXZOOM_DEFAULT))
+    prebuild = int(
+        config.get_section("waves").get("prebuild_maxzoom", PREBUILD_MAXZOOM_DEFAULT)
+    )
     pub = {
-        "version": version, "prebuilt_maxzoom": prebuild,
-        "maxzoom": ONDEMAND_MAXZOOM, "tileSize": TILE_PX,
+        "version": version,
+        "prebuilt_maxzoom": prebuild,
+        "maxzoom": ONDEMAND_MAXZOOM,
+        "tileSize": TILE_PX,
     }
     tmp = _published_path(config) + ".tmp"
     with open(tmp, "w") as fh:
@@ -318,15 +339,19 @@ def warm_pyramid(config, version, field, meta, max_workers=None):
     """
     palette, alpha255, threshold = _settings(config)
     lut = build_lut(palette)
-    prebuild = int(config.get_section("waves").get(
-        "prebuild_maxzoom", PREBUILD_MAXZOOM_DEFAULT))
+    prebuild = int(
+        config.get_section("waves").get("prebuild_maxzoom", PREBUILD_MAXZOOM_DEFAULT)
+    )
     vdir = os.path.join(_tiles_root(config), version)
 
     _coastline()  # build the index once, before the worker threads fan out
 
-    tasks = [(z, x, y)
-             for z in range(0, prebuild + 1)            # low zoom first
-             for x in range(2 ** z) for y in range(2 ** z)]
+    tasks = [
+        (z, x, y)
+        for z in range(0, prebuild + 1)  # low zoom first
+        for x in range(2**z)
+        for y in range(2**z)
+    ]
 
     def warm_one(t):
         z, x, y = t
@@ -382,4 +407,5 @@ def serve_tile(config, z, x, y):
     field, meta = loaded
     palette, alpha255, threshold = _settings(config)
     return _compose_and_write(
-        path, field, meta, build_lut(palette), alpha255, threshold, z, x, y)
+        path, field, meta, build_lut(palette), alpha255, threshold, z, x, y
+    )

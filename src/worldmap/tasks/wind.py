@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 import os
 import logging
-import numpy as np
 
 from worldmap.lib.config import WorldMapConfig
-from .common import Updater, MapData, Plot, encode_uv
+from .common import Updater, MapData, encode_uv
 
 logging.getLogger("cfgrib").setLevel(logging.ERROR)
 

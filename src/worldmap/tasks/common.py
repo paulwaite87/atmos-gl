@@ -58,8 +58,8 @@ def encode_frames(frames, output_path, vmin, vmax, transform=None, bits=16):
         a = np.where(np.isnan(m), 0, 255).astype(np.uint8)
         if bits == 16:
             q = np.clip(np.round(norm * 65535.0), 0, 65535).astype(np.uint32)
-            hi = (q >> 8).astype(np.uint8)            # R = high byte
-            lo = (q & 0xFF).astype(np.uint8)          # G = low byte
+            hi = (q >> 8).astype(np.uint8)  # R = high byte
+            lo = (q & 0xFF).astype(np.uint8)  # G = low byte
             z = np.zeros_like(hi)
             slabs.append(np.dstack((hi, lo, z, a)))
         else:
@@ -518,13 +518,19 @@ class Updater:
             Field dict {lat, lon, values, values2, u, v, valid_time} or None
         """
         if not hasattr(self, "gfs_date_str") or not hasattr(self, "gfs_run"):
-            logger.debug(f"get_db_field_at_hour({product_name}, f{fhour:03d}): GFS state not set")
+            logger.debug(
+                f"get_db_field_at_hour({product_name}, f{fhour:03d}): GFS state not set"
+            )
             return None
         try:
             fs = fieldstore.get_store(self.workdir)
-            return fs.get_field(self.gfs_date_str, self.gfs_run, int(fhour), product_name)
+            return fs.get_field(
+                self.gfs_date_str, self.gfs_run, int(fhour), product_name
+            )
         except Exception as e:
-            logger.debug(f"get_db_field_at_hour({product_name}, f{fhour:03d}) failed: {e}")
+            logger.debug(
+                f"get_db_field_at_hour({product_name}, f{fhour:03d}) failed: {e}"
+            )
             return None
 
     def should_plot_for_hour(self, product_name: str, fhour: int | str = None) -> bool:
@@ -549,7 +555,7 @@ class Updater:
         # missing, re-plot to fill the gap (this is what makes "delete a _data.png to
         # force regeneration" work even when the static .png is still present).
         required_paths = []
-        for suffix in (self.per_hour_outputs or [".png"]):
+        for suffix in self.per_hour_outputs or [".png"]:
             # ".png" -> the static per-hour file; "_data.png"/"_labels.geojson" -> base+suffix.
             required_paths.append(output_path if suffix == ext else f"{base}{suffix}")
         missing = [p for p in required_paths if not os.path.exists(p)]
@@ -561,7 +567,9 @@ class Updater:
         # are written together in one plot() call).
         try:
             fs = fieldstore.get_store(self.workdir)
-            meta = fs.get_field_meta(self.gfs_date_str, self.gfs_run, fhour, product_name)
+            meta = fs.get_field_meta(
+                self.gfs_date_str, self.gfs_run, fhour, product_name
+            )
 
             if not meta or meta.get("updated_at") is None:
                 # No data catalogued, don't plot (data isn't ready yet)
@@ -586,7 +594,9 @@ class Updater:
             return (field_updated - file_dt).total_seconds() > 1
 
         except Exception as e:
-            logger.debug(f"should_plot_for_hour({product_name}, f{fhour:03d}) check failed: {e}")
+            logger.debug(
+                f"should_plot_for_hour({product_name}, f{fhour:03d}) check failed: {e}"
+            )
             # On error, be conservative — don't plot (file is probably fine)
             return False
 
@@ -626,10 +636,14 @@ class Updater:
         per_hour = f"{base}_f{fhour:03d}{ext}"
 
         pairs = [
-            (per_hour, self.output_path),                       # static raster
-            (f"{base}_f{fhour:03d}_data.png", f"{base}_data.png"),  # multi-frame texture
+            (per_hour, self.output_path),  # static raster
+            (
+                f"{base}_f{fhour:03d}_data.png",
+                f"{base}_data.png",
+            ),  # multi-frame texture
         ]
         import shutil
+
         for src, dst in pairs:
             if not os.path.exists(src):
                 continue
@@ -637,7 +651,9 @@ class Updater:
                 tmp = f"{dst}.tmp"
                 shutil.copy2(src, tmp)
                 os.replace(tmp, dst)
-                logger.debug(f"{self.section}: published {os.path.basename(src)} -> {os.path.basename(dst)}")
+                logger.debug(
+                    f"{self.section}: published {os.path.basename(src)} -> {os.path.basename(dst)}"
+                )
             except Exception as e:
                 logger.warning(f"{self.section}: failed to publish {src} -> {dst}: {e}")
 
@@ -662,6 +678,7 @@ class Updater:
         """
         try:
             from worldmap.lib.db import Database
+
             db = Database()
             hours = db.get_product_hours(self.gfs_date_str, self.gfs_run, product_name)
         except Exception as e:
@@ -669,7 +686,9 @@ class Updater:
             hours = []
 
         if not hours:
-            logger.info(f"{self.section}: no hours in catalog yet (collector may not have run).")
+            logger.info(
+                f"{self.section}: no hours in catalog yet (collector may not have run)."
+            )
             return 0
 
         # Preserve the task's notion of 'current hour' so we can restore it after.
@@ -695,10 +714,14 @@ class Updater:
                 self.forecast_hour_str = saved_fhour
 
         if plotted:
-            logger.info(f"{self.section}: rendered {plotted} hour(s) "
-                        f"({len(hours)} available, {len(hours)-plotted} already fresh).")
+            logger.info(
+                f"{self.section}: rendered {plotted} hour(s) "
+                f"({len(hours)} available, {len(hours) - plotted} already fresh)."
+            )
         else:
-            logger.debug(f"{self.section}: all {len(hours)} hour(s) fresh; nothing to render.")
+            logger.debug(
+                f"{self.section}: all {len(hours)} hour(s) fresh; nothing to render."
+            )
 
         # Keep the stable base-name static current (for forecast_stepping=off / fallback).
         self.publish_current_hour()

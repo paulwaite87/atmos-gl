@@ -61,7 +61,7 @@ class StormwatchUpdater(Updater):
 
     def plot(self, field0):
         """Render the static stormwatch PNG (frame 0, CAPE) + global N-frame texture."""
-        
+
         logger.debug(
             f"Plotting stormwatch for {self.map_data.region.region_identifier}"
         )
@@ -112,10 +112,15 @@ class StormwatchUpdater(Updater):
         norm = mcolors.Normalize(vmin=self.VMIN_CAPE, vmax=self.VMAX_CAPE)
 
         plot.ax.contourf(
-            new_lons, new_lats, cape_smooth,
-            levels=20, cmap=cmap, norm=norm,
+            new_lons,
+            new_lats,
+            cape_smooth,
+            levels=20,
+            cmap=cmap,
+            norm=norm,
             transform=ccrs.PlateCarree(),
-            extend="max", zorder=2
+            extend="max",
+            zorder=2,
         )
 
         # Per-hour output path
@@ -132,10 +137,10 @@ class StormwatchUpdater(Updater):
         # --- WebGL single-hour data texture (one frame per forecast hour;
         # the frontend scrubber assembles the animation from consecutive hours) ---
         base, _ = os.path.splitext(output_path_for_hour)
-        encode_frames([field0["values"]], f"{base}_data.png", self.VMIN_CAPE, self.VMAX_CAPE)
-        logger.info(f"Finished Stormwatch texture "
-                    f"f{int(self.forecast_hour_str):03d}.")
-
+        encode_frames(
+            [field0["values"]], f"{base}_data.png", self.VMIN_CAPE, self.VMAX_CAPE
+        )
+        logger.info(f"Finished Stormwatch texture f{int(self.forecast_hour_str):03d}.")
 
     def run(self):
         self.get_gfs_state()

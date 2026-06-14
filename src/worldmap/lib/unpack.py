@@ -23,17 +23,26 @@ union file (the single-variable tasks used to open unfiltered).
 """
 
 import logging
-logging.getLogger("cfgrib.messages").setLevel(logging.ERROR)
-logging.getLogger("cfgrib.dataset").setLevel(logging.ERROR)
-
 import numpy as np
 import xarray as xr
 from scipy.ndimage import gaussian_filter
 
+
+logging.getLogger("cfgrib.messages").setLevel(logging.ERROR)
+logging.getLogger("cfgrib.dataset").setLevel(logging.ERROR)
+
 logger = logging.getLogger(__name__)
 
+
 def _blank():
-    return {"lat": None, "lon": None, "values": None, "values2": None, "u": None, "v": None}
+    return {
+        "lat": None,
+        "lon": None,
+        "values": None,
+        "values2": None,
+        "u": None,
+        "v": None,
+    }
 
 
 def _standardize_lon(lons, *fields):
@@ -50,8 +59,11 @@ def _standardize_lon(lons, *fields):
 def isobars_data_unpack(path):
     """PRMSL -> mean sea level pressure in hPa, smoothed (sigma 1.2)."""
     ds = xr.open_dataset(
-        path, engine="cfgrib",
-        backend_kwargs={"filter_by_keys": {"typeOfLevel": "meanSea", "shortName": "prmsl"}},
+        path,
+        engine="cfgrib",
+        backend_kwargs={
+            "filter_by_keys": {"typeOfLevel": "meanSea", "shortName": "prmsl"}
+        },
     )
     p = ds["prmsl"].values.squeeze() / 100.0
     lats = ds["latitude"].values
@@ -65,8 +77,11 @@ def isobars_data_unpack(path):
 def precipitation_data_unpack(path):
     """PRATE -> precipitation rate in mm/hr, smoothed (sigma 1.0)."""
     ds = xr.open_dataset(
-        path, engine="cfgrib",
-        backend_kwargs={"filter_by_keys": {"typeOfLevel": "surface", "shortName": "prate"}},
+        path,
+        engine="cfgrib",
+        backend_kwargs={
+            "filter_by_keys": {"typeOfLevel": "surface", "shortName": "prate"}
+        },
     )
     prate = ds["prate"].values.squeeze() * 3600.0
     lats = ds["latitude"].values
@@ -80,8 +95,11 @@ def precipitation_data_unpack(path):
 def temperature_data_unpack(path):
     """TMP @ 2 m -> temperature in degrees Celsius."""
     ds = xr.open_dataset(
-        path, engine="cfgrib",
-        backend_kwargs={"filter_by_keys": {"typeOfLevel": "heightAboveGround", "level": 2}},
+        path,
+        engine="cfgrib",
+        backend_kwargs={
+            "filter_by_keys": {"typeOfLevel": "heightAboveGround", "level": 2}
+        },
     )
     key = "t2m" if "t2m" in ds else "2t"
     t = ds[key].values.squeeze() - 273.15
@@ -96,7 +114,8 @@ def temperature_data_unpack(path):
 def ozone_data_unpack(path):
     """TOZNE -> total column ozone (raw units). Filter best-effort; verify shortName."""
     ds = xr.open_dataset(
-        path, engine="cfgrib",
+        path,
+        engine="cfgrib",
         backend_kwargs={"filter_by_keys": {"shortName": "tozne"}},
     )
     var = list(ds.data_vars)[0]
@@ -112,8 +131,11 @@ def ozone_data_unpack(path):
 def wind_data_unpack(path):
     """UGRD/VGRD @ 10 m -> u, v wind components (m/s)."""
     ds = xr.open_dataset(
-        path, engine="cfgrib",
-        backend_kwargs={"filter_by_keys": {"typeOfLevel": "heightAboveGround", "level": 10}},
+        path,
+        engine="cfgrib",
+        backend_kwargs={
+            "filter_by_keys": {"typeOfLevel": "heightAboveGround", "level": 10}
+        },
     )
     u = ds["u10"].values.squeeze()
     v = ds["v10"].values.squeeze()
@@ -127,10 +149,14 @@ def wind_data_unpack(path):
 
 def stormwatch_data_unpack(path):
     """CAPE (values) + CIN (values2), both surface (J/kg)."""
+
     def _one(short):
         ds = xr.open_dataset(
-            path, engine="cfgrib",
-            backend_kwargs={"filter_by_keys": {"typeOfLevel": "surface", "shortName": short}},
+            path,
+            engine="cfgrib",
+            backend_kwargs={
+                "filter_by_keys": {"typeOfLevel": "surface", "shortName": short}
+            },
         )
         v = ds[short].values.squeeze()
         lat = ds["latitude"].values

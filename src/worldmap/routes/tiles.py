@@ -9,6 +9,7 @@ worldmap.tiles.waves_tiles); this route just serves the published version from d
 rendering on demand only beyond the pre-rendered depth. `version` changes when the
 data or render settings change, which busts the frontend tile cache.
 """
+
 import os
 import logging
 
@@ -42,7 +43,9 @@ def waves_meta():
             "version": info["version"] if info else None,
             "available": info is not None,
             "minzoom": MINZOOM,
-            "maxzoom": info.get("maxzoom", wt.ONDEMAND_MAXZOOM) if info else wt.ONDEMAND_MAXZOOM,
+            "maxzoom": info.get("maxzoom", wt.ONDEMAND_MAXZOOM)
+            if info
+            else wt.ONDEMAND_MAXZOOM,
             "tileSize": info.get("tileSize", wt.TILE_PX) if info else wt.TILE_PX,
         },
     }

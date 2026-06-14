@@ -62,12 +62,10 @@ class OzoneUpdater(Updater):
 
     def plot(self, field0):
         """Render the static ozone PNG (frame 0) + global N-frame texture.
-        
+
         Now consumes pre-processed fields from the DB.
         """
-        logger.debug(
-            f"Plotting ozone for {self.map_data.region.region_identifier}"
-        )
+        logger.debug(f"Plotting ozone for {self.map_data.region.region_identifier}")
 
         lats = field0["lat"]
         lons = field0["lon"]
@@ -114,10 +112,15 @@ class OzoneUpdater(Updater):
         norm = mcolors.Normalize(vmin=self.VMIN_OZONE, vmax=self.VMAX_OZONE)
 
         plot.ax.contourf(
-            new_lons, new_lats, ozone_smooth,
-            levels=20, cmap=cmap, norm=norm,
+            new_lons,
+            new_lats,
+            ozone_smooth,
+            levels=20,
+            cmap=cmap,
+            norm=norm,
             transform=ccrs.PlateCarree(),
-            extend="both", zorder=2
+            extend="both",
+            zorder=2,
         )
 
         # Per-hour output path
@@ -134,10 +137,10 @@ class OzoneUpdater(Updater):
         # --- WebGL single-hour data texture (one frame per forecast hour;
         # the frontend scrubber assembles the animation from consecutive hours) ---
         base, _ = os.path.splitext(output_path_for_hour)
-        encode_frames([field0["values"]], f"{base}_data.png", self.VMIN_OZONE, self.VMAX_OZONE)
-        logger.info(f"Finished Ozone texture "
-                    f"f{int(self.forecast_hour_str):03d}.")
-
+        encode_frames(
+            [field0["values"]], f"{base}_data.png", self.VMIN_OZONE, self.VMAX_OZONE
+        )
+        logger.info(f"Finished Ozone texture f{int(self.forecast_hour_str):03d}.")
 
     def run(self):
         self.get_gfs_state()

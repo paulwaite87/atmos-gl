@@ -63,13 +63,19 @@ class DataCollector:
     def _collect_gfs_atmos(self, base_url):
         baseline = resolve_gfs_baseline(base_url)
         if not baseline:
-            logger.warning("Data Collector: could not resolve a GFS baseline; will retry.")
+            logger.warning(
+                "Data Collector: could not resolve a GFS baseline; will retry."
+            )
             return
 
-        gfs_date_str, gfs_run, gfs_timestamp = baseline["date_str"], baseline["run"], baseline["timestamp"]
+        gfs_date_str, gfs_run, gfs_timestamp = (
+            baseline["date_str"],
+            baseline["run"],
+            baseline["timestamp"],
+        )
         now = datetime.now(timezone.utc)
         hours_since_run = int(round((now - gfs_timestamp).total_seconds() / 3600.0))
-        fhour_0 = max(0, hours_since_run)        # forecast hour valid 'now' (no user offset)
+        fhour_0 = max(0, hours_since_run)  # forecast hour valid 'now' (no user offset)
         fhour_end = fhour_0 + self.cache_hours
 
         products = list(ATMOS_UNPACKERS.items())
@@ -79,8 +85,11 @@ class DataCollector:
             valid = gfs_timestamp + timedelta(hours=fhour)
 
             # Which products still need this hour? Skip the download entirely if none.
-            missing = [(product, unpacker) for (product, unpacker) in products
-                       if not self.store.field_exists(gfs_date_str, gfs_run, fhour, product)]
+            missing = [
+                (product, unpacker)
+                for (product, unpacker) in products
+                if not self.store.field_exists(gfs_date_str, gfs_run, fhour, product)
+            ]
             if not missing:
                 continue
 
@@ -104,7 +113,9 @@ class DataCollector:
                 for product, unpacker in missing:
                     try:
                         fields = unpacker(tmp.name)
-                        self.store.store_field(gfs_date_str, gfs_run, fhour, product, fields, valid)
+                        self.store.store_field(
+                            gfs_date_str, gfs_run, fhour, product, fields, valid
+                        )
                         stored += 1
                     except Exception as e:
                         logger.debug(f"{product} f{fhour:03d} unpack/store failed: {e}")
@@ -133,9 +144,9 @@ class DataCollector:
                     self._collect_gfs_atmos(base_url.rstrip("/"))
                     # TODO: GFS wave product -> waves_data_unpack -> store_field(..., "waves")
                 elif datasource == "currents":
-                    pass   # TODO: RTOFS -> currents_data_unpack
+                    pass  # TODO: RTOFS -> currents_data_unpack
                 elif datasource == "sst":
-                    pass   # TODO: OISST -> sst_data_unpack
+                    pass  # TODO: OISST -> sst_data_unpack
                 else:
                     logger.error(f"unknown datasource {datasource}")
             except Exception as e:

@@ -212,10 +212,16 @@ class PrecipitationUpdater(Updater):
         # band boundaries instead of tracing the raw 0.25-deg grid (the old static
         # render smoothed its regional clip the same way; the texture never did).
         base, _ = os.path.splitext(output_path_for_hour)
-        smoothed = self._smooth_global_field(field0["lat"], field0["lon"], field0["values"])
-        encode_frames([smoothed], f"{base}_data.png", 0.0, self.VMAX_PRECIP, transform="sqrt")
-        logger.info(f"Finished Precipitation texture "
-                    f"f{int(self.forecast_hour_str):03d} ({self.lod_desc} smoothing).")
+        smoothed = self._smooth_global_field(
+            field0["lat"], field0["lon"], field0["values"]
+        )
+        encode_frames(
+            [smoothed], f"{base}_data.png", 0.0, self.VMAX_PRECIP, transform="sqrt"
+        )
+        logger.info(
+            f"Finished Precipitation texture "
+            f"f{int(self.forecast_hour_str):03d} ({self.lod_desc} smoothing)."
+        )
 
     def _smooth_global_field(self, lats, lons, values):
         """Upsample + Gaussian-blur the global precip field for a smooth texture.
@@ -246,11 +252,13 @@ class PrecipitationUpdater(Updater):
             fn = RegularGridInterpolator(
                 (lat_inc, lons), src, bounds_error=False, fill_value=0.0
             )
-            new_lats = np.linspace(lat_inc[0], lat_inc[-1], (len(lat_inc) - 1) * factor + 1)
+            new_lats = np.linspace(
+                lat_inc[0], lat_inc[-1], (len(lat_inc) - 1) * factor + 1
+            )
             new_lons = np.linspace(lons[0], lons[-1], (len(lons) - 1) * factor + 1)
             mlat, mlon = np.meshgrid(new_lats, new_lons, indexing="ij")
             arr = fn((mlat, mlon)).astype(np.float32)
-            if (len(lats) > 1 and lats[0] > lats[-1]):
+            if len(lats) > 1 and lats[0] > lats[-1]:
                 arr = arr[::-1, :]  # restore north-first row order for the texture
 
         sigma = base_sigma * factor

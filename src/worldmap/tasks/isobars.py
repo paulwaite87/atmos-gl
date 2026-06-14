@@ -4,10 +4,8 @@ import json
 import logging
 import numpy as np
 import matplotlib.patheffects as patheffects
-import matplotlib.pyplot as plt
 import cartopy.crs as ccrs
 
-from scipy.interpolate import RegularGridInterpolator
 
 # Internal imports
 from worldmap.lib.config import WorldMapConfig
@@ -34,9 +32,7 @@ class IsobarUpdater(Updater):
         Now consumes pre-processed fields from the DB.
         Outputs are cached per-hour.
         """
-        logger.debug(
-            f"Plotting isobars to per-hour output path"
-        )
+        logger.debug("Plotting isobars to per-hour output path")
 
         lats = field0["lat"]
         lons = field0["lon"]
@@ -109,9 +105,13 @@ class IsobarUpdater(Updater):
 
         # --- WebGL single-hour data texture (one frame per forecast hour;
         # the frontend scrubber assembles the animation from consecutive hours) ---
-        encode_frames([field0["values"]], f"{base}_data.png", self.VMIN_PRESSURE, self.VMAX_PRESSURE)
-        logger.info(f"Finished Isobars texture "
-                    f"f{int(self.forecast_hour_str):03d}.")
+        encode_frames(
+            [field0["values"]],
+            f"{base}_data.png",
+            self.VMIN_PRESSURE,
+            self.VMAX_PRESSURE,
+        )
+        logger.info(f"Finished Isobars texture f{int(self.forecast_hour_str):03d}.")
 
     def _write_labels_geojson(self, label_artists, ax, out_path):
         """Write contour-label positions as a GeoJSON FeatureCollection of points.
@@ -127,7 +127,7 @@ class IsobarUpdater(Updater):
         geo = ccrs.PlateCarree()
         proj = getattr(ax, "projection", geo)  # the axes CRS (e.g. Mercator.GOOGLE)
         features = []
-        for t in (label_artists or []):
+        for t in label_artists or []:
             try:
                 x, y = t.get_position()  # axes-projection coords (metres)
                 label = t.get_text().strip()
@@ -139,11 +139,16 @@ class IsobarUpdater(Updater):
                 if not (-90.0 <= lat <= 90.0):
                     continue
                 lon = ((lon + 180.0) % 360.0) - 180.0  # normalise to [-180,180)
-                features.append({
-                    "type": "Feature",
-                    "geometry": {"type": "Point", "coordinates": [round(lon, 3), round(lat, 3)]},
-                    "properties": {"label": label},
-                })
+                features.append(
+                    {
+                        "type": "Feature",
+                        "geometry": {
+                            "type": "Point",
+                            "coordinates": [round(lon, 3), round(lat, 3)],
+                        },
+                        "properties": {"label": label},
+                    }
+                )
             except Exception:
                 continue
 
@@ -153,7 +158,9 @@ class IsobarUpdater(Updater):
             with open(tmp, "w") as f:
                 json.dump(fc, f, separators=(",", ":"))
             os.replace(tmp, out_path)
-            logger.debug(f"Wrote {len(features)} isobar labels -> {os.path.basename(out_path)}")
+            logger.debug(
+                f"Wrote {len(features)} isobar labels -> {os.path.basename(out_path)}"
+            )
         except Exception as e:
             logger.warning(f"Failed to write isobar labels {out_path}: {e}")
 

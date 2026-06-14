@@ -77,7 +77,9 @@ class Housekeeper:
         for filepath in glob.glob(os.path.join(data_dir, pattern)):
             basename = os.path.basename(filepath)
             try:
-                mtime = datetime.fromtimestamp(os.path.getmtime(filepath), tz=timezone.utc)
+                mtime = datetime.fromtimestamp(
+                    os.path.getmtime(filepath), tz=timezone.utc
+                )
                 if mtime < cutoff:
                     os.remove(filepath)
                     deleted_count += 1
@@ -86,7 +88,9 @@ class Housekeeper:
                 logger.warning(f"Failed to prune {filepath}: {e}")
 
         if deleted_count > 0:
-            logger.info(f"Housekeeper pruned {deleted_count} per-hour output file(s) older than {expiry_hours}h.")
+            logger.info(
+                f"Housekeeper pruned {deleted_count} per-hour output file(s) older than {expiry_hours}h."
+            )
 
     def prune_fields(self, expiry_hours: int = 48):
         """Prune expired fieldstore entries (catalog row + .npz file) and

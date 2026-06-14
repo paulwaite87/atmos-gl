@@ -120,10 +120,15 @@ class TemperatureUpdater(Updater):
         norm = mcolors.Normalize(vmin=self.VMIN_TEMP, vmax=self.VMAX_TEMP)
 
         plot.ax.contourf(
-            new_lons, new_lats, temp_smooth,
-            levels=20, cmap=cmap, norm=norm,
+            new_lons,
+            new_lats,
+            temp_smooth,
+            levels=20,
+            cmap=cmap,
+            norm=norm,
             transform=ccrs.PlateCarree(),
-            extend="both", zorder=2
+            extend="both",
+            zorder=2,
         )
 
         # Per-hour output path
@@ -140,10 +145,10 @@ class TemperatureUpdater(Updater):
         # --- WebGL single-hour data texture (one frame per forecast hour;
         # the frontend scrubber assembles the animation from consecutive hours) ---
         base, _ = os.path.splitext(output_path_for_hour)
-        encode_frames([field0["values"]], f"{base}_data.png", self.VMIN_TEMP, self.VMAX_TEMP)
-        logger.info(f"Finished Temperature texture "
-                    f"f{int(self.forecast_hour_str):03d}.")
-
+        encode_frames(
+            [field0["values"]], f"{base}_data.png", self.VMIN_TEMP, self.VMAX_TEMP
+        )
+        logger.info(f"Finished Temperature texture f{int(self.forecast_hour_str):03d}.")
 
     def run(self):
         self.get_gfs_state()

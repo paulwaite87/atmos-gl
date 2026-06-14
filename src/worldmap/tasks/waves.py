@@ -57,7 +57,6 @@ class WavesUpdater(Updater):
         # DESIGNED GRADIENTS FOR WAVE HEIGHT INTENSITY
         self.PALETTES = PALETTES
 
-
     def save_waves_key(self, output_path, cmap, norm, threshold=0.0):
         """Generates a standalone Wave Height key image (separate _key.png)."""
         import matplotlib.pyplot as plt
@@ -317,7 +316,9 @@ class WavesUpdater(Updater):
         )
         if land_hr is None:
             # geometry unavailable: upsample the coarse mask we already computed
-            land_hr = zoom(grid_land_mask.astype(np.uint8), upscale, order=0).astype(bool)
+            land_hr = zoom(grid_land_mask.astype(np.uint8), upscale, order=0).astype(
+                bool
+            )
         swh_hr[land_hr] = np.nan
 
         # Apply the display threshold: below-threshold water becomes transparent on the
@@ -386,7 +387,8 @@ class WavesUpdater(Updater):
         direction); magnitude is significant wave height, so taller swell drifts faster.
         Land / missing cells are flagged transparent so particles respawn there."""
         ds = xr.open_dataset(
-            self.grib_path, engine="cfgrib",
+            self.grib_path,
+            engine="cfgrib",
             backend_kwargs={"filter_by_keys": {"typeOfLevel": "surface"}},
         )
         direction_key = "dirpw" if "dirpw" in ds else "mwd"
@@ -402,11 +404,11 @@ class WavesUpdater(Updater):
         swh = swh[:, order]
         mwd = mwd[:, order]
 
-        bad = (~np.isfinite(swh) | (swh < 0.0) | (swh > 60.0) | ~np.isfinite(mwd))
+        bad = ~np.isfinite(swh) | (swh < 0.0) | (swh > 60.0) | ~np.isfinite(mwd)
         rad = np.radians(np.nan_to_num(mwd))
         mag = np.where(bad, np.nan, swh)
-        u = mag * np.sin(rad)        # east  component (m), NaN where bad -> A=0
-        v = mag * np.cos(rad)        # north component (m)
+        u = mag * np.sin(rad)  # east  component (m), NaN where bad -> A=0
+        v = mag * np.cos(rad)  # north component (m)
 
         base, _ = os.path.splitext(self.output_path)
         encode_uv(u, v, f"{base}_data.png", VMAX_WAVES)
@@ -420,7 +422,9 @@ class WavesUpdater(Updater):
         palette_name = self.settings.get("palette", "ocean_storm")
         if palette_name not in self.PALETTES:
             palette_name = "ocean_storm"
-        alpha_setting = float(np.clip(float(self.settings.get("alpha", 75) / 100), 0.1, 1.0))
+        alpha_setting = float(
+            np.clip(float(self.settings.get("alpha", 75) / 100), 0.1, 1.0)
+        )
         try:
             threshold = max(0.0, float(self.settings.get("min_wave_height", 0) or 0))
         except (TypeError, ValueError):

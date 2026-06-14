@@ -33,9 +33,7 @@ class FieldStore:
         self.fields_dir = self.workdir / "data" / "fields"
         self.fields_dir.mkdir(parents=True, exist_ok=True)
 
-    def field_path(
-            self, gfs_date: str, gfs_run: str, fhour: int, product: str
-    ) -> Path:
+    def field_path(self, gfs_date: str, gfs_run: str, fhour: int, product: str) -> Path:
         """Compute the storage path for a field.
 
         Pattern: {workdir}/fields/{date}/{run}/{product}_f{fhour:03d}.npz
@@ -45,13 +43,13 @@ class FieldStore:
         return self.fields_dir / gfs_date / gfs_run / f"{product}_f{int(fhour):03d}.npz"
 
     def store_field(
-            self,
-            gfs_date: str,
-            gfs_run: str,
-            fhour: int,
-            product: str,
-            unpacked: dict,
-            valid_time=None,
+        self,
+        gfs_date: str,
+        gfs_run: str,
+        fhour: int,
+        product: str,
+        unpacked: dict,
+        valid_time=None,
     ) -> bool:
         """Write a field to disk and catalog it.
 
@@ -87,7 +85,7 @@ class FieldStore:
         # Write atomically: write to temp file, then move into place
         try:
             with tempfile.NamedTemporaryFile(
-                    dir=path.parent, suffix=".npz", delete=False
+                dir=path.parent, suffix=".npz", delete=False
             ) as tmp:
                 tmp_path = tmp.name
 
@@ -96,10 +94,7 @@ class FieldStore:
             logger.debug(f"Stored field to {path}")
         except Exception as e:
             logger.error(f"Error writing field {path}: {e}")
-            try:
-                os.unlink(tmp_path)
-            except:
-                pass
+            os.unlink(tmp_path)
             return False
 
         # Upsert the catalog row (metadata only)
@@ -115,7 +110,9 @@ class FieldStore:
                 valid_time=valid_time,
                 storage_uri=str(rel_path),
             )
-            logger.debug(f"Catalogued field {gfs_date}/{gfs_run}/f{fhour:03d}/{product}")
+            logger.debug(
+                f"Catalogued field {gfs_date}/{gfs_run}/f{fhour:03d}/{product}"
+            )
             return True
         except Exception as e:
             logger.error(f"Error cataloguing field {product}: {e}")
@@ -123,7 +120,7 @@ class FieldStore:
             return False
 
     def get_field(
-            self, gfs_date: str, gfs_run: str, fhour: int, product: str
+        self, gfs_date: str, gfs_run: str, fhour: int, product: str
     ) -> dict | None:
         """Fetch a field from disk.
 
@@ -175,7 +172,7 @@ class FieldStore:
             return None
 
     def field_exists(
-            self, gfs_date: str, gfs_run: str, fhour: int, product: str
+        self, gfs_date: str, gfs_run: str, fhour: int, product: str
     ) -> bool:
         """Check if a field exists in the catalog (fast, no file I/O)."""
         try:
@@ -185,7 +182,7 @@ class FieldStore:
             return False
 
     def get_field_meta(
-            self, gfs_date: str, gfs_run: str, fhour: int, product: str
+        self, gfs_date: str, gfs_run: str, fhour: int, product: str
     ) -> dict | None:
         """Fetch only the catalog metadata for a field (no array file load).
 
@@ -200,7 +197,7 @@ class FieldStore:
             return None
 
     def delete_field(
-            self, gfs_date: str, gfs_run: str, fhour: int, product: str
+        self, gfs_date: str, gfs_run: str, fhour: int, product: str
     ) -> bool:
         """Delete a field from both catalog and disk."""
         fhour = int(fhour)
@@ -353,6 +350,7 @@ def get_store(workdir: str = ".", db=None):
     if _store_instance is None:
         if db is None:
             from worldmap.lib.db import Database
+
             db = Database()
         _store_instance = FieldStore(db, workdir)
     return _store_instance

@@ -1,7 +1,6 @@
 import os
 import psycopg2
 from psycopg2.extras import RealDictCursor
-import numpy as np
 import logging
 from .shipping import get_vessel_class_from_type
 
@@ -707,31 +706,49 @@ class Database:
             row = cur.fetchone()
             if not row:
                 return None
-            d = dict(row) if hasattr(row, "keys") else {"gfs_date": row[0], "gfs_run": row[1]}
+            d = (
+                dict(row)
+                if hasattr(row, "keys")
+                else {"gfs_date": row[0], "gfs_run": row[1]}
+            )
             gfs_date, gfs_run = d["gfs_date"], d["gfs_run"]
 
             if products:
                 # Hours where the COUNT of distinct required products == len(products)
-                cur.execute("""
+                cur.execute(
+                    """
                     SELECT fhour
                     FROM field_catalog
                     WHERE gfs_date=%s AND gfs_run=%s AND product = ANY(%s)
                     GROUP BY fhour
                     HAVING COUNT(DISTINCT product) = %s
                     ORDER BY fhour
-                """, (gfs_date, gfs_run, list(products), len(products)))
+                """,
+                    (gfs_date, gfs_run, list(products), len(products)),
+                )
             else:
-                cur.execute("""
+                cur.execute(
+                    """
                     SELECT DISTINCT fhour
                     FROM field_catalog
                     WHERE gfs_date=%s AND gfs_run=%s
                     ORDER BY fhour
-                """, (gfs_date, gfs_run))
-            hours = [r[0] if not hasattr(r, "keys") else r["fhour"] for r in cur.fetchall()]
+                """,
+                    (gfs_date, gfs_run),
+                )
+            hours = [
+                r[0] if not hasattr(r, "keys") else r["fhour"] for r in cur.fetchall()
+            ]
 
         if not hours:
-            return {"gfs_date": gfs_date, "gfs_run": gfs_run,
-                    "fmin": None, "fmax": None, "hours": [], "n_products": 0}
+            return {
+                "gfs_date": gfs_date,
+                "gfs_run": gfs_run,
+                "fmin": None,
+                "fmax": None,
+                "hours": [],
+                "n_products": 0,
+            }
 
         return {
             "gfs_date": gfs_date,
@@ -742,15 +759,15 @@ class Database:
         }
 
     def upsert_field_catalog(
-            self,
-            gfs_date: str,
-            gfs_run: str,
-            fhour: int,
-            product: str,
-            nlat: int,
-            nlon: int,
-            valid_time=None,
-            storage_uri: str = None,
+        self,
+        gfs_date: str,
+        gfs_run: str,
+        fhour: int,
+        product: str,
+        nlat: int,
+        nlon: int,
+        valid_time=None,
+        storage_uri: str = None,
     ):
         """Upsert a field catalog row (metadata only, no arrays)."""
         sql = """
@@ -768,13 +785,24 @@ class Database:
             with self.conn.cursor() as cur:
                 cur.execute(
                     sql,
-                    (gfs_date, gfs_run, int(fhour), product, nlat, nlon, valid_time, storage_uri),
+                    (
+                        gfs_date,
+                        gfs_run,
+                        int(fhour),
+                        product,
+                        nlat,
+                        nlon,
+                        valid_time,
+                        storage_uri,
+                    ),
                 )
         except Exception as e:
             logger.error(f"Error upserting field catalog: {e}")
             raise
 
-    def get_field_catalog(self, gfs_date: str, gfs_run: str, fhour: int, product: str) -> dict | None:
+    def get_field_catalog(
+        self, gfs_date: str, gfs_run: str, fhour: int, product: str
+    ) -> dict | None:
         """Fetch a catalog row (metadata only)."""
         with self.conn.cursor() as cur:
             cur.execute(
@@ -803,9 +831,13 @@ class Database:
                 """,
                 (gfs_date, gfs_run, product),
             )
-            return [r[0] if not hasattr(r, "keys") else r["fhour"] for r in cur.fetchall()]
+            return [
+                r[0] if not hasattr(r, "keys") else r["fhour"] for r in cur.fetchall()
+            ]
 
-    def field_catalog_exists(self, gfs_date: str, gfs_run: str, fhour: int, product: str) -> bool:
+    def field_catalog_exists(
+        self, gfs_date: str, gfs_run: str, fhour: int, product: str
+    ) -> bool:
         """Check if a catalog row exists (fast, indexed)."""
         with self.conn.cursor() as cur:
             cur.execute(
@@ -814,7 +846,9 @@ class Database:
             )
             return cur.fetchone() is not None
 
-    def delete_field_catalog(self, gfs_date: str, gfs_run: str, fhour: int, product: str):
+    def delete_field_catalog(
+        self, gfs_date: str, gfs_run: str, fhour: int, product: str
+    ):
         """Delete a catalog row."""
         with self.conn.cursor() as cur:
             cur.execute(
@@ -838,7 +872,7 @@ class Database:
             rows = cur.fetchall()
 
         # Check which files exist
-        import os
+
         orphans = []
         for row in rows:
             path = workdir_path / row["storage_uri"]

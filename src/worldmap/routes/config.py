@@ -9,7 +9,15 @@ router = APIRouter(prefix="/api", tags=["System Configuration"])
 
 # The animated layers the scrubber controls. An hour is only offered when every
 # one of these (that is enabled) has data for it. Keep in sync with the frontend.
-SCRUBBER_PRODUCTS = ["isobars", "precipitation", "wind", "temperature", "ozone", "stormwatch"]
+SCRUBBER_PRODUCTS = [
+    "isobars",
+    "precipitation",
+    "wind",
+    "temperature",
+    "ozone",
+    "stormwatch",
+]
+
 
 def _run_epoch_utc(gfs_date, gfs_run):
     """Build the f000 valid-time (UTC) from gfs_date (str 'YYYYMMDD' or a date/
@@ -30,9 +38,15 @@ def _run_epoch_utc(gfs_date, gfs_run):
             d = datetime.strptime(s, "%Y%m%d").date()
 
     return datetime(
-        d.year, d.month, d.day, run_hour, 0, 0,
+        d.year,
+        d.month,
+        d.day,
+        run_hour,
+        0,
+        0,
         tzinfo=timezone.utc,
     )
+
 
 def load_config():
     config_path = os.getenv("CONFIG_PATH", "./config/worldmap.json")
@@ -91,7 +105,11 @@ def get_forecast_state():
         return {
             "status": "success",
             "data": {
-                "gfs_date": (gfs_date if isinstance(gfs_date, str) else gfs_date.strftime("%Y%m%d")),
+                "gfs_date": (
+                    gfs_date
+                    if isinstance(gfs_date, str)
+                    else gfs_date.strftime("%Y%m%d")
+                ),
                 "gfs_run": gfs_run,
                 "run_epoch_utc": z(run_epoch),
                 "fmin": summary["fmin"],

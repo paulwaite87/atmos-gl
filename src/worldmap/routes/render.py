@@ -12,6 +12,7 @@ content-addressed cache file (keyed on bbox + size + GRIB identity + layer setti
 so revisiting a view is instant and the housekeeper can expire them via the
 ``<section>_cache_`` prefix.
 """
+
 import os
 import glob
 import json
@@ -28,13 +29,13 @@ from worldmap.tasks.waves import WavesUpdater
 logger = logging.getLogger("worldmap.routes.render")
 router = APIRouter(prefix="/api/render", tags=["On-demand Rendering"])
 
-MERCATOR_LAT = 85.0511          # Web-Mercator latitude limit
-MAX_PX = 3072                   # cap per-side render resolution (memory/time guard)
+MERCATOR_LAT = 85.0511  # Web-Mercator latitude limit
+MAX_PX = 3072  # cap per-side render resolution (memory/time guard)
 
 # Heavy matplotlib/cartopy renders are serialised so concurrent viewport requests
 # don't thrash the worker; the frontend debounces and drops stale responses anyway.
 _render_lock = threading.Lock()
-_map_data = None                # cached MapData (its DB connection is reused)
+_map_data = None  # cached MapData (its DB connection is reused)
 
 
 def _load_config():
@@ -109,7 +110,7 @@ def render_waves(
         return {"status": "success", "cached": True, "data": payload}
 
     with _render_lock:
-        if not os.path.exists(out_path):       # re-check inside the lock
+        if not os.path.exists(out_path):  # re-check inside the lock
             try:
                 map_data = _get_map_data(config)
                 map_data.region = MapRegion(

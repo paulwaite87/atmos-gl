@@ -37,13 +37,17 @@ NOMADS_GFS_BASE = "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod"
 
 
 def build_atmos_url(base_url, date_str, run, fhour):
-    return (f"{base_url}/gfs.{date_str}/{run}/atmos/"
-            f"gfs.t{run}z.pgrb2.0p25.f{int(fhour):03d}")
+    return (
+        f"{base_url}/gfs.{date_str}/{run}/atmos/"
+        f"gfs.t{run}z.pgrb2.0p25.f{int(fhour):03d}"
+    )
 
 
 def build_wave_url(base_url, date_str, run, fhour):
-    return (f"{base_url}/gfs.{date_str}/{run}/wave/gridded/"
-            f"gfswave.t{run}z.global.0p25.f{int(fhour):03d}.grib2")
+    return (
+        f"{base_url}/gfs.{date_str}/{run}/wave/gridded/"
+        f"gfswave.t{run}z.global.0p25.f{int(fhour):03d}.grib2"
+    )
 
 
 def resolve_gfs_baseline(base_url=NOMADS_GFS_BASE, search_days=3):
@@ -58,12 +62,14 @@ def resolve_gfs_baseline(base_url=NOMADS_GFS_BASE, search_days=3):
         target_date = now - timedelta(days=day_offset)
         date_str = target_date.strftime("%Y%m%d")
         for run in ["18", "12", "06", "00"]:
-            url = (f"{base_url}/gfs.{date_str}/{run}/atmos/"
-                   f"gfs.t{run}z.pgrb2.0p25.f000.idx")
+            url = (
+                f"{base_url}/gfs.{date_str}/{run}/atmos/gfs.t{run}z.pgrb2.0p25.f000.idx"
+            )
             try:
                 if requests.head(url, timeout=5).status_code == 200:
-                    ts = target_date.replace(hour=int(run), minute=0,
-                                             second=0, microsecond=0)
+                    ts = target_date.replace(
+                        hour=int(run), minute=0, second=0, microsecond=0
+                    )
                     logger.debug(f"GFS baseline: {date_str} {run}Z")
                     return {
                         "date_str": date_str,
@@ -92,8 +98,7 @@ def gfs_index_ranges(grib_url, targets, timeout=30):
         for i, line in enumerate(lines):
             if target in line:
                 start = int(line.split(":")[1])
-                end = (int(lines[i + 1].split(":")[1]) - 1
-                       if i + 1 < len(lines) else -1)
+                end = int(lines[i + 1].split(":")[1]) - 1 if i + 1 < len(lines) else -1
                 ranges.append((start, end))
                 break
     return ranges
