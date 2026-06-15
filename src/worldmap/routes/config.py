@@ -102,6 +102,31 @@ def get_forecast_state():
             str(h): z(run_epoch + timedelta(hours=int(h))) for h in summary["hours"]
         }
 
+        # --- Currents (RTOFS) sub-state for valid_time reconciliation ------------
+        # Currents come from a DIFFERENT model run (RTOFS daily 00Z) with its own
+        # absolute forecast-hour numbering. The scrubber timeline is GFS-relative, so
+        # the frontend currents layer maps the timeline's current valid_time to the
+        # RTOFS forecast hour with the same wall-clock. We expose RTOFS's own hours +
+        # valid_times here so the frontend can build that inverse map. Resolved
+        # independently (products=["currents"]) so it can't perturb the GFS scrubber.
+        currents_block = None
+        try:
+            c_summary = db.get_latest_run_hours(products=["currents"])
+            if c_summary and c_summary.get("hours"):
+                c_epoch = _run_epoch_utc(c_summary["gfs_date"], c_summary["gfs_run"])
+                currents_block = {
+                    "run_epoch_utc": z(c_epoch),
+                    "fmin": c_summary["fmin"],
+                    "fmax": c_summary["fmax"],
+                    "hours": c_summary["hours"],
+                    "valid_times_utc": {
+                        str(h): z(c_epoch + timedelta(hours=int(h)))
+                        for h in c_summary["hours"]
+                    },
+                }
+        except Exception:
+            currents_block = None  # currents are optional; never break the scrubber
+
         return {
             "status": "success",
             "data": {
@@ -117,6 +142,7 @@ def get_forecast_state():
                 "max_hour": summary["fmax"],
                 "hours": summary["hours"],
                 "valid_times_utc": valid_times,
+                "currents": currents_block,
             },
         }
     except Exception as e:

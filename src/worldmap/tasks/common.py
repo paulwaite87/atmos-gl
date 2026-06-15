@@ -797,6 +797,44 @@ class Updater:
             f"Section {self.section} get_gfs_state: forecast hour {f_hour_str}; date_str {self.gfs_date_str}; run {self.gfs_run}"
         )
 
+    def get_rtofs_state(self):
+        """RTOFS (ocean) analogue of get_gfs_state, for currents and future ocean
+        layers. Resolves the daily RTOFS run (its own cycle, cached separately in
+        shared_state) and sets the SAME instance attributes get_gfs_state does
+        (gfs_date_str / gfs_run / forecast_hour_str), so render_all_hours and the
+        fieldstore reads work unchanged — they simply operate on the RTOFS run.
+
+        RTOFS is one 00Z cycle/day; 'now' is hours-since-analysis, and a per-layer
+        forecast_hour offset steps forward, identical in spirit to the GFS path.
+        """
+        from worldmap.lib.rtofs import resolve_rtofs_baseline
+
+        baseline = getattr(self.map_data, "shared_state", {}).get("rtofs_baseline")
+        if not baseline:
+            baseline = resolve_rtofs_baseline()
+            if not baseline:
+                raise RuntimeError("Failed to sync RTOFS baseline from NOMADS.")
+            self.map_data.shared_state["rtofs_baseline"] = baseline
+            logger.debug(
+                f"RTOFS Baseline Synced: {baseline['date_str']} {baseline['run']}Z"
+            )
+
+        now = datetime.now(timezone.utc)
+        user_offset_hours = self.forecast_hour
+        hours_since_run = int(
+            round((now - baseline["timestamp"]).total_seconds() / 3600.0)
+        )
+        true_f_hour = max(0, hours_since_run + user_offset_hours)
+
+        self.forecast_hour_str = f"{true_f_hour:03d}"
+        self.gfs_date_str = baseline["date_str"]
+        self.gfs_date_str_Y_M_D = baseline["date_str_Y_M_D"]
+        self.gfs_run = baseline["run"]
+        logger.debug(
+            f"Section {self.section} get_rtofs_state: fhour {self.forecast_hour_str}; "
+            f"date {self.gfs_date_str}; run {self.gfs_run}"
+        )
+
     def get_gfs_ranges(
         self, grib_url: str, grib_targets: list[str]
     ) -> list[Any] | None:

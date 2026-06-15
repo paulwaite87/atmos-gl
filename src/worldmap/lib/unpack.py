@@ -242,8 +242,13 @@ def _regrid_curvilinear_nn(lat2d, lon2d, fields, step, lat_min, lat_max):
         vals = np.asarray(arr)[sub][vm].ravel()
         safe_idx = np.clip(idx, 0, vals.size - 1)
         regridded = np.where(hit, vals[safe_idx], np.nan).reshape(mlat.shape)
-        out[name] = regridded.astype(np.float32)
-    return tlat, tlon, out
+        # tlat is built ascending (south->north), so row 0 is SOUTH. The rest of the
+        # pipeline (encode_uv, the GPU layers) expects row 0 = NORTH (GFS native).
+        # Flip rows so currents obey the same north-up convention as every other
+        # layer; otherwise the texture renders vertically mirrored.
+        out[name] = np.flipud(regridded).astype(np.float32)
+    # Return latitudes north-first to match the flipped rows.
+    return tlat[::-1], tlon, out
 
 
 def currents_data_unpack(path):
