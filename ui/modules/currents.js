@@ -35,29 +35,34 @@ function buildLUT(paletteName) {
 // block from /api/forecast_state. Falls back to identity if the block is absent.
 function makeReconciler() {
     let rtofs = null;           // { hours:[...], validMs:{hour->ms}, sortedByMs:[[ms,hour]...] }
-    let fetched = false;
+    let loadPromise = null;
 
-    const load = async () => {
-        if (fetched) return;
-        fetched = true;
-        try {
-            const res = await fetch(`${window.WM_API}/forecast_state?t=${Date.now()}`);
-            const j = await res.json();
-            const c = j?.data?.currents;
-            if (c && c.valid_times_utc) {
-                const validMs = {};
-                const sorted = [];
-                for (const [h, iso] of Object.entries(c.valid_times_utc)) {
-                    const ms = Date.parse(iso);
-                    validMs[h] = ms;
-                    sorted.push([ms, parseInt(h, 10)]);
+    const load = () => {
+        // Memoize: return the SAME in-flight/settled promise so awaiting ready()
+        // actually waits for the fetch (a boolean guard would resolve instantly and
+        // re-introduce the race that caused 404s on un-translated timeline hours).
+        if (loadPromise) return loadPromise;
+        loadPromise = (async () => {
+            try {
+                const res = await fetch(`${window.WM_API}/forecast_state?t=${Date.now()}`);
+                const j = await res.json();
+                const c = j?.data?.currents;
+                if (c && c.valid_times_utc) {
+                    const validMs = {};
+                    const sorted = [];
+                    for (const [h, iso] of Object.entries(c.valid_times_utc)) {
+                        const ms = Date.parse(iso);
+                        validMs[h] = ms;
+                        sorted.push([ms, parseInt(h, 10)]);
+                    }
+                    sorted.sort((a, b) => a[0] - b[0]);
+                    rtofs = { validMs, sortedByMs: sorted };
                 }
-                sorted.sort((a, b) => a[0] - b[0]);
-                rtofs = { validMs, sortedByMs: sorted };
+            } catch (e) {
+                console.warn('[currents] forecast_state currents block unavailable; using identity hours', e);
             }
-        } catch (e) {
-            console.warn('[currents] forecast_state currents block unavailable; using identity hours', e);
-        }
+        })();
+        return loadPromise;
     };
     load();
 
@@ -79,9 +84,15 @@ function makeReconciler() {
     return { toRtofsHour, ready: () => load() };
 }
 
-export function loadLayer(map, config, fullConfig = {}) {
+export async function loadLayer(map, config, fullConfig = {}) {
     const slotId = 'currents-legend-slot';
     const recon = makeReconciler();
+    // Wait for the RTOFS hour<->valid_time map (forecast_state) BEFORE creating the
+    // layers, so the first texture fetch already translates the timeline hour to the
+    // correct RTOFS forecast hour. Otherwise the layers race ahead of the async load,
+    // fall back to identity (timeline hour), and request hours that don't exist as
+    // files (e.g. f007 when currents files are f032..f042) -> 404 / no data.
+    await recon.ready();
 
     // currents data URL with RTOFS-hour translation (shared by fill + particles).
     const currentsHourUrl = (cfg, timelineHour, bust) => {
@@ -148,19 +159,16 @@ export function loadLayer(map, config, fullConfig = {}) {
         onUnmount: removeLegend,
     });
 
-    // ---- 2) FLOWING TRAIL PARTICLES (on top): each particle draws its recent
-    // path as a fading, tapering ribbon along the current — the smooth flowing look.
+    // ---- 2) PARTICLES (on top): flowing trails advected along the u/v texture ----
+    // Uses the dedicated currents trail engine (_currentparticles_gl.js), kept
+    // separate from the wind engine so wind stays untouched. It is land-masked by
+    // default (landReset built in), so no landReset override is needed here.
     createCurrentParticleGLLayer(map, {
         sectionKey: 'currents',
         initialConfig: config,
-        initialAnimation: fullConfig.animation || {},
-        initialCommon: fullConfig.common || {},
         vmax: VMAX,                       // matches backend VMAX_CURRENT
         colormap: () => buildLUT(palette),
         maxSpeedColor: () => VMAX,        // speed tint scaled to current speeds
-        landReset: () => 1.0,             // currents must NOT flow over land
-        hourDataUrl: currentsHourUrl,     // same RTOFS-hour translation
-        // trail tunables fall through to config: particle_count, particle_speed,
-        // trail_thickness, particle_alpha.
+        hourDataUrl: currentsHourUrl,     // RTOFS-hour translated (shared with fill)
     });
 }
