@@ -221,6 +221,15 @@ class FieldStore:
 
         return True
 
+    def live_product_hours(self):
+        """Set of all (product, fhour) pairs present anywhere in the catalog.
+
+        Passthrough to db.get_live_product_hours; used by the housekeeper to detect
+        orphaned per-hour render files (files whose layer+hour no longer has any
+        catalog backing after a run advanced).
+        """
+        return self.db.get_live_product_hours()
+
     def reconcile(self):
         """Find and fix catalog/file divergence.
 

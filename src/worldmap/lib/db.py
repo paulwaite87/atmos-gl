@@ -858,6 +858,26 @@ class Database:
                 r[0] if not hasattr(r, "keys") else r["fhour"] for r in cur.fetchall()
             ]
 
+    def get_live_product_hours(self):
+        """Return the set of all (product, fhour) pairs present anywhere in the
+        catalog, across every run/date.
+
+        Used by the housekeeper to identify orphaned per-hour render files: a
+        rendered PNG for (layer, fhour) is orphaned only if NO catalog row anywhere
+        has that product+fhour. Matching across all runs (not just the latest) is
+        deliberate — during a run transition the catalog may briefly hold rows from
+        more than one run, and we must not delete a file that a live row still backs.
+        """
+        with self.conn.cursor() as cur:
+            cur.execute("SELECT DISTINCT product, fhour FROM field_catalog")
+            pairs = set()
+            for r in cur.fetchall():
+                if hasattr(r, "keys"):
+                    pairs.add((r["product"], int(r["fhour"])))
+                else:
+                    pairs.add((r[0], int(r[1])))
+            return pairs
+
     def field_catalog_exists(
         self, gfs_date: str, gfs_run: str, fhour: int, product: str
     ) -> bool:
