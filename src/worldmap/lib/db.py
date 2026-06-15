@@ -688,7 +688,17 @@ class Database:
         Args:
             products: optional list of product names to require. If given, an hour
                       counts as 'available' only when ALL listed products have it
-                      (so the scrubber never lands on an hour some layer lacks).
+                      (so the scrubber never lands on an hour some layer lacks), AND
+                      the freshest run is resolved WITHIN those products only.
+
+        The product scoping on the run-pick matters because the catalog is shared
+        across independent model cycles that use different run identifiers: GFS runs
+        00/06/12/18, RTOFS currents run "00", etc. Without scoping, a bare
+        ORDER BY gfs_run DESC would mix models — e.g. an RTOFS row (run "00") on a
+        newer date could outrank the latest GFS run, or the higher GFS run string
+        could hide currents. Filtering the run-pick by `products` makes
+        "latest run for {currents}" and "latest run for {GFS layers}" resolve to
+        their own model's cycle.
 
         Returns dict:
             { "gfs_date": "20260613", "gfs_run": "18",
@@ -696,13 +706,26 @@ class Database:
         or None if the catalog is empty.
         """
         with self.conn.cursor() as cur:
-            # Freshest run = max(updated_at)'s (gfs_date, gfs_run).
-            cur.execute("""
-                SELECT gfs_date, gfs_run
-                FROM field_catalog
-                ORDER BY gfs_date DESC, gfs_run DESC
-                LIMIT 1
-            """)
+            # Freshest run = newest (gfs_date, gfs_run), scoped to the requested
+            # products so unrelated model cycles can't outrank each other.
+            if products:
+                cur.execute(
+                    """
+                    SELECT gfs_date, gfs_run
+                    FROM field_catalog
+                    WHERE product = ANY(%s)
+                    ORDER BY gfs_date DESC, gfs_run DESC
+                    LIMIT 1
+                """,
+                    (list(products),),
+                )
+            else:
+                cur.execute("""
+                    SELECT gfs_date, gfs_run
+                    FROM field_catalog
+                    ORDER BY gfs_date DESC, gfs_run DESC
+                    LIMIT 1
+                """)
             row = cur.fetchone()
             if not row:
                 return None
@@ -880,20 +903,38 @@ class Database:
                 orphans.append(dict(row))
         return orphans
 
-    def get_field_rows_except(self, gfs_date, gfs_run):
+    def get_field_rows_except(self, gfs_date, gfs_run, products=None):
         """Return catalog rows NOT belonging to (gfs_date, gfs_run).
-        Used by the data_collector to prune superseded runs (row + file).
-        Each row includes storage_uri so the caller can unlink the file.
+
+        Used by the data_collector to prune superseded runs (row + file). Each row
+        includes storage_uri so the caller can unlink the file.
+
+        When `products` is given, the query is additionally scoped to those products,
+        so a collector pruning its own model's superseded runs cannot even see — let
+        alone delete — another model's rows. The catalog is shared across independent
+        cycles (GFS runs 00/06/12/18, RTOFS currents run "00"), so a bare "everything
+        except this run" would span models; the filter keeps pruning within a family.
         """
         with self.conn.cursor() as cur:
-            cur.execute(
-                """
-                SELECT gfs_date, gfs_run, fhour, product, storage_uri
-                FROM field_catalog
-                WHERE NOT (gfs_date=%s AND gfs_run=%s)
-                """,
-                (gfs_date, gfs_run),
-            )
+            if products:
+                cur.execute(
+                    """
+                    SELECT gfs_date, gfs_run, fhour, product, storage_uri
+                    FROM field_catalog
+                    WHERE NOT (gfs_date=%s AND gfs_run=%s)
+                      AND product = ANY(%s)
+                    """,
+                    (gfs_date, gfs_run, list(products)),
+                )
+            else:
+                cur.execute(
+                    """
+                    SELECT gfs_date, gfs_run, fhour, product, storage_uri
+                    FROM field_catalog
+                    WHERE NOT (gfs_date=%s AND gfs_run=%s)
+                    """,
+                    (gfs_date, gfs_run),
+                )
             return [dict(r) for r in cur.fetchall()]
 
     def get_expired_field_rows(self, expiry_hours=48):

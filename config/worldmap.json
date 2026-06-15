@@ -11,7 +11,7 @@
   },
   "animation": {
     "forecast_stepping": true,
-    "hour_seconds": 0.8,
+    "hour_seconds": 2.8,
     "sharp": false
   },
   "terminator": {
@@ -21,7 +21,7 @@
     "edge_softness": 35
   },
   "clouds": {
-    "enabled": false,
+    "enabled": true,
     "url": "https://gibs.earthdata.nasa.gov/wms/epsg4326/best/wms.cgi",
     "outfile": "data/cloud_map.png",
     "threshold": 168,
@@ -45,11 +45,11 @@
     "cache_expiry_days": 3
   },
   "wind": {
-    "enabled": false,
+    "enabled": true,
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
     "outfile": "data/wind.png",
-    "level_of_detail": "2",
-    "particle_speed": 30,
+    "level_of_detail": "1",
+    "particle_speed": 10,
     "particle_alpha": 80,
     "particle_size": 0.45,
     "trail_fade": 15,
@@ -152,7 +152,7 @@
     "cache_expiry_days": 3
   },
   "storms": {
-    "enabled": false,
+    "enabled": true,
     "jtwc_url": "https://www.ssd.noaa.gov/PS/TROP/DATA/ATCF/JTWC/",
     "nhc_url": "https://ftp.nhc.noaa.gov/atcf/fst/",
     "outfile": "data/storms.json",
@@ -166,7 +166,7 @@
     "runs_per_day": 8
   },
   "lightning": {
-    "enabled": false,
+    "enabled": true,
     "outfile": "data/lightning.json",
     "icon_zoom": 1,
     "strike_recent_minutes": 15,
@@ -175,7 +175,7 @@
     "runs_per_day": 24
   },
   "quakes": {
-    "enabled": false,
+    "enabled": true,
     "url": "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.csv",
     "outfile": "data/quakes.json",
     "icon_zoom": 0.7,
@@ -202,7 +202,7 @@
     "runs_per_day": 1
   },
   "shipping": {
-    "enabled": false,
+    "enabled": true,
     "outfile": "data/ships.json",
     "region": "NZ_Aus",
     "icon_zoom": 0.6,
@@ -221,7 +221,9 @@
     "enabled": true,
     "sat_names": [
       "ISS (ZARYA)",
-      "HST"
+      "CSS (TIANHE)",
+      "HST",
+      "SENTINEL-1A"
     ],
     "extra_satellite_names": "",
     "past_minutes": 45,
@@ -235,7 +237,7 @@
     "marker_fontsize": 11
   },
   "data_collector": {
-    "enabled": true,
+    "enabled": false,
     "datasources": {
       "gfs": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
       "sst": "https://downloads.psl.noaa.gov/Datasets/noaa.oisst.v2.highres",

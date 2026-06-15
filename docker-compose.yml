@@ -1,6 +1,6 @@
+name: worldmap-ng
 services:
   shipping_collector:
-    container_name: shipping_collector
     image: worldmap:latest
     build:
       context: .
@@ -34,7 +34,6 @@ services:
       - wmap
 
   data_collector:
-    container_name: data_collector
     image: worldmap:latest
     build:
       context: .
@@ -67,7 +66,6 @@ services:
       - wmap
 
   satellites_collector:
-    container_name: satellites_collector
     image: worldmap:latest
     build:
       context: .
@@ -100,7 +98,6 @@ services:
       - wmap
 
   weather_scanner:
-    container_name: weather_scanner
     image: worldmap:latest
     build:
       context: .
@@ -134,7 +131,6 @@ services:
       - wmap
 
   layer_builder:
-    container_name: layer_builder
     image: worldmap:latest
     build:
       context: .
@@ -167,7 +163,6 @@ services:
       - wmap
 
   housekeeper:
-    container_name: housekeeper
     image: worldmap:latest
     build:
       context: .
@@ -192,7 +187,6 @@ services:
       - wmap
 
   map_api:
-    container_name: map_api
     image: worldmap:latest
     build:
       context: .
@@ -231,7 +225,6 @@ services:
       - wmap
 
   map_ui:
-    container_name: map_ui
     image: nginxinc/nginx-unprivileged:alpine
     ports:
       - "8180:8080"
@@ -244,7 +237,6 @@ services:
       - wmap
 
   worldmap_db_init:
-    container_name: worldmap_db_init
     image: alpine:latest
     command: >
       sh -c "chown ${UID:-1000}:${GID:-1000} /var/lib/postgresql/data && 
@@ -256,7 +248,6 @@ services:
       - wmap
 
   worldmap_db:
-    container_name: worldmap_db
     image: postgis/postgis:15-3.3
     # The database STILL needs the user directive because it uses a pre-built image, not your custom Dockerfile
     user: "${UID:-1000}:${GID:-1000}"

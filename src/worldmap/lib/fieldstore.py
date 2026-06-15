@@ -261,7 +261,7 @@ class FieldStore:
         is None the old behaviour (prune everything not matching) is retained.
         """
         try:
-            rows = self.db.get_field_rows_except(gfs_date, gfs_run)
+            rows = self.db.get_field_rows_except(gfs_date, gfs_run, products=products)
         except Exception as e:
             logger.debug(f"prune_except_run: catalog query failed: {e}")
             return
