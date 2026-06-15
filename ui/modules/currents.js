@@ -138,6 +138,8 @@ export async function loadLayer(map, config, fullConfig = {}) {
         fragmentBody: `
             uniform float u_vmax_current;
             uniform float u_alpha;
+            uniform float u_fill_floor;   // speed (m/s) below which fill is transparent
+            uniform float u_fill_knee;    // speed (m/s) at which fill reaches full alpha
             // decode a texel's (u,v) in m/s
             vec2 decodeUV(vec4 t) { return t.rg * (2.0 * u_vmax_current) - u_vmax_current; }
             vec4 shade(float value, vec2 uv) {
@@ -146,13 +148,22 @@ export async function loadLayer(map, config, fullConfig = {}) {
                 if (t0.a < 0.5 || t1.a < 0.5) discard;         // land/no-data
                 vec2 vel = mix(decodeUV(t0), decodeUV(t1), u_frac);
                 float spd = length(vel);
+                // Speed-gated alpha: fully transparent below floor, fading up to knee.
+                // This yields "discrete currents over mostly-transparent ocean" instead
+                // of a solid wash. Colour still spans the full LUT by speed.
+                float aGate = smoothstep(u_fill_floor, u_fill_knee, spd);
+                if (aGate <= 0.001) discard;                   // skip dead-slow water
                 float s = clamp(spd / u_vmax_current, 0.0, 1.0);
                 vec3 c = texture(u_cmap, vec2(s, 0.5)).rgb;
-                return vec4(c, u_alpha);
+                return vec4(c, u_alpha * aGate);
             }`,
         customUniforms: (cfg) => ({
             u_vmax_current: VMAX,
             u_alpha: Number(cfg.alpha) > 0 ? Number(cfg.alpha) / 100 : 0.6,
+            // Tunable via config; defaults chosen for RTOFS (most ocean < 0.2 m/s,
+            // currents of interest > ~0.3 m/s, strong jets ~1-2.5 m/s).
+            u_fill_floor: Number(cfg.fill_floor) >= 0 ? Number(cfg.fill_floor) : 0.15,
+            u_fill_knee: Number(cfg.fill_knee) > 0 ? Number(cfg.fill_knee) : 0.5,
         }),
         onMount: addLegend,
         onRefresh: addLegend,

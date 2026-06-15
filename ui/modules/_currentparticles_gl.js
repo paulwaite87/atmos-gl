@@ -46,7 +46,7 @@ const UPDATE_FS = `#version 300 es
 precision highp float;
 in vec2 v_uv; out vec4 fragColor;
 uniform sampler2D u_particles;     // current head positions
-uniform sampler2D u_wind;
+uniform sampler2D u_vel;
 uniform float u_vmax, u_speed, u_dropRate, u_dropBump, u_dropSpeed, u_seed, u_landReset;
 uniform vec4 u_bboxPos;
 const float PI = 3.141592653589793;
@@ -55,7 +55,7 @@ ${PACK}
 void main(){
     vec2 pos = decodePos(texture(u_particles, v_uv));
     float lat = (0.5 - pos.y) * PI;
-    vec4 w = texture(u_wind, pos);
+    vec4 w = texture(u_vel, pos);
     vec2 vel = (w.a < 0.5) ? vec2(0.0) : (w.rg * (2.0*u_vmax) - u_vmax);
     float coslat = max(cos(lat), 0.05);
     vec2 d = vec2(vel.x / coslat * 0.5, -vel.y) * (u_speed * STEP);
@@ -91,7 +91,7 @@ void main(){
 const TRAIL_VS_BODY = `
 precision highp float;
 uniform sampler2D u_hist[${TRAIL_LEN}];   // ring of history position textures (0=newest)
-uniform sampler2D u_wind;
+uniform sampler2D u_vel;
 uniform float u_res, u_vmax, u_halfThick, u_maxspeed, u_alpha, u_trailLen;
 uniform vec2 u_viewport;
 out float v_speed;
@@ -127,7 +127,7 @@ void main(){
     vec2 pB = cp_decode(cp_hist(slotB, tc));
 
     // Discard degenerate / land / antimeridian-wrapping segments (push offscreen).
-    vec4 wB = texture(u_wind, pB);
+    vec4 wB = texture(u_vel, pB);
     float dlon = abs(pA.x - pB.x);
     if (wB.a < 0.5 || dlon > 0.5 || (pA.x==0.0&&pA.y==0.0) || (pB.x==0.0&&pB.y==0.0)) {
         v_speed = 0.0; v_t = 0.0; gl_Position = vec4(2.0,2.0,2.0,1.0); return;
@@ -200,11 +200,11 @@ export function createCurrentParticleGLLayer(map, opts) {
     let glRef = null, webglFailed = false;
     let updateProg = null, trailProgCache = new Map(), trailProgFailed = false;
     let screenQuad = null, vaoUpdate = null, vaoTrails = null;
-    let windTex = null, cmapTex = null;
+    let velTex = null, cmapTex = null;
     // history ring: TRAIL_LEN textures + matching FBOs; head index advances each frame
     let hist = [], histFbo = [], head = 0;
     let RES = 96, count = RES * RES;
-    let windReady = false, pendingWindImg = null, pendingLut = null, pendingRebuild = false;
+    let velReady = false, pendingVelImg = null, pendingLut = null, pendingRebuild = false;
     let curCfg = initialConfig, curAnim = initialAnimation;
     let curSpeed = 0.4, curThick = 2.0, curMaxSpeed = vmax, curAlpha = 0.9, curLandReset = 1.0;
     let bustKey = (timeline.get().refreshEpoch) || Date.now();
@@ -297,11 +297,11 @@ export function createCurrentParticleGLLayer(map, opts) {
     };
     let curBbox = [0, 0, 1, 1];
 
-    const uploadWindNow = (gl, img) => {
-        if (!windTex) windTex = makeTex(gl, 2, 2, new Uint8Array(16), gl.LINEAR);
-        gl.bindTexture(gl.TEXTURE_2D, windTex);
+    const uploadVelNow = (gl, img) => {
+        if (!velTex) velTex = makeTex(gl, 2, 2, new Uint8Array(16), gl.LINEAR);
+        gl.bindTexture(gl.TEXTURE_2D, velTex);
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
-        windReady = true;
+        velReady = true;
     };
     const uploadColormapNow = (gl, lut) => {
         if (!lut) return;
@@ -309,10 +309,10 @@ export function createCurrentParticleGLLayer(map, opts) {
         else { gl.bindTexture(gl.TEXTURE_2D, cmapTex);
                gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 256, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, lut); }
     };
-    const loadWind = (cfg) => {
+    const loadVelocity = (cfg) => {
         const url = hourDataUrl(cfg, timeline.get().hour, bustKey);
         const img = new Image(); img.crossOrigin = 'anonymous';
-        img.onload = () => { pendingWindImg = img; map.triggerRepaint(); };
+        img.onload = () => { pendingVelImg = img; map.triggerRepaint(); };
         img.onerror = () => {};
         img.src = url;
     };
@@ -329,8 +329,8 @@ export function createCurrentParticleGLLayer(map, opts) {
         const u = (n) => gl.getUniformLocation(updateProg, n);
         gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, hist[newestSlot]);
         gl.uniform1i(u('u_particles'), 0);
-        gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, windTex);
-        gl.uniform1i(u('u_wind'), 1);
+        gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, velTex);
+        gl.uniform1i(u('u_vel'), 1);
         gl.uniform1f(u('u_vmax'), vmax);
         gl.uniform1f(u('u_speed'), curSpeed);
         gl.uniform1f(u('u_dropRate'), 0.002);
@@ -369,8 +369,8 @@ export function createCurrentParticleGLLayer(map, opts) {
             units.push(i);
         }
         gl.uniform1iv(u('u_hist'), units);
-        gl.activeTexture(gl.TEXTURE0 + TRAIL_LEN); gl.bindTexture(gl.TEXTURE_2D, windTex);
-        gl.uniform1i(u('u_wind'), TRAIL_LEN);
+        gl.activeTexture(gl.TEXTURE0 + TRAIL_LEN); gl.bindTexture(gl.TEXTURE_2D, velTex);
+        gl.uniform1i(u('u_vel'), TRAIL_LEN);
         gl.activeTexture(gl.TEXTURE0 + TRAIL_LEN + 1); gl.bindTexture(gl.TEXTURE_2D, cmapTex);
         gl.uniform1i(u('u_cmap'), TRAIL_LEN + 1);
         gl.uniform1f(u('u_res'), RES);
@@ -406,15 +406,15 @@ export function createCurrentParticleGLLayer(map, opts) {
             buildState(gl);
             applyParams(cfg);
             if (colormap) uploadColormapNow(gl, colormap(cfg));
-            loadWind(cfg);
+            loadVelocity(cfg);
             map.triggerRepaint();
         },
         render(gl, args) {
             if (webglFailed || !updateProg) return;
             if (pendingRebuild) { buildState(gl); pendingRebuild = false; }
-            if (pendingWindImg) { uploadWindNow(gl, pendingWindImg); pendingWindImg = null; }
+            if (pendingVelImg) { uploadVelNow(gl, pendingVelImg); pendingVelImg = null; }
             if (pendingLut) { uploadColormapNow(gl, pendingLut); pendingLut = null; }
-            if (!windReady || !windTex) { map.triggerRepaint(); return; }
+            if (!velReady || !velTex) { map.triggerRepaint(); return; }
             curBbox = viewBox();
             advect(gl);
             drawTrails(gl, args);
@@ -425,9 +425,9 @@ export function createCurrentParticleGLLayer(map, opts) {
             trailProgCache.forEach((p) => gl.deleteProgram(p)); trailProgCache.clear();
             hist.forEach((t) => t && gl.deleteTexture(t));
             histFbo.forEach((f) => f && gl.deleteFramebuffer(f));
-            [windTex, cmapTex].forEach((t) => t && gl.deleteTexture(t));
+            [velTex, cmapTex].forEach((t) => t && gl.deleteTexture(t));
             if (updateProg) gl.deleteProgram(updateProg);
-            hist = []; histFbo = []; windTex = cmapTex = null; updateProg = null; glRef = null;
+            hist = []; histFbo = []; velTex = cmapTex = null; updateProg = null; glRef = null;
         },
     });
 
@@ -444,7 +444,7 @@ export function createCurrentParticleGLLayer(map, opts) {
         if (colormap) pendingLut = colormap(cfg);
         // reload the velocity texture for the (reconciled) current hour
         bustKey = timeline.get().refreshEpoch || bustKey;
-        if (glRef) loadWind(cfg);
+        if (glRef) loadVelocity(cfg);
         if (parseInt(cfg.particle_count, 10) && glRef) pendingRebuild = true;
         map.triggerRepaint();
     };
@@ -455,7 +455,7 @@ export function createCurrentParticleGLLayer(map, opts) {
     // Reload velocity texture when the timeline hour changes (scrubber/playback).
     timeline.subscribe((snap) => {
         if (snap.refreshEpoch !== bustKey) bustKey = snap.refreshEpoch;
-        if (glRef && windReady) loadWind(curCfg);
+        if (glRef && velReady) loadVelocity(curCfg);
     });
 
     liveLayerSync(map, {
