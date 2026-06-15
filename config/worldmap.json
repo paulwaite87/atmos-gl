@@ -11,7 +11,7 @@
   },
   "animation": {
     "forecast_stepping": true,
-    "hour_seconds": 2.8,
+    "hour_seconds": 0.8,
     "sharp": false
   },
   "terminator": {
@@ -48,8 +48,8 @@
     "enabled": false,
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
     "outfile": "data/wind.png",
-    "level_of_detail": "1",
-    "particle_speed": 10,
+    "level_of_detail": "2",
+    "particle_speed": 30,
     "particle_alpha": 80,
     "particle_size": 0.45,
     "trail_fade": 15,
@@ -78,7 +78,7 @@
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/rtofs/prod/",
     "outfile": "data/currents.png",
     "palette": "thermal_red",
-    "alpha": 40,
+    "alpha": 50,
     "width_factor": 2.6,
     "key_fontsize": 8,
     "runs_per_day": 2,
@@ -221,9 +221,7 @@
     "enabled": false,
     "sat_names": [
       "ISS (ZARYA)",
-      "CSS (TIANHE)",
-      "HST",
-      "SENTINEL-1A"
+      "HST"
     ],
     "extra_satellite_names": "",
     "past_minutes": 45,
@@ -237,18 +235,18 @@
     "marker_fontsize": 11
   },
   "data_collector": {
-    "enabled": false,
+    "enabled": true,
     "datasources": {
       "gfs": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
       "sst": "https://downloads.psl.noaa.gov/Datasets/noaa.oisst.v2.highres",
-      "currents": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/rtofs/prod"
+      "currents": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/rtofs/prod/"
     },
     "update_hours": 1,
     "cache_hours": 24,
     "log_level": "DEBUG"
   },
   "satellites_collector": {
-    "enabled": false,
+    "enabled": true,
     "url": "https://celestrak.org/NORAD/elements",
     "groups": "stations,weather,science,resource",
     "update_hours": 12,

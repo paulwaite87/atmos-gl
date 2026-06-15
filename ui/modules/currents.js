@@ -1,5 +1,5 @@
 import { createFillLayer } from './_webglfill.js';
-import { createWindParticleGLLayer } from './_windparticles_gl.js';
+import { createCurrentParticleGLLayer } from './_currentparticles_gl.js';
 import { timeline } from './timeline.js';
 
 // Backend VMAX_CURRENT (m/s). Texture is R=U, G=V encoded as channel*(2*vmax)-vmax.
@@ -148,16 +148,19 @@ export function loadLayer(map, config, fullConfig = {}) {
         onUnmount: removeLegend,
     });
 
-    // ---- 2) PARTICLES (on top): advected along the same u/v texture ----
-    createWindParticleGLLayer(map, {
+    // ---- 2) FLOWING TRAIL PARTICLES (on top): each particle draws its recent
+    // path as a fading, tapering ribbon along the current — the smooth flowing look.
+    createCurrentParticleGLLayer(map, {
         sectionKey: 'currents',
         initialConfig: config,
+        initialAnimation: fullConfig.animation || {},
+        initialCommon: fullConfig.common || {},
         vmax: VMAX,                       // matches backend VMAX_CURRENT
         colormap: () => buildLUT(palette),
         maxSpeedColor: () => VMAX,        // speed tint scaled to current speeds
         landReset: () => 1.0,             // currents must NOT flow over land
         hourDataUrl: currentsHourUrl,     // same RTOFS-hour translation
-        // particle tunables fall through to config (particle_speed, particle_alpha,
-        // particle_size, trail_fade, width_factor, etc.)
+        // trail tunables fall through to config: particle_count, particle_speed,
+        // trail_thickness, particle_alpha.
     });
 }
