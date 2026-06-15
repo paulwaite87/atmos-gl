@@ -19,6 +19,10 @@ from worldmap.routes import (
 
 app = FastAPI(title="WorldMap Configuration API")
 
+origins = [
+    "http://localhost:8180",
+]
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
