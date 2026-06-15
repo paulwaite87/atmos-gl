@@ -184,7 +184,14 @@ def stormwatch_data_unpack(path):
 # keeps the eddy / western-boundary-current structure (the detail that makes this
 # layer worth showing) at a manageable ~25 MB/hr texture.
 CURRENTS_STEP = 0.1
-CURRENTS_LAT_MIN, CURRENTS_LAT_MAX = -80.0, 90.0   # RTOFS covers ~ -78.6 .. 90
+# IMPORTANT: the GPU fill/particle layers assume the data texture spans the FULL
+# -90..+90 (their lat->row mapping is ny = 0.5 - lat/180). RTOFS data only reaches
+# ~ -78.6 in the south, but we still build the target grid over the full -90..+90 so
+# the texture rows line up with that assumption. The unreached -90..-78 band simply
+# regrids to NaN (no source within the distance cap) -> transparent, which is correct
+# (it's Antarctic continent/shelf anyway). Using -80 here instead shifted/compressed
+# the whole field vertically because the texture's lat span no longer matched the VS.
+CURRENTS_LAT_MIN, CURRENTS_LAT_MAX = -90.0, 90.0
 
 
 def _regrid_curvilinear_nn(lat2d, lon2d, fields, step, lat_min, lat_max):
@@ -242,12 +249,13 @@ def _regrid_curvilinear_nn(lat2d, lon2d, fields, step, lat_min, lat_max):
         vals = np.asarray(arr)[sub][vm].ravel()
         safe_idx = np.clip(idx, 0, vals.size - 1)
         regridded = np.where(hit, vals[safe_idx], np.nan).reshape(mlat.shape)
-        # tlat is built ascending (south->north), so row 0 is SOUTH. The rest of the
-        # pipeline (encode_uv, the GPU layers) expects row 0 = NORTH (GFS native).
-        # Flip rows so currents obey the same north-up convention as every other
-        # layer; otherwise the texture renders vertically mirrored.
+        # RTOFS native grid is SOUTH-first (j=0 at Antarctica). The regrid's tlat is
+        # built ascending, so `regridded` row 0 = south. But the GPU layers (fill VS
+        # ny = 0.5 - lat/180, and the particle layer's lat = (0.5 - pos.y)*PI) both
+        # assume the texture is NORTH-first (row 0 = +90), like the GFS layers. So we
+        # flip to north-first; without this the render is vertically mirrored.
         out[name] = np.flipud(regridded).astype(np.float32)
-    # Return latitudes north-first to match the flipped rows.
+    # Latitudes north-first to match the flipped rows.
     return tlat[::-1], tlon, out
 
 

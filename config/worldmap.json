@@ -21,7 +21,7 @@
     "edge_softness": 35
   },
   "clouds": {
-    "enabled": true,
+    "enabled": false,
     "url": "https://gibs.earthdata.nasa.gov/wms/epsg4326/best/wms.cgi",
     "outfile": "data/cloud_map.png",
     "threshold": 168,
@@ -32,7 +32,7 @@
     "cache_expiry_days": 3
   },
   "isobars": {
-    "enabled": true,
+    "enabled": false,
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
     "outfile": "data/isobars.png",
     "level_of_detail": "3",
@@ -45,7 +45,7 @@
     "cache_expiry_days": 3
   },
   "wind": {
-    "enabled": true,
+    "enabled": false,
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
     "outfile": "data/wind.png",
     "level_of_detail": "1",
@@ -62,7 +62,7 @@
     "cache_expiry_days": 3
   },
   "precipitation": {
-    "enabled": true,
+    "enabled": false,
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
     "outfile": "data/precipitation.png",
     "level_of_detail": "1",
@@ -74,11 +74,11 @@
     "cache_expiry_days": 3
   },
   "currents": {
-    "enabled": false,
+    "enabled": true,
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/rtofs/prod/",
     "outfile": "data/currents.png",
     "palette": "thermal_red",
-    "alpha": 50,
+    "alpha": 40,
     "width_factor": 2.6,
     "key_fontsize": 8,
     "runs_per_day": 2,
@@ -152,7 +152,7 @@
     "cache_expiry_days": 3
   },
   "storms": {
-    "enabled": true,
+    "enabled": false,
     "jtwc_url": "https://www.ssd.noaa.gov/PS/TROP/DATA/ATCF/JTWC/",
     "nhc_url": "https://ftp.nhc.noaa.gov/atcf/fst/",
     "outfile": "data/storms.json",
@@ -166,7 +166,7 @@
     "runs_per_day": 8
   },
   "lightning": {
-    "enabled": true,
+    "enabled": false,
     "outfile": "data/lightning.json",
     "icon_zoom": 1,
     "strike_recent_minutes": 15,
@@ -175,7 +175,7 @@
     "runs_per_day": 24
   },
   "quakes": {
-    "enabled": true,
+    "enabled": false,
     "url": "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.csv",
     "outfile": "data/quakes.json",
     "icon_zoom": 0.7,
@@ -202,7 +202,7 @@
     "runs_per_day": 1
   },
   "shipping": {
-    "enabled": true,
+    "enabled": false,
     "outfile": "data/ships.json",
     "region": "NZ_Aus",
     "icon_zoom": 0.6,
@@ -218,7 +218,7 @@
     "runs_per_day": 24
   },
   "satellites": {
-    "enabled": true,
+    "enabled": false,
     "sat_names": [
       "ISS (ZARYA)",
       "CSS (TIANHE)",
@@ -232,7 +232,7 @@
     "color": ""
   },
   "markers": {
-    "enabled": true,
+    "enabled": false,
     "marker_color": "White",
     "marker_fontsize": 11
   },

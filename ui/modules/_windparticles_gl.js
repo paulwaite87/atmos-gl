@@ -212,6 +212,10 @@ export function createWindParticleGLController(map, opts) {
         dropBump = (cfg) => (cfg.drop_rate_bump != null ? Number(cfg.drop_rate_bump) : 0.012),
         maxSpeedColor = (cfg) => (Number(cfg.max_speed_color) > 0 ? Number(cfg.max_speed_color) : 30.0),
         useViewDensity = true,
+        // Reset particles that wander onto land/no-data (alpha<0.5). Wind blows over
+        // land so defaults OFF; ocean layers (currents) set it ON so streaks don't
+        // smear across continents.
+        landReset = (cfg) => 0.0,
         eps = 0.0015,
         onMount = () => {}, onRefresh = () => {}, onUnmount = () => {},
     } = opts;
@@ -238,7 +242,7 @@ export function createWindParticleGLController(map, opts) {
     let streakProgFailed = false;
 
     let curSpeed = 0.25, curAlpha = 0.9, curMaxSpeed = 30.0, curStreakLen = 9, curThick = 1.5,
-        curDropRate = 0.003, curDropBump = 0.012;
+        curDropRate = 0.003, curDropBump = 0.012, curLandReset = 0.0;
     let curBbox = [0, 0, 1, 1];
     let windReady = false, pendingWindImg = null, pendingLut = null, pendingRebuild = false;
 
@@ -246,6 +250,7 @@ export function createWindParticleGLController(map, opts) {
         curSpeed = speed(cfg); curAlpha = alpha(cfg); curMaxSpeed = maxSpeedColor(cfg);
         curStreakLen = streakLen(cfg); curThick = thickness(cfg);
         curDropRate = dropRate(cfg); curDropBump = dropBump(cfg);
+        curLandReset = landReset(cfg) > 0.5 ? 1.0 : 0.0;
     };
 
     // equirect [0,1] respawn box. Latitude from bounds; longitude from centre + zoom
@@ -385,7 +390,7 @@ export function createWindParticleGLController(map, opts) {
         gl.uniform1f(u('u_dropRate'), curDropRate);
         gl.uniform1f(u('u_dropBump'), curDropBump);
         gl.uniform1f(u('u_dropSpeed'), 10.0);
-        gl.uniform1f(u('u_landReset'), 0.0);              // wind covers land too
+        gl.uniform1f(u('u_landReset'), curLandReset);
         gl.uniform4f(u('u_bboxPos'), curBbox[0], curBbox[1], curBbox[2], curBbox[3]);
         gl.uniform1f(u('u_seed'), Math.random());
         gl.drawArrays(gl.TRIANGLES, 0, 6);

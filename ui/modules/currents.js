@@ -155,6 +155,7 @@ export function loadLayer(map, config, fullConfig = {}) {
         vmax: VMAX,                       // matches backend VMAX_CURRENT
         colormap: () => buildLUT(palette),
         maxSpeedColor: () => VMAX,        // speed tint scaled to current speeds
+        landReset: () => 1.0,             // currents must NOT flow over land
         hourDataUrl: currentsHourUrl,     // same RTOFS-hour translation
         // particle tunables fall through to config (particle_speed, particle_alpha,
         // particle_size, trail_fade, width_factor, etc.)
