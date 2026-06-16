@@ -1,10 +1,15 @@
 -- Enable PostGIS
 CREATE EXTENSION IF NOT EXISTS postgis;
 
+-- Large commercial vessels are tier 'A'. Tier 'B' is
+-- for small commercial, recreational vessles etc
+CREATE TYPE ais_vessel_tier AS ENUM ('A', 'B');
+
 -- Core ship data (Identity + Real-time State)
 CREATE TABLE IF NOT EXISTS ships (
     mmsi VARCHAR(20) PRIMARY KEY,
     name VARCHAR(255),
+    ais_tier ais_vessel_tier NOT NULL DEFAULT 'A',
     destination TEXT,
     vessel_type INTEGER DEFAULT 0,
     vessel_class VARCHAR(50),
@@ -110,9 +115,10 @@ CREATE TABLE IF NOT EXISTS field_catalog (
 
 
 -- Indices for high-performance lookups
-CREATE INDEX IF NOT EXISTS idx_ships_geom ON ships USING GIST(geom);
 CREATE INDEX IF NOT EXISTS idx_map_region_boundary ON map_region USING GIST(boundary);
+CREATE INDEX IF NOT EXISTS idx_ships_geom ON ships USING GIST(geom);
 CREATE INDEX IF NOT EXISTS idx_ships_last_update ON ships(last_position_update);
+CREATE INDEX IF NOT EXISTS idx_vessels_ais_tier ON ships(ais_tier);
 CREATE INDEX IF NOT EXISTS idx_ship_pos_mmsi ON ship_position(mmsi);
 CREATE INDEX IF NOT EXISTS idx_ship_pos_time ON ship_position(acquired_at);
 CREATE INDEX IF NOT EXISTS idx_ship_pos_geom ON ship_position USING GIST(geom);

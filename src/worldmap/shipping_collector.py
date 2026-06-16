@@ -39,8 +39,6 @@ class ShippingCollector:
         self.refresh_settings()
         logger.debug("Initializing Shipping Collector")
 
-        logger.info("One-time init: populating vessel_class field")
-
     def refresh_settings(self):
         self.config.load()
         self.settings = self.config.get_section("shipping_collector")
@@ -60,7 +58,12 @@ class ShippingCollector:
         sub = {
             "APIKey": self.api_key,
             "BoundingBoxes": [bbox],
-            "FilterMessageTypes": ["ShipStaticData", "PositionReport"],
+            "FilterMessageTypes": [
+                "ShipStaticData",
+                "PositionReport",
+                "StandardClassBPositionReport",
+                "ExtendedClassBPositionReport"
+            ],
         }
 
         static_count = 0
@@ -91,19 +94,21 @@ class ShippingCollector:
 
                         # --- Handle Static Data ---
                         if m_type == "ShipStaticData":
+                            ais_tier = 'A'
                             body = msg.get("Message", {}).get("ShipStaticData", {})
                             # Offload blocking DB call to a thread to keep loop responsive
                             await asyncio.to_thread(
-                                self.db.update_ship_static_data, mmsi, meta, body
+                                self.db.update_ship_static_data, mmsi, meta, body, ais_tier
                             )
                             static_count += 1
 
-                        # --- Handle Position Reports ---
-                        elif m_type == "PositionReport":
-                            body = msg.get("Message", {}).get("PositionReport", {})
+                        # --- Handle Position Reports for all tiers of vessel ---
+                        elif m_type in ["PositionReport", "StandardClassBPositionReport", "ExtendedClassBPositionReport"]:
+                            ais_tier = 'A' if m_type == "PositionReport" else "B"
+                            body = msg.get("Message", {}).get(m_type, {})
                             # Offload blocking DB call to a thread
                             await asyncio.to_thread(
-                                self.db.update_ship_position_data, mmsi, body
+                                self.db.update_ship_position_data, mmsi, meta, body, ais_tier
                             )
                             pos_count += 1
 
@@ -126,8 +131,6 @@ class ShippingCollector:
         # Base duration (e.g., 300s). This will be multiplied by the weight.
         base_duration = self.settings.get("listen_duration", 300)
         sleep_between_runs = self.settings.get("sleep_interval", 60)
-        track_expiry = self.settings.get("vessel_track_expiry_days", 30)
-
         num_chunks = 10
         slice_width = 36.0
 
@@ -142,9 +145,6 @@ class ShippingCollector:
                 start_total = self.db.get_current_ship_total()
 
                 try:
-                    # Remove expired shipping tracks
-                    self.db.prune_vessel_tracks(track_expiry)
-
                     # Random starting slice
                     start_offset = random.randrange(num_chunks)
                     chunk_indices = [

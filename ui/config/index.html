@@ -305,7 +305,6 @@
                         let customLabelText = "";
                         if (option === "outfile") customLabelText = "Output file";
                         else if (section === "quakes" && option === "min_mag") customLabelText = "Minimum magnitude";
-                        else if (section === "shipping" && option === "track_min_dist") customLabelText = "Track minimum distance";
                         else if (option === "animated" && (section === "precipitation" || section === "isobars")) customLabelText = "Animated forecast";
                         else if (section === "animation" && option === "forecast_stepping") customLabelText = "Forecast stepping (hourly playback)";
                         else if (section === "animation" && option === "hour_seconds") customLabelText = "Play speed (sec per hour)";
@@ -816,16 +815,6 @@
                                     <input type="text" class="form-control bg-dark text-light border-secondary dynamic-input" id="${domId}" value="${safeValue}">
                                 `;
                             }
-                        } else if (option === 'filter_ships_minimum_length') {
-                            const initialShipLength = parseInt(value) || 0;
-                            col.innerHTML = `
-                                <div class="d-flex justify-content-between align-items-center mb-1">
-                                    <label class="form-label small text-white-50 fw-bold mb-0">Show only ships longer than this</label>
-                                    <span class="badge bg-success text-dark fw-bold" id="badge-${domId}">${initialShipLength}m</span>
-                                </div>
-                                <input type="range" class="form-range dynamic-input" id="${domId}" min="0" max="500" step="25" value="${initialShipLength}"
-                                       oninput="document.getElementById('badge-${domId}').innerText = this.value + 'm'">
-                            `;
                         } else if (option === 'filter_show_max_ships') {
                             const initialMaxShips = parseInt(value) || 5000;
                             col.innerHTML = `
@@ -835,39 +824,6 @@
                                 </div>
                                 <input type="range" class="form-range dynamic-input" id="${domId}" min="100" max="10000" step="100" value="${initialMaxShips}"
                                        oninput="document.getElementById('badge-${domId}').innerText = this.value">
-                            `;
-                        } else if (option === 'track_max_points') {
-                            const initialNPoints = parseInt(value) || 10;
-                            col.innerHTML = `
-                                <div class="d-flex justify-content-between align-items-center mb-1">
-                                    <label class="form-label small text-white-50 fw-bold mb-0">Track maximum points</label>
-                                    <span class="badge bg-success text-dark fw-bold" id="badge-${domId}">${initialNPoints}</span>
-                                </div>
-                                <input type="range" class="form-range dynamic-input" id="${domId}" min="10" max="100" step="10" value="${initialNPoints}"
-                                       oninput="document.getElementById('badge-${domId}').innerText = this.value">
-                            `;
-                        } else if (option === 'track_min_dist') {
-                            const initialKm = parseInt(value) || 25;
-                            col.innerHTML = `
-                                <div class="d-flex justify-content-between align-items-center mb-1">
-                                    <label class="form-label small text-white-50 fw-bold mb-0">Track minimum distance</label>
-                                    <span class="badge bg-success text-dark fw-bold" id="badge-${domId}">${initialKm}km</span>
-                                </div>
-                                <input type="range" class="form-range dynamic-input" id="${domId}" min="10" max="200" step="10" value="${initialKm}"
-                                       oninput="document.getElementById('badge-${domId}').innerText = this.value + 'km'">
-                            `;
-                        } else if (option === 'filter_show_ship_classes') {
-                            let optionsHTML = '';
-                            const activeValues = Array.isArray(value) ? value : [];
-                            dynamicVesselClasses.forEach(r => {
-                                const isSelected = activeValues.includes(r.label)
-                                optionsHTML += `<option value="${r.label}" ${isSelected ? 'selected' : ''}>${r.label}</option>`;
-                            });
-                            col.innerHTML = `
-                                <label class="form-label small text-white-50 fw-bold mb-1">Select classes of ship to show</label>
-                                <select class="form-select bg-dark text-light border-secondary dynamic-input array-select" id="${domId}" multiple style="height: 220px;">
-                                    ${optionsHTML}
-                                </select>
                             `;
                         } else if (option === 'erupt_date_codes') {
                             const activeCodes = Array.isArray(value) ? value : [];

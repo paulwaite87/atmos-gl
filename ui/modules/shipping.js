@@ -33,7 +33,10 @@ export function loadLayer(map, config) {
                 <span style="color:#666;">IMO:</span> ${s.imo}<br>
                 <span style="color:#666;">Callsign:</span> ${s.callsign}<br>
                 <span style="color:#666;">Draught:</span> ${s.draught}m |
-                <span style="color:#666;">Heading:</span> ${s.heading}°
+                <span style="color:#666;">Heading:</span> ${s.heading}°<br>
+                <span style="color:#666;">Length:</span> ${s.length}m |
+                <span style="color:#666;">Beam:</span> ${s.beam}m<br>
+                <span style="color:#666;">Speed:</span> ${s.speed}knots
             </div>`).addTo(map);
     };
     const onLeave = () => { map.getCanvas().style.cursor = ''; popup.remove(); };

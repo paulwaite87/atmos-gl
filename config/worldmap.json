@@ -32,7 +32,7 @@
     "cache_expiry_days": 3
   },
   "isobars": {
-    "enabled": false,
+    "enabled": true,
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
     "outfile": "data/isobars.png",
     "level_of_detail": "3",
@@ -45,7 +45,7 @@
     "cache_expiry_days": 3
   },
   "wind": {
-    "enabled": false,
+    "enabled": true,
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
     "outfile": "data/wind.png",
     "level_of_detail": "2",
@@ -62,7 +62,7 @@
     "cache_expiry_days": 3
   },
   "precipitation": {
-    "enabled": false,
+    "enabled": true,
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
     "outfile": "data/precipitation.png",
     "level_of_detail": "1",
@@ -74,12 +74,12 @@
     "cache_expiry_days": 3
   },
   "currents": {
-    "enabled": true,
+    "enabled": false,
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/rtofs/prod/",
     "outfile": "data/currents.png",
     "palette": "thermal_red",
     "alpha": 50,
-    "particle_speed": 5,
+    "particle_speed": 50,
     "width_factor": 2.6,
     "key_fontsize": 8,
     "runs_per_day": 2,
@@ -153,7 +153,7 @@
     "cache_expiry_days": 3
   },
   "storms": {
-    "enabled": false,
+    "enabled": true,
     "jtwc_url": "https://www.ssd.noaa.gov/PS/TROP/DATA/ATCF/JTWC/",
     "nhc_url": "https://ftp.nhc.noaa.gov/atcf/fst/",
     "outfile": "data/storms.json",
@@ -167,7 +167,7 @@
     "runs_per_day": 8
   },
   "lightning": {
-    "enabled": false,
+    "enabled": true,
     "outfile": "data/lightning.json",
     "icon_zoom": 1,
     "strike_recent_minutes": 15,
@@ -176,7 +176,7 @@
     "runs_per_day": 24
   },
   "quakes": {
-    "enabled": false,
+    "enabled": true,
     "url": "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.csv",
     "outfile": "data/quakes.json",
     "icon_zoom": 0.7,
@@ -203,23 +203,13 @@
     "runs_per_day": 1
   },
   "shipping": {
-    "enabled": false,
+    "enabled": true,
     "outfile": "data/ships.json",
-    "region": "NZ_Aus",
     "icon_zoom": 0.6,
-    "filter_show_max_ships": 5000,
-    "filter_show_ship_classes": [],
-    "show_ships_by_name": "",
-    "filter_ships_minimum_length": 0,
-    "show_ships_underway": false,
-    "show_tracks": false,
-    "track_min_dist": 50,
-    "track_max_points": 30,
-    "expiry_days": 14,
     "runs_per_day": 24
   },
   "satellites": {
-    "enabled": false,
+    "enabled": true,
     "sat_names": [
       "ISS (ZARYA)",
       "HST"
@@ -231,7 +221,7 @@
     "color": ""
   },
   "markers": {
-    "enabled": false,
+    "enabled": true,
     "marker_color": "White",
     "marker_fontsize": 11
   },

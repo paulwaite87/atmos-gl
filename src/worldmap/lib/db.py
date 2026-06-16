@@ -30,7 +30,7 @@ class Database:
             logger.error(f"Postgres Connection Failed: {e}")
             raise
 
-    def update_ship_static_data(self, mmsi, metadata, body):
+    def update_ship_static_data(self, mmsi, metadata, body, ais_tier='A'):
         """Processes ShipStaticData and UPSERTs into the ships table."""
         name = metadata.get("ShipName", "Unknown").strip()
         destination = body.get("Destination", "").strip()
@@ -46,8 +46,8 @@ class Database:
         beam = int(dim.get("C", 0)) + int(dim.get("D", 0))
 
         sql = """
-              INSERT INTO ships (mmsi, name, destination, vessel_type, vessel_class, imo, callsign, draught, prev_draught, length, beam)
-              VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 0.0, %s, %s) ON CONFLICT (mmsi) DO \
+              INSERT INTO ships (mmsi, name, destination, vessel_type, vessel_class, imo, callsign, draught, prev_draught, length, beam, ais_tier)
+              VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 0.0, %s, %s, %s) ON CONFLICT (mmsi) DO \
               UPDATE SET
                   prev_draught = CASE \
                   WHEN ships.draught != EXCLUDED.draught AND EXCLUDED.draught > 0 \
@@ -63,7 +63,8 @@ class Database:
                 callsign = EXCLUDED.callsign,
                 draught = EXCLUDED.draught,
                 length = EXCLUDED.length,
-                beam = EXCLUDED.beam; \
+                beam = EXCLUDED.beam,
+                ais_tier = EXCLUDED.ais_tier; \
               """
         with self.conn.cursor() as cur:
             cur.execute(
@@ -79,55 +80,68 @@ class Database:
                     draught,
                     length,
                     beam,
+                    ais_tier
                 ),
             )
 
-    def update_ship_position_data(self, mmsi, body):
-        lat = body.get("Latitude")
-        lon = body.get("Longitude")
+    def update_ship_position_data(self, mmsi, metadata, body, ais_tier='A'):
+        vessel_type = body.get("Type", 0)
+        lat = body.get("Latitude", metadata.get("Latitude"))
+        lon = body.get("Longitude", metadata.get("Longitude"))
         nav_status = body.get("NavigationalStatus", 0)
         cog = body.get("Cog", 0.0)
         sog = body.get("Sog", 0.0)
+        name = metadata.get("ShipName", "Unknown").strip()
 
-        # Ensure the ship exists in the 'ships' table first (Shadow Insert)
-        # This prevents Foreign Key violations in the history table.
-        sql_ensure_ship = """
-                          INSERT INTO ships (mmsi, name, vessel_type)
-                          VALUES (%s, 'Unknown', 0) ON CONFLICT (mmsi) DO NOTHING; \
-                          """
+        # Single atomic UPSERT to keep the parent record alive and accurate
+        sql_upsert_ship = """
+        INSERT INTO ships (mmsi, name, vessel_type, ais_tier, lat, lon, geom, nav_status, cog, sog, last_position_update)
+        VALUES (
+            %s, %s, %s, %s, %s, %s, 
+            ST_SetSRID(ST_MakePoint(%s, %s), 4326), 
+            %s, %s, %s, NOW()
+        )
+        ON CONFLICT (mmsi) DO UPDATE 
+        SET
+            -- Only overwrite name if incoming isn't blank, 'Unknown', or empty
+            name = CASE 
+                WHEN EXCLUDED.name IS NOT NULL AND EXCLUDED.name NOT IN ('', 'Unknown') 
+                THEN EXCLUDED.name 
+                ELSE ships.name 
+            END,
+            -- Keep existing vessel_type if it already has a non-zero classification
+            vessel_type = CASE 
+                WHEN ships.vessel_type <> 0 THEN ships.vessel_type 
+                ELSE EXCLUDED.vessel_type 
+            END,
+            ais_tier = EXCLUDED.ais_tier,
+            lat = EXCLUDED.lat,
+            lon = EXCLUDED.lon,
+            geom = EXCLUDED.geom,
+            nav_status = EXCLUDED.nav_status,
+            cog = EXCLUDED.cog,
+            sog = EXCLUDED.sog,
+            last_position_update = NOW();
+        """
 
-        # Update current ship status
-        sql_live = """
-                   UPDATE ships
-                   SET lat                  = %s,
-                       lon                  = %s,
-                       geom                 = ST_SetSRID(ST_MakePoint(%s, %s), 4326),
-                       nav_status           = %s,
-                       cog                  = %s,
-                       sog                  = %s,
-                       last_position_update = NOW()
-                   WHERE mmsi = %s; \
-                   """
-
-        # Insert historical track
+        # Insert historical track (Safe from FK errors due to the UPSERT above)
         sql_history = """
-                      INSERT INTO ship_position (mmsi, lat, lon, geom, sog, cog, nav_status, acquired_at)
-                      VALUES (%s, %s, %s, ST_SetSRID(ST_MakePoint(%s, %s), 4326), %s, %s, %s, NOW());
-                      """
+        INSERT INTO ship_position (mmsi, lat, lon, geom, sog, cog, nav_status, acquired_at)
+        VALUES (%s, %s, %s, ST_SetSRID(ST_MakePoint(%s, %s), 4326), %s, %s, %s, NOW());
+        """
+
         try:
             with self.conn.cursor() as cur:
-                # Step 1: Guarantee the parent record exists
-                cur.execute(sql_ensure_ship, (str(mmsi),))
+                # Step 1: Upsert live parent vessel info
+                cur.execute(sql_upsert_ship, (
+                    str(mmsi), name, vessel_type, ais_tier, lat, lon, lon, lat, nav_status, cog, sog
+                ))
 
-                # Step 2: Update live position
-                cur.execute(
-                    sql_live, (lat, lon, lon, lat, nav_status, cog, sog, str(mmsi))
-                )
+                # Step 2: Record positional history point
+                cur.execute(sql_history, (
+                    str(mmsi), lat, lon, lon, lat, sog, cog, nav_status
+                ))
 
-                # Step 3: Record history (now safe from FK errors)
-                cur.execute(
-                    sql_history, (str(mmsi), lat, lon, lon, lat, sog, cog, nav_status)
-                )
         except Exception as e:
             logger.error(f"Database error updating position for {mmsi}: {e}")
 
@@ -166,7 +180,9 @@ class Database:
                                 'mmsi', mmsi,
                                 'name', name,
                                 'heading', COALESCE(cog, 0.0),
+                                'speed', COALESCE(sog, 0.0),
                                 'length', COALESCE(length, 0),
+                                'beam', COALESCE(beam, 0),
                                 'vessel_type', COALESCE(vessel_type, 0),
                                 'destination', COALESCE(destination, 'Unknown'),
                                 'vessel_class', COALESCE(vessel_class, 'Unknown'),
@@ -195,39 +211,6 @@ class Database:
         except Exception as e:
             logger.error(f"Error building native fleet GeoJSON layer: {e}")
             return '{"type":"FeatureCollection","features":[]}'
-
-    def get_ships(self, map_region_name=None, expiry_days=3):
-        """
-        Retrieves ships updated within expiry_days.
-        Filters by spatial region labels if provided, else returns global.
-        """
-        if map_region_name:
-            # Use the direct equality check for the label
-            # and use the INTERVAL '1 day' * %s math to safely inject the number of days
-            sql = """
-                  SELECT DISTINCT s.*
-                  FROM ships s
-                           JOIN map_region r ON ST_Contains(r.boundary, s.geom)
-                  WHERE r.label = %s
-                    AND s.last_position_update > NOW() - (INTERVAL '1 day' * %s)
-                    AND s.lat IS NOT NULL
-                    AND s.lon IS NOT NULL;
-                  """
-            params = (map_region_name, int(expiry_days))
-        else:
-            sql = """
-                  SELECT * \
-                  FROM ships s
-                  WHERE s.last_position_update > NOW() - INTERVAL '%s days'
-                    AND s.geom IS NOT NULL
-                    AND s.lat IS NOT NULL
-                    AND s.lon IS NOT NULL; \
-                  """
-            params = (expiry_days,)
-
-        with self.conn.cursor() as cur:
-            cur.execute(sql, params)
-            return cur.fetchall()
 
     def is_in_region(self, lat, lon, region_label):
         """Quick boolean check if a point is inside a specific region."""
