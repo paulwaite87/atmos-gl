@@ -1,5 +1,5 @@
 import { createFillLayer } from './_webglfill.js';
-import { createStreakParticleGLLayer } from './_streakparticles_gl.js';
+import { createCurrentParticleGLLayer } from './_currentparticles_gl.js';
 import { timeline } from './timeline.js';
 
 // Backend VMAX_CURRENT (m/s). Texture is R=U, G=V encoded as channel*(2*vmax)-vmax.
@@ -176,7 +176,7 @@ export async function loadLayer(map, config, fullConfig = {}) {
     // Uses the shared streak-particle engine (_streakparticles_gl.js, also used by
     // wind). The streak engine defaults landReset=0.0 (ignore land), so currents MUST
     // pass landReset:()=>1.0 to keep particles off the continents.
-    createStreakParticleGLLayer(map, {
+    createCurrentParticleGLLayer(map, {
         sectionKey: 'currents',
         initialConfig: config,
         initialAnimation: fullConfig.animation || {},

@@ -93,12 +93,22 @@ void main(){
     fragColor = encodePos(reset ? randPos : npos);
 }`;
 
-// Streak vertex shader BODY (MapLibre projection prelude + define are prepended). We
-// project the streak centre (and a neighbour ahead, for orientation) and build a thin
-// quad in screen space, its LONG axis along the flow. Length scales with speed; v_along
-// carries -1 (tail) .. +1 (head) for the opacity gradient. WV_-prefixed constants avoid
-// clashing with names the prelude defines (e.g. PI).
-const STREAK_VS_BODY = `
+// Draw shaders, parameterized by PRIMITIVE:
+//   'streak' (wind/currents): quad long axis ALONG the flow, length scales with speed,
+//            opacity fades head->tail (comet look).
+//   'bar'    (waves):         quad long axis PERPENDICULAR to the flow (swell crest),
+//            fixed length, flat opacity (windy.com swell look).
+// Everything up to the orientation is identical (decode, sample, project centre + a
+// neighbour ahead, horizon guard, screen-space flow direction).
+const buildDrawShaders = (primitive) => {
+    const isBar = primitive === 'bar';
+    // offPix: which screen axis carries length vs thickness.
+    //   streak: length along sdir (flow), thickness along perp.
+    //   bar:    length along perp (crest),  thickness along sdir.
+    const offPix = isBar
+        ? 'vec2 offPix = perp * (cc.x * lenPx) + sdir * (cc.y * u_halfThick);'
+        : 'vec2 offPix = sdir * (cc.x * lenPx) + perp * (cc.y * u_halfThick);';
+    const VS = `
 precision highp float;
 uniform sampler2D u_particles;
 uniform sampler2D u_wind;
@@ -138,27 +148,43 @@ void main(){
 
     vec4 cClip = projectTile(toMerc(pos));
     vec4 aClip = projectTile(toMerc(posA));
-    if (cClip.w <= 0.0) { v_speed = 0.0; v_along = 0.0; gl_Position = vec4(2.0, 2.0, 2.0, 1.0); return; }
+    // Discard if EITHER endpoint is at/behind the horizon. Guarding only the centre
+    // (cClip) leaves a case where the neighbour aClip.w is ~0, making aN explode and the
+    // streak span the screen -> massive overdraw -> GPU watchdog hang on rotate. A small
+    // positive epsilon keeps us clear of the singular w~0 band at the limb.
+    if (cClip.w <= 0.0001 || aClip.w <= 0.0001) { v_speed = 0.0; v_along = 0.0; gl_Position = vec4(2.0, 2.0, 2.0, 1.0); return; }
     vec2 cN = cClip.xy / cClip.w;
     vec2 aN = aClip.xy / aClip.w;
     vec2 pxDir = (aN - cN) * (u_viewport * 0.5);
     vec2 sdir = (length(pxDir) > 1e-4) ? normalize(pxDir) : vec2(0.0, 1.0);   // flow dir (screen)
     vec2 perp = vec2(-sdir.y, sdir.x);
 
-    // streak length scales with speed (windy look): base + speed fraction * scale
+    // length: streak scales with speed (u_lenSpeedScale>0); bar is fixed (scale passed as 0).
     float lenPx = u_halfLen * (1.0 + u_lenSpeedScale * clamp(spd / u_maxspeed, 0.0, 1.0));
 
     vec2 ab[6] = vec2[6](vec2(-1.0,-1.0), vec2(1.0,-1.0), vec2(-1.0,1.0),
                          vec2(-1.0, 1.0), vec2(1.0,-1.0), vec2( 1.0,1.0));
     vec2 cc = ab[corner];
     v_along = cc.x;                                   // -1 tail .. +1 head
-    vec2 offPix = sdir * (cc.x * lenPx) + perp * (cc.y * u_halfThick);
+    ${offPix}
     vec2 offNDC = offPix * 2.0 / u_viewport;
     gl_Position = cClip;
     gl_Position.xy += offNDC * cClip.w;
 }`;
-
-const STREAK_FS = `#version 300 es
+    // FS: streak fades head->tail; bar is flat alpha.
+    const FS = isBar
+        ? `#version 300 es
+precision highp float;
+in float v_speed;
+in float v_along;
+out vec4 fragColor;
+uniform sampler2D u_cmap;
+uniform float u_maxspeed, u_alpha;
+void main(){
+    float t = clamp(v_speed / u_maxspeed, 0.0, 1.0);
+    fragColor = vec4(texture(u_cmap, vec2(t, 0.5)).rgb, u_alpha);
+}`
+        : `#version 300 es
 precision highp float;
 in float v_speed;
 in float v_along;
@@ -170,12 +196,17 @@ void main(){
     float grad = smoothstep(-1.0, 1.0, v_along);     // bright head, faint tail
     fragColor = vec4(texture(u_cmap, vec2(t, 0.5)).rgb, u_alpha * grad);
 }`;
+    return { VS, FS };
+};
 
 // ---- controller -----------------------------------------------------------
 
 export function createStreakParticleGLController(map, opts) {
     const {
         sectionKey,  // required: 'wind' | 'currents' | ...
+        // Visible primitive: 'streak' (along-flow, speed-scaled length, comet fade —
+        // wind/currents) or 'bar' (perpendicular crest, fixed length, flat alpha — waves).
+        primitive = 'streak',
         initialConfig,
         coordinates = MERCATOR_CORNERS,
         vmax = 40.0,                                      // must match backend VMAX_WIND
@@ -197,6 +228,12 @@ export function createStreakParticleGLController(map, opts) {
         // particle_speed: 0-100 -> internal advection multiplier (wind's original scale).
         speed = (cfg) => { const p = Number(cfg.particle_speed);
                            return (isFinite(p) ? Math.min(100, Math.max(0, p)) : 50) / 500; },
+        // Advection-step multiplier to compensate for layers whose velocity magnitudes
+        // differ from wind's m/s range. The per-frame step is proportional to the raw
+        // velocity, so a slow field (ocean currents ~0-2.5 m/s vs wind ~0-40 m/s) barely
+        // moves and renders as static specks ("sparklies"). Ocean layers pass a larger
+        // speedScale to restore visible flow. Default 1 keeps wind unchanged.
+        speedScale = 1.0,
         // particle_alpha: 0-100 opacity.
         alpha = (cfg) => { const v = Number(cfg.particle_alpha);
                            const c = isFinite(v) ? Math.min(100, Math.max(0, v)) : 90;
@@ -248,7 +285,7 @@ export function createStreakParticleGLController(map, opts) {
     let windReady = false, pendingWindImg = null, pendingLut = null, pendingRebuild = false;
 
     const applyParams = (cfg) => {
-        curSpeed = speed(cfg); curAlpha = alpha(cfg); curMaxSpeed = maxSpeedColor(cfg);
+        curSpeed = speed(cfg) * speedScale; curAlpha = alpha(cfg); curMaxSpeed = maxSpeedColor(cfg);
         curStreakLen = streakLen(cfg); curThick = thickness(cfg);
         curDropRate = dropRate(cfg); curDropBump = dropBump(cfg);
         curLandReset = landReset(cfg) > 0.5 ? 1.0 : 0.0;
@@ -362,12 +399,13 @@ export function createStreakParticleGLController(map, opts) {
         img.src = hourDataUrl(cfg, snap.hour, snap.refreshEpoch);
     };
 
+    const { VS: DRAW_VS_BODY, FS: DRAW_FS } = buildDrawShaders(primitive);
     const getStreakProg = (gl, shaderData) => {
         const key = shaderData.variantName || '__default__';
         if (streakProgCache.has(key)) return streakProgCache.get(key);
         if (streakProgFailed) return null;
-        const vs = `#version 300 es\n${shaderData.vertexShaderPrelude}\n${shaderData.define}\n${STREAK_VS_BODY}`;
-        const prog = linkProg(gl, vs, STREAK_FS);
+        const vs = `#version 300 es\n${shaderData.vertexShaderPrelude}\n${shaderData.define}\n${DRAW_VS_BODY}`;
+        const prog = linkProg(gl, vs, DRAW_FS);
         if (!prog) { streakProgFailed = true; return null; }
         streakProgCache.set(key, prog);
         return prog;

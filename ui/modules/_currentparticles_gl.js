@@ -74,11 +74,13 @@ void main(){
            rlon = (r < wlo) ? (bmin.x + r) : (r - wlo); }
     float rlat = bmin.y + rand(seed + 2.7) * (bmax.y - bmin.y);
     vec2 randPos = vec2(rlon, rlat);
-    bool lonOut = lonWrap ? (npos.x < bmin.x && npos.x > bmax.x)
-                          : (npos.x < bmin.x || npos.x > bmax.x);
-    bool outside = lonOut || (npos.y < bmin.y) || (npos.y > bmax.y);
+    // NOTE: do NOT reset particles merely for leaving the view bbox — that confines the
+    // whole field to the visible disc and renders as a "petal" cluster on a globe. The
+    // bbox is used only to bias where *respawns* land (density where you're looking).
+    // Particles flow freely across the globe; they only reset on the drop probability,
+    // hitting the poles, or (for ocean layers) wandering onto land.
     bool reset = (rand(seed) < drop) || (npos.y <= 0.0) || (npos.y >= 1.0)
-                 || (u_landReset > 0.5 && w.a < 0.5) || outside;
+                 || (u_landReset > 0.5 && w.a < 0.5);
     fragColor = encodePos(reset ? randPos : npos);
 }`;
 
@@ -140,7 +142,10 @@ void main(){
 
     vec4 clipA = projectTile(cp_toMerc(pA));
     vec4 clipB = projectTile(cp_toMerc(pB));
-    if (clipA.w <= 0.0 || clipB.w <= 0.0) { v_speed=0.0; v_t=0.0; gl_Position=vec4(2.0,2.0,2.0,1.0); return; }
+    // Discard if either endpoint is at/behind the horizon. A near-zero positive w makes
+    // nA/nB explode and the ribbon span the screen -> overdraw -> GPU watchdog hang on
+    // rotate. The epsilon keeps us clear of the singular w~0 band at the globe limb.
+    if (clipA.w <= 0.0001 || clipB.w <= 0.0001) { v_speed=0.0; v_t=0.0; gl_Position=vec4(2.0,2.0,2.0,1.0); return; }
     vec2 nA = clipA.xy / clipA.w;
     vec2 nB = clipB.xy / clipB.w;
     vec2 dirPx = (nB - nA) * (u_viewport * 0.5);

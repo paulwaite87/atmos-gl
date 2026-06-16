@@ -120,17 +120,6 @@
                     });
                 });
 
-                // Update function
-                const updateZoom = () => {
-                    zoomDisplay.innerText = `Zoom: ${map.getZoom().toFixed(2)}`;
-                };
-
-                // Update on every zoom event
-                map.on('zoom', updateZoom);
-
-                // Also update when the map first loads
-                map.on('load', updateZoom);
-
                 // Once vector layout stylesheet loads successfully,
                 // morph projection into 3D space
                 map.on('style.load', async () => {
