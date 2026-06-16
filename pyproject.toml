@@ -52,8 +52,13 @@ dependencies = [
 ]
 
 [project.scripts]
-worldmap-harvest = "worldmap.harvest:main"
-worldmap-builder = "worldmap.layer_builder:main"
+datacollector = "worldmap.data_collector:main"
+layerbuilder = "worldmap.layer_builder:main"
+housekeeper = "worldmap.housekeeper:main"
+satellitescollector = "worldmap.satellites_collector:main"
+shippingcollector = "worldmap.shipping_collector:main"
+weatherscanner = "worldmap.weather_scanner:main"
+
 
 [build-system]
 requires = ["hatchling"]
