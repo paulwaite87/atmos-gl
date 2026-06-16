@@ -67,8 +67,6 @@
 
     <div id="globeViz"></div>
 
-    <div id="zoomDisplay">Zoom: 0.00</div>
-
     <script type="module">
         async function bootstrapWorldmap() {
             try {
@@ -121,9 +119,6 @@
                         type: 'globe'
                     });
                 });
-
-                // TODO: Remove zoom when ready
-                const zoomDisplay = document.getElementById('zoomDisplay');
 
                 // Update function
                 const updateZoom = () => {

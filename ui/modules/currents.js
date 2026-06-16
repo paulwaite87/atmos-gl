@@ -1,5 +1,5 @@
 import { createFillLayer } from './_webglfill.js';
-import { createCurrentParticleGLLayer } from './_currentparticles_gl.js';
+import { createStreakParticleGLLayer } from './_streakparticles_gl.js';
 import { timeline } from './timeline.js';
 
 // Backend VMAX_CURRENT (m/s). Texture is R=U, G=V encoded as channel*(2*vmax)-vmax.
@@ -172,14 +172,19 @@ export async function loadLayer(map, config, fullConfig = {}) {
 
     // ---- 2) PARTICLES (on top): flowing trails advected along the u/v texture ----
     // Uses the dedicated currents trail engine (_currentparticles_gl.js), kept
-    // separate from the wind engine so wind stays untouched. It is land-masked by
-    // default (landReset built in), so no landReset override is needed here.
-    createCurrentParticleGLLayer(map, {
+    // ---- 2) PARTICLES (on top): animated streaks along the u/v flow ----
+    // Uses the shared streak-particle engine (_streakparticles_gl.js, also used by
+    // wind). The streak engine defaults landReset=0.0 (ignore land), so currents MUST
+    // pass landReset:()=>1.0 to keep particles off the continents.
+    createStreakParticleGLLayer(map, {
         sectionKey: 'currents',
         initialConfig: config,
+        initialAnimation: fullConfig.animation || {},
+        initialCommon: fullConfig.common || {},
         vmax: VMAX,                       // matches backend VMAX_CURRENT
         colormap: () => buildLUT(palette),
         maxSpeedColor: () => VMAX,        // speed tint scaled to current speeds
+        landReset: () => 1.0,             // currents must NOT flow over land
         hourDataUrl: currentsHourUrl,     // RTOFS-hour translated (shared with fill)
     });
 }

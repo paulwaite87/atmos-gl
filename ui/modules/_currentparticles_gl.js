@@ -106,8 +106,11 @@ vec2 cp_toMerc(vec2 p){
     return vec2(p.x, 0.5 - my/(2.0*CP_PI));
 }
 vec4 cp_hist(int slot, ivec2 tc){
-    // GLSL ES 3.00 requires constant indexing into a sampler array -> unrolled fetch.
-    for (int i = 0; i < ${TRAIL_LEN}; i++) { if (i == slot) return texelFetch(u_hist[i], tc, 0); }
+    // GLSL ES 3.00 forbids indexing a sampler array with a non-constant. Even
+    // u_hist[i] inside a loop is a *variable* index and fails to compile. So we
+    // generate an explicit chain of CONSTANT-index fetches at build time.
+${Array.from({length: TRAIL_LEN}, (_, i) =>
+    `    if (slot == ${i}) return texelFetch(u_hist[${i}], tc, 0);`).join('\n')}
     return vec4(0.0);
 }
 void main(){
@@ -177,6 +180,53 @@ void main(){
     fragColor = vec4(c, a);
 }`;
 
+// ---- DIAGNOSTIC: render particles as plain points (isolates projection/decode from
+// the ribbon/screen-space geometry). Flip DIAG_POINTS to true to draw one point per
+// particle at its newest projected position, bypassing all ribbon math. If points
+// spread across the globe, the projection+decode are fine and the bug is in the
+// ribbon construction; if points also clump, the bug is upstream. ----
+const DIAG_POINTS = false;
+const POINT_VS_BODY = `
+precision highp float;
+uniform sampler2D u_hist[${TRAIL_LEN}];
+uniform sampler2D u_vel;
+uniform float u_res, u_vmax, u_maxspeed;
+out float v_speed;
+const float CP_PI = 3.141592653589793;
+const float CP_LATMAX = 1.4844222297453324;
+float cp_unpack(vec2 c){ return (c.x*255.0*256.0 + c.y*255.0)/65535.0; }
+vec2 cp_decode(vec4 c){ return vec2(cp_unpack(c.rg), cp_unpack(c.ba)); }
+vec2 cp_toMerc(vec2 p){
+    float lat = clamp((0.5 - p.y) * CP_PI, -CP_LATMAX, CP_LATMAX);
+    float my = log(tan(CP_PI*0.25 + lat*0.5));
+    return vec2(p.x, 0.5 - my/(2.0*CP_PI));
+}
+void main(){
+    int pid = gl_VertexID;
+    // DIAGNOSTIC STAGE 3: fully self-contained. Hardcoded 64x64 grid in clip space,
+    // independent of u_res/count/RES/textures. Draws exactly 4096 points filling the
+    // screen. If THIS doesn't fill the screen, the draw call (count passed to
+    // drawArrays) is the problem, not any uniform.
+    const float GRID = 64.0;
+    float gcol = mod(float(pid), GRID);
+    float grow = floor(float(pid) / GRID);
+    vec2 p = vec2((gcol + 0.5) / GRID, (grow + 0.5) / GRID);
+    v_speed = p.x;
+    gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
+    gl_PointSize = 3.0;
+}`;
+const POINT_FS = `#version 300 es
+precision highp float;
+in float v_speed;
+out vec4 fragColor;
+uniform sampler2D u_cmap;
+uniform float u_maxspeed;
+void main(){
+    float s = clamp(v_speed / u_maxspeed, 0.0, 1.0);
+    vec3 c = texture(u_cmap, vec2(s, 0.5)).rgb;
+    fragColor = vec4(c, 0.9);
+}`;
+
 export function createCurrentParticleGLLayer(map, opts) {
     const {
         sectionKey = 'currents',
@@ -199,6 +249,7 @@ export function createCurrentParticleGLLayer(map, opts) {
 
     let glRef = null, webglFailed = false;
     let updateProg = null, trailProgCache = new Map(), trailProgFailed = false;
+    let pointProgCache = new Map(), pointProgFailed = false;
     let screenQuad = null, vaoUpdate = null, vaoTrails = null;
     let velTex = null, cmapTex = null;
     // history ring: TRAIL_LEN textures + matching FBOs; head index advances each frame
@@ -247,6 +298,18 @@ export function createCurrentParticleGLLayer(map, opts) {
         const p = linkProg(gl, vs, TRAIL_FS);
         if (!p) { trailProgFailed = true; return null; }
         trailProgCache.set(key, p);
+        return p;
+    };
+
+    // DIAGNOSTIC point program (same projection prelude as the trail program).
+    const getPointProg = (gl, shaderData) => {
+        const key = shaderData.variantName || '__default__';
+        if (pointProgCache.has(key)) return pointProgCache.get(key);
+        if (pointProgFailed) return null;
+        const vs = `#version 300 es\n${shaderData.vertexShaderPrelude}\n${shaderData.define}\n${POINT_VS_BODY}`;
+        const p = linkProg(gl, vs, POINT_FS);
+        if (!p) { pointProgFailed = true; return null; }
+        pointProgCache.set(key, p);
         return p;
     };
 
@@ -322,6 +385,12 @@ export function createCurrentParticleGLLayer(map, opts) {
     const advect = (gl) => {
         const newestSlot = head;                       // current newest
         const writeSlot = (head + TRAIL_LEN - 1) % TRAIL_LEN; // oldest -> overwrite
+        // Save the GL viewport + FBO MapLibre set up for us; the FBO render below
+        // clobbers the viewport (to RES x RES) and binding, and we MUST restore them
+        // or the subsequent on-globe draw is confined to a tiny RES x RES box in the
+        // bottom-left corner (the "corner square" artifact).
+        const prevFbo = gl.getParameter(gl.FRAMEBUFFER_BINDING);
+        const prevVp = gl.getParameter(gl.VIEWPORT);
         gl.useProgram(updateProg);
         gl.bindVertexArray(vaoUpdate);
         gl.bindFramebuffer(gl.FRAMEBUFFER, histFbo[writeSlot]);
@@ -341,11 +410,52 @@ export function createCurrentParticleGLLayer(map, opts) {
         gl.uniform4f(u('u_bboxPos'), curBbox[0], curBbox[1], curBbox[2], curBbox[3]);
         gl.disable(gl.BLEND);
         gl.drawArrays(gl.TRIANGLES, 0, 6);
-        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        // Restore the viewport + FBO so the trail draw covers the full globe.
+        gl.bindFramebuffer(gl.FRAMEBUFFER, prevFbo);
+        gl.viewport(prevVp[0], prevVp[1], prevVp[2], prevVp[3]);
         head = writeSlot;                              // new newest = the slot we wrote
     };
 
+    const drawPointsDiag = (gl, args) => {
+        const prog = getPointProg(gl, args.shaderData);
+        if (!prog) { webglFailed = true; return; }
+        gl.useProgram(prog);
+        gl.bindVertexArray(vaoTrails);   // attributeless (gl_VertexID)
+        const u = (n) => gl.getUniformLocation(prog, n);
+        const pd = args.defaultProjectionData;
+        gl.uniformMatrix4fv(u('u_projection_matrix'), false, pd.mainMatrix);
+        gl.uniformMatrix4fv(u('u_projection_fallback_matrix'), false, pd.fallbackMatrix);
+        gl.uniform4f(u('u_projection_clipping_plane'),
+            pd.clippingPlane[0], pd.clippingPlane[1], pd.clippingPlane[2], pd.clippingPlane[3]);
+        gl.uniform1f(u('u_projection_transition'), pd.projectionTransition);
+        gl.uniform4f(u('u_projection_tile_mercator_coords'),
+            pd.tileMercatorCoords[0], pd.tileMercatorCoords[1],
+            pd.tileMercatorCoords[2], pd.tileMercatorCoords[3]);
+        // newest history slot bound at unit 0 (matches POINT_VS u_hist[0])
+        const units = [];
+        for (let i = 0; i < TRAIL_LEN; i++) {
+            const slot = (head + i) % TRAIL_LEN;
+            gl.activeTexture(gl.TEXTURE0 + i);
+            gl.bindTexture(gl.TEXTURE_2D, hist[slot]);
+            units.push(i);
+        }
+        gl.uniform1iv(u('u_hist'), units);
+        gl.activeTexture(gl.TEXTURE0 + TRAIL_LEN); gl.bindTexture(gl.TEXTURE_2D, velTex);
+        gl.uniform1i(u('u_vel'), TRAIL_LEN);
+        gl.activeTexture(gl.TEXTURE0 + TRAIL_LEN + 1); gl.bindTexture(gl.TEXTURE_2D, cmapTex);
+        gl.uniform1i(u('u_cmap'), TRAIL_LEN + 1);
+        gl.uniform1f(u('u_res'), RES);
+        gl.uniform1f(u('u_vmax'), vmax);
+        gl.uniform1f(u('u_maxspeed'), curMaxSpeed);
+        gl.disable(gl.DEPTH_TEST);
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+        gl.drawArrays(gl.POINTS, 0, 4096);   // STAGE 3: fixed 64x64 grid
+        gl.bindVertexArray(null);
+    };
+
     const drawTrails = (gl, args) => {
+        if (DIAG_POINTS) { drawPointsDiag(gl, args); return; }
         const prog = getTrailProg(gl, args.shaderData);
         if (!prog) { webglFailed = true; return; }
         gl.useProgram(prog);
