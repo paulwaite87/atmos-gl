@@ -7,7 +7,9 @@ export function loadLayer(map, config, fullConfig = {}) {
     const labels = makePressureLabels(map, config);
 
     // --- GPU isobar LINES (unchanged): crisp, animated, cross-faded ---
-    createFillLayer(map, {
+    // Return the fill teardown; the label layer's mount/unmount is wired to the fill's
+    // onMount/onUnmount, so tearing down the fill also removes the labels.
+    return createFillLayer(map, {
         sectionKey: 'isobars',
         initialConfig: config,
         initialAnimation: fullConfig.animation || {},

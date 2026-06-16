@@ -408,7 +408,10 @@ void main(){
         mode = null; onUnmount();
     };
 
-    liveLayerSync(map, {
+    // Return the teardown so the host can fully clean up this fill layer before a
+    // basemap style swap (its unmount unsubscribes from the timeline and removes the
+    // layer, whose onRemove frees GL resources).
+    return liveLayerSync(map, {
         sectionKey, initialConfig,
         initialGlobals: { animation: initialAnimation, common: initialCommon },
         globalKeys: ['animation', 'common'],

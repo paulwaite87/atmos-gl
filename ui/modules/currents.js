@@ -124,7 +124,7 @@ export async function loadLayer(map, config, fullConfig = {}) {
     const palette = config.palette && PALETTES[config.palette] ? config.palette : 'thermal_red';
 
     // ---- 1) SPEED FILL (underneath): speed = |decode(u,v)|, coloured via LUT ----
-    createFillLayer(map, {
+    const stopFill = createFillLayer(map, {
         sectionKey: 'currents',
         initialConfig: config,
         initialAnimation: fullConfig.animation || {},
@@ -171,12 +171,9 @@ export async function loadLayer(map, config, fullConfig = {}) {
     });
 
     // ---- 2) PARTICLES (on top): flowing trails advected along the u/v texture ----
-    // Uses the dedicated currents trail engine (_currentparticles_gl.js), kept
-    // ---- 2) PARTICLES (on top): animated streaks along the u/v flow ----
-    // Uses the shared streak-particle engine (_streakparticles_gl.js, also used by
-    // wind). The streak engine defaults landReset=0.0 (ignore land), so currents MUST
-    // pass landReset:()=>1.0 to keep particles off the continents.
-    createCurrentParticleGLLayer(map, {
+    // Dedicated currents trail engine (_currentparticles_gl.js). land-masked
+    // (landReset:()=>1.0) so particles stay off the continents.
+    const stopParticles = createCurrentParticleGLLayer(map, {
         sectionKey: 'currents',
         initialConfig: config,
         initialAnimation: fullConfig.animation || {},
@@ -196,4 +193,12 @@ export async function loadLayer(map, config, fullConfig = {}) {
         },
         hourDataUrl: currentsHourUrl,     // RTOFS-hour translated (shared with fill)
     });
+
+    // Combined teardown for a basemap style swap: stop both sub-layers and remove the
+    // legend. Returned to the host layer registry.
+    return () => {
+        try { stopParticles && stopParticles(); } catch {}
+        try { stopFill && stopFill(); } catch {}
+        try { removeLegend(); } catch {}
+    };
 }

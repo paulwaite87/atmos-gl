@@ -168,5 +168,14 @@ export function liveLayerSync(map, {
         }
     };
 
-    return setInterval(tick, syncMs);
+    const intervalId = setInterval(tick, syncMs);
+
+    // Teardown: stop the sync interval and fully unmount (removes the layer, its
+    // moveend handler, and any pending viewport timer). Returned so the host can clean
+    // up every layer before a basemap style swap (setStyle wipes all layers/sources),
+    // then re-mount — without leaking intervals/handlers/subscriptions on each swap.
+    return () => {
+        clearInterval(intervalId);
+        if (mounted) doUnmount();
+    };
 }

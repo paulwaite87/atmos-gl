@@ -128,7 +128,7 @@ export function loadLayer(map, config) {
         document.getElementById(slotId)?.remove();
     };
 
-    liveLayerSync(map, {
+    return liveLayerSync(map, {
         sectionKey: 'waves', initialConfig: config,
         mount, refresh, unmount,
     });

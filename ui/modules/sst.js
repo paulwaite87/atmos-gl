@@ -49,5 +49,5 @@ export function loadLayer(map, config) {
         document.getElementById(slotId)?.remove();
     };
 
-    liveLayerSync(map, { sectionKey: 'sst', initialConfig: config, mount, refresh, unmount, imageUrl: urlFor });
+    return liveLayerSync(map, { sectionKey: 'sst', initialConfig: config, mount, refresh, unmount, imageUrl: urlFor });
 }

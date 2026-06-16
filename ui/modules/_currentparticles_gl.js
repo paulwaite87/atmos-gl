@@ -607,7 +607,7 @@ export function createCurrentParticleGLLayer(map, opts) {
     // of order, the displayed texture drifts out of sync with the particles' motion —
     // the trails decay into slow, near-static bright dots after a play cycle.
     let lastLoadedHour = -1;
-    timeline.subscribe((snap) => {
+    const unsubscribeTimeline = timeline.subscribe((snap) => {
         const epochChanged = snap.refreshEpoch !== bustKey;
         if (epochChanged) bustKey = snap.refreshEpoch;
         if (!glRef || !velReady) return;
@@ -617,7 +617,7 @@ export function createCurrentParticleGLLayer(map, opts) {
         }
     });
 
-    liveLayerSync(map, {
+    const stopSync = liveLayerSync(map, {
         sectionKey, initialConfig,
         initialGlobals: { animation: initialAnimation, common: initialCommon },
         globalKeys: ['animation', 'common'],
@@ -625,4 +625,12 @@ export function createCurrentParticleGLLayer(map, opts) {
         imageUrl: (cfg) => hourDataUrl(cfg, timeline.get().hour, bustKey),
         refreshMs, syncMs,
     });
+
+    // Teardown for a basemap style swap (setStyle wipes layers/sources). Stops the sync
+    // loop + unmounts the custom layer (its onRemove frees GL programs/textures), and
+    // unsubscribes from the timeline so the velocity-reload handler doesn't accumulate.
+    return () => {
+        try { unsubscribeTimeline(); } catch {}
+        try { stopSync(); } catch {}
+    };
 }

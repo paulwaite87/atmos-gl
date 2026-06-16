@@ -52,7 +52,7 @@ export function loadLayer(map, config, fullConfig = {}) {
     };
     const removeLegend = () => document.getElementById(slotId)?.remove();
 
-    createWindParticleGLLayer(map, {
+    return createWindParticleGLLayer(map, {
         sectionKey: 'wind',
         initialConfig: config,
         vmax: 40.0,                   // must match backend VMAX_WIND

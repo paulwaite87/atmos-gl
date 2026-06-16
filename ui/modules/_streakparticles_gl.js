@@ -633,12 +633,14 @@ export function createStreakParticleGLController(map, opts) {
 // the import.
 export function createStreakParticleGLLayer(map, opts) {
     const c = createStreakParticleGLController(map, opts);
-    liveLayerSync(map, {
+    // Return the teardown so the host can clean up before a basemap style swap. The
+    // controller's unmount (invoked by the teardown) unsubscribes its timeline handler
+    // and removes the layer (freeing GL resources in onRemove).
+    return liveLayerSync(map, {
         sectionKey: opts.sectionKey,  // required
         initialConfig: opts.initialConfig,
         mount: c.mount, refresh: c.refresh, unmount: c.unmount,
         imageUrl: c.imageUrl,
         refreshMs: opts.refreshMs, syncMs: opts.syncMs,
     });
-    return c;
 }

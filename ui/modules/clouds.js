@@ -32,7 +32,7 @@ export function loadLayer(map, config) {
         if (map.getSource(sourceId)) map.removeSource(sourceId);
     };
 
-    liveLayerSync(map, {
+    return liveLayerSync(map, {
         sectionKey: 'clouds', initialConfig: config,
         mount, refresh, unmount, imageUrl: urlFor,
     });
