@@ -79,6 +79,7 @@
     "outfile": "data/currents.png",
     "palette": "thermal_red",
     "alpha": 50,
+    "particle_speed": 5,
     "width_factor": 2.6,
     "key_fontsize": 8,
     "runs_per_day": 2,
@@ -235,7 +236,7 @@
     "marker_fontsize": 11
   },
   "data_collector": {
-    "enabled": true,
+    "enabled": false,
     "datasources": {
       "gfs": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
       "sst": "https://downloads.psl.noaa.gov/Datasets/noaa.oisst.v2.highres",
@@ -246,7 +247,7 @@
     "log_level": "DEBUG"
   },
   "satellites_collector": {
-    "enabled": true,
+    "enabled": false,
     "url": "https://celestrak.org/NORAD/elements",
     "groups": "stations,weather,science,resource",
     "update_hours": 12,

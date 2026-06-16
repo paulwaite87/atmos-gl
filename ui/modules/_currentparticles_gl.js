@@ -59,6 +59,15 @@ void main(){
     vec2 vel = (w.a < 0.5) ? vec2(0.0) : (w.rg * (2.0*u_vmax) - u_vmax);
     float coslat = max(cos(lat), 0.05);
     vec2 d = vec2(vel.x / coslat * 0.5, -vel.y) * (u_speed * STEP);
+    // Cap the per-frame step magnitude. The 1/coslat term amplifies the longitude step
+    // toward the poles (and for fast high-latitude currents), producing single-frame
+    // jumps long enough to render as "meteor" streaks that grow with zoom. Clamping the
+    // step keeps trails continuous everywhere while removing those over-long segments at
+    // the source. MAX_STEP sits above any equatorial/mid-lat step but below the streak
+    // threshold, so normal flow is untouched.
+    const float MAX_STEP = 0.004;
+    float dmag = length(d);
+    if (dmag > MAX_STEP) d *= (MAX_STEP / dmag);
     vec2 npos = pos + d;
     npos.x = fract(npos.x + 1.0);
     float speed = length(vel);
@@ -134,7 +143,20 @@ void main(){
     // Discard degenerate / land / antimeridian-wrapping segments (push offscreen).
     vec4 wB = texture(u_vel, pB);
     float dlon = abs(pA.x - pB.x);
-    if (wB.a < 0.5 || dlon > 0.5 || (pA.x==0.0&&pA.y==0.0) || (pB.x==0.0&&pB.y==0.0)) {
+    float dlat = abs(pA.y - pB.y);
+    // A real per-frame advection step is tiny (<~5e-4). When a particle RESETS (drop /
+    // land / pole), it teleports to a fresh random spawn, so the ribbon segment joining
+    // its pre-reset and post-reset history points spans a large distance — drawn as a
+    // long line streaking across the globe (and, with many particles, the screen-filling
+    // tangle that precedes the GPU hang). Discard any segment longer than a plausible
+    // step. 0.02 is ~40x a max step yet far below any reset jump (typically 0.1..1.0).
+    // Real per-frame steps are now clamped to MAX_STEP (0.004) in the advection, so any
+    // segment longer than that is a reset teleport or a transient bad sample, not real
+    // flow. Discard above 0.008 (2x the clamp) — well below any reset jump (>=0.1),
+    // tight enough to catch the stray "meteor" segments the looser 0.02 let through.
+    float seg2 = dlon*dlon + dlat*dlat;
+    if (wB.a < 0.5 || dlon > 0.5 || seg2 > (0.008*0.008)
+        || (pA.x==0.0&&pA.y==0.0) || (pB.x==0.0&&pB.y==0.0)) {
         v_speed = 0.0; v_t = 0.0; gl_Position = vec4(2.0,2.0,2.0,1.0); return;
     }
     vec2 vel = wB.rg * (2.0*u_vmax) - u_vmax;
@@ -242,6 +264,16 @@ export function createCurrentParticleGLLayer(map, opts) {
         colormap = null,
         maxSpeedColor = (cfg) => vmax,
         landReset = (cfg) => 1.0,
+        // Default advection speed when the config doesn't specify particle_speed. This
+        // must live in the engine (not injected via initialConfig) because liveLayerSync
+        // re-reads the RAW config section on every refresh tick — an initialConfig-only
+        // default applies at mount but is lost on the first refresh, dropping curSpeed to
+        // the fallback and visibly slowing the flow to "bright dots" after ~20s.
+        defaultSpeed = 0.4,
+        // How to turn the config into the advection multiplier. Default reads
+        // particle_speed as a raw multiplier (back-compat). Currents passes a mapper that
+        // translates the 0-100 UI slider into its own min..max speed range.
+        speedFromConfig = (cfg) => (Number(cfg.particle_speed) > 0 ? Number(cfg.particle_speed) : defaultSpeed),
         hourDataUrl = (cfg, hour, bust) => {
             const base = cfg.outfile.replace(/\.png$/, '');
             const f = String(hour).padStart(3, '0');
@@ -262,7 +294,7 @@ export function createCurrentParticleGLLayer(map, opts) {
     let RES = 96, count = RES * RES;
     let velReady = false, pendingVelImg = null, pendingLut = null, pendingRebuild = false;
     let curCfg = initialConfig, curAnim = initialAnimation;
-    let curSpeed = 0.4, curThick = 2.0, curMaxSpeed = vmax, curAlpha = 0.9, curLandReset = 1.0;
+    let curSpeed = defaultSpeed, curThick = 2.0, curMaxSpeed = vmax, curAlpha = 0.9, curLandReset = 1.0;
     let bustKey = (timeline.get().refreshEpoch) || Date.now();
 
     const particleCount = (cfg) => {
@@ -270,7 +302,7 @@ export function createCurrentParticleGLLayer(map, opts) {
         return Math.max(256, explicit > 0 ? explicit : (LOD_COUNT[lodOf(cfg)] || 9000));
     };
     const applyParams = (cfg) => {
-        curSpeed = Number(cfg.particle_speed) > 0 ? Number(cfg.particle_speed) : 0.4;
+        curSpeed = speedFromConfig(cfg);
         curThick = Number(cfg.trail_thickness) > 0 ? Number(cfg.trail_thickness) : 2.0;
         curAlpha = Number(cfg.particle_alpha) > 0 ? Number(cfg.particle_alpha) / 100 : 0.9;
         curMaxSpeed = maxSpeedColor(cfg) || vmax;
@@ -568,9 +600,21 @@ export function createCurrentParticleGLLayer(map, opts) {
     };
 
     // Reload velocity texture when the timeline hour changes (scrubber/playback).
+    // Reload the velocity texture only when the displayed hour (or the data epoch)
+    // actually changes — NOT on every timeline tick. While playing, the timeline
+    // notifies subscribers every animation frame (frac advancing); reloading the PNG
+    // each frame floods the network with fetches and, as they pile up and resolve out
+    // of order, the displayed texture drifts out of sync with the particles' motion —
+    // the trails decay into slow, near-static bright dots after a play cycle.
+    let lastLoadedHour = -1;
     timeline.subscribe((snap) => {
-        if (snap.refreshEpoch !== bustKey) bustKey = snap.refreshEpoch;
-        if (glRef && velReady) loadVelocity(curCfg);
+        const epochChanged = snap.refreshEpoch !== bustKey;
+        if (epochChanged) bustKey = snap.refreshEpoch;
+        if (!glRef || !velReady) return;
+        if (snap.hour !== lastLoadedHour || epochChanged) {
+            lastLoadedHour = snap.hour;
+            loadVelocity(curCfg);
+        }
     });
 
     liveLayerSync(map, {

@@ -185,6 +185,15 @@ export async function loadLayer(map, config, fullConfig = {}) {
         colormap: () => buildLUT(palette),
         maxSpeedColor: () => VMAX,        // speed tint scaled to current speeds
         landReset: () => 1.0,             // currents must NOT flow over land
+        // Map the config UI's 0-100 particle_speed slider to the currents advection
+        // multiplier. The pleasant flow we tuned is ~4, so the slider midpoint (50) lands
+        // there; 100 -> 8 (fast); 0 -> static particles (the fill shows through, no
+        // motion). Default to 50 when unset.
+        speedFromConfig: (cfg) => {
+            const ui = Number(cfg.particle_speed);
+            const v = isFinite(ui) ? Math.min(100, Math.max(0, ui)) : 50;
+            return (v / 100) * 8;
+        },
         hourDataUrl: currentsHourUrl,     // RTOFS-hour translated (shared with fill)
     });
 }
