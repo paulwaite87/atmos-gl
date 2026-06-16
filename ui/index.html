@@ -129,7 +129,25 @@
                     projection: 'globe' // Start with a spherical projection
                 });
 
-                const { buildBasemapStyle, mountBasemapPicker } = await import(`/basemap.js?t=${Date.now()}`);
+                // Register the globe-projection handler SYNCHRONOUSLY, before any await.
+                // The initial 'style.load' fires shortly after construction; if we only
+                // attached a handler after an `await import(...)` below, that first event
+                // could fire during the await and be missed, leaving the map in flat
+                // Mercator. This dedicated handler guarantees the projection is always set
+                // on every style load (initial and post-setStyle). Layer mounting is done
+                // by the separate async handler further down.
+                map.on('style.load', () => { map.setProjection({ type: 'globe' }); });
+
+                // Optional basemap picker. Imported defensively: if /basemap.js fails to
+                // load, the picker is simply absent — it must NEVER abort bootstrap, or
+                // the style.load handler below (which sets the globe projection and mounts
+                // layers) would never attach and the map would fall back to flat Mercator.
+                let buildBasemapStyle = null, mountBasemapPicker = null;
+                try {
+                    ({ buildBasemapStyle, mountBasemapPicker } = await import(`/basemap.js?t=${Date.now()}`));
+                } catch (err) {
+                    console.warn('[basemap] picker unavailable; continuing without it.', err);
+                }
 
                 // ---- Layer mounting + teardown registry ----------------------------
                 // setStyle() (basemap swap) wipes every layer and source, including our
@@ -146,6 +164,10 @@
                     'markers'
                 ];
                 let layerCleanups = [];
+                // Mount-state flags (declared before oneTimeSetup/picker so its swap
+                // handler and the style.load mount handler share the same bindings).
+                let layersMounted = false;
+                let mountInFlight = false;
 
                 const mountAllLayers = async () => {
                     for (const moduleName of ALL_LAYERS) {
@@ -204,6 +226,7 @@
 
                     // Basemap picker — swaps the style, preserving camera, re-mounting layers.
                     try {
+                        if (mountBasemapPicker && buildBasemapStyle) {
                         let currentSlug = configData.common?.basemap || 'satellite';
                         const host = document.getElementById('basemap-picker-host') || document.body;
                         mountBasemapPicker(host, currentSlug, async (slug) => {
@@ -211,14 +234,15 @@
                             const cam = { center: map.getCenter(), zoom: map.getZoom(),
                                           bearing: map.getBearing(), pitch: map.getPitch() };
                             teardownAllLayers();                 // stop intervals/handlers, remove custom layers
+                            layersMounted = false;               // allow re-mount on the next style.load
                             const newStyle = await buildBasemapStyle(slug, maptilerKey);
                             currentSlug = slug;
-                            map.setStyle(newStyle);              // wipes layers; 'style.load' re-mounts
-                            map.once('style.load', () => {
-                                map.setProjection({ type: 'globe' });
-                                map.jumpTo(cam);                 // restore camera
-                            });
+                            // Restore the camera once the new style is in; projection +
+                            // layer re-mount are handled by the persistent style.load handler.
+                            map.once('style.load', () => { map.jumpTo(cam); });
+                            map.setStyle(newStyle);              // wipes layers; style.load re-mounts
                         });
+                        }
                     } catch (err) {
                         console.warn('Could not mount basemap picker', err);
                     }
@@ -227,12 +251,27 @@
                 // ---- style.load: fires on initial load AND after every setStyle ------
                 // Re-establish the globe projection and (re)mount all data layers each
                 // time. One-time setup is guarded so it runs only once.
-                map.on('style.load', async () => {
-                    map.setProjection({ type: 'globe' });
-                    await oneTimeSetup();
-                    teardownAllLayers();     // clear any prior registry before re-mounting
-                    await mountAllLayers();
-                });
+                // (Re)mount all data layers on each style load. One-time setup is guarded
+                // so it runs only once. This handler is attached after `await`s above, so
+                // the initial 'style.load' may already have fired — guard with
+                // isStyleLoaded() and run once immediately if so, so layers always mount.
+                // `layersMounted` prevents a double-mount if the event also fires right
+                // after we attach; a basemap swap clears it (via teardown) so the next
+                // style.load correctly re-mounts.
+                const onStyleLoadMount = async () => {
+                    if (mountInFlight || layersMounted) return;
+                    mountInFlight = true;
+                    try {
+                        map.setProjection({ type: 'globe' });
+                        await oneTimeSetup();
+                        await mountAllLayers();
+                        layersMounted = true;
+                    } finally {
+                        mountInFlight = false;
+                    }
+                };
+                map.on('style.load', onStyleLoadMount);
+                if (map.isStyleLoaded()) onStyleLoadMount();   // initial event may have already fired
 
             } catch (err) {
                 console.error("Failed to bootstrap runtime configuration framework:", err);
