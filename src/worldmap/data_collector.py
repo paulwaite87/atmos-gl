@@ -18,6 +18,7 @@ from worldmap.lib.gfs import (
     download_whole,
     remote_exists,
     build_atmos_url,
+    build_wave_url,
 )
 from worldmap.lib.rtofs import (
     resolve_rtofs_baseline,
@@ -25,7 +26,7 @@ from worldmap.lib.rtofs import (
     build_currents_nowcast_url,
     RTOFS_MAX_HOURLY_FHOUR,
 )
-from worldmap.lib.unpack import ATMOS_UNPACKERS, CURRENTS_UNPACKERS
+from worldmap.lib.unpack import ATMOS_UNPACKERS, CURRENTS_UNPACKERS, WAVES_UNPACKERS
 
 logger = logging.getLogger("worldmap.data_collector")
 
@@ -146,6 +147,80 @@ class DataCollector:
         except Exception as e:
             logger.debug(f"prune skipped: {e}")
 
+    # -- GFS-Wave swell -------------------------------------------------------
+    def _collect_gfs_waves(self, base_url):
+        """Ingest the per-hour GFS-Wave global 0p25 swell field, on the SAME GFS run and
+        forecast-hour cadence as the atmospheric products, so waves shares the GFS
+        timeline. Each hour is a separate small (~0.6 MB) GRIB, downloaded whole (vs the
+        atmos byte-range union), unpacked to a swell u/v field, and stored under the
+        'waves' product. Mirrors _collect_gfs_atmos's window + skip-if-present logic."""
+        baseline = resolve_gfs_baseline(base_url)
+        if not baseline:
+            logger.warning(
+                "Data Collector: could not resolve a GFS baseline for waves; will retry."
+            )
+            return
+
+        gfs_date_str, gfs_run, gfs_timestamp = (
+            baseline["date_str"],
+            baseline["run"],
+            baseline["timestamp"],
+        )
+        now = datetime.now(timezone.utc)
+        hours_since_run = int(round((now - gfs_timestamp).total_seconds() / 3600.0))
+        fhour_0 = max(0, hours_since_run)        # forecast hour valid 'now'
+        fhour_end = fhour_0 + self.cache_hours
+
+        product, unpacker = next(iter(WAVES_UNPACKERS.items()))
+        stored = 0
+
+        for fhour in range(fhour_0, fhour_end):
+            if self.store.field_exists(gfs_date_str, gfs_run, fhour, product):
+                continue
+
+            valid = gfs_timestamp + timedelta(hours=fhour)
+            url = build_wave_url(base_url, gfs_date_str, gfs_run, fhour)
+            if not remote_exists(url):
+                logger.debug(f"waves f{fhour:03d}: not published yet")
+                continue
+
+            try:
+                data = download_whole(url)
+                if not data:
+                    continue
+            except Exception as e:
+                logger.debug(f"waves f{fhour:03d} download skipped: {e}")
+                continue
+
+            tmp = tempfile.NamedTemporaryFile(suffix=".grib2", delete=False)
+            tmp.write(data)
+            tmp.close()
+            try:
+                fields = unpacker(tmp.name)
+                self.store.store_field(
+                    gfs_date_str, gfs_run, fhour, product, fields, valid
+                )
+                stored += 1
+            except Exception as e:
+                logger.debug(f"waves f{fhour:03d} unpack/store failed: {e}")
+            finally:
+                for path in [tmp.name] + glob.glob(tmp.name + "*.idx"):
+                    try:
+                        os.remove(path)
+                    except OSError:
+                        pass
+
+        logger.info(
+            f"Data Collector (waves): {gfs_date_str} {gfs_run}Z, "
+            f"hours {fhour_0:03d}..{fhour_end - 1:03d}; stored {stored} field(s)."
+        )
+        try:
+            self.store.prune_except_run(
+                gfs_date_str, gfs_run, products=[product]
+            )
+        except Exception as e:
+            logger.debug(f"waves prune skipped: {e}")
+
     # -- RTOFS ocean currents -------------------------------------------------
     def _collect_rtofs_currents(self, base_url):
         baseline = resolve_rtofs_baseline(base_url)
@@ -234,7 +309,7 @@ class DataCollector:
             try:
                 if datasource == "gfs":
                     self._collect_gfs_atmos(base_url.rstrip("/"))
-                    # TODO: GFS wave product -> waves_data_unpack -> store_field(..., "waves")
+                    self._collect_gfs_waves(base_url.rstrip("/"))
                 elif datasource == "currents":
                     self._collect_rtofs_currents(base_url.rstrip("/"))
                 elif datasource == "sst":

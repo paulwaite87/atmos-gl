@@ -11,7 +11,7 @@
   },
   "animation": {
     "forecast_stepping": true,
-    "stepping_rate": 65
+    "stepping_rate": 15
   },
   "terminator": {
     "enabled": false,
@@ -20,7 +20,7 @@
     "edge_softness": 35
   },
   "clouds": {
-    "enabled": false,
+    "enabled": true,
     "url": "https://gibs.earthdata.nasa.gov/wms/epsg4326/best/wms.cgi",
     "outfile": "data/cloud_map.png",
     "threshold": 168,
@@ -48,7 +48,7 @@
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
     "outfile": "data/wind.png",
     "level_of_detail": "2",
-    "particle_speed": 30,
+    "particle_speed": 5,
     "particle_alpha": 80,
     "particle_size": 0.45,
     "trail_fade": 15,
@@ -188,7 +188,7 @@
     "runs_per_day": 24
   },
   "volcanoes": {
-    "enabled": false,
+    "enabled": true,
     "url": "https://www.ngdc.noaa.gov/hazel/hazard-service/api/v1/volcanoes",
     "outfile": "data/volcanoes.json",
     "marker_color": "Violet",
@@ -202,7 +202,7 @@
     "runs_per_day": 1
   },
   "shipping": {
-    "enabled": false,
+    "enabled": true,
     "outfile": "data/ships.json",
     "icon_zoom": 0.6,
     "runs_per_day": 24

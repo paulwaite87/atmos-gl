@@ -259,6 +259,39 @@ def _regrid_curvilinear_nn(lat2d, lon2d, fields, step, lat_min, lat_max):
     return tlat[::-1], tlon, out
 
 
+def waves_data_unpack(path):
+    """GFS-Wave global 0p25 GRIB -> swell vector field (u, v) per forecast hour.
+
+    Mirrors the original static-snapshot math: magnitude is significant wave height
+    (swh), direction is primary wave direction (dirpw, or mwd as a fallback name). The
+    vector points the way the swell travels: u = swh*sin(dir) east, v = swh*cos(dir)
+    north. Bad / land / missing cells become NaN so encode_uv flags them transparent
+    (alpha 0) and the particle layer respawns there. GFS native grid is row0=north,
+    matching encode_uv, so no vertical flip is needed (unlike the south-first RTOFS).
+    """
+    ds = xr.open_dataset(
+        path,
+        engine="cfgrib",
+        backend_kwargs={"filter_by_keys": {"typeOfLevel": "surface"}},
+    )
+    direction_key = "dirpw" if "dirpw" in ds else "mwd"
+    swh = np.asarray(ds["swh"].values, dtype=np.float32).squeeze()
+    mwd = np.asarray(ds[direction_key].values, dtype=np.float32).squeeze()
+    lats = np.asarray(ds["latitude"].values, dtype=np.float64)
+    lons, (swh, mwd) = _standardize_lon(ds["longitude"].values, swh, mwd)
+    ds.close()
+
+    bad = ~np.isfinite(swh) | (swh < 0.0) | (swh > 60.0) | ~np.isfinite(mwd)
+    rad = np.radians(np.nan_to_num(mwd))
+    mag = np.where(bad, np.nan, swh)
+    u = mag * np.sin(rad)   # east component (m); NaN where bad -> alpha 0
+    v = mag * np.cos(rad)   # north component (m)
+
+    out = _blank()
+    out.update(lat=lats, lon=lons, u=u, v=v)
+    return out
+
+
 def currents_data_unpack(path):
     """RTOFS 2ds prog NetCDF -> u, v surface currents (m/s) on a regular 0.1 deg grid.
 
@@ -295,4 +328,11 @@ ATMOS_UNPACKERS = {
 # union, so they live in their own registry the collector's currents handler uses.
 CURRENTS_UNPACKERS = {
     "currents": currents_data_unpack,
+}
+
+# GFS-Wave is GFS-cadence (same run/date/fhour as atmos) but a SEPARATE per-hour GRIB
+# download (gfswave.tNNz.global.0p25.fNNN), so it gets its own registry rather than the
+# atmos union.
+WAVES_UNPACKERS = {
+    "waves": waves_data_unpack,
 }

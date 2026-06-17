@@ -1,5 +1,5 @@
 import { liveLayerSync } from './_refresh.js';
-import { createWaveParticleController } from './_waveparticles.js';
+import { createStreakParticleGLController } from './_streakparticles_gl.js';
 
 /**
  * Waves layer = Web-Mercator heat tiles (significant wave height) + an animated swell
@@ -99,8 +99,13 @@ export function loadLayer(map, config) {
     };
 
     // Animated swell bars (GPU custom layer). Driven from this module's liveLayerSync.
-    const bars = createWaveParticleController(map, {
+    // Uses the shared streak engine with primitive:'bar' (crest perpendicular to flow,
+    // fixed length). Forecast-stepped like wind: the engine subscribes to the shared
+    // timeline and loads per-hour swell fields (waves_f{NNN}_data.png) via the default
+    // hourDataUrl. The old standalone _waveparticles.js is retired.
+    const bars = createStreakParticleGLController(map, {
         sectionKey: 'waves',
+        primitive: 'bar',                   // perpendicular crest bars (windy.com swell look)
         initialConfig: config,
         // Particle density per level_of_detail (1/2/3). Bars read denser than wind
         // streaks, so these are much lower than wind's defaults. Tune to taste.
@@ -108,7 +113,15 @@ export function loadLayer(map, config) {
         vmax: VMAX_WAVES,                   // must match backend
         colormap: () => buildBarLUT(),
         maxSpeedColor: () => VMAX_WAVES,    // colour ramp spans 0..VMAX_WAVES metres
-        // dataUrl defaults to <outfile_base>_data.png = data/waves_data.png
+        // Bars are FIXED length (not speed-scaled like wind streaks), sized from the
+        // bar_length config key (1..20 px, default 7) to match the old wave engine.
+        lenSpeedScale: 0,
+        streakLen: (cfg) => { const v = Number(cfg.bar_length);
+                              return isFinite(v) ? Math.min(20, Math.max(1, v)) : 7; },
+        thickness: (cfg) => { const v = Number(cfg.particle_size);
+                              return isFinite(v) ? Math.min(5, Math.max(0.5, v)) : 1.5; },
+        // hourDataUrl defaults to <outfile_base>_f{NNN}_data.png — the per-hour swell
+        // field the collector now writes (GFS-Wave global 0p25, forecast-stepped).
     });
 
     const mount = (cfg) => {

@@ -214,6 +214,11 @@ export function createStreakParticleGLController(map, opts) {
         lodCount = null,
         staticUrl = (cfg) => `${window.MAP_UI}/${cfg.outfile}`,
         dataUrl = (cfg) => `${window.MAP_UI}/${cfg.outfile.replace(/\.png$/, '_data.png')}`,
+        // When true (wind/currents): drive the velocity field from the shared timeline,
+        // reloading per forecast hour. When false (waves): the field is a single static
+        // _data.png — skip the timeline subscription entirely and (re)load only on
+        // mount/refresh, matching the original standalone wave engine's behaviour.
+        useTimeline = true,
         // Per-hour velocity texture, driven by the shared timeline.
         hourDataUrl = (cfg, hour, bust) => {
             const base = cfg.outfile.replace(/\.png$/, '');
@@ -395,8 +400,14 @@ export function createStreakParticleGLController(map, opts) {
         const img = new Image();
         img.crossOrigin = 'anonymous';
         img.onload = () => { pendingWindImg = img; map.triggerRepaint(); };
-        img.onerror = () => console.warn(`[${sectionKey}] velocity texture not ready (f${String(snap.hour).padStart(3,'0')})`);
-        img.src = hourDataUrl(cfg, snap.hour, snap.refreshEpoch);
+        if (useTimeline) {
+            img.onerror = () => console.warn(`[${sectionKey}] velocity texture not ready (f${String(snap.hour).padStart(3,'0')})`);
+            img.src = hourDataUrl(cfg, snap.hour, snap.refreshEpoch);
+        } else {
+            // Static field (e.g. waves): single _data.png, cache-busted per (re)load.
+            img.onerror = () => console.warn(`[${sectionKey}] velocity texture not ready: ${dataUrl(cfg)}`);
+            img.src = `${dataUrl(cfg)}?t=${Date.now()}`;
+        }
     };
 
     const { VS: DRAW_VS_BODY, FS: DRAW_FS } = buildDrawShaders(primitive);
@@ -567,15 +578,19 @@ export function createStreakParticleGLController(map, opts) {
         // Drive the velocity field from the shared timeline: reload the wind texture
         // whenever the forecast hour changes or a data refresh busts the cache. The
         // particles keep flowing; only the underlying field swaps (hard cut per hour).
-        const snap0 = timeline.get();
-        lastWindHour = snap0.hour; lastWindBust = snap0.refreshEpoch;
-        unsubTimeline = timeline.subscribe((snap) => {
-            if (snap.hour !== lastWindHour || snap.refreshEpoch !== lastWindBust) {
-                lastWindHour = snap.hour; lastWindBust = snap.refreshEpoch;
-                if (curCfgWind) loadWind(curCfgWind);
-            }
-        });
-        scrubber.layerActivated();
+        // Static layers (useTimeline:false, e.g. waves) skip this; their single
+        // _data.png is loaded by the custom layer's onAdd (and again on refresh).
+        if (useTimeline) {
+            const snap0 = timeline.get();
+            lastWindHour = snap0.hour; lastWindBust = snap0.refreshEpoch;
+            unsubTimeline = timeline.subscribe((snap) => {
+                if (snap.hour !== lastWindHour || snap.refreshEpoch !== lastWindBust) {
+                    lastWindHour = snap.hour; lastWindBust = snap.refreshEpoch;
+                    if (curCfgWind) loadWind(curCfgWind);
+                }
+            });
+        }
+        if (useTimeline) scrubber.layerActivated();
         onMount(cfg);
     };
     const refreshAnimated = (cfg) => {
@@ -590,7 +605,7 @@ export function createStreakParticleGLController(map, opts) {
     };
     const unmountAnimated = () => {
         if (unsubTimeline) { unsubTimeline(); unsubTimeline = null; }
-        if (layerAdded) scrubber.layerDeactivated();
+        if (layerAdded && useTimeline) scrubber.layerDeactivated();
         if (map.getLayer(A_LYR)) map.removeLayer(A_LYR);   // triggers onRemove cleanup
         layerAdded = false;
         onUnmount();
