@@ -15,9 +15,12 @@ import { timeline } from './timeline.js';
 import { scrubber } from './scrubber.js';
 
 const POLL_MS = 60000;   // re-check forecast state every 60s
+const STEP_POLL_MS = 20000;   // re-check stepping speed from config every 20s (matches layer sync)
 
 let pollId = null;
+let stepPollId = null;
 let lastSig = '';
+let lastSecondsPerHour = null;   // last stepping speed applied to the timeline
 
 function secondsPerHourFrom(configData) {
     // Derive number of seconds per step (hour) in the forecast animation.
@@ -52,6 +55,7 @@ function signatureOf(data) {
 
 export async function initForecastTimeline(configData) {
     const secondsPerHour = secondsPerHourFrom(configData);
+    lastSecondsPerHour = secondsPerHour;
 
     const data = await fetchState();
     if (data) {
@@ -91,8 +95,30 @@ export async function initForecastTimeline(configData) {
             });
         }
     }, POLL_MS);
+
+    // Re-read the stepping speed from config on a fast cadence so changes made in the
+    // config UI take effect without a hard-refresh (the forecast-state poll above is too
+    // slow at 60s, and only watches run/hour changes — not the animation block). Fetches
+    // /config, recomputes secondsPerHour, and reconfigures the timeline only on change.
+    if (stepPollId) clearInterval(stepPollId);
+    stepPollId = setInterval(async () => {
+        let data;
+        try {
+            const res = await fetch(`${window.WM_API}/config?t=${Date.now()}`);
+            if (!res.ok) return;
+            data = (await res.json()).data || {};
+        } catch (e) {
+            return;   // transient; try again next tick
+        }
+        const sph = secondsPerHourFrom(data);
+        if (sph !== lastSecondsPerHour) {
+            lastSecondsPerHour = sph;
+            timeline.configure({ secondsPerHour: sph });   // hold hour/range; just update speed
+        }
+    }, STEP_POLL_MS);
 }
 
 export function stopForecastTimeline() {
     if (pollId) { clearInterval(pollId); pollId = null; }
+    if (stepPollId) { clearInterval(stepPollId); stepPollId = null; }
 }
