@@ -60,6 +60,24 @@ function clampHour(h) {
   return h;
 }
 
+// The available forecast hour whose valid time is closest to the user's current wall
+// clock — i.e. real 'now'. Uses the per-hour validTimes (absolute UTC instants), so it
+// is timezone-correct regardless of the viewer's locale. Falls back to minHour when
+// valid times aren't loaded yet (e.g. before the first forecast_state fetch).
+function nowHour() {
+  const vt = state.validTimes;
+  if (!vt || !Object.keys(vt).length) return state.minHour;
+  const now = Date.now();
+  let best = state.minHour, bestDiff = Infinity;
+  for (let h = state.minHour; h <= state.maxHour; h++) {
+    const iso = vt[String(h)];
+    if (!iso) continue;
+    const diff = Math.abs(new Date(iso).getTime() - now);
+    if (diff < bestDiff) { bestDiff = diff; best = h; }
+  }
+  return best;
+}
+
 function tick(ts) {
   if (!state.playing) { rafId = null; lastTs = null; return; }
   if (lastTs == null) lastTs = ts;
@@ -161,8 +179,12 @@ export const timeline = {
     if (typeof secondsPerHour === 'number' && secondsPerHour > 0) state.secondsPerHour = secondsPerHour;
     if (runEpochUtc !== undefined) state.runEpochUtc = runEpochUtc;
     if (validTimes !== undefined) state.validTimes = validTimes || {};
-    // On first configuration, start at 'now' = the earliest available hour.
-    if (initialise) state.hour = state.minHour;
+    // On first configuration, start at the user's actual 'now' — the available hour
+    // whose valid time is closest to the wall clock. (Don't assume minHour == now:
+    // the earliest CATALOGUED hour can lag real time by hours, due to model-run
+    // publish latency and the ingest window, which would otherwise open the scrubber
+    // in the past.) Falls back to minHour if valid times aren't available yet.
+    if (initialise) state.hour = nowHour();
     if (state.hour < state.minHour) state.hour = state.minHour;
     if (state.hour > state.maxHour) state.hour = state.maxHour;
     emit();

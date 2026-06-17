@@ -11,7 +11,7 @@
   },
   "animation": {
     "forecast_stepping": true,
-    "stepping_rate": 15
+    "stepping_rate": 50
   },
   "terminator": {
     "enabled": false,
@@ -85,16 +85,16 @@
     "cache_expiry_days": 3
   },
   "waves": {
-    "enabled": true,
+    "enabled": false,
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
     "outfile": "data/waves.png",
     "level_of_detail": "2",
     "palette": "neon_surge",
     "alpha": 80,
-    "min_wave_height": 0,
+    "min_wave_height": 0.5,
     "key_fontsize": 8,
     "runs_per_day": 2,
-    "particle_speed": 50,
+    "particle_speed": 25,
     "particle_size": 1.5,
     "bar_length": 3,
     "particle_alpha": 50,
@@ -188,7 +188,7 @@
     "runs_per_day": 24
   },
   "volcanoes": {
-    "enabled": true,
+    "enabled": false,
     "url": "https://www.ngdc.noaa.gov/hazel/hazard-service/api/v1/volcanoes",
     "outfile": "data/volcanoes.json",
     "marker_color": "Violet",

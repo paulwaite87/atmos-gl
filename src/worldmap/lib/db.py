@@ -426,7 +426,7 @@ class Database:
                 sql, (v_id, name, lat, lon, vei, significant, date_code, lon, lat)
             )
 
-    def get_volcanoes_as_geojson(self, vei_min, significant_only, date_codes):
+    def get_volcanoes_as_geojson(self, vei_min, significant, date_codes):
         sql = """
             SELECT jsonb_build_object(
                 'type', 'FeatureCollection',
@@ -450,7 +450,7 @@ class Database:
               AND erupt_date_code = ANY(%s);
         """
         with self.conn.cursor() as cur:
-            cur.execute(sql, (vei_min, significant_only, date_codes))
+            cur.execute(sql, (vei_min, significant, date_codes))
             result = cur.fetchone()
 
             # Unpack by dictionary key to comply with RealDictCursor
