@@ -5,11 +5,21 @@ export function loadLayer(map, config) {
     const layerIds = ['terminator-night', 'terminator-edge'];
 
     const num = (v, d) => { const n = parseFloat(v); return Number.isFinite(n) ? n : d; };
-    const paintFrom = (c) => ({
-        opacity:  Math.max(0, Math.min(1, num(c && c.shade_opacity, 0.4))),
-        color:    (c && c.shade_color) || '#070b18',
-        softness: Math.max(0, num(c && c.edge_softness, 14)),
-    });
+    const paintFrom = (c) => {
+        // shade_opacity is on the standardised 0-100 UI scale; convert to 0-1.
+        const opacity = Math.max(0, Math.min(100, num(c && c.shade_opacity, 40))) / 100;
+        // edge_softness feathers the day/night boundary. A blurred line ONLY softens if
+        // it's wide enough that the blur forms a visible band over the fill's hard edge;
+        // blurring a thin (6px) line just fades it to nothing and the crisp fill edge
+        // shows through. So softness drives BOTH the band width and the blur radius.
+        const soft = Math.max(0, num(c && c.edge_softness, 14));
+        return {
+            opacity,
+            color: (c && c.shade_color) || '#070b18',
+            lineWidth: Math.max(2, soft * 1.5),   // band wide enough to cover the seam
+            lineBlur:  soft,                       // feather across that band
+        };
+    };
 
     const fetchData = async () => {
         const r = await fetch(`${window.WM_API}/terminator/geojson?t=${Date.now()}`);
@@ -29,13 +39,14 @@ export function loadLayer(map, config) {
             filter: ['==', 'feature_type', 'NIGHT'],
             paint: { 'fill-color': p.color, 'fill-opacity': p.opacity },
         });
-        // Blurred line on the terminator softens that edge into a fade.
+        // Wide, blurred line over the terminator: forms a soft glow band that feathers
+        // the fill's otherwise-hard day/night seam. Width + blur both scale with softness.
         map.addLayer({
             id: 'terminator-edge', type: 'line', source: sourceId,
             filter: ['==', 'feature_type', 'TERMINATOR'],
             paint: {
-                'line-color': p.color, 'line-width': 6,
-                'line-blur': p.softness, 'line-opacity': p.opacity,
+                'line-color': p.color, 'line-width': p.lineWidth,
+                'line-blur': p.lineBlur, 'line-opacity': p.opacity,
             },
         });
     };
@@ -51,7 +62,8 @@ export function loadLayer(map, config) {
         if (map.getLayer('terminator-edge')) {
             map.setPaintProperty('terminator-edge', 'line-opacity', p.opacity);
             map.setPaintProperty('terminator-edge', 'line-color', p.color);
-            map.setPaintProperty('terminator-edge', 'line-blur', p.softness);
+            map.setPaintProperty('terminator-edge', 'line-width', p.lineWidth);
+            map.setPaintProperty('terminator-edge', 'line-blur', p.lineBlur);
         }
     };
 

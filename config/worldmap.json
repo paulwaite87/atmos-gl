@@ -18,7 +18,7 @@
     "enabled": true,
     "shade_opacity": 35,
     "shade_color": "#070b18",
-    "edge_softness": 35
+    "edge_softness": 45
   },
   "clouds": {
     "enabled": false,
