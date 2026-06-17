@@ -20,7 +20,7 @@
     "edge_softness": 35
   },
   "clouds": {
-    "enabled": true,
+    "enabled": false,
     "url": "https://gibs.earthdata.nasa.gov/wms/epsg4326/best/wms.cgi",
     "outfile": "data/cloud_map.png",
     "threshold": 168,
@@ -44,7 +44,7 @@
     "cache_expiry_days": 3
   },
   "wind": {
-    "enabled": true,
+    "enabled": false,
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
     "outfile": "data/wind.png",
     "level_of_detail": "2",
@@ -85,7 +85,7 @@
     "cache_expiry_days": 3
   },
   "waves": {
-    "enabled": false,
+    "enabled": true,
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
     "outfile": "data/waves.png",
     "level_of_detail": "2",
@@ -220,7 +220,7 @@
     "color": ""
   },
   "markers": {
-    "enabled": true,
+    "enabled": false,
     "marker_color": "White",
     "marker_fontsize": 11
   },

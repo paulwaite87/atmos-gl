@@ -57,6 +57,12 @@ class WavesUpdater(Updater):
         # DESIGNED GRADIENTS FOR WAVE HEIGHT INTENSITY
         self.PALETTES = PALETTES
 
+        # Per-hour velocity texture for the animated swell bars. The data_collector
+        # stores a GFS-Wave u/v field per forecast hour in the fieldstore; render_all_hours
+        # (in run()) writes waves_f{NNN}_data.png for each, alongside the heat tiles. The
+        # "_data.png" entry tells the per-hour publish/staleness machinery what we emit.
+        self.per_hour_outputs = ["_data.png"]
+
     def save_waves_key(self, output_path, cmap, norm, threshold=0.0):
         """Generates a standalone Wave Height key image (separate _key.png)."""
         import matplotlib.pyplot as plt
@@ -381,6 +387,23 @@ class WavesUpdater(Updater):
 
         logger.debug("Wave condition plotting sequence completed successfully.")
 
+    def plot_swell(self, field0):
+        """Write the per-hour swell velocity texture (R=U east, G=V north) from a
+        fieldstore field. The collector already derived u/v from swh + wave direction
+        (see waves_data_unpack), so here we just encode the per-hour field — this is the
+        animated-bars analogue of currents.plot, called once per catalog hour by
+        render_all_hours. NaN/land cells in u/v become transparent (alpha 0) so bars
+        respawn there. Separate from _write_velocity_texture (which encodes the single
+        static base texture from the tile GRIB; kept for the forecast_stepping=off path)."""
+        u = field0["u"]
+        v = field0["v"]
+        out_for_hour = self.get_output_path_for_hour(self.forecast_hour_str)
+        base, _ = os.path.splitext(out_for_hour)
+        encode_uv(u, v, f"{base}_data.png", VMAX_WAVES)
+        logger.info(
+            f"Waves: wrote swell velocity texture f{int(self.forecast_hour_str):03d}."
+        )
+
     def _write_velocity_texture(self):
         """Encode the global swell vector field into <outfile_base>_data.png for the
         animated particle layer. Direction matches the arrows (u=sin, v=cos of the wave
@@ -440,6 +463,19 @@ class WavesUpdater(Updater):
     def run(self):
         # Get the GFS state for this updater
         self.get_gfs_state()
+
+        # 1) Per-hour swell velocity textures for the animated bars, from the fieldstore.
+        # Done FIRST and unconditionally — the tile path below has early returns (no GRIB
+        # yet / tile version unchanged) that must NOT skip the per-hour velocity render,
+        # since those fields update independently of the heat-tile settings. Mirrors how
+        # wind/currents render every catalog hour; gap-fills only missing/stale hours.
+        self.render_all_hours(
+            "waves",
+            plot_fn=self.plot_swell,
+            field_ready=lambda f: f.get("u") is not None and f.get("v") is not None,
+        )
+
+        # 2) Heat tiles + legend (single current-hour GRIB; the coloration layer).
         self.grib_path = self.cache_path(f"gfs_waves_{self.forecast_hour_str}.grib2")
 
         url = f"{self.base_url}/gfs.{self.gfs_date_str}/{self.gfs_run}/wave/gridded/gfswave.t{self.gfs_run}z.global.0p25.f{self.forecast_hour_str}.grib2"
