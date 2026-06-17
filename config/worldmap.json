@@ -11,7 +11,7 @@
   },
   "animation": {
     "forecast_stepping": true,
-    "stepping_rate": 0
+    "stepping_rate": 65
   },
   "terminator": {
     "enabled": false,

@@ -99,7 +99,7 @@ export function loadLayer(map, config) {
         if (map.getSource(sourceId)) map.removeSource(sourceId);
     };
 
-    liveDataSync(map, {
+    return liveDataSync(map, {
         sectionKey: 'markers', initialConfig: config,
         mount, refresh, unmount,
         refreshMs: 3600000,   // static file; config edits drive the refresh, not a timer

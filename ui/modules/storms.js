@@ -93,5 +93,5 @@ export function loadLayer(map, config) {
         if (map.getSource(sourceId)) map.removeSource(sourceId);
     };
 
-    liveDataSync(map, { sectionKey: 'storms', initialConfig: config, mount, refresh, unmount, refreshMs: 120000 });
+    return liveDataSync(map, { sectionKey: 'storms', initialConfig: config, mount, refresh, unmount, refreshMs: 120000 });
 }

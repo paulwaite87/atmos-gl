@@ -60,7 +60,7 @@ export function loadLayer(map, config) {
         if (map.getSource(sourceId)) map.removeSource(sourceId);
     };
 
-    liveDataSync(map, {
+    return liveDataSync(map, {
         sectionKey: 'terminator',
         initialConfig: config,
         mount, refresh, unmount,

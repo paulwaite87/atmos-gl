@@ -61,5 +61,14 @@ export function liveDataSync(map, {
             .catch(err => console.error(`[${sectionKey}] initial mount failed`, err))
             .finally(() => { busy = false; });
     }
-    return setInterval(reconcile, syncMs);
+    const intervalId = setInterval(reconcile, syncMs);
+
+    // Teardown: stop the reconcile interval and unmount (which map.off()s handlers,
+    // removes popups, and removes the layer + source). Returned so the host can clean
+    // up this layer before a basemap style swap (setStyle wipes layers/sources) without
+    // leaking the interval or the mouse handlers.
+    return () => {
+        clearInterval(intervalId);
+        if (mounted) { try { unmount(); } catch (e) { console.warn(`[${sectionKey}] unmount failed`, e); } mounted = false; }
+    };
 }

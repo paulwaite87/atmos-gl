@@ -84,5 +84,5 @@ export function loadLayer(map, config) {
     };
 
     // Ships move — keep this fairly brisk.
-    liveDataSync(map, { sectionKey: 'shipping', initialConfig: config, mount, refresh, unmount, refreshMs: 60000 });
+    return liveDataSync(map, { sectionKey: 'shipping', initialConfig: config, mount, refresh, unmount, refreshMs: 60000 });
 }

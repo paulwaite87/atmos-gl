@@ -64,5 +64,5 @@ export function loadLayer(map, config) {
     };
 
     // Volcanoes barely change — long refresh.
-    liveDataSync(map, { sectionKey: 'volcanoes', initialConfig: config, mount, refresh, unmount, refreshMs: 600000 });
+    return liveDataSync(map, { sectionKey: 'volcanoes', initialConfig: config, mount, refresh, unmount, refreshMs: 600000 });
 }

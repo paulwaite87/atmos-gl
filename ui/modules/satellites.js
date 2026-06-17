@@ -81,5 +81,5 @@ export function loadLayer(map, config) {
 
     // Current dot moves fast; trail/prediction barely change. ~15s keeps the dot lively
     // (the RAF pulse covers between-refresh smoothness).
-    liveDataSync(map, { sectionKey: 'satellites', initialConfig: config, mount, refresh, unmount, refreshMs: 15000 });
+    return liveDataSync(map, { sectionKey: 'satellites', initialConfig: config, mount, refresh, unmount, refreshMs: 15000 });
 }
