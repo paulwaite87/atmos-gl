@@ -11,13 +11,14 @@
 
 // slug -> label. The slug goes straight into maps/<slug>/style.json.
 export const BASEMAP_STYLES = [
-    { slug: 'satellite',   label: 'Satellite' },
-    { slug: 'hybrid',      label: 'Satellite + Labels' },
-    { slug: 'streets-v2',  label: 'Streets' },
-    { slug: 'outdoor-v2',  label: 'Outdoor / Terrain' },
-    { slug: 'topo-v2',     label: 'Topographic' },
-    { slug: 'dataviz-dark', label: 'Dataviz Dark' },
-    { slug: 'basic-v2',    label: 'Basic' },
+    { slug: 'satellite',     label: 'Satellite' },
+    { slug: 'hybrid',        label: 'Satellite + Labels' },
+    { slug: 'streets-v2',    label: 'Streets' },
+    { slug: 'outdoor-v2',    label: 'Outdoor / Terrain' },
+    { slug: 'topo-v2',       label: 'Topographic' },
+    { slug: 'dataviz-dark',  label: 'Dataviz Dark' },
+    { slug: 'winter',        label: 'Winter' },
+    { slug: 'basic-v2',      label: 'Basic' },
 ];
 
 const styleUrlFor = (slug, key) =>

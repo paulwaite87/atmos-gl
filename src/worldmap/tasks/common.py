@@ -396,7 +396,11 @@ class Updater:
         self.outfile = self.settings.get("outfile", "")
         self.output_path = None
         self.enabled = self.settings.get("enabled", False)
-        self.forecast_hour = max(self.common.get("forecast_hour", 1), 1)
+        # This is the starting hour (offset) for all renders. It used to be a
+        # configurable setting, but since we moved to creating all renders for
+        # each hour, and allow the user to play through them, this is not
+        # useful to them. We hard-code it to zero here for now.
+        self.forecast_hour = 0
         # Per-hour output suffixes a COMPLETE render produces for this layer, relative
         # to the per-hour base (e.g. "isobars_f004"). should_plot_for_hour treats an
         # hour as stale if ANY of these is missing, so deleting (say) a _data.png

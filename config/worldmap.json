@@ -1,8 +1,7 @@
 {
   "common": {
-    "basemap": "hybrid",
+    "basemap": "satellite",
     "target_geometry": "8192x4096",
-    "forecast_hour": 0,
     "auto_rotate": false,
     "auto_rotate_speed": 0.03,
     "starting_latitude": 165,
@@ -12,8 +11,7 @@
   },
   "animation": {
     "forecast_stepping": true,
-    "hour_seconds": 0.8,
-    "sharp": false
+    "stepping_rate": 0
   },
   "terminator": {
     "enabled": false,
@@ -46,7 +44,7 @@
     "cache_expiry_days": 3
   },
   "wind": {
-    "enabled": false,
+    "enabled": true,
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
     "outfile": "data/wind.png",
     "level_of_detail": "2",
@@ -154,7 +152,7 @@
     "cache_expiry_days": 3
   },
   "storms": {
-    "enabled": false,
+    "enabled": true,
     "jtwc_url": "https://www.ssd.noaa.gov/PS/TROP/DATA/ATCF/JTWC/",
     "nhc_url": "https://ftp.nhc.noaa.gov/atcf/fst/",
     "outfile": "data/storms.json",
@@ -168,7 +166,7 @@
     "runs_per_day": 8
   },
   "lightning": {
-    "enabled": false,
+    "enabled": true,
     "outfile": "data/lightning.json",
     "icon_zoom": 1,
     "strike_recent_minutes": 15,
@@ -177,7 +175,7 @@
     "runs_per_day": 24
   },
   "quakes": {
-    "enabled": false,
+    "enabled": true,
     "url": "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.csv",
     "outfile": "data/quakes.json",
     "icon_zoom": 0.7,
@@ -210,7 +208,7 @@
     "runs_per_day": 24
   },
   "satellites": {
-    "enabled": false,
+    "enabled": true,
     "sat_names": [
       "ISS (ZARYA)",
       "HST"

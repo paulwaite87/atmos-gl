@@ -20,11 +20,16 @@ let pollId = null;
 let lastSig = '';
 
 function secondsPerHourFrom(configData) {
-    // Prefer an explicit [animation].hour_seconds; else derive from `seconds`
-    // (total loop) spread across the span; else a sensible default.
+    // Derive number of seconds per step (hour) in the forecast animation.
+    // Values from the UI can be in the range 0-100. We want to translate
+    // that to values such that 100 represents about 0.1 seconds per step
+    // and zero is about 2 seconds per step.
     const anim = (configData && configData.animation) || {};
-    const hs = Number(anim.hour_seconds);
-    if (isFinite(hs) && hs > 0) return hs;
+    if (anim) {
+        const srate = Math.max(100 - anim.stepping_rate, 5)
+        const hs = Number(srate / 50);
+        if (isFinite(hs) && hs > 0) return hs;
+    }
     return 0.8;   // default ~0.8s per forecast hour during play
 }
 

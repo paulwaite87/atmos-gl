@@ -307,8 +307,7 @@
                         else if (section === "quakes" && option === "min_mag") customLabelText = "Minimum magnitude";
                         else if (option === "animated" && (section === "precipitation" || section === "isobars")) customLabelText = "Animated forecast";
                         else if (section === "animation" && option === "forecast_stepping") customLabelText = "Forecast stepping (hourly playback)";
-                        else if (section === "animation" && option === "hour_seconds") customLabelText = "Play speed (sec per hour)";
-                        else if (section === "animation" && option === "sharp") customLabelText = "Sharp (no smoothing)";
+                        else if (section === "animation" && option === "stepping_rate") customLabelText = "Forecast stepping rate";
                         else {
                             const spaced = option.replace(/_/g, ' ');
                             customLabelText = spaced.charAt(0).toUpperCase() + spaced.slice(1);
@@ -324,6 +323,20 @@
                                     <input class="form-check-input dynamic-input" type="checkbox" id="${domId}" ${value ? 'checked' : ''}>
                                     <label class="form-check-label fw-bold ms-2">${customLabelText}</label>
                                 </div>`;
+                        } else if (option === 'basemap') {
+                            col.innerHTML = `
+                                <label class="form-label small text-white-50 fw-bold mb-1">Base Map Style</label>
+                                <select class="form-select bg-dark text-light border-secondary dynamic-input" id="${domId}">
+                                    <option value="satellite" ${value === 'satellite' ? 'selected' : ''}>Satellite</option>
+                                    <option value="hybrid" ${value === 'hybrid' ? 'selected' : ''}>Satellite + Labels</option>
+                                    <option value="streets-v2" ${value === 'streets-v2' ? 'selected' : ''}>Streets</option>
+                                    <option value="outdoor-v2" ${value === 'outdoor-v2' ? 'selected' : ''}>Outdoor / Terrain</option>
+                                    <option value="topo-v2" ${value === 'topo-v2' ? 'selected' : ''}>Topographic</option>
+                                    <option value="dataviz-dark" ${value === 'dataviz-dark' ? 'selected' : ''}>Dataviz Dark</option>
+                                    <option value="winter" ${value === 'winter' ? 'selected' : ''}>Winter</option>
+                                    <option value="basic-v2" ${value === 'basic-v2' ? 'selected' : ''}>Basic</option>
+                                </select>
+                            `;
                         } else if (option === 'region') {
                             let optionsHTML = '<option value="">Whole World</option>';
                             dynamicRegions.forEach(r => {
@@ -382,7 +395,7 @@
                                 <input type="range" class="form-range dynamic-input" id="${domId}" min="0" max="96" step="1" value="${initialFcstHour}"
                                        oninput="document.getElementById('badge-${domId}').innerText = parseInt(this.value) + 'h'">
                             `;
-                        } else if (option === 'particle_speed') {
+                        } else if (option === 'particle_speed' || option === 'stepping_rate') {
                             const v = parseInt(value, 10);
                             const init = isFinite(v) ? Math.min(100, Math.max(0, v)) : 50;
                             col.innerHTML = `
