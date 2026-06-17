@@ -16,6 +16,7 @@ SCRUBBER_PRODUCTS = [
     "temperature",
     "ozone",
     "stormwatch",
+    "waves",
 ]
 
 
@@ -77,16 +78,27 @@ def get_forecast_state():
     """
     try:
         cfg = load_config()
-        # Only require products that are actually enabled, so a disabled layer
-        # doesn't shrink the scrubber's range for everyone else.
+        # The scrubber spans the GFS forecast hours common to the enabled stepped
+        # products. SCRUBBER_PRODUCTS is the allow-list of GFS-cadence layers; an hour
+        # is offered only when every *enabled* one has it (intersection in
+        # get_latest_run_hours). NOTE: we gate on `enabled` only — the former per-layer
+        # `animated` key was removed (these layers have no un-animated state), so testing
+        # it always failed and the scrubber silently fell back to ALL products (which
+        # wrongly mixed in the RTOFS currents cycle). Gating on enabled fixes that.
         required = []
         for p in SCRUBBER_PRODUCTS:
             section = cfg.config.get(p, {})
-            if section.get("animated") and section.get("enabled", True):
+            if section.get("enabled", True):
                 required.append(p)
 
         db = Database()
-        summary = db.get_latest_run_hours(products=required or None)
+        # If no GFS-stepped product is enabled there is no shared GFS scrubber range.
+        # Do NOT fall back to all-products here: that would let get_latest_run_hours pull
+        # in the RTOFS currents cycle (a different model/run) and mix model cycles. The
+        # currents layer reconciles its own hours via the separate currents block below.
+        if not required:
+            return {"status": "success", "data": None}
+        summary = db.get_latest_run_hours(products=required)
         if not summary or not summary.get("hours"):
             return {"status": "success", "data": None}
 
