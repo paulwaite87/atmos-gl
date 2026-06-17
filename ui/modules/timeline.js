@@ -145,6 +145,14 @@ export const timeline = {
     emit();
   },
 
+  // Update playback speed ONLY, without emitting. The play loop reads
+  // state.secondsPerHour live each tick, so no subscriber needs notifying — and
+  // emitting here would make animated layers treat it as a data/hour change and
+  // visibly blink (reload/redraw). Used by the live config re-read of stepping rate.
+  setSecondsPerHour(n) {
+    if (typeof n === 'number' && n > 0) state.secondsPerHour = n;
+  },
+
   // Configure range + speed + epoch metadata (called after fetching /api/forecast_state).
   // `initialise` true on first config: snap the current hour to minHour ('now').
   configure({ minHour, maxHour, secondsPerHour, runEpochUtc, validTimes, initialise } = {}) {

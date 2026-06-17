@@ -113,7 +113,7 @@ export async function initForecastTimeline(configData) {
         const sph = secondsPerHourFrom(data);
         if (sph !== lastSecondsPerHour) {
             lastSecondsPerHour = sph;
-            timeline.configure({ secondsPerHour: sph });   // hold hour/range; just update speed
+            timeline.setSecondsPerHour(sph);   // speed-only, no emit -> no layer blink
         }
     }, STEP_POLL_MS);
 }
