@@ -188,12 +188,74 @@
                     }
                 };
 
+                // ---- ATMOSPHERE / SKY (config-gated by common.atmosphere) -----------
+                // Procedural globe halo + starfield (no data — pure stagecraft to make the
+                // planet read as a 3D body in space). setStyle wipes sky/fog/light, so this
+                // is re-applied on every style.load alongside the projection. When the
+                // terminator layer is enabled, the sun/light is synced to the real subsolar
+                // point (shared with the terminator shadow) so the day/night shading aligns.
+                let sunPollId = null;
+
+                // Convert a subsolar lat/lon into MapLibre's globe light position
+                // [radial, azimuth, polar]. Globe lighting with anchor:'map' has a rotated
+                // axis; this is the community-verified correction (maplibre-gl-js #5240).
+                const lightPosition = (lat, lon) => {
+                    const sin = (d) => Math.sin(d * Math.PI / 180);
+                    const cos = (d) => Math.cos(d * Math.PI / 180);
+                    const acos = (v) => Math.acos(Math.max(-1, Math.min(1, v))) * 180 / Math.PI;
+                    const b = acos(cos(lat) * cos(lon));
+                    const a = acos(sin(lat) / Math.max(1e-6, sin(b * Math.PI / 180)));
+                    return [-1, a, b];
+                };
+
+                const applySun = async () => {
+                    try {
+                        const r = await fetch(`${window.WM_API}/terminator/geojson?t=${Date.now()}`);
+                        if (!r.ok) return;
+                        const fc = await r.json();
+                        const ss = fc && fc.subsolar;
+                        if (!ss) return;
+                        map.setLight({ anchor: 'map', color: 'white', intensity: 0.5,
+                                       position: lightPosition(ss.lat, ss.lon) });
+                    } catch (e) { /* leave default light on failure */ }
+                };
+
+                const setupAtmosphere = () => {
+                    if (!configData.common?.atmosphere) return;
+                    try {
+                        // Sky halo: strong at whole-globe zoom, fading out as you zoom in
+                        // (atmosphere only reads at planet scale). Empty/explicit sky is
+                        // required for the atmosphere to render at all.
+                        map.setSky({
+                            'atmosphere-blend': ['interpolate', ['linear'], ['zoom'], 0, 1, 5, 1, 7, 0],
+                        });
+                        // Space background + starfield + hazy limb (globe fog).
+                        map.setFog({
+                            'color': 'rgba(8,10,18,1)',          // near-black space
+                            'high-color': 'rgba(30,50,90,1)',     // upper-atmosphere blue
+                            'horizon-blend': 0.02,
+                            'space-color': 'rgba(2,3,8,1)',
+                            'star-intensity': 0.15,
+                        });
+                        // Sync the sun to the real subsolar point only when the terminator
+                        // layer is on; otherwise leave MapLibre's default light.
+                        if (sunPollId) { clearInterval(sunPollId); sunPollId = null; }
+                        if (configData.terminator?.enabled) {
+                            applySun();
+                            sunPollId = setInterval(applySun, 60000);   // sun drifts ~0.25°/min
+                        }
+                    } catch (err) {
+                        console.warn('[atmosphere] could not apply sky/fog; continuing.', err);
+                    }
+                };
+
                 // ---- THE SYNCHRONOUS MOUNT HANDLER ----------------------------------
                 const onStyleLoadMount = async () => {
                     if (mountInFlight || layersMounted) return;
                     mountInFlight = true;
                     try {
                         map.setProjection({ type: 'globe' });
+                        setupAtmosphere();          // re-apply sky/fog/sun (wiped by setStyle)
                         await oneTimeSetup();
                         await mountAllLayers();
                         layersMounted = true;

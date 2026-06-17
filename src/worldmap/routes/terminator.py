@@ -67,6 +67,10 @@ def terminator_geojson():
 
     fc = {
         "type": "FeatureCollection",
+        # Subsolar point (lat/lon of the sun directly overhead). Exposed so the frontend
+        # can align the globe's atmosphere/light to the real sun without recomputing it —
+        # one source of truth shared with the terminator shadow.
+        "subsolar": {"lat": round(slat, 4), "lon": round(slon, 4)},
         "features": [
             {
                 "type": "Feature",
