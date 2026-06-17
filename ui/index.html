@@ -9,7 +9,7 @@
         body { margin: 0; padding: 0; overflow: hidden; background-color: #04040e; }
         #globeViz { width: 100vw; height: 100vh; }
         #basemap-picker-host {
-            position: absolute; top: 12px; right: 12px; z-index: 5;
+            position: absolute; top: 65px; right: 12px; z-index: 5;
         }
         .basemap-picker {
             display: flex; flex-direction: column; gap: 2px;
@@ -57,7 +57,6 @@
             pointer-events: none;
             z-index: 100;
         }
-        /* Add this container to hold your keys */
         #legend-stack {
             position: absolute;
             top: 20px;
@@ -66,7 +65,7 @@
             flex-direction: column;
             gap: 10px;
             z-index: 100;
-            pointer-events: none; /* Let map clicks through */
+            pointer-events: none;
         }
         .legend-slot {
             background: rgba(0, 0, 0, 0.6);
@@ -75,10 +74,10 @@
             border: 1px solid rgba(255, 255, 255, 0.2);
         }
     </style>
-    <div id="legend-stack"></div>
     <script src="https://unpkg.com/maplibre-gl@^5.0.0/dist/maplibre-gl.js"></script>
 </head>
 <body>
+    <div id="legend-stack"></div>
     <a href="/config/" id="settingsBtn" target="_blank">Configuration Control</a>
     <div id="basemap-picker-host"></div>
 
@@ -92,10 +91,8 @@
                 const fullConfig = await response.json();
                 const configData = fullConfig.data;
 
-                // 2. Extract dynamically injected key out of the standard common section
+                // 2. Extract dynamically injected key
                 const maptilerKey = configData.common?.api_key || '';
-
-                // Starting view of the globe
                 const startingLatitude = configData.common?.starting_latitude || 0.0;
                 const startingLongitude = configData.common?.starting_longitude || 0.0;
 
@@ -103,10 +100,6 @@
                     console.warn("MapTiler API Key missing! Check your host .env configuration.");
                 }
 
-                // Build the style, guaranteeing a glyphs endpoint so text labels
-                // (e.g. the place-markers layer) always render even if the satellite
-                // style ships without one. Fetch the style, patch glyphs if absent,
-                // and hand MapLibre the object; on any failure fall back to the URL.
                 const styleUrl = `https://api.maptiler.com/maps/satellite/style.json?key=${maptilerKey}`;
                 let mapStyle = styleUrl;
                 try {
@@ -125,61 +118,34 @@
                     container: 'globeViz',
                     style: mapStyle,
                     center: [startingLatitude, startingLongitude],
-                    zoom: 2.5, // Start zoomed out to see the globe shape immediately
+                    zoom: 2.5,
                     projection: 'globe' // Start with a spherical projection
                 });
 
-                // Register the globe-projection handler SYNCHRONOUSLY, before any await.
-                // The initial 'style.load' fires shortly after construction; if we only
-                // attached a handler after an `await import(...)` below, that first event
-                // could fire during the await and be missed, leaving the map in flat
-                // Mercator. This dedicated handler guarantees the projection is always set
-                // on every style load (initial and post-setStyle). Layer mounting is done
-                // by the separate async handler further down.
-                map.on('style.load', () => { map.setProjection({ type: 'globe' }); });
-
-                // Optional basemap picker. Imported defensively: if /basemap.js fails to
-                // load, the picker is simply absent — it must NEVER abort bootstrap, or
-                // the style.load handler below (which sets the globe projection and mounts
-                // layers) would never attach and the map would fall back to flat Mercator.
-                let buildBasemapStyle = null, mountBasemapPicker = null;
-                try {
-                    ({ buildBasemapStyle, mountBasemapPicker } = await import(`/basemap.js?t=${Date.now()}`));
-                } catch (err) {
-                    console.warn('[basemap] picker unavailable; continuing without it.', err);
-                }
-
-                // ---- Layer mounting + teardown registry ----------------------------
-                // setStyle() (basemap swap) wipes every layer and source, including our
-                // custom WebGL data layers. So we keep the list of per-layer cleanup
-                // functions returned by each loadLayer, run them all before a swap, and
-                // re-mount after the new style loads. Layers not yet returning a cleanup
-                // are still removed by id as a safety net so they can't duplicate.
+                // ---- Layer mounting + teardown registry (HOISTED) -------------------
                 const ALL_LAYERS = [
                     'sst', 'currents', 'waves', 'ozone', 'temperature', 'clouds',
-                    'terminator',
-                    'precipitation', 'stormwatch', 'wind', 'isobars',
-                    'quakes', 'volcanoes', 'lightning', 'storms',
-                    'shipping', 'satellites',
+                    'terminator', 'precipitation', 'stormwatch', 'wind', 'isobars',
+                    'quakes', 'volcanoes', 'lightning', 'storms', 'shipping', 'satellites',
                     'markers'
                 ];
                 let layerCleanups = [];
-                // Mount-state flags (declared before oneTimeSetup/picker so its swap
-                // handler and the style.load mount handler share the same bindings).
                 let layersMounted = false;
                 let mountInFlight = false;
+                let oneTimeDone = false;
 
                 const mountAllLayers = async () => {
-                    for (const moduleName of ALL_LAYERS) {
+                    // Promise.allSettled prevents one broken layer module from stopping the rest
+                    await Promise.allSettled(ALL_LAYERS.map(async (moduleName) => {
                         try {
-                            const module = await import(`/modules/${moduleName}.js?t=${Date.now()}`);
-                            // loadLayer may return a cleanup fn (newer modules) or nothing.
+                            // Removed ?t=${Date.now()} to prevent memory leaks on style swaps
+                            const module = await import(`/modules/${moduleName}.js`);
                             const cleanup = await module.loadLayer(map, configData[moduleName] || {}, configData);
                             if (typeof cleanup === 'function') layerCleanups.push(cleanup);
                         } catch (err) {
                             console.warn(`Could not load layer /modules/${moduleName}.js`, err);
                         }
-                    }
+                    }));
                 };
 
                 const teardownAllLayers = () => {
@@ -189,13 +155,11 @@
                     layerCleanups = [];
                 };
 
-                // ---- One-time setup (runs once, NOT on every style swap) ------------
-                let oneTimeDone = false;
+                // ---- One-time setup (HOISTED) ---------------------------------------
                 const oneTimeSetup = async () => {
                     if (oneTimeDone) return;
                     oneTimeDone = true;
 
-                    // Track user interaction so auto-rotation doesn't fight dragging
                     let isUserInteracting = false;
                     map.on('movestart', () => { isUserInteracting = true; });
                     map.on('moveend', () => { isUserInteracting = false; });
@@ -216,48 +180,15 @@
                     window.MAP_UI = "http://localhost:9000";
                     window.WM_API = "http://localhost:9000/api";
 
-                    // Boot the shared forecast timeline + scrubber BEFORE layers mount.
                     try {
-                        const { initForecastTimeline } = await import(`/modules/timeline_boot.js?t=${Date.now()}`);
+                        const { initForecastTimeline } = await import(`/modules/timeline_boot.js`);
                         await initForecastTimeline(configData);
                     } catch (err) {
                         console.warn('Could not init forecast timeline', err);
                     }
-
-                    // Basemap picker — swaps the style, preserving camera, re-mounting layers.
-                    try {
-                        if (mountBasemapPicker && buildBasemapStyle) {
-                        let currentSlug = configData.common?.basemap || 'satellite';
-                        const host = document.getElementById('basemap-picker-host') || document.body;
-                        mountBasemapPicker(host, currentSlug, async (slug) => {
-                            if (slug === currentSlug) return;
-                            const cam = { center: map.getCenter(), zoom: map.getZoom(),
-                                          bearing: map.getBearing(), pitch: map.getPitch() };
-                            teardownAllLayers();                 // stop intervals/handlers, remove custom layers
-                            layersMounted = false;               // allow re-mount on the next style.load
-                            const newStyle = await buildBasemapStyle(slug, maptilerKey);
-                            currentSlug = slug;
-                            // Restore the camera once the new style is in; projection +
-                            // layer re-mount are handled by the persistent style.load handler.
-                            map.once('style.load', () => { map.jumpTo(cam); });
-                            map.setStyle(newStyle);              // wipes layers; style.load re-mounts
-                        });
-                        }
-                    } catch (err) {
-                        console.warn('Could not mount basemap picker', err);
-                    }
                 };
 
-                // ---- style.load: fires on initial load AND after every setStyle ------
-                // Re-establish the globe projection and (re)mount all data layers each
-                // time. One-time setup is guarded so it runs only once.
-                // (Re)mount all data layers on each style load. One-time setup is guarded
-                // so it runs only once. This handler is attached after `await`s above, so
-                // the initial 'style.load' may already have fired — guard with
-                // isStyleLoaded() and run once immediately if so, so layers always mount.
-                // `layersMounted` prevents a double-mount if the event also fires right
-                // after we attach; a basemap swap clears it (via teardown) so the next
-                // style.load correctly re-mounts.
+                // ---- THE SYNCHRONOUS MOUNT HANDLER ----------------------------------
                 const onStyleLoadMount = async () => {
                     if (mountInFlight || layersMounted) return;
                     mountInFlight = true;
@@ -270,8 +201,41 @@
                         mountInFlight = false;
                     }
                 };
+
+                // Attach IMMEDIATELY. No `awaits` between map creation and this block.
                 map.on('style.load', onStyleLoadMount);
-                if (map.isStyleLoaded()) onStyleLoadMount();   // initial event may have already fired
+                // Catch the event if it already fired while synchronous code was executing
+                if (map.isStyleLoaded()) {
+                    onStyleLoadMount();
+                }
+
+                // ---- BASEMAP PICKER (Awaited SAFELY at the end) ---------------------
+                try {
+                    const { buildBasemapStyle, mountBasemapPicker } = await import(`/basemap.js`);
+                    if (mountBasemapPicker && buildBasemapStyle) {
+                        let currentSlug = configData.common?.basemap || 'satellite';
+                        const host = document.getElementById('basemap-picker-host') || document.body;
+
+                        mountBasemapPicker(host, currentSlug, async (slug) => {
+                            if (slug === currentSlug) return;
+                            const cam = {
+                                center: map.getCenter(), zoom: map.getZoom(),
+                                bearing: map.getBearing(), pitch: map.getPitch()
+                            };
+
+                            teardownAllLayers();
+                            layersMounted = false;
+
+                            const newStyle = await buildBasemapStyle(slug, maptilerKey);
+                            currentSlug = slug;
+
+                            map.once('style.load', () => { map.jumpTo(cam); });
+                            map.setStyle(newStyle);
+                        });
+                    }
+                } catch (err) {
+                    console.warn('[basemap] picker unavailable; continuing without it.', err);
+                }
 
             } catch (err) {
                 console.error("Failed to bootstrap runtime configuration framework:", err);

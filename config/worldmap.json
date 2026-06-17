@@ -1,6 +1,6 @@
 {
   "common": {
-    "basemap": "streets",
+    "basemap": "hybrid",
     "target_geometry": "8192x4096",
     "forecast_hour": 0,
     "auto_rotate": false,
