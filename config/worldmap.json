@@ -15,8 +15,8 @@
     "stepping_rate": 50
   },
   "terminator": {
-    "enabled": false,
-    "shade_opacity": 0,
+    "enabled": true,
+    "shade_opacity": 35,
     "shade_color": "#070b18",
     "edge_softness": 35
   },
