@@ -126,7 +126,15 @@ def get_forecast_state():
             c_summary = db.get_latest_run_hours(products=["currents"])
             if c_summary and c_summary.get("hours"):
                 c_epoch = _run_epoch_utc(c_summary["gfs_date"], c_summary["gfs_run"])
+                c_date = c_summary["gfs_date"]
                 currents_block = {
+                    # The RTOFS run identity (date/run) the currents fields belong to.
+                    # Exposed so the frontend can flag the correct (date, run, rtofs_hour)
+                    # for demand-driven backfill — currents ride the RTOFS cycle, NOT the
+                    # GFS run the rest of the scrubber uses.
+                    "gfs_date": (c_date if isinstance(c_date, str)
+                                 else c_date.strftime("%Y%m%d")),
+                    "gfs_run": c_summary["gfs_run"],
                     "run_epoch_utc": z(c_epoch),
                     "fmin": c_summary["fmin"],
                     "fmax": c_summary["fmax"],

@@ -56,7 +56,8 @@ function makeReconciler() {
                         sorted.push([ms, parseInt(h, 10)]);
                     }
                     sorted.sort((a, b) => a[0] - b[0]);
-                    rtofs = { validMs, sortedByMs: sorted };
+                    rtofs = { validMs, sortedByMs: sorted,
+                              date: c.gfs_date || null, run: c.gfs_run || null };
                 }
             } catch (e) {
                 console.warn('[currents] forecast_state currents block unavailable; using identity hours', e);
@@ -81,7 +82,15 @@ function makeReconciler() {
         }
         return best[1];
     };
-    return { toRtofsHour, ready: () => load() };
+    // For demand-driven backfill: the RTOFS (date, run, rtofs_hour) for a timeline snap,
+    // matching exactly the file that 404'd. Null until forecast_state has loaded, or if
+    // the currents block lacked the run identity (older backend) — the engine then skips
+    // flagging rather than sending a wrong (GFS-run) key.
+    const backfillKey = (snap) => {
+        if (!rtofs || !rtofs.date || !rtofs.run || !snap) return null;
+        return { date: rtofs.date, run: rtofs.run, hour: toRtofsHour(snap.hour) };
+    };
+    return { toRtofsHour, backfillKey, ready: () => load() };
 }
 
 export async function loadLayer(map, config, fullConfig = {}) {
@@ -133,6 +142,7 @@ export async function loadLayer(map, config, fullConfig = {}) {
         opacity: Number(config.alpha) > 0 ? Number(config.alpha) / 100 : 0.6,
         colormap: () => buildLUT(palette),
         hourDataUrl: currentsHourUrl,     // RTOFS-hour translated
+        backfillKey: recon.backfillKey,   // RTOFS (date,run,hour) for 404 backfill
         // shade() decodes u/v from R/G directly (same scheme as the particle layer)
         // and colours by speed, so the built-in value/bicubic path is unused here.
         fragmentBody: `
@@ -192,6 +202,7 @@ export async function loadLayer(map, config, fullConfig = {}) {
             return (v / 100) * 8;
         },
         hourDataUrl: currentsHourUrl,     // RTOFS-hour translated (shared with fill)
+        backfillKey: recon.backfillKey,   // RTOFS (date,run,hour) for 404 backfill
     });
 
     // Combined teardown for a basemap style swap: stop both sub-layers and remove the

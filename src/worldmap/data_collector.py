@@ -363,6 +363,38 @@ class DataCollector:
         )
         return run_ts + timedelta(hours=int(fhour))
 
+    def _currents_base_url(self):
+        """The base URL configured for the 'currents' (RTOFS) datasource."""
+        bu = self.datasources.get("currents")
+        return bu.rstrip("/") if bu else None
+
+    def _backfill_currents_hour(self, base_url, date_str, run, fhour, product, unpacker):
+        """Fetch a single RTOFS currents hour on demand. RTOFS URLs key off date + fhour
+        (one daily cycle), with the nowcast as a fallback when the forecast hour isn't
+        published. Mirrors _collect_rtofs_currents's inner body for one hour."""
+        url = build_currents_url(base_url, date_str, fhour)
+        if not remote_exists(url):
+            fallback = build_currents_nowcast_url(base_url, date_str)
+            if remote_exists(fallback):
+                url = fallback
+            else:
+                return False
+        data = download_whole(url)
+        if not data:
+            return False
+        valid = self._valid_time(date_str, run, fhour)
+        tmp = tempfile.NamedTemporaryFile(suffix=".nc", delete=False)
+        tmp.write(data); tmp.close()
+        try:
+            fields = unpacker(tmp.name)
+            self.store.store_field(date_str, run, fhour, product, fields, valid)
+            return True
+        finally:
+            try:
+                os.remove(tmp.name)
+            except OSError:
+                pass
+
     def _drain_backfill(self):
         """Service demand-driven backfill requests flagged by the frontend (404s). Claims
         pending rows, fetches each missing GFS-family field on demand, and marks the row
@@ -373,7 +405,8 @@ class DataCollector:
         claimed = self.db.claim_backfill_requests(limit=20)
         if not claimed:
             return
-        base_url = self._gfs_base_url()
+        gfs_base = self._gfs_base_url()
+        cur_base = self._currents_base_url()
         for req in claimed:
             d, run, fhour, product = (
                 req["gfs_date"], req["gfs_run"], int(req["fhour"]), req["product"]
@@ -385,19 +418,29 @@ class DataCollector:
                 continue
             try:
                 ok = False
-                if not base_url:
-                    logger.warning("backfill: no 'gfs' datasource configured")
-                elif product in ATMOS_UNPACKERS:
-                    ok = self._backfill_atmos_hour(
-                        base_url, d_str, run, fhour, product, ATMOS_UNPACKERS[product]
-                    )
+                if product in ATMOS_UNPACKERS:
+                    if not gfs_base:
+                        logger.warning("backfill: no 'gfs' datasource configured")
+                    else:
+                        ok = self._backfill_atmos_hour(
+                            gfs_base, d_str, run, fhour, product, ATMOS_UNPACKERS[product]
+                        )
                 elif product in WAVES_UNPACKERS:
-                    ok = self._backfill_waves_hour(
-                        base_url, d_str, run, fhour, product, WAVES_UNPACKERS[product]
-                    )
+                    if not gfs_base:
+                        logger.warning("backfill: no 'gfs' datasource configured")
+                    else:
+                        ok = self._backfill_waves_hour(
+                            gfs_base, d_str, run, fhour, product, WAVES_UNPACKERS[product]
+                        )
+                elif product in CURRENTS_UNPACKERS:
+                    if not cur_base:
+                        logger.warning("backfill: no 'currents' datasource configured")
+                    else:
+                        ok = self._backfill_currents_hour(
+                            cur_base, d_str, run, fhour, product, CURRENTS_UNPACKERS[product]
+                        )
                 else:
-                    # currents / unknown: not serviceable via on-demand backfill.
-                    logger.info(f"backfill: {product} not supported; marking failed")
+                    logger.info(f"backfill: unknown product {product}; marking failed")
                     self.db.mark_backfill(d_str, run, fhour, product, "failed")
                     continue
                 self.db.mark_backfill(d_str, run, fhour, product,

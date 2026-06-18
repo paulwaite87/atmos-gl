@@ -219,6 +219,11 @@ export function createStreakParticleGLController(map, opts) {
         // _data.png — skip the timeline subscription entirely and (re)load only on
         // mount/refresh, matching the original standalone wave engine's behaviour.
         useTimeline = true,
+        // Optional: derive the backfill {date, run, hour} for a missing per-hour field.
+        // Defaults to the GFS run (runEpochUtc) + timeline hour, correct for wind/waves.
+        // Layers on a different cycle (currents -> RTOFS run + reconciled hour) override
+        // this so the 404 flag targets the file that actually 404'd.
+        backfillKey = null,
         // Per-hour velocity texture, driven by the shared timeline.
         hourDataUrl = (cfg, hour, bust) => {
             const base = cfg.outfile.replace(/\.png$/, '');
@@ -397,12 +402,20 @@ export function createStreakParticleGLController(map, opts) {
     };
     const flaggedMissing = new Set();
     const missKey = (snap) => {
+        // Layer-supplied override (e.g. currents -> RTOFS run + reconciled hour).
+        if (backfillKey) {
+            const k = backfillKey(snap);
+            if (!k || !k.date || !k.run || k.hour == null) return null;
+            return { key: `${sectionKey}:${k.date}:${k.run}:${k.hour}`,
+                     dateStr: k.date, rr: k.run, hour: k.hour };
+        }
+        // Default: the GFS run (f000 valid time) + the timeline hour.
         if (!snap || !snap.runEpochUtc) return null;
         const r = new Date(snap.runEpochUtc);
         if (isNaN(r.getTime())) return null;
         const dateStr = `${r.getUTCFullYear()}${String(r.getUTCMonth()+1).padStart(2,'0')}${String(r.getUTCDate()).padStart(2,'0')}`;
         const rr = String(r.getUTCHours()).padStart(2, '0');
-        return { key: `${sectionKey}:${dateStr}:${rr}:${snap.hour}`, dateStr, rr };
+        return { key: `${sectionKey}:${dateStr}:${rr}:${snap.hour}`, dateStr, rr, hour: snap.hour };
     };
     const flagMissing = (snap) => {
         const m = missKey(snap);
@@ -412,7 +425,7 @@ export function createStreakParticleGLController(map, opts) {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ product: sectionKey, date: m.dateStr,
-                                   run: m.rr, hour: snap.hour }),
+                                   run: m.rr, hour: m.hour }),
         }).catch(() => { /* best-effort; the field stays transparent meanwhile */ });
     };
 
