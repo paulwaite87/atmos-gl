@@ -32,7 +32,7 @@
     "cache_expiry_days": 3
   },
   "isobars": {
-    "enabled": false,
+    "enabled": true,
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
     "outfile": "data/isobars.png",
     "level_of_detail": "3",

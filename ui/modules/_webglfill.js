@@ -230,7 +230,14 @@ void main(){
             entry.ready = true; entry.loading = false;
             map.triggerRepaint();
         };
-        img.onerror = () => { entry.loading = false; };
+        img.onerror = () => {
+            entry.loading = false;
+            // The per-hour texture 404'd (this fires on a scrub to a missing hour for an
+            // already-mounted layer — the mount-time imageExists probe doesn't cover it).
+            // Flag demand-driven backfill for THIS specific hour. Override snap.hour so the
+            // key targets the hour that actually failed, not the timeline's current hour.
+            flagBackfill(sectionKey, { ...timeline.get(), hour }, backfillKey);
+        };
         img.src = hourDataUrl(curCfg, hour, bustKey);
         return entry;
     };

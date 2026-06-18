@@ -30,13 +30,23 @@ function buildKey(sectionKey, snap, resolve) {
 
 export function flagBackfill(sectionKey, snap, resolve) {
     const m = buildKey(sectionKey, snap, resolve);
-    if (!m || flagged.has(m.key)) return;            // already asked — don't spam
+    if (!m) {
+        // TEMP DIAGNOSTIC: key couldn't be built (no run identity yet / resolver null).
+        console.warn(`[backfill] ${sectionKey}: no key built`,
+                     { hasResolve: !!resolve, runEpochUtc: snap && snap.runEpochUtc,
+                       hour: snap && snap.hour, resolved: resolve ? resolve(snap) : null });
+        return;
+    }
+    if (flagged.has(m.key)) { console.debug(`[backfill] ${sectionKey}: already flagged ${m.key}`); return; }
     flagged.add(m.key);
+    console.info(`[backfill] ${sectionKey}: POST request_backfill`, m);
     fetch(`${window.WM_API}/request_backfill`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ product: sectionKey, date: m.date, run: m.run, hour: m.hour }),
-    }).catch(() => { /* best-effort; the field stays transparent meanwhile */ });
+    })
+    .then(r => { if (!r.ok) console.warn(`[backfill] ${sectionKey}: POST ${r.status}`); })
+    .catch((e) => { console.warn(`[backfill] ${sectionKey}: POST failed`, e); });
 }
 
 export function clearBackfillFlag(sectionKey, snap, resolve) {

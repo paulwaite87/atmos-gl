@@ -1,6 +1,7 @@
 import { liveLayerSync } from './_refresh.js';
 import { timeline } from './timeline.js';
 import { scrubber } from './scrubber.js';
+import { flagBackfill } from './_backfill.js';
 
 /**
  * Ocean-current FLOWING TRAIL particles as a MapLibre v5 CUSTOM WEBGL LAYER.
@@ -260,6 +261,7 @@ export function createCurrentParticleGLLayer(map, opts) {
         initialConfig = {},
         initialAnimation = {},
         initialCommon = {},
+        backfillKey = null,   // optional resolver (snap)=>{date,run,hour} for backfill
         vmax = 2.5,
         colormap = null,
         maxSpeedColor = (cfg) => vmax,
@@ -410,10 +412,14 @@ export function createCurrentParticleGLLayer(map, opts) {
                gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 256, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, lut); }
     };
     const loadVelocity = (cfg) => {
-        const url = hourDataUrl(cfg, timeline.get().hour, bustKey);
+        const hour = timeline.get().hour;
+        const url = hourDataUrl(cfg, hour, bustKey);
         const img = new Image(); img.crossOrigin = 'anonymous';
         img.onload = () => { pendingVelImg = img; map.triggerRepaint(); };
-        img.onerror = () => {};
+        img.onerror = () => {
+            // Per-hour velocity texture 404'd — flag demand-driven backfill for this hour.
+            flagBackfill(sectionKey, { ...timeline.get(), hour }, backfillKey);
+        };
         img.src = url;
     };
 
@@ -623,6 +629,7 @@ export function createCurrentParticleGLLayer(map, opts) {
         globalKeys: ['animation', 'common'],
         mount, refresh, unmount,
         imageUrl: (cfg) => hourDataUrl(cfg, timeline.get().hour, bustKey),
+        onMissing: () => flagBackfill(sectionKey, timeline.get(), backfillKey),
         refreshMs, syncMs,
     });
 

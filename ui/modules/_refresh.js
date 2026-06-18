@@ -82,7 +82,14 @@ export function liveLayerSync(map, {
         if (!imageUrl) return 0;
         try {
             const r = await fetch(withProbe(imageUrl(cfg)), { method: 'HEAD' });
-            if (!r.ok) return 0;
+            if (!r.ok) {
+                // A mounted layer scrubbed to a missing hour 404s here (the staleness
+                // path, not imageExists). Flag demand-driven backfill for it too.
+                if (r.status === 404 && onMissing) {
+                    try { onMissing(cfg); } catch (e) { /* best-effort */ }
+                }
+                return 0;
+            }
             const lm = r.headers.get('Last-Modified');
             const t = lm ? Date.parse(lm) : NaN;
             return Number.isNaN(t) ? 0 : t;
