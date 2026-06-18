@@ -113,6 +113,25 @@ CREATE TABLE IF NOT EXISTS field_catalog (
     PRIMARY KEY (gfs_date, gfs_run, fhour, product)
 );
 
+-- Demand-driven backfill request queue.
+-- Bridges the (separate) map_api and data_collector processes, which share only the DB.
+-- The frontend flags a missing per-hour field (HTTP 404); the API enqueues a row here;
+-- the collector drains it on its fast poll, fetches the field, and marks it done/failed.
+-- NOTE: the application also creates this table at runtime via
+-- Database.ensure_backfill_table(), so already-initialised databases (where the
+-- docker-entrypoint-initdb.d scripts only run on a fresh data dir) get it too.
+
+CREATE TABLE IF NOT EXISTS backfill_requests (
+    gfs_date     date         NOT NULL,
+    gfs_run      varchar(2)   NOT NULL,
+    fhour        integer      NOT NULL,
+    product      varchar(32)  NOT NULL,
+    status       varchar(16)  NOT NULL DEFAULT 'requested',  -- requested|fetching|done|failed
+    attempts     integer      NOT NULL DEFAULT 0,
+    requested_at timestamptz  NOT NULL DEFAULT now(),
+    updated_at   timestamptz  NOT NULL DEFAULT now(),
+    PRIMARY KEY (gfs_date, gfs_run, fhour, product)
+);
 
 -- Indices for high-performance lookups
 CREATE INDEX IF NOT EXISTS idx_map_region_boundary ON map_region USING GIST(boundary);
@@ -130,6 +149,7 @@ CREATE INDEX IF NOT EXISTS idx_storm_track_sid ON storm_track(sid);
 CREATE INDEX IF NOT EXISTS idx_satellites_name ON satellites(name);
 CREATE INDEX IF NOT EXISTS idx_field_catalog_product ON field_catalog (product);
 CREATE INDEX IF NOT EXISTS idx_field_catalog_updated ON field_catalog (updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_backfill_status ON backfill_requests (status);
 
 
 -- Populate Regions

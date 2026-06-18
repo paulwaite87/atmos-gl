@@ -967,3 +967,92 @@ class Database:
         """Generic execution helper for simple queries (like manual deletes)."""
         with self.conn.cursor() as cur:
             cur.execute(sql, params)
+
+    # -- Backfill request queue ----------------------------------------------
+    # A durable, deduplicated work queue bridging the (separate) map_api and
+    # data_collector processes, which share only the database. The frontend flags a
+    # missing per-hour field (404); the API enqueues a request; the collector drains
+    # it on its fast poll, fetches the field, and marks it done/failed. Status flow:
+    #   requested -> fetching -> done            (success)
+    #   requested -> fetching -> failed          (upstream genuinely lacks it; no retry)
+    def ensure_backfill_table(self):
+        """Create the backfill_requests table if absent. Called at startup by both the
+        collector and the API so it exists on already-initialised DBs too (the SQL in
+        docker-entrypoint-initdb.d only runs on a fresh data dir)."""
+        ddl = """
+            CREATE TABLE IF NOT EXISTS backfill_requests (
+                gfs_date     date         NOT NULL,
+                gfs_run      varchar(2)   NOT NULL,
+                fhour        integer      NOT NULL,
+                product      varchar(32)  NOT NULL,
+                status       varchar(16)  NOT NULL DEFAULT 'requested',
+                attempts     integer      NOT NULL DEFAULT 0,
+                requested_at timestamptz  NOT NULL DEFAULT now(),
+                updated_at   timestamptz  NOT NULL DEFAULT now(),
+                PRIMARY KEY (gfs_date, gfs_run, fhour, product)
+            );
+            CREATE INDEX IF NOT EXISTS idx_backfill_status ON backfill_requests (status);
+        """
+        try:
+            with self.conn.cursor() as cur:
+                cur.execute(ddl)
+        except Exception as e:
+            logger.error(f"Error ensuring backfill_requests table: {e}")
+            raise
+
+    def enqueue_backfill(self, gfs_date, gfs_run, fhour, product):
+        """Record a missing-data request. Idempotent: a key already in the queue is left
+        as-is (so repeated 404 flags collapse to one row), EXCEPT a previously 'failed'
+        row is reset to 'requested' to allow a fresh attempt if the client asks again
+        (e.g. the upstream run may have published the step since)."""
+        sql = """
+            INSERT INTO backfill_requests (gfs_date, gfs_run, fhour, product, status)
+            VALUES (%s, %s, %s, %s, 'requested')
+            ON CONFLICT (gfs_date, gfs_run, fhour, product) DO UPDATE SET
+                status = CASE WHEN backfill_requests.status = 'failed'
+                              THEN 'requested' ELSE backfill_requests.status END,
+                updated_at = now();
+        """
+        try:
+            with self.conn.cursor() as cur:
+                cur.execute(sql, (gfs_date, gfs_run, int(fhour), product))
+        except Exception as e:
+            logger.error(f"Error enqueuing backfill: {e}")
+            raise
+
+    def claim_backfill_requests(self, limit=20):
+        """Atomically claim up to `limit` pending requests, flipping them to 'fetching'
+        so a second collector pass (or a stuck one) doesn't double-process them. Returns
+        the claimed rows as dicts. Uses SKIP LOCKED for safe concurrent draining."""
+        sql = """
+            UPDATE backfill_requests SET status = 'fetching', attempts = attempts + 1,
+                                         updated_at = now()
+            WHERE (gfs_date, gfs_run, fhour, product) IN (
+                SELECT gfs_date, gfs_run, fhour, product FROM backfill_requests
+                WHERE status = 'requested'
+                ORDER BY requested_at
+                LIMIT %s
+                FOR UPDATE SKIP LOCKED
+            )
+            RETURNING gfs_date, gfs_run, fhour, product, attempts;
+        """
+        try:
+            with self.conn.cursor() as cur:
+                cur.execute(sql, (limit,))
+                return [dict(r) for r in cur.fetchall()]
+        except Exception as e:
+            logger.error(f"Error claiming backfill requests: {e}")
+            return []
+
+    def mark_backfill(self, gfs_date, gfs_run, fhour, product, status):
+        """Set the terminal/intermediate status of a request ('done' | 'failed' |
+        'requested')."""
+        sql = """
+            UPDATE backfill_requests SET status = %s, updated_at = now()
+            WHERE gfs_date=%s AND gfs_run=%s AND fhour=%s AND product=%s;
+        """
+        try:
+            with self.conn.cursor() as cur:
+                cur.execute(sql, (status, gfs_date, gfs_run, int(fhour), product))
+        except Exception as e:
+            logger.error(f"Error marking backfill {status}: {e}")

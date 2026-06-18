@@ -304,6 +304,113 @@ class DataCollector:
             logger.debug(f"currents prune skipped: {e}")
 
     # -- dispatch -------------------------------------------------------------
+    def _gfs_base_url(self):
+        """The base URL configured for the 'gfs' datasource (atmos + waves share it)."""
+        bu = self.datasources.get("gfs")
+        return bu.rstrip("/") if bu else None
+
+    def _backfill_atmos_hour(self, base_url, gfs_date, gfs_run, fhour, product, unpacker):
+        """Fetch a single atmos product for one (date, run, hour) via the byte-range
+        path, mirroring _collect_gfs_atmos's inner body for exactly one hour/product."""
+        aurl = build_atmos_url(base_url, gfs_date, gfs_run, fhour)
+        ranges = gfs_index_ranges(aurl, ATMOS_TARGETS)
+        if not ranges:
+            return False
+        data = download_byte_ranges(aurl, ranges)
+        if not data:
+            return False
+        valid = self._valid_time(gfs_date, gfs_run, fhour)
+        tmp = tempfile.NamedTemporaryFile(suffix=".grib2", delete=False)
+        tmp.write(data); tmp.close()
+        try:
+            fields = unpacker(tmp.name)
+            self.store.store_field(gfs_date, gfs_run, fhour, product, fields, valid)
+            return True
+        finally:
+            for path in [tmp.name] + glob.glob(tmp.name + "*.idx"):
+                try:
+                    os.remove(path)
+                except OSError:
+                    pass
+
+    def _backfill_waves_hour(self, base_url, gfs_date, gfs_run, fhour, product, unpacker):
+        """Fetch the GFS-Wave global 0p25 GRIB for one hour (whole-file), mirroring
+        _collect_gfs_waves's inner body for exactly one hour."""
+        url = build_wave_url(base_url, gfs_date, gfs_run, fhour)
+        if not remote_exists(url):
+            return False
+        data = download_whole(url)
+        if not data:
+            return False
+        valid = self._valid_time(gfs_date, gfs_run, fhour)
+        tmp = tempfile.NamedTemporaryFile(suffix=".grib2", delete=False)
+        tmp.write(data); tmp.close()
+        try:
+            fields = unpacker(tmp.name)
+            self.store.store_field(gfs_date, gfs_run, fhour, product, fields, valid)
+            return True
+        finally:
+            for path in [tmp.name] + glob.glob(tmp.name + "*.idx"):
+                try:
+                    os.remove(path)
+                except OSError:
+                    pass
+
+    @staticmethod
+    def _valid_time(gfs_date, gfs_run, fhour):
+        run_ts = datetime.strptime(f"{gfs_date} {gfs_run}", "%Y-%m-%d %H").replace(
+            tzinfo=timezone.utc
+        )
+        return run_ts + timedelta(hours=int(fhour))
+
+    def _drain_backfill(self):
+        """Service demand-driven backfill requests flagged by the frontend (404s). Claims
+        pending rows, fetches each missing GFS-family field on demand, and marks the row
+        done/failed. The render task then gap-fills the PNG on its next pass. Currents
+        (RTOFS) is not serviced here — it uses a different run/hour mapping and the
+        frontend reconciles its own hours — so such requests are marked failed."""
+        self.db.ensure_backfill_table()
+        claimed = self.db.claim_backfill_requests(limit=20)
+        if not claimed:
+            return
+        base_url = self._gfs_base_url()
+        for req in claimed:
+            d, run, fhour, product = (
+                req["gfs_date"], req["gfs_run"], int(req["fhour"]), req["product"]
+            )
+            d_str = d.isoformat() if hasattr(d, "isoformat") else str(d)
+            # Already present (raced with the normal cycle)? Mark done.
+            if self.store.field_exists(d_str, run, fhour, product):
+                self.db.mark_backfill(d_str, run, fhour, product, "done")
+                continue
+            try:
+                ok = False
+                if not base_url:
+                    logger.warning("backfill: no 'gfs' datasource configured")
+                elif product in ATMOS_UNPACKERS:
+                    ok = self._backfill_atmos_hour(
+                        base_url, d_str, run, fhour, product, ATMOS_UNPACKERS[product]
+                    )
+                elif product in WAVES_UNPACKERS:
+                    ok = self._backfill_waves_hour(
+                        base_url, d_str, run, fhour, product, WAVES_UNPACKERS[product]
+                    )
+                else:
+                    # currents / unknown: not serviceable via on-demand backfill.
+                    logger.info(f"backfill: {product} not supported; marking failed")
+                    self.db.mark_backfill(d_str, run, fhour, product, "failed")
+                    continue
+                self.db.mark_backfill(d_str, run, fhour, product,
+                                      "done" if ok else "failed")
+                logger.info(
+                    f"backfill {product} {d_str} {run}Z f{fhour:03d}: "
+                    f"{'fetched' if ok else 'upstream missing -> failed'}"
+                )
+            except Exception as e:
+                # Transient error: leave as failed (a later re-request resets to requested).
+                logger.debug(f"backfill {product} f{fhour:03d} error: {e}")
+                self.db.mark_backfill(d_str, run, fhour, product, "failed")
+
     def collect_once(self):
         for datasource, base_url in self.datasources.items():
             try:
@@ -320,17 +427,42 @@ class DataCollector:
                 logger.error(f"datasource {datasource} failed: {e}")
 
     async def run(self):
+        # Two cadences: the heavy full refresh runs every update_hours; a light backfill
+        # drain runs every backfill_poll_seconds (default 60) so frontend-flagged missing
+        # data fills within ~a minute rather than waiting hours for the next full cycle.
+        poll_s = int(self.settings.get("backfill_poll_seconds", 60))
+        last_full = None   # None => run a full refresh immediately on first iteration
+        full_period = self.update_hours * 3600
+        try:
+            self.db.ensure_backfill_table()
+        except Exception as e:
+            logger.error(f"could not ensure backfill table at startup: {e}")
         while True:
             self.refresh_settings()
-            if self.settings.get("enabled", False):
+            poll_s = int(self.settings.get("backfill_poll_seconds", poll_s))
+            full_period = self.update_hours * 3600
+            enabled = self.settings.get("enabled", False)
+            now = asyncio.get_event_loop().time()
+
+            if enabled and (last_full is None or (now - last_full) >= full_period):
                 logger.info("Data Collector: refreshing datasets")
                 try:
                     self.collect_once()
                 except Exception as e:
                     logger.error(f"Data Collector cycle failed: {e}")
-            else:
-                logger.debug("Data Collector disabled. Skipping.")
-            await asyncio.sleep(self.update_hours * 3600)
+                last_full = now
+            elif not enabled:
+                logger.debug("Data Collector disabled. Skipping full refresh.")
+
+            # Backfill drain runs every poll regardless of the full-refresh timer (still
+            # gated on enabled, so a disabled collector does nothing).
+            if enabled:
+                try:
+                    self._drain_backfill()
+                except Exception as e:
+                    logger.error(f"backfill drain failed: {e}")
+
+            await asyncio.sleep(max(5, poll_s))
 
 
 def main():

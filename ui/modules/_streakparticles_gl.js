@@ -395,13 +395,42 @@ export function createStreakParticleGLController(map, opts) {
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
         windReady = true;
     };
+    const flaggedMissing = new Set();
+    const missKey = (snap) => {
+        if (!snap || !snap.runEpochUtc) return null;
+        const r = new Date(snap.runEpochUtc);
+        if (isNaN(r.getTime())) return null;
+        const dateStr = `${r.getUTCFullYear()}${String(r.getUTCMonth()+1).padStart(2,'0')}${String(r.getUTCDate()).padStart(2,'0')}`;
+        const rr = String(r.getUTCHours()).padStart(2, '0');
+        return { key: `${sectionKey}:${dateStr}:${rr}:${snap.hour}`, dateStr, rr };
+    };
+    const flagMissing = (snap) => {
+        const m = missKey(snap);
+        if (!m || flaggedMissing.has(m.key)) return;   // already asked — don't spam
+        flaggedMissing.add(m.key);
+        fetch(`${window.WM_API}/request_backfill`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ product: sectionKey, date: m.dateStr,
+                                   run: m.rr, hour: snap.hour }),
+        }).catch(() => { /* best-effort; the field stays transparent meanwhile */ });
+    };
+
     const loadWind = (cfg) => {
         const snap = timeline.get();
         const img = new Image();
         img.crossOrigin = 'anonymous';
-        img.onload = () => { pendingWindImg = img; map.triggerRepaint(); };
+        img.onload = () => {
+            pendingWindImg = img; map.triggerRepaint();
+            // Loaded OK — forget any prior miss for this key so a later eviction re-flags.
+            const m = missKey(snap);
+            if (m) flaggedMissing.delete(m.key);
+        };
         if (useTimeline) {
-            img.onerror = () => console.warn(`[${sectionKey}] velocity texture not ready (f${String(snap.hour).padStart(3,'0')})`);
+            img.onerror = () => {
+                console.warn(`[${sectionKey}] velocity texture not ready (f${String(snap.hour).padStart(3,'0')}) — flagging backfill`);
+                flagMissing(snap);   // ask the backend to fetch+render this hour
+            };
             img.src = hourDataUrl(cfg, snap.hour, snap.refreshEpoch);
         } else {
             // Static field (e.g. waves): single _data.png, cache-busted per (re)load.

@@ -15,7 +15,7 @@
     "stepping_rate": 50
   },
   "terminator": {
-    "enabled": true,
+    "enabled": false,
     "shade_opacity": 35,
     "shade_color": "#070b18",
     "edge_softness": 45
@@ -32,7 +32,7 @@
     "cache_expiry_days": 3
   },
   "isobars": {
-    "enabled": true,
+    "enabled": false,
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
     "outfile": "data/isobars.png",
     "level_of_detail": "3",
@@ -48,11 +48,11 @@
     "enabled": false,
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
     "outfile": "data/wind.png",
-    "level_of_detail": "2",
+    "level_of_detail": "1",
     "particle_speed": 5,
     "particle_alpha": 80,
     "particle_size": 0.45,
-    "trail_fade": 15,
+    "trail_fade": 10,
     "max_speed_color": "White",
     "vector_color": "White",
     "barb_length_base": 4,
@@ -62,7 +62,7 @@
     "cache_expiry_days": 3
   },
   "precipitation": {
-    "enabled": true,
+    "enabled": false,
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
     "outfile": "data/precipitation.png",
     "level_of_detail": "1",
@@ -74,12 +74,12 @@
     "cache_expiry_days": 3
   },
   "currents": {
-    "enabled": false,
+    "enabled": true,
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/rtofs/prod/",
     "outfile": "data/currents.png",
     "palette": "thermal_red",
-    "alpha": 50,
-    "particle_speed": 50,
+    "alpha": 70,
+    "particle_speed": 20,
     "width_factor": 2.6,
     "key_fontsize": 8,
     "runs_per_day": 2,
