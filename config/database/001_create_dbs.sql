@@ -101,8 +101,8 @@ CREATE TABLE IF NOT EXISTS satellites (
 );
 
 CREATE TABLE IF NOT EXISTS field_catalog (
-    gfs_date    date                     NOT NULL,
-    gfs_run     varchar(2)               NOT NULL,
+    run_date    date                     NOT NULL,
+    run_id      varchar(2)               NOT NULL,
     fhour       integer                  NOT NULL,
     product     varchar(32)              NOT NULL,
     nlat        integer,
@@ -122,8 +122,8 @@ CREATE TABLE IF NOT EXISTS field_catalog (
 -- docker-entrypoint-initdb.d scripts only run on a fresh data dir) get it too.
 
 CREATE TABLE IF NOT EXISTS backfill_requests (
-    gfs_date     date         NOT NULL,
-    gfs_run      varchar(2)   NOT NULL,
+    run_date     date         NOT NULL,
+    run_id       varchar(2)   NOT NULL,
     fhour        integer      NOT NULL,
     product      varchar(32)  NOT NULL,
     status       varchar(16)  NOT NULL DEFAULT 'requested',  -- requested|fetching|done|failed
