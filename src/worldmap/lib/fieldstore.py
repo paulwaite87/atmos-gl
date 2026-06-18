@@ -33,19 +33,19 @@ class FieldStore:
         self.fields_dir = self.workdir / "data" / "fields"
         self.fields_dir.mkdir(parents=True, exist_ok=True)
 
-    def field_path(self, gfs_date: str, gfs_run: str, fhour: int, product: str) -> Path:
+    def field_path(self, run_date: str, run_id: str, fhour: int, product: str) -> Path:
         """Compute the storage path for a field.
 
         Pattern: {workdir}/fields/{date}/{run}/{product}_f{fhour:03d}.npz
 
         Example: /data/worldmap/fields/20260612/00/precipitation_f003.npz
         """
-        return self.fields_dir / gfs_date / gfs_run / f"{product}_f{int(fhour):03d}.npz"
+        return self.fields_dir / run_date / run_id / f"{product}_f{int(fhour):03d}.npz"
 
     def store_field(
         self,
-        gfs_date: str,
-        gfs_run: str,
+        run_date: str,
+        run_id: str,
         fhour: int,
         product: str,
         unpacked: dict,
@@ -54,7 +54,7 @@ class FieldStore:
         """Write a field to disk and catalog it.
 
         Args:
-            gfs_date, gfs_run, fhour, product: Field key
+            run_date, run_id, fhour, product: Field key
             unpacked: Dict from unpack module {lat, lon, values, values2, u, v}
             valid_time: Forecast valid time (optional)
 
@@ -62,7 +62,7 @@ class FieldStore:
             True if successful, False otherwise
         """
         fhour = int(fhour)
-        path = self.field_path(gfs_date, gfs_run, fhour, product)
+        path = self.field_path(run_date, run_id, fhour, product)
 
         # Ensure directory exists
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -101,8 +101,8 @@ class FieldStore:
         try:
             rel_path = path.relative_to(self.workdir)
             self.db.upsert_field_catalog(
-                gfs_date=gfs_date,
-                gfs_run=gfs_run,
+                run_date=run_date,
+                run_id=run_id,
                 fhour=fhour,
                 product=product,
                 nlat=nlat,
@@ -111,7 +111,7 @@ class FieldStore:
                 storage_uri=str(rel_path),
             )
             logger.debug(
-                f"Catalogued field {gfs_date}/{gfs_run}/f{fhour:03d}/{product}"
+                f"Catalogued field {run_date}/{run_id}/f{fhour:03d}/{product}"
             )
             return True
         except Exception as e:
@@ -120,7 +120,7 @@ class FieldStore:
             return False
 
     def get_field(
-        self, gfs_date: str, gfs_run: str, fhour: int, product: str
+        self, run_date: str, run_id: str, fhour: int, product: str
     ) -> dict | None:
         """Fetch a field from disk.
 
@@ -132,7 +132,7 @@ class FieldStore:
 
         # Check catalog first (fast, indexed)
         try:
-            catalog_row = self.db.get_field_catalog(gfs_date, gfs_run, fhour, product)
+            catalog_row = self.db.get_field_catalog(run_date, run_id, fhour, product)
             if not catalog_row:
                 return None
         except Exception as e:
@@ -172,17 +172,17 @@ class FieldStore:
             return None
 
     def field_exists(
-        self, gfs_date: str, gfs_run: str, fhour: int, product: str
+        self, run_date: str, run_id: str, fhour: int, product: str
     ) -> bool:
         """Check if a field exists in the catalog (fast, no file I/O)."""
         try:
-            return self.db.field_catalog_exists(gfs_date, gfs_run, int(fhour), product)
+            return self.db.field_catalog_exists(run_date, run_id, int(fhour), product)
         except Exception as e:
             logger.debug(f"Error checking field existence: {e}")
             return False
 
     def get_field_meta(
-        self, gfs_date: str, gfs_run: str, fhour: int, product: str
+        self, run_date: str, run_id: str, fhour: int, product: str
     ) -> dict | None:
         """Fetch only the catalog metadata for a field (no array file load).
 
@@ -191,21 +191,21 @@ class FieldStore:
         valid_time, avoiding a full .npz read.
         """
         try:
-            return self.db.get_field_catalog(gfs_date, gfs_run, int(fhour), product)
+            return self.db.get_field_catalog(run_date, run_id, int(fhour), product)
         except Exception as e:
             logger.debug(f"Error fetching field meta: {e}")
             return None
 
     def delete_field(
-        self, gfs_date: str, gfs_run: str, fhour: int, product: str
+        self, run_date: str, run_id: str, fhour: int, product: str
     ) -> bool:
         """Delete a field from both catalog and disk."""
         fhour = int(fhour)
-        path = self.field_path(gfs_date, gfs_run, fhour, product)
+        path = self.field_path(run_date, run_id, fhour, product)
 
         # Delete from catalog
         try:
-            self.db.delete_field_catalog(gfs_date, gfs_run, fhour, product)
+            self.db.delete_field_catalog(run_date, run_id, fhour, product)
         except Exception as e:
             logger.warning(f"Error deleting from catalog: {e}")
 
@@ -243,24 +243,24 @@ class FieldStore:
         try:
             orphan_rows = self.db.get_orphan_field_rows(self.workdir)
             for row in orphan_rows:
-                gfs_date, gfs_run, fhour, product = (
-                    row["gfs_date"],
-                    row["gfs_run"],
+                run_date, run_id, fhour, product = (
+                    row["run_date"],
+                    row["run_id"],
                     row["fhour"],
                     row["product"],
                 )
                 logger.warning(
-                    f"Removing orphan catalog row: {gfs_date}/{gfs_run}/f{fhour:03d}/{product} "
+                    f"Removing orphan catalog row: {run_date}/{run_id}/f{fhour:03d}/{product} "
                     f"(file missing)"
                 )
-                self.db.delete_field_catalog(gfs_date, gfs_run, fhour, product)
+                self.db.delete_field_catalog(run_date, run_id, fhour, product)
         except Exception as e:
             logger.error(f"Error scanning for orphan rows: {e}")
 
         logger.info("Fieldstore reconciliation complete.")
 
-    def prune_except_run(self, gfs_date: str, gfs_run: str, products=None):
-        """Delete catalogued fields NOT belonging to (gfs_date, gfs_run).
+    def prune_except_run(self, run_date: str, run_id: str, products=None):
+        """Delete catalogued fields NOT belonging to (run_date, run_id).
 
         Used by collectors after a successful refresh to drop superseded runs. When
         `products` is given (an iterable of product names), only fields in that set
@@ -270,7 +270,7 @@ class FieldStore:
         is None the old behaviour (prune everything not matching) is retained.
         """
         try:
-            rows = self.db.get_field_rows_except(gfs_date, gfs_run, products=products)
+            rows = self.db.get_field_rows_except(run_date, run_id, products=products)
         except Exception as e:
             logger.debug(f"prune_except_run: catalog query failed: {e}")
             return
@@ -278,7 +278,7 @@ class FieldStore:
         product_filter = set(products) if products is not None else None
         removed = 0
         for row in rows:
-            d, r, fh, p = row["gfs_date"], row["gfs_run"], row["fhour"], row["product"]
+            d, r, fh, p = row["run_date"], row["run_id"], row["fhour"], row["product"]
             if product_filter is not None and p not in product_filter:
                 continue  # not our product family; leave it for its own collector
             # Delete the file (path comes from the catalog's storage_uri)
@@ -299,7 +299,7 @@ class FieldStore:
         if removed:
             logger.info(
                 f"Fieldstore pruned {removed} superseded field(s) "
-                f"(kept {gfs_date}/{gfs_run})."
+                f"(kept {run_date}/{run_id})."
             )
 
     def prune_expired(self, expiry_hours: int = 48) -> int:
@@ -314,7 +314,7 @@ class FieldStore:
 
         removed = 0
         for row in rows:
-            d, r, fh, p = row["gfs_date"], row["gfs_run"], row["fhour"], row["product"]
+            d, r, fh, p = row["run_date"], row["run_id"], row["fhour"], row["product"]
             uri = row.get("storage_uri")
             if uri:
                 fpath = self.workdir / uri

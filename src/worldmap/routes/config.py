@@ -7,32 +7,44 @@ from datetime import datetime, timezone, timedelta, date
 
 router = APIRouter(prefix="/api", tags=["System Configuration"])
 
-# The animated layers the scrubber controls. An hour is only offered when every
-# one of these (that is enabled) has data for it. Keep in sync with the frontend.
-SCRUBBER_PRODUCTS = [
-    "isobars",
-    "precipitation",
-    "wind",
-    "temperature",
-    "ozone",
-    "stormwatch",
-    "waves",
-]
+# Forecast SOURCES. Each source provides an independent hourly data set with its own
+# model run cadence; the frontend treats them uniformly ("give me source X's hours +
+# valid times"). A product belongs to exactly one source. The `primary` source drives
+# the master scrubber timeline; layers on any other source reconcile their own nearest
+# hour by wall-clock valid_time against that master. Adding a new source = one entry
+# here (+ its collector handler), not new special-cases.
+#
+# This replaces the old GFS-oriented-with-currents-exception model: GFS is simply the
+# source that happens to be primary, and RTOFS (currents) is just another source.
+SOURCES = {
+    "gfs": {
+        "primary": True,   # drives the master timeline
+        "products": ["isobars", "precipitation", "wind", "temperature",
+                     "ozone", "stormwatch", "waves"],
+    },
+    "rtofs": {
+        "primary": False,
+        "products": ["currents"],
+    },
+}
+
+# Backwards-compatible alias: the GFS-source products (some call sites referenced this).
+SCRUBBER_PRODUCTS = SOURCES["gfs"]["products"]
 
 
-def _run_epoch_utc(gfs_date, gfs_run):
-    """Build the f000 valid-time (UTC) from gfs_date (str 'YYYYMMDD' or a date/
-    datetime) and gfs_run (str/int hour). Tolerant of the catalog column being
+def _run_epoch_utc(run_date, run_id):
+    """Build the f000 valid-time (UTC) from run_date (str 'YYYYMMDD' or a date/
+    datetime) and run_id (str/int hour). Tolerant of the catalog column being
     either text or DATE."""
-    run_hour = int(gfs_run)
+    run_hour = int(run_id)
 
-    if isinstance(gfs_date, datetime):
-        d = gfs_date.date()
-    elif isinstance(gfs_date, date):
-        d = gfs_date
+    if isinstance(run_date, datetime):
+        d = run_date.date()
+    elif isinstance(run_date, date):
+        d = run_date
     else:
         # string like "20260613" (or "2026-06-13" just in case)
-        s = str(gfs_date).strip()
+        s = str(run_date).strip()
         if "-" in s:
             d = datetime.strptime(s, "%Y-%m-%d").date()
         else:
@@ -66,8 +78,8 @@ def get_forecast_state():
       {
         "status": "success",
         "data": {
-          "gfs_date": "20260613",
-          "gfs_run": "18",
+          "run_date": "20260613",
+          "run_id": "18",
           "run_epoch_utc": "2026-06-13T18:00:00Z",   # valid time of f000
           "fmin": 0, "fmax": 23,
           "hours": [0,1,...,23],
@@ -78,82 +90,59 @@ def get_forecast_state():
     """
     try:
         db = Database()
-        # The scrubber spans the GFS forecast hours common to the SCRUBBER_PRODUCTS that
-        # actually have catalogued DATA — NOT which layers are toggled on. Tying it to
-        # `enabled` was wrong: it made the whole timeline vanish (data:null) when layers
-        # were off, or when an enabled-but-not-yet-ingested product emptied the
-        # intersection. The forecast range reflects available data, independent of display
-        # toggles. Restricting to the GFS-cadence allow-list also keeps the RTOFS currents
-        # cycle out of this intersection (currents gets its own block below).
-        required = db.products_with_data(SCRUBBER_PRODUCTS)
-        if not required:
-            # No GFS-stepped product has ingested any data yet — no scrubber range exists.
-            return {"status": "success", "data": None}
-        summary = db.get_latest_run_hours(products=required)
-        if not summary or not summary.get("hours"):
-            return {"status": "success", "data": None}
-
-        # Run epoch (valid time of f000) from gfs_date + gfs_run.
-        gfs_date = summary["gfs_date"]
-        gfs_run = summary["gfs_run"]
-        run_epoch = _run_epoch_utc(gfs_date, gfs_run)
 
         def z(dt):
             return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
 
-        valid_times = {
-            str(h): z(run_epoch + timedelta(hours=int(h))) for h in summary["hours"]
-        }
-
-        # --- Currents (RTOFS) sub-state for valid_time reconciliation ------------
-        # Currents come from a DIFFERENT model run (RTOFS daily 00Z) with its own
-        # absolute forecast-hour numbering. The scrubber timeline is GFS-relative, so
-        # the frontend currents layer maps the timeline's current valid_time to the
-        # RTOFS forecast hour with the same wall-clock. We expose RTOFS's own hours +
-        # valid_times here so the frontend can build that inverse map. Resolved
-        # independently (products=["currents"]) so it can't perturb the GFS scrubber.
-        currents_block = None
-        try:
-            c_summary = db.get_latest_run_hours(products=["currents"])
-            if c_summary and c_summary.get("hours"):
-                c_epoch = _run_epoch_utc(c_summary["gfs_date"], c_summary["gfs_run"])
-                c_date = c_summary["gfs_date"]
-                currents_block = {
-                    # The RTOFS run identity (date/run) the currents fields belong to.
-                    # Exposed so the frontend can flag the correct (date, run, rtofs_hour)
-                    # for demand-driven backfill — currents ride the RTOFS cycle, NOT the
-                    # GFS run the rest of the scrubber uses.
-                    "gfs_date": (c_date if isinstance(c_date, str)
-                                 else c_date.strftime("%Y%m%d")),
-                    "gfs_run": c_summary["gfs_run"],
-                    "run_epoch_utc": z(c_epoch),
-                    "fmin": c_summary["fmin"],
-                    "fmax": c_summary["fmax"],
-                    "hours": c_summary["hours"],
-                    "valid_times_utc": {
-                        str(h): z(c_epoch + timedelta(hours=int(h)))
-                        for h in c_summary["hours"]
-                    },
-                }
-        except Exception:
-            currents_block = None  # currents are optional; never break the scrubber
-
-        return {
-            "status": "success",
-            "data": {
-                "gfs_date": (
-                    gfs_date
-                    if isinstance(gfs_date, str)
-                    else gfs_date.strftime("%Y%m%d")
-                ),
-                "gfs_run": gfs_run,
-                "run_epoch_utc": z(run_epoch),
+        def source_block(products):
+            """Build one source's timeline block from whichever of its products actually
+            have catalogued DATA (not which layers are toggled on — display state must
+            not make the timeline vanish). Intersects hours over the data-present products
+            within that source's own freshest run, so model cycles never mix. Returns None
+            if the source has no data yet."""
+            present = db.products_with_data(products)
+            if not present:
+                return None
+            summary = db.get_latest_run_hours(products=present)
+            if not summary or not summary.get("hours"):
+                return None
+            epoch = _run_epoch_utc(summary["run_date"], summary["run_id"])
+            rdate = summary["run_date"]
+            return {
+                "run_date": rdate if isinstance(rdate, str) else rdate.strftime("%Y%m%d"),
+                "run_id": summary["run_id"],
+                "run_epoch_utc": z(epoch),
                 "fmin": summary["fmin"],
                 "fmax": summary["fmax"],
                 "max_hour": summary["fmax"],
                 "hours": summary["hours"],
-                "valid_times_utc": valid_times,
-                "currents": currents_block,
+                "valid_times_utc": {
+                    str(h): z(epoch + timedelta(hours=int(h))) for h in summary["hours"]
+                },
+            }
+
+        # Build every source's block uniformly. `primary` names the source that drives
+        # the master scrubber; non-primary sources are reconciled against it by the
+        # frontend. The whole timeline is null only if even the primary has no data.
+        sources = {}
+        primary_name = None
+        for name, spec in SOURCES.items():
+            block = source_block(spec["products"])
+            if block is not None:
+                sources[name] = block
+            if spec.get("primary"):
+                primary_name = name
+
+        if not primary_name or primary_name not in sources:
+            # Primary source has no data yet -> no master timeline. (A non-primary source
+            # alone can't drive the scrubber.)
+            return {"status": "success", "data": None}
+
+        return {
+            "status": "success",
+            "data": {
+                "sources": sources,
+                "primary": primary_name,
             },
         }
     except Exception as e:

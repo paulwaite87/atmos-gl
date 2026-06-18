@@ -77,13 +77,13 @@ class DataCollector:
             )
             return
 
-        gfs_date_str, gfs_run, gfs_timestamp = (
+        run_date_str, run_id, run_timestamp = (
             baseline["date_str"],
             baseline["run"],
             baseline["timestamp"],
         )
         now = datetime.now(timezone.utc)
-        hours_since_run = int(round((now - gfs_timestamp).total_seconds() / 3600.0))
+        hours_since_run = int(round((now - run_timestamp).total_seconds() / 3600.0))
         fhour_0 = max(0, hours_since_run)  # forecast hour valid 'now' (no user offset)
         fhour_end = fhour_0 + self.cache_hours
 
@@ -91,18 +91,18 @@ class DataCollector:
         stored = 0
 
         for fhour in range(fhour_0, fhour_end):
-            valid = gfs_timestamp + timedelta(hours=fhour)
+            valid = run_timestamp + timedelta(hours=fhour)
 
             # Which products still need this hour? Skip the download entirely if none.
             missing = [
                 (product, unpacker)
                 for (product, unpacker) in products
-                if not self.store.field_exists(gfs_date_str, gfs_run, fhour, product)
+                if not self.store.field_exists(run_date_str, run_id, fhour, product)
             ]
             if not missing:
                 continue
 
-            aurl = build_atmos_url(base_url, gfs_date_str, gfs_run, fhour)
+            aurl = build_atmos_url(base_url, run_date_str, run_id, fhour)
             try:
                 ranges = gfs_index_ranges(aurl, ATMOS_TARGETS)
                 if not ranges:
@@ -123,7 +123,7 @@ class DataCollector:
                     try:
                         fields = unpacker(tmp.name)
                         self.store.store_field(
-                            gfs_date_str, gfs_run, fhour, product, fields, valid
+                            run_date_str, run_id, fhour, product, fields, valid
                         )
                         stored += 1
                     except Exception as e:
@@ -137,12 +137,12 @@ class DataCollector:
                         pass
 
         logger.info(
-            f"Data Collector (gfs): {gfs_date_str} {gfs_run}Z, hours {fhour_0:03d}..{fhour_end - 1:03d}; "
+            f"Data Collector (gfs): {run_date_str} {run_id}Z, hours {fhour_0:03d}..{fhour_end - 1:03d}; "
             f"stored {stored} field(s)."
         )
         try:
             self.store.prune_except_run(
-                gfs_date_str, gfs_run, products=list(ATMOS_UNPACKERS.keys())
+                run_date_str, run_id, products=list(ATMOS_UNPACKERS.keys())
             )
         except Exception as e:
             logger.debug(f"prune skipped: {e}")
@@ -161,13 +161,13 @@ class DataCollector:
             )
             return
 
-        gfs_date_str, gfs_run, gfs_timestamp = (
+        run_date_str, run_id, run_timestamp = (
             baseline["date_str"],
             baseline["run"],
             baseline["timestamp"],
         )
         now = datetime.now(timezone.utc)
-        hours_since_run = int(round((now - gfs_timestamp).total_seconds() / 3600.0))
+        hours_since_run = int(round((now - run_timestamp).total_seconds() / 3600.0))
         fhour_0 = max(0, hours_since_run)        # forecast hour valid 'now'
         fhour_end = fhour_0 + self.cache_hours
 
@@ -175,11 +175,11 @@ class DataCollector:
         stored = 0
 
         for fhour in range(fhour_0, fhour_end):
-            if self.store.field_exists(gfs_date_str, gfs_run, fhour, product):
+            if self.store.field_exists(run_date_str, run_id, fhour, product):
                 continue
 
-            valid = gfs_timestamp + timedelta(hours=fhour)
-            url = build_wave_url(base_url, gfs_date_str, gfs_run, fhour)
+            valid = run_timestamp + timedelta(hours=fhour)
+            url = build_wave_url(base_url, run_date_str, run_id, fhour)
             if not remote_exists(url):
                 logger.debug(f"waves f{fhour:03d}: not published yet")
                 continue
@@ -198,7 +198,7 @@ class DataCollector:
             try:
                 fields = unpacker(tmp.name)
                 self.store.store_field(
-                    gfs_date_str, gfs_run, fhour, product, fields, valid
+                    run_date_str, run_id, fhour, product, fields, valid
                 )
                 stored += 1
             except Exception as e:
@@ -211,12 +211,12 @@ class DataCollector:
                         pass
 
         logger.info(
-            f"Data Collector (waves): {gfs_date_str} {gfs_run}Z, "
+            f"Data Collector (waves): {run_date_str} {run_id}Z, "
             f"hours {fhour_0:03d}..{fhour_end - 1:03d}; stored {stored} field(s)."
         )
         try:
             self.store.prune_except_run(
-                gfs_date_str, gfs_run, products=[product]
+                run_date_str, run_id, products=[product]
             )
         except Exception as e:
             logger.debug(f"waves prune skipped: {e}")
@@ -309,22 +309,22 @@ class DataCollector:
         bu = self.datasources.get("gfs")
         return bu.rstrip("/") if bu else None
 
-    def _backfill_atmos_hour(self, base_url, gfs_date, gfs_run, fhour, product, unpacker):
+    def _backfill_atmos_hour(self, base_url, run_date, run_id, fhour, product, unpacker):
         """Fetch a single atmos product for one (date, run, hour) via the byte-range
         path, mirroring _collect_gfs_atmos's inner body for exactly one hour/product."""
-        aurl = build_atmos_url(base_url, gfs_date, gfs_run, fhour)
+        aurl = build_atmos_url(base_url, run_date, run_id, fhour)
         ranges = gfs_index_ranges(aurl, ATMOS_TARGETS)
         if not ranges:
             return False
         data = download_byte_ranges(aurl, ranges)
         if not data:
             return False
-        valid = self._valid_time(gfs_date, gfs_run, fhour)
+        valid = self._valid_time(run_date, run_id, fhour)
         tmp = tempfile.NamedTemporaryFile(suffix=".grib2", delete=False)
         tmp.write(data); tmp.close()
         try:
             fields = unpacker(tmp.name)
-            self.store.store_field(gfs_date, gfs_run, fhour, product, fields, valid)
+            self.store.store_field(run_date, run_id, fhour, product, fields, valid)
             return True
         finally:
             for path in [tmp.name] + glob.glob(tmp.name + "*.idx"):
@@ -333,21 +333,21 @@ class DataCollector:
                 except OSError:
                     pass
 
-    def _backfill_waves_hour(self, base_url, gfs_date, gfs_run, fhour, product, unpacker):
+    def _backfill_waves_hour(self, base_url, run_date, run_id, fhour, product, unpacker):
         """Fetch the GFS-Wave global 0p25 GRIB for one hour (whole-file), mirroring
         _collect_gfs_waves's inner body for exactly one hour."""
-        url = build_wave_url(base_url, gfs_date, gfs_run, fhour)
+        url = build_wave_url(base_url, run_date, run_id, fhour)
         if not remote_exists(url):
             return False
         data = download_whole(url)
         if not data:
             return False
-        valid = self._valid_time(gfs_date, gfs_run, fhour)
+        valid = self._valid_time(run_date, run_id, fhour)
         tmp = tempfile.NamedTemporaryFile(suffix=".grib2", delete=False)
         tmp.write(data); tmp.close()
         try:
             fields = unpacker(tmp.name)
-            self.store.store_field(gfs_date, gfs_run, fhour, product, fields, valid)
+            self.store.store_field(run_date, run_id, fhour, product, fields, valid)
             return True
         finally:
             for path in [tmp.name] + glob.glob(tmp.name + "*.idx"):
@@ -357,8 +357,8 @@ class DataCollector:
                     pass
 
     @staticmethod
-    def _valid_time(gfs_date, gfs_run, fhour):
-        run_ts = datetime.strptime(f"{gfs_date} {gfs_run}", "%Y-%m-%d %H").replace(
+    def _valid_time(run_date, run_id, fhour):
+        run_ts = datetime.strptime(f"{run_date} {run_id}", "%Y-%m-%d %H").replace(
             tzinfo=timezone.utc
         )
         return run_ts + timedelta(hours=int(fhour))
@@ -409,7 +409,7 @@ class DataCollector:
         cur_base = self._currents_base_url()
         for req in claimed:
             d, run, fhour, product = (
-                req["gfs_date"], req["gfs_run"], int(req["fhour"]), req["product"]
+                req["run_date"], req["run_id"], int(req["fhour"]), req["product"]
             )
             d_str = d.isoformat() if hasattr(d, "isoformat") else str(d)
             # Already present (raced with the normal cycle)? Mark done.

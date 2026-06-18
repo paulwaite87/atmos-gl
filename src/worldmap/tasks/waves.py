@@ -478,7 +478,7 @@ class WavesUpdater(Updater):
         # 2) Heat tiles + legend (single current-hour GRIB; the coloration layer).
         self.grib_path = self.cache_path(f"gfs_waves_{self.forecast_hour_str}.grib2")
 
-        url = f"{self.base_url}/gfs.{self.gfs_date_str}/{self.gfs_run}/wave/gridded/gfswave.t{self.gfs_run}z.global.0p25.f{self.forecast_hour_str}.grib2"
+        url = f"{self.base_url}/gfs.{self.run_date_str}/{self.run_id}/wave/gridded/gfswave.t{self.run_id}z.global.0p25.f{self.forecast_hour_str}.grib2"
         # Ensure the latest GRIB is cached (downloads only if new/updated).
         self.remote_data_update(remote_url=url, cache_file_path=self.grib_path)
         if not os.path.exists(self.grib_path):

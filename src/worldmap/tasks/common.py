@@ -476,23 +476,23 @@ class Updater:
     def get_db_field(self, product_name: str) -> dict | None:
         """Fetch a pre-processed field set from the fieldstore (catalog + file).
 
-        Requires that get_gfs_state() has been called first (so gfs_date_str, gfs_run,
+        Requires that get_gfs_state() has been called first (so run_date_str, run_id,
         forecast_hour_str are set). Returns the field dict with keys:
           lat, lon, values, values2, u, v, valid_time
         or None if the field doesn't exist (collector hasn't run yet, or the product
         failed to unpack).
         """
-        if not hasattr(self, "gfs_date_str") or not hasattr(self, "gfs_run"):
+        if not hasattr(self, "run_date_str") or not hasattr(self, "run_id"):
             logger.warning(f"{self.section}: get_db_field called before get_gfs_state")
             return None
         fhour = int(self.forecast_hour_str)
         try:
             fs = fieldstore.get_store(self.workdir)
-            field = fs.get_field(self.gfs_date_str, self.gfs_run, fhour, product_name)
+            field = fs.get_field(self.run_date_str, self.run_id, fhour, product_name)
             if field:
                 logger.debug(
                     f"{self.section}: loaded {product_name} from fieldstore "
-                    f"({self.gfs_date_str}/{self.gfs_run}/f{fhour:03d})"
+                    f"({self.run_date_str}/{self.run_id}/f{fhour:03d})"
                 )
             return field
         except Exception as e:
@@ -521,7 +521,7 @@ class Updater:
         Returns:
             Field dict {lat, lon, values, values2, u, v, valid_time} or None
         """
-        if not hasattr(self, "gfs_date_str") or not hasattr(self, "gfs_run"):
+        if not hasattr(self, "run_date_str") or not hasattr(self, "run_id"):
             logger.debug(
                 f"get_db_field_at_hour({product_name}, f{fhour:03d}): GFS state not set"
             )
@@ -529,7 +529,7 @@ class Updater:
         try:
             fs = fieldstore.get_store(self.workdir)
             return fs.get_field(
-                self.gfs_date_str, self.gfs_run, int(fhour), product_name
+                self.run_date_str, self.run_id, int(fhour), product_name
             )
         except Exception as e:
             logger.debug(
@@ -572,7 +572,7 @@ class Updater:
         try:
             fs = fieldstore.get_store(self.workdir)
             meta = fs.get_field_meta(
-                self.gfs_date_str, self.gfs_run, fhour, product_name
+                self.run_date_str, self.run_id, fhour, product_name
             )
 
             if not meta or meta.get("updated_at") is None:
@@ -684,7 +684,7 @@ class Updater:
             from worldmap.lib.db import Database
 
             db = Database()
-            hours = db.get_product_hours(self.gfs_date_str, self.gfs_run, product_name)
+            hours = db.get_product_hours(self.run_date_str, self.run_id, product_name)
         except Exception as e:
             logger.warning(f"{self.section}: could not list hours: {e}")
             hours = []
@@ -794,18 +794,18 @@ class Updater:
 
         # Store properties on the instance for easy access in __init__ / plot methods
         self.forecast_hour_str = f_hour_str
-        self.gfs_date_str = baseline["date_str"]
-        self.gfs_date_str_Y_M_D = baseline["date_str_Y_M_D"]
-        self.gfs_run = baseline["run"]
+        self.run_date_str = baseline["date_str"]
+        self.run_date_str_Y_M_D = baseline["date_str_Y_M_D"]
+        self.run_id = baseline["run"]
         logger.debug(
-            f"Section {self.section} get_gfs_state: forecast hour {f_hour_str}; date_str {self.gfs_date_str}; run {self.gfs_run}"
+            f"Section {self.section} get_gfs_state: forecast hour {f_hour_str}; date_str {self.run_date_str}; run {self.run_id}"
         )
 
     def get_rtofs_state(self):
         """RTOFS (ocean) analogue of get_gfs_state, for currents and future ocean
         layers. Resolves the daily RTOFS run (its own cycle, cached separately in
         shared_state) and sets the SAME instance attributes get_gfs_state does
-        (gfs_date_str / gfs_run / forecast_hour_str), so render_all_hours and the
+        (run_date_str / run_id / forecast_hour_str), so render_all_hours and the
         fieldstore reads work unchanged — they simply operate on the RTOFS run.
 
         RTOFS is one 00Z cycle/day; 'now' is hours-since-analysis, and a per-layer
@@ -831,12 +831,12 @@ class Updater:
         true_f_hour = max(0, hours_since_run + user_offset_hours)
 
         self.forecast_hour_str = f"{true_f_hour:03d}"
-        self.gfs_date_str = baseline["date_str"]
-        self.gfs_date_str_Y_M_D = baseline["date_str_Y_M_D"]
-        self.gfs_run = baseline["run"]
+        self.run_date_str = baseline["date_str"]
+        self.run_date_str_Y_M_D = baseline["date_str_Y_M_D"]
+        self.run_id = baseline["run"]
         logger.debug(
             f"Section {self.section} get_rtofs_state: fhour {self.forecast_hour_str}; "
-            f"date {self.gfs_date_str}; run {self.gfs_run}"
+            f"date {self.run_date_str}; run {self.run_id}"
         )
 
     def get_gfs_ranges(

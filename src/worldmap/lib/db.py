@@ -667,7 +667,7 @@ class Database:
 
     def products_with_data(self, candidates):
         """Of `candidates`, return the subset that actually have catalogued field rows for
-        the freshest (gfs_date, gfs_run) among those candidates. Used to base the scrubber
+        the freshest (run_date, run_id) among those candidates. Used to base the scrubber
         range on which stepped products have DATA, not which are toggled on — so a layer
         being disabled (or enabled-but-not-yet-ingested) never nulls the whole timeline."""
         if not candidates:
@@ -675,10 +675,10 @@ class Database:
         with self.conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT gfs_date, gfs_run
+                SELECT run_date, run_id
                 FROM field_catalog
                 WHERE product = ANY(%s)
-                ORDER BY gfs_date DESC, gfs_run DESC
+                ORDER BY run_date DESC, run_id DESC
                 LIMIT 1
                 """,
                 (list(candidates),),
@@ -686,14 +686,14 @@ class Database:
             row = cur.fetchone()
             if not row:
                 return []
-            d = dict(row) if hasattr(row, "keys") else {"gfs_date": row[0], "gfs_run": row[1]}
+            d = dict(row) if hasattr(row, "keys") else {"run_date": row[0], "run_id": row[1]}
             cur.execute(
                 """
                 SELECT DISTINCT product
                 FROM field_catalog
-                WHERE gfs_date=%s AND gfs_run=%s AND product = ANY(%s)
+                WHERE run_date=%s AND run_id=%s AND product = ANY(%s)
                 """,
-                (d["gfs_date"], d["gfs_run"], list(candidates)),
+                (d["run_date"], d["run_id"], list(candidates)),
             )
             return [
                 (r["product"] if hasattr(r, "keys") else r[0]) for r in cur.fetchall()
@@ -711,36 +711,36 @@ class Database:
         The product scoping on the run-pick matters because the catalog is shared
         across independent model cycles that use different run identifiers: GFS runs
         00/06/12/18, RTOFS currents run "00", etc. Without scoping, a bare
-        ORDER BY gfs_run DESC would mix models — e.g. an RTOFS row (run "00") on a
+        ORDER BY run_id DESC would mix models — e.g. an RTOFS row (run "00") on a
         newer date could outrank the latest GFS run, or the higher GFS run string
         could hide currents. Filtering the run-pick by `products` makes
         "latest run for {currents}" and "latest run for {GFS layers}" resolve to
         their own model's cycle.
 
         Returns dict:
-            { "gfs_date": "20260613", "gfs_run": "18",
+            { "run_date": "20260613", "run_id": "18",
               "fmin": 0, "fmax": 23, "hours": [0,1,2,...,23], "n_products": 6 }
         or None if the catalog is empty.
         """
         with self.conn.cursor() as cur:
-            # Freshest run = newest (gfs_date, gfs_run), scoped to the requested
+            # Freshest run = newest (run_date, run_id), scoped to the requested
             # products so unrelated model cycles can't outrank each other.
             if products:
                 cur.execute(
                     """
-                    SELECT gfs_date, gfs_run
+                    SELECT run_date, run_id
                     FROM field_catalog
                     WHERE product = ANY(%s)
-                    ORDER BY gfs_date DESC, gfs_run DESC
+                    ORDER BY run_date DESC, run_id DESC
                     LIMIT 1
                 """,
                     (list(products),),
                 )
             else:
                 cur.execute("""
-                    SELECT gfs_date, gfs_run
+                    SELECT run_date, run_id
                     FROM field_catalog
-                    ORDER BY gfs_date DESC, gfs_run DESC
+                    ORDER BY run_date DESC, run_id DESC
                     LIMIT 1
                 """)
             row = cur.fetchone()
@@ -749,9 +749,9 @@ class Database:
             d = (
                 dict(row)
                 if hasattr(row, "keys")
-                else {"gfs_date": row[0], "gfs_run": row[1]}
+                else {"run_date": row[0], "run_id": row[1]}
             )
-            gfs_date, gfs_run = d["gfs_date"], d["gfs_run"]
+            run_date, run_id = d["run_date"], d["run_id"]
 
             if products:
                 # Hours where the COUNT of distinct required products == len(products)
@@ -759,22 +759,22 @@ class Database:
                     """
                     SELECT fhour
                     FROM field_catalog
-                    WHERE gfs_date=%s AND gfs_run=%s AND product = ANY(%s)
+                    WHERE run_date=%s AND run_id=%s AND product = ANY(%s)
                     GROUP BY fhour
                     HAVING COUNT(DISTINCT product) = %s
                     ORDER BY fhour
                 """,
-                    (gfs_date, gfs_run, list(products), len(products)),
+                    (run_date, run_id, list(products), len(products)),
                 )
             else:
                 cur.execute(
                     """
                     SELECT DISTINCT fhour
                     FROM field_catalog
-                    WHERE gfs_date=%s AND gfs_run=%s
+                    WHERE run_date=%s AND run_id=%s
                     ORDER BY fhour
                 """,
-                    (gfs_date, gfs_run),
+                    (run_date, run_id),
                 )
             hours = [
                 r[0] if not hasattr(r, "keys") else r["fhour"] for r in cur.fetchall()
@@ -782,8 +782,8 @@ class Database:
 
         if not hours:
             return {
-                "gfs_date": gfs_date,
-                "gfs_run": gfs_run,
+                "run_date": run_date,
+                "run_id": run_id,
                 "fmin": None,
                 "fmax": None,
                 "hours": [],
@@ -791,8 +791,8 @@ class Database:
             }
 
         return {
-            "gfs_date": gfs_date,
-            "gfs_run": gfs_run,
+            "run_date": run_date,
+            "run_id": run_id,
             "fmin": hours[0],
             "fmax": hours[-1],
             "hours": hours,
@@ -800,8 +800,8 @@ class Database:
 
     def upsert_field_catalog(
         self,
-        gfs_date: str,
-        gfs_run: str,
+        run_date: str,
+        run_id: str,
         fhour: int,
         product: str,
         nlat: int,
@@ -812,9 +812,9 @@ class Database:
         """Upsert a field catalog row (metadata only, no arrays)."""
         sql = """
             INSERT INTO field_catalog
-                (gfs_date, gfs_run, fhour, product, nlat, nlon, valid_time, storage_uri, updated_at)
+                (run_date, run_id, fhour, product, nlat, nlon, valid_time, storage_uri, updated_at)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, now())
-            ON CONFLICT (gfs_date, gfs_run, fhour, product) DO UPDATE SET
+            ON CONFLICT (run_date, run_id, fhour, product) DO UPDATE SET
                 nlat=EXCLUDED.nlat,
                 nlon=EXCLUDED.nlon,
                 valid_time=EXCLUDED.valid_time,
@@ -826,8 +826,8 @@ class Database:
                 cur.execute(
                     sql,
                     (
-                        gfs_date,
-                        gfs_run,
+                        run_date,
+                        run_id,
                         int(fhour),
                         product,
                         nlat,
@@ -841,22 +841,22 @@ class Database:
             raise
 
     def get_field_catalog(
-        self, gfs_date: str, gfs_run: str, fhour: int, product: str
+        self, run_date: str, run_id: str, fhour: int, product: str
     ) -> dict | None:
         """Fetch a catalog row (metadata only)."""
         with self.conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT gfs_date, gfs_run, fhour, product, nlat, nlon, valid_time, updated_at, storage_uri
+                SELECT run_date, run_id, fhour, product, nlat, nlon, valid_time, updated_at, storage_uri
                 FROM field_catalog
-                WHERE gfs_date=%s AND gfs_run=%s AND fhour=%s AND product=%s
+                WHERE run_date=%s AND run_id=%s AND fhour=%s AND product=%s
                 """,
-                (gfs_date, gfs_run, int(fhour), product),
+                (run_date, run_id, int(fhour), product),
             )
             row = cur.fetchone()
         return dict(row) if row else None
 
-    def get_product_hours(self, gfs_date, gfs_run, product):
+    def get_product_hours(self, run_date, run_id, product):
         """Return the sorted list of forecast hours present for one product in a run.
 
         Drives each task's per-hour render loop (the scrubber needs a PNG for every
@@ -866,10 +866,10 @@ class Database:
             cur.execute(
                 """
                 SELECT fhour FROM field_catalog
-                WHERE gfs_date=%s AND gfs_run=%s AND product=%s
+                WHERE run_date=%s AND run_id=%s AND product=%s
                 ORDER BY fhour
                 """,
-                (gfs_date, gfs_run, product),
+                (run_date, run_id, product),
             )
             return [
                 r[0] if not hasattr(r, "keys") else r["fhour"] for r in cur.fetchall()
@@ -896,24 +896,24 @@ class Database:
             return pairs
 
     def field_catalog_exists(
-        self, gfs_date: str, gfs_run: str, fhour: int, product: str
+        self, run_date: str, run_id: str, fhour: int, product: str
     ) -> bool:
         """Check if a catalog row exists (fast, indexed)."""
         with self.conn.cursor() as cur:
             cur.execute(
-                "SELECT 1 FROM field_catalog WHERE gfs_date=%s AND gfs_run=%s AND fhour=%s AND product=%s",
-                (gfs_date, gfs_run, int(fhour), product),
+                "SELECT 1 FROM field_catalog WHERE run_date=%s AND run_id=%s AND fhour=%s AND product=%s",
+                (run_date, run_id, int(fhour), product),
             )
             return cur.fetchone() is not None
 
     def delete_field_catalog(
-        self, gfs_date: str, gfs_run: str, fhour: int, product: str
+        self, run_date: str, run_id: str, fhour: int, product: str
     ):
         """Delete a catalog row."""
         with self.conn.cursor() as cur:
             cur.execute(
-                "DELETE FROM field_catalog WHERE gfs_date=%s AND gfs_run=%s AND fhour=%s AND product=%s",
-                (gfs_date, gfs_run, int(fhour), product),
+                "DELETE FROM field_catalog WHERE run_date=%s AND run_id=%s AND fhour=%s AND product=%s",
+                (run_date, run_id, int(fhour), product),
             )
 
     def get_orphan_field_rows(self, workdir_path) -> list:
@@ -924,7 +924,7 @@ class Database:
         with self.conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT gfs_date, gfs_run, fhour, product, storage_uri
+                SELECT run_date, run_id, fhour, product, storage_uri
                 FROM field_catalog
                 ORDER BY updated_at DESC
                 """
@@ -940,8 +940,8 @@ class Database:
                 orphans.append(dict(row))
         return orphans
 
-    def get_field_rows_except(self, gfs_date, gfs_run, products=None):
-        """Return catalog rows NOT belonging to (gfs_date, gfs_run).
+    def get_field_rows_except(self, run_date, run_id, products=None):
+        """Return catalog rows NOT belonging to (run_date, run_id).
 
         Used by the data_collector to prune superseded runs (row + file). Each row
         includes storage_uri so the caller can unlink the file.
@@ -956,21 +956,21 @@ class Database:
             if products:
                 cur.execute(
                     """
-                    SELECT gfs_date, gfs_run, fhour, product, storage_uri
+                    SELECT run_date, run_id, fhour, product, storage_uri
                     FROM field_catalog
-                    WHERE NOT (gfs_date=%s AND gfs_run=%s)
+                    WHERE NOT (run_date=%s AND run_id=%s)
                       AND product = ANY(%s)
                     """,
-                    (gfs_date, gfs_run, list(products)),
+                    (run_date, run_id, list(products)),
                 )
             else:
                 cur.execute(
                     """
-                    SELECT gfs_date, gfs_run, fhour, product, storage_uri
+                    SELECT run_date, run_id, fhour, product, storage_uri
                     FROM field_catalog
-                    WHERE NOT (gfs_date=%s AND gfs_run=%s)
+                    WHERE NOT (run_date=%s AND run_id=%s)
                     """,
-                    (gfs_date, gfs_run),
+                    (run_date, run_id),
                 )
             return [dict(r) for r in cur.fetchall()]
 
@@ -982,7 +982,7 @@ class Database:
         with self.conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT gfs_date, gfs_run, fhour, product, storage_uri
+                SELECT run_date, run_id, fhour, product, storage_uri
                 FROM field_catalog
                 WHERE updated_at < now() - make_interval(hours => %s)
                 """,
@@ -1015,15 +1015,15 @@ class Database:
         docker-entrypoint-initdb.d only runs on a fresh data dir)."""
         ddl = """
             CREATE TABLE IF NOT EXISTS backfill_requests (
-                gfs_date     date         NOT NULL,
-                gfs_run      varchar(2)   NOT NULL,
+                run_date     date         NOT NULL,
+                run_id      varchar(2)   NOT NULL,
                 fhour        integer      NOT NULL,
                 product      varchar(32)  NOT NULL,
                 status       varchar(16)  NOT NULL DEFAULT 'requested',
                 attempts     integer      NOT NULL DEFAULT 0,
                 requested_at timestamptz  NOT NULL DEFAULT now(),
                 updated_at   timestamptz  NOT NULL DEFAULT now(),
-                PRIMARY KEY (gfs_date, gfs_run, fhour, product)
+                PRIMARY KEY (run_date, run_id, fhour, product)
             );
             CREATE INDEX IF NOT EXISTS idx_backfill_status ON backfill_requests (status);
         """
@@ -1034,22 +1034,22 @@ class Database:
             logger.error(f"Error ensuring backfill_requests table: {e}")
             raise
 
-    def enqueue_backfill(self, gfs_date, gfs_run, fhour, product):
+    def enqueue_backfill(self, run_date, run_id, fhour, product):
         """Record a missing-data request. Idempotent: a key already in the queue is left
         as-is (so repeated 404 flags collapse to one row), EXCEPT a previously 'failed'
         row is reset to 'requested' to allow a fresh attempt if the client asks again
         (e.g. the upstream run may have published the step since)."""
         sql = """
-            INSERT INTO backfill_requests (gfs_date, gfs_run, fhour, product, status)
+            INSERT INTO backfill_requests (run_date, run_id, fhour, product, status)
             VALUES (%s, %s, %s, %s, 'requested')
-            ON CONFLICT (gfs_date, gfs_run, fhour, product) DO UPDATE SET
+            ON CONFLICT (run_date, run_id, fhour, product) DO UPDATE SET
                 status = CASE WHEN backfill_requests.status = 'failed'
                               THEN 'requested' ELSE backfill_requests.status END,
                 updated_at = now();
         """
         try:
             with self.conn.cursor() as cur:
-                cur.execute(sql, (gfs_date, gfs_run, int(fhour), product))
+                cur.execute(sql, (run_date, run_id, int(fhour), product))
         except Exception as e:
             logger.error(f"Error enqueuing backfill: {e}")
             raise
@@ -1061,14 +1061,14 @@ class Database:
         sql = """
             UPDATE backfill_requests SET status = 'fetching', attempts = attempts + 1,
                                          updated_at = now()
-            WHERE (gfs_date, gfs_run, fhour, product) IN (
-                SELECT gfs_date, gfs_run, fhour, product FROM backfill_requests
+            WHERE (run_date, run_id, fhour, product) IN (
+                SELECT run_date, run_id, fhour, product FROM backfill_requests
                 WHERE status = 'requested'
                 ORDER BY requested_at
                 LIMIT %s
                 FOR UPDATE SKIP LOCKED
             )
-            RETURNING gfs_date, gfs_run, fhour, product, attempts;
+            RETURNING run_date, run_id, fhour, product, attempts;
         """
         try:
             with self.conn.cursor() as cur:
@@ -1078,15 +1078,15 @@ class Database:
             logger.error(f"Error claiming backfill requests: {e}")
             return []
 
-    def mark_backfill(self, gfs_date, gfs_run, fhour, product, status):
+    def mark_backfill(self, run_date, run_id, fhour, product, status):
         """Set the terminal/intermediate status of a request ('done' | 'failed' |
         'requested')."""
         sql = """
             UPDATE backfill_requests SET status = %s, updated_at = now()
-            WHERE gfs_date=%s AND gfs_run=%s AND fhour=%s AND product=%s;
+            WHERE run_date=%s AND run_id=%s AND fhour=%s AND product=%s;
         """
         try:
             with self.conn.cursor() as cur:
-                cur.execute(sql, (status, gfs_date, gfs_run, int(fhour), product))
+                cur.execute(sql, (status, run_date, run_id, int(fhour), product))
         except Exception as e:
             logger.error(f"Error marking backfill {status}: {e}")
