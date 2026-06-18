@@ -17,6 +17,8 @@
  */
 export function liveLayerSync(map, {
     sectionKey, initialConfig, mount, refresh, unmount, imageUrl,
+    onMissing = null,        // optional: called with cfg when the probe HEAD 404s, so the
+                             // layer can flag demand-driven backfill for the missing hour
     syncMs = 20000, refreshMs = 300000,
     globalKeys = [], initialGlobals = {},
     regenWaitMs = 120000,
@@ -70,11 +72,16 @@ export function liveLayerSync(map, {
 
     if (initialConfig && initialConfig.enabled) doMount(initialConfig, initialGlobals);
 
+    // Append a cache-busting probe param with the correct separator: imageUrl already
+    // carries a "?t=..." for some layers (e.g. currents), so a bare "?probe=" produced a
+    // malformed double-"?" URL. Use "&" when a query string is already present.
+    const withProbe = (url) => url + (url.includes('?') ? '&' : '?') + 'probe=' + Date.now();
+
     // Last-Modified of the served image as a millisecond timestamp (0 if unavailable).
     const imageMtime = async (cfg) => {
         if (!imageUrl) return 0;
         try {
-            const r = await fetch(`${imageUrl(cfg)}?probe=${Date.now()}`, { method: 'HEAD' });
+            const r = await fetch(withProbe(imageUrl(cfg)), { method: 'HEAD' });
             if (!r.ok) return 0;
             const lm = r.headers.get('Last-Modified');
             const t = lm ? Date.parse(lm) : NaN;
@@ -85,7 +92,10 @@ export function liveLayerSync(map, {
     const imageExists = async (cfg) => {
         if (!imageUrl) return true;                       // no probe supplied -> assume present
         try {
-            const r = await fetch(`${imageUrl(cfg)}?probe=${Date.now()}`, { method: 'HEAD' });
+            const r = await fetch(withProbe(imageUrl(cfg)), { method: 'HEAD' });
+            if (!r.ok && r.status === 404 && onMissing) {
+                try { onMissing(cfg); } catch (e) { /* best-effort backfill flag */ }
+            }
             return r.ok;
         } catch { return false; }
     };

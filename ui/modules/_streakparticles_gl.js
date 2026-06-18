@@ -1,6 +1,7 @@
 import { liveLayerSync } from './_refresh.js';
 import { timeline } from './timeline.js';
 import { scrubber } from './scrubber.js';
+import { flagBackfill, clearBackfillFlag } from './_backfill.js';
 
 /**
  * Generic u/v-field STREAK PARTICLE engine — a MapLibre v5 CUSTOM WEBGL LAYER
@@ -219,10 +220,9 @@ export function createStreakParticleGLController(map, opts) {
         // _data.png — skip the timeline subscription entirely and (re)load only on
         // mount/refresh, matching the original standalone wave engine's behaviour.
         useTimeline = true,
-        // Optional: derive the backfill {date, run, hour} for a missing per-hour field.
-        // Defaults to the GFS run (runEpochUtc) + timeline hour, correct for wind/waves.
-        // Layers on a different cycle (currents -> RTOFS run + reconciled hour) override
-        // this so the 404 flag targets the file that actually 404'd.
+        // Optional resolver (snap) => {date,run,hour} for the backfill key, for layers
+        // whose run/hour differ from the GFS timeline (currents -> RTOFS). Default null
+        // = derive from the GFS run (runEpochUtc) + timeline hour.
         backfillKey = null,
         // Per-hour velocity texture, driven by the shared timeline.
         hourDataUrl = (cfg, hour, bust) => {
@@ -400,35 +400,6 @@ export function createStreakParticleGLController(map, opts) {
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
         windReady = true;
     };
-    const flaggedMissing = new Set();
-    const missKey = (snap) => {
-        // Layer-supplied override (e.g. currents -> RTOFS run + reconciled hour).
-        if (backfillKey) {
-            const k = backfillKey(snap);
-            if (!k || !k.date || !k.run || k.hour == null) return null;
-            return { key: `${sectionKey}:${k.date}:${k.run}:${k.hour}`,
-                     dateStr: k.date, rr: k.run, hour: k.hour };
-        }
-        // Default: the GFS run (f000 valid time) + the timeline hour.
-        if (!snap || !snap.runEpochUtc) return null;
-        const r = new Date(snap.runEpochUtc);
-        if (isNaN(r.getTime())) return null;
-        const dateStr = `${r.getUTCFullYear()}${String(r.getUTCMonth()+1).padStart(2,'0')}${String(r.getUTCDate()).padStart(2,'0')}`;
-        const rr = String(r.getUTCHours()).padStart(2, '0');
-        return { key: `${sectionKey}:${dateStr}:${rr}:${snap.hour}`, dateStr, rr, hour: snap.hour };
-    };
-    const flagMissing = (snap) => {
-        const m = missKey(snap);
-        if (!m || flaggedMissing.has(m.key)) return;   // already asked — don't spam
-        flaggedMissing.add(m.key);
-        fetch(`${window.WM_API}/request_backfill`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ product: sectionKey, date: m.dateStr,
-                                   run: m.rr, hour: m.hour }),
-        }).catch(() => { /* best-effort; the field stays transparent meanwhile */ });
-    };
-
     const loadWind = (cfg) => {
         const snap = timeline.get();
         const img = new Image();
@@ -436,13 +407,12 @@ export function createStreakParticleGLController(map, opts) {
         img.onload = () => {
             pendingWindImg = img; map.triggerRepaint();
             // Loaded OK — forget any prior miss for this key so a later eviction re-flags.
-            const m = missKey(snap);
-            if (m) flaggedMissing.delete(m.key);
+            clearBackfillFlag(sectionKey, snap, backfillKey);
         };
         if (useTimeline) {
             img.onerror = () => {
                 console.warn(`[${sectionKey}] velocity texture not ready (f${String(snap.hour).padStart(3,'0')}) — flagging backfill`);
-                flagMissing(snap);   // ask the backend to fetch+render this hour
+                flagBackfill(sectionKey, snap, backfillKey);   // fetch+render this hour
             };
             img.src = hourDataUrl(cfg, snap.hour, snap.refreshEpoch);
         } else {
@@ -698,6 +668,9 @@ export function createStreakParticleGLLayer(map, opts) {
         initialConfig: opts.initialConfig,
         mount: c.mount, refresh: c.refresh, unmount: c.unmount,
         imageUrl: c.imageUrl,
+        // Flag demand-driven backfill when the HEAD probe 404s (separate path from the
+        // image onerror), using the same shared deduped flagger + optional resolver.
+        onMissing: () => flagBackfill(opts.sectionKey, timeline.get(), opts.backfillKey || null),
         refreshMs: opts.refreshMs, syncMs: opts.syncMs,
     });
 }

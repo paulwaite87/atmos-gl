@@ -84,8 +84,8 @@ function makeReconciler() {
     };
     // For demand-driven backfill: the RTOFS (date, run, rtofs_hour) for a timeline snap,
     // matching exactly the file that 404'd. Null until forecast_state has loaded, or if
-    // the currents block lacked the run identity (older backend) — the engine then skips
-    // flagging rather than sending a wrong (GFS-run) key.
+    // the currents block lacked the run identity (older backend) — the flagger then skips
+    // rather than sending a wrong (GFS-run) key.
     const backfillKey = (snap) => {
         if (!rtofs || !rtofs.date || !rtofs.run || !snap) return null;
         return { date: rtofs.date, run: rtofs.run, hour: toRtofsHour(snap.hour) };

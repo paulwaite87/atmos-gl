@@ -665,6 +665,40 @@ class Database:
             logger.error(f"Error fetching priority region list: {e}")
             return []
 
+    def products_with_data(self, candidates):
+        """Of `candidates`, return the subset that actually have catalogued field rows for
+        the freshest (gfs_date, gfs_run) among those candidates. Used to base the scrubber
+        range on which stepped products have DATA, not which are toggled on — so a layer
+        being disabled (or enabled-but-not-yet-ingested) never nulls the whole timeline."""
+        if not candidates:
+            return []
+        with self.conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT gfs_date, gfs_run
+                FROM field_catalog
+                WHERE product = ANY(%s)
+                ORDER BY gfs_date DESC, gfs_run DESC
+                LIMIT 1
+                """,
+                (list(candidates),),
+            )
+            row = cur.fetchone()
+            if not row:
+                return []
+            d = dict(row) if hasattr(row, "keys") else {"gfs_date": row[0], "gfs_run": row[1]}
+            cur.execute(
+                """
+                SELECT DISTINCT product
+                FROM field_catalog
+                WHERE gfs_date=%s AND gfs_run=%s AND product = ANY(%s)
+                """,
+                (d["gfs_date"], d["gfs_run"], list(candidates)),
+            )
+            return [
+                (r["product"] if hasattr(r, "keys") else r[0]) for r in cur.fetchall()
+            ]
+
     def get_latest_run_hours(self, products=None):
         """Return availability summary for the freshest (date, run) in the catalog.
 

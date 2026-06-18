@@ -1,6 +1,7 @@
 import { liveLayerSync } from './_refresh.js';
 import { timeline } from './timeline.js';
 import { scrubber } from './scrubber.js';
+import { flagBackfill } from './_backfill.js';
 
 /**
  * GPU scalar-field FILL as a MapLibre v5 CUSTOM WEBGL LAYER.
@@ -51,6 +52,7 @@ export function createFillLayer(map, opts) {
         initialAnimation = {},
         initialCommon = {},
         onMount = () => {}, onRefresh = () => {}, onUnmount = () => {},
+        backfillKey = null,   // optional resolver (snap)=>{date,run,hour} for backfill
         refreshMs, syncMs,
         staticUrl = (cfg) => `${window.MAP_UI}/${cfg.outfile}`,
         hourDataUrl = (cfg, hour, bust) => {
@@ -418,6 +420,7 @@ void main(){
         mount, refresh, unmount,
         imageUrl: (cfg) => (forecastStepping(curAnim) && !webglFailed)
             ? hourDataUrl(cfg, timeline.get().hour, bustKey) : staticUrl(cfg),
+        onMissing: () => flagBackfill(sectionKey, timeline.get(), backfillKey),
         refreshMs, syncMs,
     });
 }
