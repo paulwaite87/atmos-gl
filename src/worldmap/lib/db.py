@@ -30,7 +30,7 @@ class Database:
             logger.error(f"Postgres Connection Failed: {e}")
             raise
 
-    def update_ship_static_data(self, mmsi, metadata, body, ais_tier='A'):
+    def update_ship_static_data(self, mmsi, metadata, body, ais_tier="A"):
         """Processes ShipStaticData and UPSERTs into the ships table."""
         name = metadata.get("ShipName", "Unknown").strip()
         destination = body.get("Destination", "").strip()
@@ -80,11 +80,11 @@ class Database:
                     draught,
                     length,
                     beam,
-                    ais_tier
+                    ais_tier,
                 ),
             )
 
-    def update_ship_position_data(self, mmsi, metadata, body, ais_tier='A'):
+    def update_ship_position_data(self, mmsi, metadata, body, ais_tier="A"):
         vessel_type = body.get("Type", 0)
         lat = body.get("Latitude", metadata.get("Latitude"))
         lon = body.get("Longitude", metadata.get("Longitude"))
@@ -133,14 +133,27 @@ class Database:
         try:
             with self.conn.cursor() as cur:
                 # Step 1: Upsert live parent vessel info
-                cur.execute(sql_upsert_ship, (
-                    str(mmsi), name, vessel_type, ais_tier, lat, lon, lon, lat, nav_status, cog, sog
-                ))
+                cur.execute(
+                    sql_upsert_ship,
+                    (
+                        str(mmsi),
+                        name,
+                        vessel_type,
+                        ais_tier,
+                        lat,
+                        lon,
+                        lon,
+                        lat,
+                        nav_status,
+                        cog,
+                        sog,
+                    ),
+                )
 
                 # Step 2: Record positional history point
-                cur.execute(sql_history, (
-                    str(mmsi), lat, lon, lon, lat, sog, cog, nav_status
-                ))
+                cur.execute(
+                    sql_history, (str(mmsi), lat, lon, lon, lat, sog, cog, nav_status)
+                )
 
         except Exception as e:
             logger.error(f"Database error updating position for {mmsi}: {e}")
@@ -686,7 +699,11 @@ class Database:
             row = cur.fetchone()
             if not row:
                 return []
-            d = dict(row) if hasattr(row, "keys") else {"run_date": row[0], "run_id": row[1]}
+            d = (
+                dict(row)
+                if hasattr(row, "keys")
+                else {"run_date": row[0], "run_id": row[1]}
+            )
             cur.execute(
                 """
                 SELECT DISTINCT product

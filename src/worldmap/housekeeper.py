@@ -154,7 +154,9 @@ class Housekeeper:
             store = fieldstore.get_store(workdir)
             live = store.live_product_hours()  # set of (product, fhour)
         except Exception as e:
-            logger.warning(f"Housekeeper: could not read live hours; skipping orphan-output sweep: {e}")
+            logger.warning(
+                f"Housekeeper: could not read live hours; skipping orphan-output sweep: {e}"
+            )
             return
 
         # Products the catalog knows about — only these are eligible for deletion, so
@@ -166,7 +168,9 @@ class Housekeeper:
 
         dry_run = bool(self.settings.get("dry_run", False))
         # '{layer}_f{NNN}{suffix}' where suffix is .png, _data.png, _labels.geojson, etc.
-        pat = re.compile(r"^(?P<layer>[A-Za-z0-9]+)_f(?P<hour>\d{3})(?P<suffix>[._].+)?$")
+        pat = re.compile(
+            r"^(?P<layer>[A-Za-z0-9]+)_f(?P<hour>\d{3})(?P<suffix>[._].+)?$"
+        )
 
         deleted = 0
         for filepath in glob.glob(os.path.join(data_dir, "*_f[0-9][0-9][0-9]*")):
@@ -183,10 +187,14 @@ class Housekeeper:
             # Orphaned: a per-hour output for a managed layer with no catalog backing.
             try:
                 if dry_run:
-                    logger.info(f"[dry-run] would delete orphaned output {name} (layer={layer}, f{fhour:03d})")
+                    logger.info(
+                        f"[dry-run] would delete orphaned output {name} (layer={layer}, f{fhour:03d})"
+                    )
                 else:
                     os.remove(filepath)
-                    logger.info(f"Pruned orphaned per-hour output {name} (layer={layer}, f{fhour:03d})")
+                    logger.info(
+                        f"Pruned orphaned per-hour output {name} (layer={layer}, f{fhour:03d})"
+                    )
                 deleted += 1
             except FileNotFoundError:
                 continue  # raced with a regenerating task; fine
@@ -195,7 +203,9 @@ class Housekeeper:
 
         if deleted:
             prefix = "[dry-run] " if dry_run else ""
-            logger.info(f"Housekeeper {prefix}pruned {deleted} orphaned per-hour output(s).")
+            logger.info(
+                f"Housekeeper {prefix}pruned {deleted} orphaned per-hour output(s)."
+            )
 
     def sweep(self):
         data_dir = self._data_dir()

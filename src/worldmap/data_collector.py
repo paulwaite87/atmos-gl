@@ -12,7 +12,7 @@ from worldmap.lib.logging import set_loglevel
 from worldmap.lib import fieldstore
 from worldmap.lib.gfs import (
     ATMOS_TARGETS,
-    resolve_gfs_baseline,
+    resolve_gfs_baseline_with_coverage,
     gfs_index_ranges,
     download_byte_ranges,
     download_whole,
@@ -62,7 +62,12 @@ class DataCollector:
         self.config.load()
         self.settings = self.config.get_section("data_collector")
         self.datasources = self.settings.get("datasources", {})
-        self.update_hours = int(self.settings.get("update_hours", 12))
+        # Full-refresh cadence. Prefer update_minutes (finer control); fall back to the
+        # legacy update_hours for existing configs. Stored as seconds.
+        if self.settings.get("update_minutes") is not None:
+            self.update_period_s = int(self.settings.get("update_minutes")) * 60
+        else:
+            self.update_period_s = int(self.settings.get("update_hours", 12)) * 3600
         self.cache_hours = int(self.settings.get("cache_hours", 24))
         log_level = self.settings.get("log_level")
         if log_level:
@@ -70,7 +75,7 @@ class DataCollector:
 
     # -- GFS atmospheric union ------------------------------------------------
     def _collect_gfs_atmos(self, base_url):
-        baseline = resolve_gfs_baseline(base_url)
+        baseline = resolve_gfs_baseline_with_coverage(base_url, self.cache_hours)
         if not baseline:
             logger.warning(
                 "Data Collector: could not resolve a GFS baseline; will retry."
@@ -154,7 +159,7 @@ class DataCollector:
         timeline. Each hour is a separate small (~0.6 MB) GRIB, downloaded whole (vs the
         atmos byte-range union), unpacked to a swell u/v field, and stored under the
         'waves' product. Mirrors _collect_gfs_atmos's window + skip-if-present logic."""
-        baseline = resolve_gfs_baseline(base_url)
+        baseline = resolve_gfs_baseline_with_coverage(base_url, self.cache_hours)
         if not baseline:
             logger.warning(
                 "Data Collector: could not resolve a GFS baseline for waves; will retry."
@@ -168,7 +173,7 @@ class DataCollector:
         )
         now = datetime.now(timezone.utc)
         hours_since_run = int(round((now - run_timestamp).total_seconds() / 3600.0))
-        fhour_0 = max(0, hours_since_run)        # forecast hour valid 'now'
+        fhour_0 = max(0, hours_since_run)  # forecast hour valid 'now'
         fhour_end = fhour_0 + self.cache_hours
 
         product, unpacker = next(iter(WAVES_UNPACKERS.items()))
@@ -215,9 +220,7 @@ class DataCollector:
             f"hours {fhour_0:03d}..{fhour_end - 1:03d}; stored {stored} field(s)."
         )
         try:
-            self.store.prune_except_run(
-                run_date_str, run_id, products=[product]
-            )
+            self.store.prune_except_run(run_date_str, run_id, products=[product])
         except Exception as e:
             logger.debug(f"waves prune skipped: {e}")
 
@@ -309,7 +312,9 @@ class DataCollector:
         bu = self.datasources.get("gfs")
         return bu.rstrip("/") if bu else None
 
-    def _backfill_atmos_hour(self, base_url, run_date, run_id, fhour, product, unpacker):
+    def _backfill_atmos_hour(
+        self, base_url, run_date, run_id, fhour, product, unpacker
+    ):
         """Fetch a single atmos product for one (date, run, hour) via the byte-range
         path, mirroring _collect_gfs_atmos's inner body for exactly one hour/product."""
         aurl = build_atmos_url(base_url, run_date, run_id, fhour)
@@ -321,7 +326,8 @@ class DataCollector:
             return False
         valid = self._valid_time(run_date, run_id, fhour)
         tmp = tempfile.NamedTemporaryFile(suffix=".grib2", delete=False)
-        tmp.write(data); tmp.close()
+        tmp.write(data)
+        tmp.close()
         try:
             fields = unpacker(tmp.name)
             self.store.store_field(run_date, run_id, fhour, product, fields, valid)
@@ -333,7 +339,9 @@ class DataCollector:
                 except OSError:
                     pass
 
-    def _backfill_waves_hour(self, base_url, run_date, run_id, fhour, product, unpacker):
+    def _backfill_waves_hour(
+        self, base_url, run_date, run_id, fhour, product, unpacker
+    ):
         """Fetch the GFS-Wave global 0p25 GRIB for one hour (whole-file), mirroring
         _collect_gfs_waves's inner body for exactly one hour."""
         url = build_wave_url(base_url, run_date, run_id, fhour)
@@ -344,7 +352,8 @@ class DataCollector:
             return False
         valid = self._valid_time(run_date, run_id, fhour)
         tmp = tempfile.NamedTemporaryFile(suffix=".grib2", delete=False)
-        tmp.write(data); tmp.close()
+        tmp.write(data)
+        tmp.close()
         try:
             fields = unpacker(tmp.name)
             self.store.store_field(run_date, run_id, fhour, product, fields, valid)
@@ -368,7 +377,9 @@ class DataCollector:
         bu = self.datasources.get("currents")
         return bu.rstrip("/") if bu else None
 
-    def _backfill_currents_hour(self, base_url, date_str, run, fhour, product, unpacker):
+    def _backfill_currents_hour(
+        self, base_url, date_str, run, fhour, product, unpacker
+    ):
         """Fetch a single RTOFS currents hour on demand. RTOFS URLs key off date + fhour
         (one daily cycle), with the nowcast as a fallback when the forecast hour isn't
         published. Mirrors _collect_rtofs_currents's inner body for one hour."""
@@ -384,7 +395,8 @@ class DataCollector:
             return False
         valid = self._valid_time(date_str, run, fhour)
         tmp = tempfile.NamedTemporaryFile(suffix=".nc", delete=False)
-        tmp.write(data); tmp.close()
+        tmp.write(data)
+        tmp.close()
         try:
             fields = unpacker(tmp.name)
             self.store.store_field(date_str, run, fhour, product, fields, valid)
@@ -409,7 +421,10 @@ class DataCollector:
         cur_base = self._currents_base_url()
         for req in claimed:
             d, run, fhour, product = (
-                req["run_date"], req["run_id"], int(req["fhour"]), req["product"]
+                req["run_date"],
+                req["run_id"],
+                int(req["fhour"]),
+                req["product"],
             )
             d_str = d.isoformat() if hasattr(d, "isoformat") else str(d)
             # Already present (raced with the normal cycle)? Mark done.
@@ -423,28 +438,44 @@ class DataCollector:
                         logger.warning("backfill: no 'gfs' datasource configured")
                     else:
                         ok = self._backfill_atmos_hour(
-                            gfs_base, d_str, run, fhour, product, ATMOS_UNPACKERS[product]
+                            gfs_base,
+                            d_str,
+                            run,
+                            fhour,
+                            product,
+                            ATMOS_UNPACKERS[product],
                         )
                 elif product in WAVES_UNPACKERS:
                     if not gfs_base:
                         logger.warning("backfill: no 'gfs' datasource configured")
                     else:
                         ok = self._backfill_waves_hour(
-                            gfs_base, d_str, run, fhour, product, WAVES_UNPACKERS[product]
+                            gfs_base,
+                            d_str,
+                            run,
+                            fhour,
+                            product,
+                            WAVES_UNPACKERS[product],
                         )
                 elif product in CURRENTS_UNPACKERS:
                     if not cur_base:
                         logger.warning("backfill: no 'currents' datasource configured")
                     else:
                         ok = self._backfill_currents_hour(
-                            cur_base, d_str, run, fhour, product, CURRENTS_UNPACKERS[product]
+                            cur_base,
+                            d_str,
+                            run,
+                            fhour,
+                            product,
+                            CURRENTS_UNPACKERS[product],
                         )
                 else:
                     logger.info(f"backfill: unknown product {product}; marking failed")
                     self.db.mark_backfill(d_str, run, fhour, product, "failed")
                     continue
-                self.db.mark_backfill(d_str, run, fhour, product,
-                                      "done" if ok else "failed")
+                self.db.mark_backfill(
+                    d_str, run, fhour, product, "done" if ok else "failed"
+                )
                 logger.info(
                     f"backfill {product} {d_str} {run}Z f{fhour:03d}: "
                     f"{'fetched' if ok else 'upstream missing -> failed'}"
@@ -470,20 +501,20 @@ class DataCollector:
                 logger.error(f"datasource {datasource} failed: {e}")
 
     async def run(self):
-        # Two cadences: the heavy full refresh runs every update_hours; a light backfill
-        # drain runs every backfill_poll_seconds (default 60) so frontend-flagged missing
-        # data fills within ~a minute rather than waiting hours for the next full cycle.
+        # Two cadences: the heavy full refresh runs every update_period_s (set via
+        # update_minutes, or legacy update_hours); a light backfill drain runs every
+        # backfill_poll_seconds (default 60) so frontend-flagged missing data fills within
+        # ~a minute rather than waiting for the next full cycle.
         poll_s = int(self.settings.get("backfill_poll_seconds", 60))
-        last_full = None   # None => run a full refresh immediately on first iteration
-        full_period = self.update_hours * 3600
+        last_full = None  # None => run a full refresh immediately on first iteration
         try:
             self.db.ensure_backfill_table()
         except Exception as e:
             logger.error(f"could not ensure backfill table at startup: {e}")
         while True:
-            self.refresh_settings()
+            self.refresh_settings()  # recomputes self.update_period_s, cache_hours, etc.
             poll_s = int(self.settings.get("backfill_poll_seconds", poll_s))
-            full_period = self.update_hours * 3600
+            full_period = self.update_period_s
             enabled = self.settings.get("enabled", False)
             now = asyncio.get_event_loop().time()
 

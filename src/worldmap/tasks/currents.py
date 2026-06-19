@@ -35,8 +35,12 @@ class CurrentsUpdater(Updater):
         # Speed-ramp palettes for the colourbar KEY + the fill layer's colour stops.
         # (The frontend fill reads these same stops; keep names in sync with config.)
         self.PALETTES = {
-            "thermal_red": [(0.65, 0.0, 0.0), (1.0, 0.25, 0.0),
-                            (1.0, 0.85, 0.0), (1.0, 1.0, 1.0)],
+            "thermal_red": [
+                (0.65, 0.0, 0.0),
+                (1.0, 0.25, 0.0),
+                (1.0, 0.85, 0.0),
+                (1.0, 1.0, 1.0),
+            ],
             "electric_blue": [(0.0, 0.35, 0.55), (0.0, 0.85, 1.0), (0.75, 1.0, 1.0)],
             "toxic_neon": [(0.0, 0.45, 0.15), (0.25, 1.0, 0.0), (0.95, 1.0, 0.3)],
             "cyberpunk": [(0.45, 0.0, 0.45), (1.0, 0.0, 0.55), (0.0, 1.0, 0.75)],
@@ -64,11 +68,18 @@ class CurrentsUpdater(Updater):
         fig, ax = plt.subplots(figsize=(4, 0.3))
         cbar = fig.colorbar(
             mpl.cm.ScalarMappable(norm=norm, cmap=_opaque_cmap(cmap)),
-            cax=ax, orientation="horizontal", ticks=ticks,
+            cax=ax,
+            orientation="horizontal",
+            ticks=ticks,
         )
         cbar.ax.xaxis.set_major_formatter(plt.FormatStrFormatter("%.1f"))
-        cbar.ax.set_title("Current Speed (m/s)", color="white",
-                          fontsize=key_fontsize, pad=2, weight="bold")
+        cbar.ax.set_title(
+            "Current Speed (m/s)",
+            color="white",
+            fontsize=key_fontsize,
+            pad=2,
+            weight="bold",
+        )
         cbar.ax.tick_params(colors="white", labelsize=8)
         fig.savefig(key_path, transparent=True, bbox_inches="tight")
         plt.close(fig)

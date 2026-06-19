@@ -18,9 +18,16 @@ router = APIRouter(prefix="/api", tags=["System Configuration"])
 # source that happens to be primary, and RTOFS (currents) is just another source.
 SOURCES = {
     "gfs": {
-        "primary": True,   # drives the master timeline
-        "products": ["isobars", "precipitation", "wind", "temperature",
-                     "ozone", "stormwatch", "waves"],
+        "primary": True,  # drives the master timeline
+        "products": [
+            "isobars",
+            "precipitation",
+            "wind",
+            "temperature",
+            "ozone",
+            "stormwatch",
+            "waves",
+        ],
     },
     "rtofs": {
         "primary": False,
@@ -109,7 +116,9 @@ def get_forecast_state():
             epoch = _run_epoch_utc(summary["run_date"], summary["run_id"])
             rdate = summary["run_date"]
             return {
-                "run_date": rdate if isinstance(rdate, str) else rdate.strftime("%Y%m%d"),
+                "run_date": rdate
+                if isinstance(rdate, str)
+                else rdate.strftime("%Y%m%d"),
                 "run_id": summary["run_id"],
                 "run_epoch_utc": z(epoch),
                 "fmin": summary["fmin"],

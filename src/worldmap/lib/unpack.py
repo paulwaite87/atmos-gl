@@ -224,7 +224,7 @@ def _regrid_curvilinear_nn(lat2d, lon2d, fields, step, lat_min, lat_max):
     lat = np.asarray(lat2d, dtype=np.float64)
 
     # Valid where every field is finite and physical, and not the junk lon column.
-    valid = (lon2d < 500.0)
+    valid = lon2d < 500.0
     for arr in fields.values():
         a = np.asarray(arr)
         valid = valid & np.isfinite(a) & (np.abs(a) < 100.0)
@@ -284,8 +284,8 @@ def waves_data_unpack(path):
     bad = ~np.isfinite(swh) | (swh < 0.0) | (swh > 60.0) | ~np.isfinite(mwd)
     rad = np.radians(np.nan_to_num(mwd))
     mag = np.where(bad, np.nan, swh)
-    u = mag * np.sin(rad)   # east component (m); NaN where bad -> alpha 0
-    v = mag * np.cos(rad)   # north component (m)
+    u = mag * np.sin(rad)  # east component (m); NaN where bad -> alpha 0
+    v = mag * np.cos(rad)  # north component (m)
 
     out = _blank()
     out.update(lat=lats, lon=lons, u=u, v=v)
@@ -300,15 +300,19 @@ def currents_data_unpack(path):
     the singleton dims and regrid to a regular lat/lon grid (see _regrid_curvilinear_nn).
     """
     ds = xr.open_dataset(path)
-    u = ds["u_velocity"].values.squeeze()   # (Y,X) after dropping MT, Layer
+    u = ds["u_velocity"].values.squeeze()  # (Y,X) after dropping MT, Layer
     v = ds["v_velocity"].values.squeeze()
-    lat2d = ds["Latitude"].values            # (Y,X)
-    lon2d = ds["Longitude"].values           # (Y,X)
+    lat2d = ds["Latitude"].values  # (Y,X)
+    lon2d = ds["Longitude"].values  # (Y,X)
     ds.close()
 
     tlat, tlon, reg = _regrid_curvilinear_nn(
-        lat2d, lon2d, {"u": u, "v": v},
-        CURRENTS_STEP, CURRENTS_LAT_MIN, CURRENTS_LAT_MAX,
+        lat2d,
+        lon2d,
+        {"u": u, "v": v},
+        CURRENTS_STEP,
+        CURRENTS_LAT_MIN,
+        CURRENTS_LAT_MAX,
     )
     out = _blank()
     out.update(lat=tlat, lon=tlon, u=reg["u"], v=reg["v"])

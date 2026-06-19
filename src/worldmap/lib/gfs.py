@@ -82,6 +82,67 @@ def resolve_gfs_baseline(base_url=NOMADS_GFS_BASE, search_days=3):
     return None
 
 
+def resolve_gfs_baseline_with_coverage(
+    base_url=NOMADS_GFS_BASE, cache_hours=24, search_days=3
+):
+    """Find the newest GFS run that can supply a FULL window of `cache_hours` forecast
+    hours measured from 'now'.
+
+    The plain resolver picks the newest run whose f000 exists — but GFS publishes its
+    forecast hours incrementally over a few hours after a run starts, so a freshly-started
+    run (f000 present) may not yet have the later hours we need to cover now..now+cache_hours.
+    During that publish window we'd otherwise acquire a truncated range.
+
+    This resolver instead, for each candidate run (newest first: today 18/12/06/00, then
+    previous days), computes the highest forecast hour the window needs
+    (fhour_0 + cache_hours - 1, where fhour_0 = hours since the run = the hour valid 'now')
+    and probes whether THAT hour's .idx exists. GFS publishes hours in order, so if the top
+    hour is present the whole window is. The first run that passes is used; otherwise we
+    fall back to the previous run (00 -> previous-day 18 -> 12 -> 06 ...), which is fully
+    published. Returns the same dict shape as resolve_gfs_baseline (+ "fhour_0"), or None.
+    """
+    now = datetime.now(timezone.utc)
+    for day_offset in range(search_days):
+        target_date = now - timedelta(days=day_offset)
+        date_str = target_date.strftime("%Y%m%d")
+        for run in ["18", "12", "06", "00"]:
+            ts = target_date.replace(hour=int(run), minute=0, second=0, microsecond=0)
+            if ts > now:
+                continue  # a run in the future hasn't happened yet
+            fhour_0 = max(0, int(round((now - ts).total_seconds() / 3600.0)))
+            top_hour = fhour_0 + cache_hours - 1
+            url = (
+                f"{base_url}/gfs.{date_str}/{run}/atmos/"
+                f"gfs.t{run}z.pgrb2.0p25.f{top_hour:03d}.idx"
+            )
+            try:
+                if requests.head(url, timeout=5).status_code == 200:
+                    logger.debug(
+                        f"GFS baseline (full coverage): {date_str} {run}Z "
+                        f"covers f{fhour_0:03d}..f{top_hour:03d}"
+                    )
+                    return {
+                        "date_str": date_str,
+                        "date_str_Y_M_D": target_date.strftime("%Y-%m-%d"),
+                        "run": run,
+                        "timestamp": ts,
+                        "fhour_0": fhour_0,
+                    }
+            except requests.RequestException:
+                continue
+            logger.debug(
+                f"GFS {date_str} {run}Z lacks f{top_hour:03d} (still publishing); "
+                f"falling back to previous run."
+            )
+    # Nothing could supply a full window — fall back to the plain newest-available run so
+    # we at least acquire what exists rather than nothing.
+    logger.warning(
+        "No GFS run can supply a full %dh window yet; using newest available run.",
+        cache_hours,
+    )
+    return resolve_gfs_baseline(base_url, search_days=search_days)
+
+
 def gfs_index_ranges(grib_url, targets, timeout=30):
     """Resolve (start, end) byte ranges for each target from the .idx sidecar.
 

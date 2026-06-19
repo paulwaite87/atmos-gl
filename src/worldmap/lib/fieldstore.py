@@ -110,9 +110,7 @@ class FieldStore:
                 valid_time=valid_time,
                 storage_uri=str(rel_path),
             )
-            logger.debug(
-                f"Catalogued field {run_date}/{run_id}/f{fhour:03d}/{product}"
-            )
+            logger.debug(f"Catalogued field {run_date}/{run_id}/f{fhour:03d}/{product}")
             return True
         except Exception as e:
             logger.error(f"Error cataloguing field {product}: {e}")

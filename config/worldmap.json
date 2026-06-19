@@ -232,7 +232,8 @@
       "sst": "https://downloads.psl.noaa.gov/Datasets/noaa.oisst.v2.highres",
       "currents": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/rtofs/prod/"
     },
-    "update_hours": 1,
+    "update_minutes": 15,
+    "backfill_poll_seconds": 60,
     "cache_hours": 24,
     "log_level": "DEBUG"
   },

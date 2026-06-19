@@ -7,6 +7,7 @@ backfill_requests table; the data_collector drains the queue on its fast poll, f
 the field, and the layer task renders the PNG. This endpoint only enqueues — it never
 fetches synchronously (the request must return immediately, and the collector owns all
 upstream I/O)."""
+
 import re
 import logging
 from datetime import date
@@ -24,8 +25,14 @@ router = APIRouter(prefix="/api", tags=["Backfill"])
 # malicious client can't fill the queue with junk. Keep in sync with the collector's
 # per-product handlers (atmos products, currents, waves).
 ALLOWED_PRODUCTS = {
-    "wind", "isobars", "precipitation", "temperature", "ozone", "stormwatch",
-    "currents", "waves",
+    "wind",
+    "isobars",
+    "precipitation",
+    "temperature",
+    "ozone",
+    "stormwatch",
+    "currents",
+    "waves",
 }
 
 _RUN_RE = re.compile(r"^(00|06|12|18)$")
@@ -68,6 +75,12 @@ async def request_backfill(req: BackfillRequest):
         logger.error(f"request_backfill failed: {e}")
         raise HTTPException(status_code=500, detail="could not enqueue request")
 
-    return {"status": "queued",
-            "request": {"product": product, "date": iso_date,
-                        "run": req.run, "hour": int(req.hour)}}
+    return {
+        "status": "queued",
+        "request": {
+            "product": product,
+            "date": iso_date,
+            "run": req.run,
+            "hour": int(req.hour),
+        },
+    }

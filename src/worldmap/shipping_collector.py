@@ -62,7 +62,7 @@ class ShippingCollector:
                 "ShipStaticData",
                 "PositionReport",
                 "StandardClassBPositionReport",
-                "ExtendedClassBPositionReport"
+                "ExtendedClassBPositionReport",
             ],
         }
 
@@ -94,21 +94,33 @@ class ShippingCollector:
 
                         # --- Handle Static Data ---
                         if m_type == "ShipStaticData":
-                            ais_tier = 'A'
+                            ais_tier = "A"
                             body = msg.get("Message", {}).get("ShipStaticData", {})
                             # Offload blocking DB call to a thread to keep loop responsive
                             await asyncio.to_thread(
-                                self.db.update_ship_static_data, mmsi, meta, body, ais_tier
+                                self.db.update_ship_static_data,
+                                mmsi,
+                                meta,
+                                body,
+                                ais_tier,
                             )
                             static_count += 1
 
                         # --- Handle Position Reports for all tiers of vessel ---
-                        elif m_type in ["PositionReport", "StandardClassBPositionReport", "ExtendedClassBPositionReport"]:
-                            ais_tier = 'A' if m_type == "PositionReport" else "B"
+                        elif m_type in [
+                            "PositionReport",
+                            "StandardClassBPositionReport",
+                            "ExtendedClassBPositionReport",
+                        ]:
+                            ais_tier = "A" if m_type == "PositionReport" else "B"
                             body = msg.get("Message", {}).get(m_type, {})
                             # Offload blocking DB call to a thread
                             await asyncio.to_thread(
-                                self.db.update_ship_position_data, mmsi, meta, body, ais_tier
+                                self.db.update_ship_position_data,
+                                mmsi,
+                                meta,
+                                body,
+                                ais_tier,
                             )
                             pos_count += 1
 

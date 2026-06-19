@@ -28,9 +28,7 @@ RTOFS_MAX_HOURLY_FHOUR = 72
 
 def build_currents_url(base_url, date_str, fhour):
     """Forecast-hour surface prog file URL (the main pattern)."""
-    return (
-        f"{base_url}/rtofs.{date_str}/rtofs_glo_2ds_f{int(fhour):03d}_prog.nc"
-    )
+    return f"{base_url}/rtofs.{date_str}/rtofs_glo_2ds_f{int(fhour):03d}_prog.nc"
 
 
 def build_currents_nowcast_url(base_url, date_str):
