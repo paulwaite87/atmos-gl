@@ -67,13 +67,17 @@ function makeReconciler() {
     };
     load();
 
-    // Map a timeline hour -> RTOFS forecast hour by nearest valid_time.
+    // Map a timeline hour -> RTOFS forecast hour by nearest valid_time. Returns null
+    // when the reconciler hasn't loaded forecast_state yet, so callers can SKIP the
+    // request rather than fire a spurious identity-hour fetch (which 404s as e.g.
+    // currents_f001 during the ~½s before forecast_state resolves, and can't be
+    // backfilled since there's no run identity yet). Once loaded, always translates.
     const toRtofsHour = (timelineHour) => {
-        if (!rtofs) return timelineHour;                         // identity fallback
+        if (!rtofs) return null;                                 // not ready -> skip
         const snap = timeline.get();
         const iso = snap.validTimes && snap.validTimes[String(timelineHour)];
         const targetMs = iso ? Date.parse(iso) : null;
-        if (targetMs == null) return timelineHour;
+        if (targetMs == null) return null;
         // nearest RTOFS hour by |Δt|
         let best = rtofs.sortedByMs[0], bestDiff = Infinity;
         for (const pair of rtofs.sortedByMs) {
@@ -104,9 +108,12 @@ export async function loadLayer(map, config, fullConfig = {}) {
     await recon.ready();
 
     // currents data URL with RTOFS-hour translation (shared by fill + particles).
+    // Returns null when the reconciler isn't ready yet (toRtofsHour null) so loaders
+    // skip rather than firing a spurious identity-hour request.
     const currentsHourUrl = (cfg, timelineHour, bust) => {
-        const base = cfg.outfile.replace(/\.png$/, '');
         const rh = recon.toRtofsHour(timelineHour);
+        if (rh == null) return null;                 // not ready -> skip this load
+        const base = cfg.outfile.replace(/\.png$/, '');
         const f = String(rh).padStart(3, '0');
         return `${window.MAP_UI}/${base}_f${f}_data.png?t=${bust}`;
     };

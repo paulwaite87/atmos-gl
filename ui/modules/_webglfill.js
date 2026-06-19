@@ -238,7 +238,12 @@ void main(){
             // key targets the hour that actually failed, not the timeline's current hour.
             flagBackfill(sectionKey, { ...timeline.get(), hour }, backfillKey);
         };
-        img.src = hourDataUrl(curCfg, hour, bustKey);
+        const src = hourDataUrl(curCfg, hour, bustKey);
+        if (!src) {                         // URL not resolvable yet (currents reconciler
+            entry.loading = false;          // not ready) -> leave transparent, skip; no 404
+            return entry;
+        }
+        img.src = src;
         return entry;
     };
     const getHourTexture = (hour) => {

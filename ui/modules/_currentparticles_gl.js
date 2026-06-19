@@ -414,6 +414,8 @@ export function createCurrentParticleGLLayer(map, opts) {
     const loadVelocity = (cfg) => {
         const hour = timeline.get().hour;
         const url = hourDataUrl(cfg, hour, bustKey);
+        if (!url) return;                            // URL not resolvable yet (e.g. currents
+                                                     // reconciler not ready) -> skip, no 404
         const img = new Image(); img.crossOrigin = 'anonymous';
         img.onload = () => { pendingVelImg = img; map.triggerRepaint(); };
         img.onerror = () => {

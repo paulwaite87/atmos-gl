@@ -41,7 +41,13 @@ async function fetchState() {
         const res = await fetch(`${window.WM_API}/forecast_state?t=${Date.now()}`);
         if (!res.ok) return null;
         const json = await res.json();
-        return json && json.status === 'success' ? json.data : null;
+        if (!json || json.status !== 'success' || !json.data) return null;
+        // New contract: { sources: { name: block }, primary: name }. The master timeline
+        // is driven by the primary source's block. (Non-primary sources, e.g. rtofs for
+        // currents, are read directly from sources{} by their own layers.)
+        const d = json.data;
+        const block = d.sources && d.primary ? d.sources[d.primary] : null;
+        return block || null;
     } catch (e) {
         console.warn('[timeline_boot] forecast_state fetch failed', e);
         return null;
@@ -50,7 +56,7 @@ async function fetchState() {
 
 function signatureOf(data) {
     if (!data) return 'none';
-    return `${data.gfs_date}|${data.gfs_run}|${data.fmin}|${data.fmax}`;
+    return `${data.run_date}|${data.run_id}|${data.fmin}|${data.fmax}`;
 }
 
 export async function initForecastTimeline(configData) {

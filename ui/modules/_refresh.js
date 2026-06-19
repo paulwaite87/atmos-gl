@@ -80,11 +80,11 @@ export function liveLayerSync(map, {
     // Last-Modified of the served image as a millisecond timestamp (0 if unavailable).
     const imageMtime = async (cfg) => {
         if (!imageUrl) return 0;
+        const url = imageUrl(cfg);
+        if (!url) return 0;                 // URL not resolvable yet (e.g. reconciler) -> skip
         try {
-            const r = await fetch(withProbe(imageUrl(cfg)), { method: 'HEAD' });
+            const r = await fetch(withProbe(url), { method: 'HEAD' });
             if (!r.ok) {
-                // A mounted layer scrubbed to a missing hour 404s here (the staleness
-                // path, not imageExists). Flag demand-driven backfill for it too.
                 if (r.status === 404 && onMissing) {
                     try { onMissing(cfg); } catch (e) { /* best-effort */ }
                 }
@@ -98,8 +98,10 @@ export function liveLayerSync(map, {
 
     const imageExists = async (cfg) => {
         if (!imageUrl) return true;                       // no probe supplied -> assume present
+        const url = imageUrl(cfg);
+        if (!url) return false;             // URL not resolvable yet -> not ready, don't flag
         try {
-            const r = await fetch(withProbe(imageUrl(cfg)), { method: 'HEAD' });
+            const r = await fetch(withProbe(url), { method: 'HEAD' });
             if (!r.ok && r.status === 404 && onMissing) {
                 try { onMissing(cfg); } catch (e) { /* best-effort backfill flag */ }
             }
