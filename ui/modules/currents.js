@@ -46,7 +46,8 @@ function makeReconciler() {
             try {
                 const res = await fetch(`${window.WM_API}/forecast_state?t=${Date.now()}`);
                 const j = await res.json();
-                const c = j?.data?.currents;
+                // Currents come from the 'rtofs' source in the sources{} contract.
+                const c = j?.data?.sources?.rtofs;
                 if (c && c.valid_times_utc) {
                     const validMs = {};
                     const sorted = [];
@@ -57,7 +58,7 @@ function makeReconciler() {
                     }
                     sorted.sort((a, b) => a[0] - b[0]);
                     rtofs = { validMs, sortedByMs: sorted,
-                              date: c.gfs_date || null, run: c.gfs_run || null };
+                              date: c.run_date || null, run: c.run_id || null };
                 }
             } catch (e) {
                 console.warn('[currents] forecast_state currents block unavailable; using identity hours', e);
