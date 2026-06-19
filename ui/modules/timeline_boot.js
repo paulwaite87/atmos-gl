@@ -86,6 +86,9 @@ export async function initForecastTimeline(configData) {
     // Poll for run/hour-range changes.
     if (pollId) clearInterval(pollId);
     pollId = setInterval(async () => {
+        // Track wall-clock 'now' forward: trim newly-past hours from the scrubber's left
+        // edge as real time advances (holds the user's playhead). Cheap + local — no fetch.
+        timeline.refreshNow();
         const d = await fetchState();
         if (!d) return;
         const sig = signatureOf(d);

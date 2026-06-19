@@ -2,6 +2,7 @@ import os
 import psycopg2
 from psycopg2.extras import RealDictCursor
 import logging
+from datetime import datetime
 from .shipping import get_vessel_class_from_type
 
 logger = logging.getLogger(__name__)
@@ -93,13 +94,20 @@ class Database:
         sog = body.get("Sog", 0.0)
         name = metadata.get("ShipName", "Unknown").strip()
 
+        raw_time_str = metadata.get("time_utc", "")
+        if raw_time_str:
+            clean_time_str = raw_time_str.replace(" UTC", "")
+            msg_datetime = datetime.strptime(clean_time_str, "%Y-%m-%d %H:%M:%S.%f %z")
+        else:
+            msg_datetime = datetime.now()  # Fallback just in case
+
         # Single atomic UPSERT to keep the parent record alive and accurate
         sql_upsert_ship = """
         INSERT INTO ships (mmsi, name, vessel_type, ais_tier, lat, lon, geom, nav_status, cog, sog, last_position_update)
         VALUES (
             %s, %s, %s, %s, %s, %s, 
             ST_SetSRID(ST_MakePoint(%s, %s), 4326), 
-            %s, %s, %s, NOW()
+            %s, %s, %s, %s
         )
         ON CONFLICT (mmsi) DO UPDATE 
         SET
@@ -121,18 +129,18 @@ class Database:
             nav_status = EXCLUDED.nav_status,
             cog = EXCLUDED.cog,
             sog = EXCLUDED.sog,
-            last_position_update = NOW();
+            last_position_update = EXCLUDED.last_position_update;
         """
 
         # Insert historical track (Safe from FK errors due to the UPSERT above)
         sql_history = """
         INSERT INTO ship_position (mmsi, lat, lon, geom, sog, cog, nav_status, acquired_at)
-        VALUES (%s, %s, %s, ST_SetSRID(ST_MakePoint(%s, %s), 4326), %s, %s, %s, NOW());
+        VALUES (%s, %s, %s, ST_SetSRID(ST_MakePoint(%s, %s), 4326), %s, %s, %s, %s);
         """
 
         try:
             with self.conn.cursor() as cur:
-                # Step 1: Upsert live parent vessel info
+                # Upsert live parent vessel info
                 cur.execute(
                     sql_upsert_ship,
                     (
@@ -147,12 +155,13 @@ class Database:
                         nav_status,
                         cog,
                         sog,
+                        msg_datetime
                     ),
                 )
 
-                # Step 2: Record positional history point
+                # Record positional history point
                 cur.execute(
-                    sql_history, (str(mmsi), lat, lon, lon, lat, sog, cog, nav_status)
+                    sql_history, (str(mmsi), lat, lon, lon, lat, sog, cog, nav_status, msg_datetime)
                 )
 
         except Exception as e:
@@ -201,7 +210,8 @@ class Database:
                                 'vessel_class', COALESCE(vessel_class, 'Unknown'),
                                 'imo', COALESCE(imo, 0),
                                 'callsign', COALESCE(callsign, 'N/A'),
-                                'draught', COALESCE(draught, 0.0)
+                                'draught', COALESCE(draught, 0.0),
+                                'last_position_update', to_jsonb(last_position_update)
                             )
                         )
                     ),

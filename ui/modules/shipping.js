@@ -1,5 +1,34 @@
 import { liveDataSync } from './_datasync.js';
 
+// Helper function: Now includes pluralization and date validation
+function formatLastUpdate(lastUpdateStr) {
+    if (!lastUpdateStr) return 'Unknown';
+
+    const lastUpdate = new Date(lastUpdateStr);
+
+    // Safety check: Ensure the date parsed correctly
+    if (isNaN(lastUpdate.getTime())) return 'Unknown';
+
+    const now = new Date();
+    const diffMs = now - lastUpdate;
+    const diffMins = Math.max(0, Math.floor(diffMs / (1000 * 60)));
+
+    if (diffMins > 59) {
+        const diffHours = Math.floor(diffMins / 60);
+        const remainingMins = diffMins % 60;
+
+        // Handle singular vs plural grammar
+        const hourLabel = diffHours === 1 ? 'hour' : 'hours';
+        const minLabel = remainingMins === 1 ? 'min' : 'mins';
+
+        const minuteStr = remainingMins > 0 ? ` ${remainingMins} ${minLabel}` : '';
+        return `${diffHours} ${hourLabel}${minuteStr} ago`;
+    }
+
+    if (diffMins === 0) return 'Just now';
+    return `${diffMins} ${diffMins === 1 ? 'minute' : 'minutes'} ago`;
+}
+
 export function loadLayer(map, config) {
     const sourceId = 'ships-source';
     const layerId  = 'ships-layer';
@@ -23,6 +52,10 @@ export function loadLayer(map, config) {
         map.getCanvas().style.cursor = 'pointer';
         const s = e.features[0].properties;
         const coords = e.features[0].geometry.coordinates.slice();
+
+        // Calculate the "Last seen" human-readable string
+        const lastSeenText = formatLastUpdate(s.last_position_update);
+
         popup.setLngLat(coords).setHTML(
             `<div style="font-family:sans-serif;font-size:12px;color:#000;padding:5px;">
                 <strong style="color:#007bff;font-size:14px;">${s.name}</strong><br>
@@ -36,7 +69,8 @@ export function loadLayer(map, config) {
                 <span style="color:#666;">Heading:</span> ${s.heading}°<br>
                 <span style="color:#666;">Length:</span> ${s.length}m |
                 <span style="color:#666;">Beam:</span> ${s.beam}m<br>
-                <span style="color:#666;">Speed:</span> ${s.speed}knots
+                <span style="color:#666;">Speed:</span> ${s.speed}knots<br>
+                <span style="color:#666;">Last seen:</span> ${lastSeenText}
             </div>`).addTo(map);
     };
     const onLeave = () => { map.getCanvas().style.cursor = ''; popup.remove(); };

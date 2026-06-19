@@ -59,6 +59,14 @@ export function loadLayer(map, config, fullConfig = {}) {
         colormap: () => buildLUT(),   // speed LUT (palette fixed for now)
         // max_speed_color is in km/h (user-facing); convert to m/s for the speed shader.
         maxSpeedColor: (cfg) => (Number(cfg.max_speed_color) > 0 ? Number(cfg.max_speed_color) : 100) / 3.6,
+        // Boundary-clump fix: wind particles that drift into land / no-data / data-edge
+        // cells stall at ~0 velocity and pile into static clumps. Recycle the near-dead
+        // ones FAST (big bump) but only within a narrow 0..3 m/s band (dropSpeed) so
+        // genuinely light-but-real winds above that keep full density. Config can still
+        // override via drop_rate_bump / drop_speed. (Currents use a separate engine; waves
+        // keep the gentler engine defaults — these overrides are wind-only.)
+        dropBump: (cfg) => (cfg.drop_rate_bump != null ? Number(cfg.drop_rate_bump) : 0.08),
+        dropSpeed: (cfg) => (cfg.drop_speed != null ? Number(cfg.drop_speed) : 3.0),
         onMount: addLegend,
         onRefresh: addLegend,         // re-draw if max_speed_color changed
         onUnmount: removeLegend,      // animated layer only -> legend hidden with barbs

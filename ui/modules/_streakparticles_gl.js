@@ -257,7 +257,13 @@ export function createStreakParticleGLController(map, opts) {
                                return isFinite(v) ? Math.min(5, Math.max(0.1, v)) : 1.0; },
         lenSpeedScale = 1.5,                              // fast wind streaks up to 2.5x longer
         dropRate = (cfg) => (cfg.drop_rate != null ? Number(cfg.drop_rate) : 0.003),
+        // Low-speed recycle bump: applied within u_dropSpeed of zero so near-stalled
+        // particles (land / no-data / data-edge boundaries) reset fast instead of piling
+        // into static clumps, while winds above the threshold keep full density. Defaults
+        // are gentle/wide (suit slow fields like waves); wind.js overrides to a hard,
+        // narrow band that clears its boundary clumps without thinning light winds.
         dropBump = (cfg) => (cfg.drop_rate_bump != null ? Number(cfg.drop_rate_bump) : 0.012),
+        dropSpeed = (cfg) => (cfg.drop_speed != null ? Number(cfg.drop_speed) : 10.0),
         maxSpeedColor = (cfg) => (Number(cfg.max_speed_color) > 0 ? Number(cfg.max_speed_color) : 30.0),
         useViewDensity = true,
         // Reset particles that wander onto land/no-data (alpha<0.5). Wind blows over
@@ -290,14 +296,14 @@ export function createStreakParticleGLController(map, opts) {
     let streakProgFailed = false;
 
     let curSpeed = 0.25, curAlpha = 0.9, curMaxSpeed = 30.0, curStreakLen = 9, curThick = 1.5,
-        curDropRate = 0.003, curDropBump = 0.012, curLandReset = 0.0;
+        curDropRate = 0.003, curDropBump = 0.012, curDropSpeed = 10.0, curLandReset = 0.0;
     let curBbox = [0, 0, 1, 1];
     let windReady = false, pendingWindImg = null, pendingLut = null, pendingRebuild = false;
 
     const applyParams = (cfg) => {
         curSpeed = speed(cfg) * speedScale; curAlpha = alpha(cfg); curMaxSpeed = maxSpeedColor(cfg);
         curStreakLen = streakLen(cfg); curThick = thickness(cfg);
-        curDropRate = dropRate(cfg); curDropBump = dropBump(cfg);
+        curDropRate = dropRate(cfg); curDropBump = dropBump(cfg); curDropSpeed = dropSpeed(cfg);
         curLandReset = landReset(cfg) > 0.5 ? 1.0 : 0.0;
     };
 
@@ -451,7 +457,7 @@ export function createStreakParticleGLController(map, opts) {
         gl.uniform1f(u('u_speed'), curSpeed);
         gl.uniform1f(u('u_dropRate'), curDropRate);
         gl.uniform1f(u('u_dropBump'), curDropBump);
-        gl.uniform1f(u('u_dropSpeed'), 10.0);
+        gl.uniform1f(u('u_dropSpeed'), curDropSpeed);
         gl.uniform1f(u('u_landReset'), curLandReset);
         gl.uniform4f(u('u_bboxPos'), curBbox[0], curBbox[1], curBbox[2], curBbox[3]);
         gl.uniform1f(u('u_seed'), Math.random());

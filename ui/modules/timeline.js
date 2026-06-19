@@ -115,6 +115,24 @@ function stopLoop() {
 export const timeline = {
   get: snapshot,
 
+  // Re-evaluate the 'now' origin against the current wall clock and trim newly-past
+  // hours from the left of the scrubber, holding the user's playhead (their valid-time).
+  // Called periodically by the boot poll so that, with the app open for hours, the
+  // scrubber's origin tracks real time forward instead of staying frozen where it was
+  // when the page loaded. Returns true if the origin actually moved (so callers can
+  // decide whether to act). No-op (no emit) when nothing changed, to avoid churn.
+  refreshNow() {
+    const nh = nowHour();
+    if (nh > state.minHour && nh <= state.maxHour) {
+      state.minHour = nh;
+      // Hold the user's position; only pull it forward if it's now in the trimmed past.
+      if (state.hour < state.minHour) state.hour = state.minHour;
+      emit();
+      return true;
+    }
+    return false;
+  },
+
   subscribe(fn) {
     subscribers.add(fn);
     // Immediately give the new subscriber the current state.
