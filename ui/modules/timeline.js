@@ -179,12 +179,18 @@ export const timeline = {
     if (typeof secondsPerHour === 'number' && secondsPerHour > 0) state.secondsPerHour = secondsPerHour;
     if (runEpochUtc !== undefined) state.runEpochUtc = runEpochUtc;
     if (validTimes !== undefined) state.validTimes = validTimes || {};
-    // On first configuration, start at the user's actual 'now' — the available hour
-    // whose valid time is closest to the wall clock. (Don't assume minHour == now:
-    // the earliest CATALOGUED hour can lag real time by hours, due to model-run
-    // publish latency and the ingest window, which would otherwise open the scrubber
-    // in the past.) Falls back to minHour if valid times aren't available yet.
-    if (initialise) state.hour = nowHour();
+    // On first configuration (initial load / reset), make the user's actual 'now' the
+    // ORIGIN of the scrubber: raise minHour to the available hour whose valid time is
+    // closest to the wall clock, so the zeroth position IS now and past forecast hours
+    // are hidden (the scrubber spans now -> future only). nowHour() is timezone-correct
+    // (uses absolute UTC validTimes). Only on initialise — a background data refresh must
+    // not keep ratcheting minHour forward as the clock advances and shrink the range
+    // under the user. Falls back gracefully if valid times aren't loaded yet.
+    if (initialise) {
+      const nh = nowHour();
+      if (nh > state.minHour && nh <= state.maxHour) state.minHour = nh;
+      state.hour = state.minHour;          // playhead at the new origin (= now)
+    }
     if (state.hour < state.minHour) state.hour = state.minHour;
     if (state.hour > state.maxHour) state.hour = state.maxHour;
     emit();
@@ -198,10 +204,16 @@ export const timeline = {
     state.refreshEpoch = Date.now();
     if (typeof minHour === 'number') state.minHour = Math.floor(minHour);
     if (typeof maxHour === 'number') state.maxHour = Math.max(state.minHour, Math.floor(maxHour));
+    if (validTimes !== undefined) state.validTimes = validTimes || {};
+    if (runEpochUtc !== undefined) state.runEpochUtc = runEpochUtc;
+    // Keep 'now' as the scrubber origin across background refreshes too (consistent with
+    // initialise): raise minHour to the now-hour so past forecast hours stay hidden. This
+    // does NOT move the user's current playhead — unlike initialise — so a refresh while
+    // they're parked on a future hour leaves them there; it only trims the hidden past.
+    const nh = nowHour();
+    if (nh > state.minHour && nh <= state.maxHour) state.minHour = nh;
     if (state.hour < state.minHour) state.hour = state.minHour;
     if (state.hour > state.maxHour) state.hour = state.maxHour;
-    if (runEpochUtc !== undefined) state.runEpochUtc = runEpochUtc;
-    if (validTimes !== undefined) state.validTimes = validTimes || {};
     emit();
   },
 };
