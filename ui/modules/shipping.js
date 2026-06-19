@@ -1,32 +1,31 @@
 import { liveDataSync } from './_datasync.js';
 
-// Helper function: Now includes pluralization and date validation
+// Helper function: Parses time difference into '3d 13h 20 mins ago' formats
 function formatLastUpdate(lastUpdateStr) {
     if (!lastUpdateStr) return 'Unknown';
 
     const lastUpdate = new Date(lastUpdateStr);
-
-    // Safety check: Ensure the date parsed correctly
     if (isNaN(lastUpdate.getTime())) return 'Unknown';
 
     const now = new Date();
-    const diffMs = now - lastUpdate;
-    const diffMins = Math.max(0, Math.floor(diffMs / (1000 * 60)));
+    const diffMs = Math.max(0, now - lastUpdate);
+    const totalMins = Math.floor(diffMs / (1000 * 60));
 
-    if (diffMins > 59) {
-        const diffHours = Math.floor(diffMins / 60);
-        const remainingMins = diffMins % 60;
+    if (totalMins === 0) return 'Just now';
 
-        // Handle singular vs plural grammar
-        const hourLabel = diffHours === 1 ? 'hour' : 'hours';
-        const minLabel = remainingMins === 1 ? 'min' : 'mins';
+    const days = Math.floor(totalMins / (60 * 24));
+    const hours = Math.floor((totalMins % (60 * 24)) / 60);
+    const mins = totalMins % 60;
 
-        const minuteStr = remainingMins > 0 ? ` ${remainingMins} ${minLabel}` : '';
-        return `${diffHours} ${hourLabel}${minuteStr} ago`;
-    }
+    const parts = [];
 
-    if (diffMins === 0) return 'Just now';
-    return `${diffMins} ${diffMins === 1 ? 'minute' : 'minutes'} ago`;
+    // Build the string dynamically based on the requested formats
+    if (days > 0) parts.push(`${days}d`);
+    if (hours > 0) parts.push(`${hours}h`);
+    if (mins > 0) parts.push(`${mins} mins`);
+
+    // If perfectly on the hour/day with 0 mins, it won't add a blank 'mins' string
+    return `${parts.join(' ')} ago`;
 }
 
 export function loadLayer(map, config) {
@@ -53,7 +52,7 @@ export function loadLayer(map, config) {
         const s = e.features[0].properties;
         const coords = e.features[0].geometry.coordinates.slice();
 
-        // Calculate the "Last seen" human-readable string
+        // Calculate the formatted time string
         const lastSeenText = formatLastUpdate(s.last_position_update);
 
         popup.setLngLat(coords).setHTML(
