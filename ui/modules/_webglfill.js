@@ -24,6 +24,10 @@ import { flagBackfill } from './_backfill.js';
  */
 
 const PREFETCH_AHEAD = 3;
+// How long to wait before re-fetching a per-hour texture that previously 404'd. Gives the
+// demand-driven backfill time to fetch the field + render the PNG, then the layer retries
+// (with a fresh cache-buster) so a backfilled hour appears without a manual reload.
+const FAILED_RETRY_MS = 15000;
 const MESH_COLS = 256;     // lon divisions of the globe fill mesh
 const MESH_ROWS = 128;     // lat divisions (Mercator-clamped range)
 const LAT_MAX = 85.051129; // Web Mercator limit (matches data texture extent)
@@ -212,7 +216,7 @@ void main(){
         gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(verts), gl.STATIC_DRAW);
     };
 
-    const makeHourTexture = (gl, hour) => {
+    const makeHourTexture = (gl, hour, bust = bustKey) => {
         const entry = { tex: gl.createTexture(), ready: false, loading: true };
         gl.bindTexture(gl.TEXTURE_2D, entry.tex);
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([0,0,0,0]));
@@ -232,15 +236,15 @@ void main(){
         };
         img.onerror = () => {
             entry.loading = false;
+            entry.failedAt = Date.now();   // mark so getHourTexture can retry post-backfill
             // The per-hour texture 404'd (this fires on a scrub to a missing hour for an
-            // already-mounted layer — the mount-time imageExists probe doesn't cover it).
-            // Flag demand-driven backfill for THIS specific hour. Override snap.hour so the
-            // key targets the hour that actually failed, not the timeline's current hour.
+            // already-mounted layer). Flag demand-driven backfill for THIS specific hour.
             flagBackfill(sectionKey, { ...timeline.get(), hour }, backfillKey);
         };
-        const src = hourDataUrl(curCfg, hour, bustKey);
+        const src = hourDataUrl(curCfg, hour, bust);
         if (!src) {                         // URL not resolvable yet (currents reconciler
             entry.loading = false;          // not ready) -> leave transparent, skip; no 404
+            entry.failedAt = Date.now();    // allow retry once it resolves
             return entry;
         }
         img.src = src;
@@ -249,7 +253,14 @@ void main(){
     const getHourTexture = (hour) => {
         if (!glRef || hour < 0 || hour > lastSnap.maxHour) return null;
         let e = texCache.get(hour);
-        if (!e) { e = makeHourTexture(glRef, hour); texCache.set(hour, e); }
+        // Retry a previously-failed hour (e.g. once a backfill has regenerated it). Re-fetch
+        // with a FRESH per-hour cache-buster so the browser doesn't serve the cached 404 —
+        // the frozen run-level bustKey alone wouldn't change the URL for the same filename.
+        if (e && e.failedAt && (Date.now() - e.failedAt) >= FAILED_RETRY_MS) {
+            texCache.delete(hour);
+            e = null;
+        }
+        if (!e) { e = makeHourTexture(glRef, hour, Date.now()); texCache.set(hour, e); }
         return e;
     };
     const prefetch = (from) => { for (let k = 0; k <= PREFETCH_AHEAD; k++) { const h = from + k; if (h >= 0 && h <= lastSnap.maxHour) getHourTexture(h); } };

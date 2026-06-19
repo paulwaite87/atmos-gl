@@ -45,7 +45,7 @@
     "cache_expiry_days": 3
   },
   "wind": {
-    "enabled": false,
+    "enabled": true,
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
     "outfile": "data/wind.png",
     "level_of_detail": "1",
@@ -62,7 +62,7 @@
     "cache_expiry_days": 3
   },
   "precipitation": {
-    "enabled": false,
+    "enabled": true,
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
     "outfile": "data/precipitation.png",
     "level_of_detail": "1",
@@ -74,7 +74,7 @@
     "cache_expiry_days": 3
   },
   "currents": {
-    "enabled": true,
+    "enabled": false,
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/rtofs/prod/",
     "outfile": "data/currents.png",
     "palette": "thermal_red",
@@ -167,7 +167,7 @@
     "runs_per_day": 8
   },
   "lightning": {
-    "enabled": false,
+    "enabled": true,
     "outfile": "data/lightning.json",
     "icon_zoom": 1,
     "strike_recent_minutes": 15,
@@ -176,7 +176,7 @@
     "runs_per_day": 24
   },
   "quakes": {
-    "enabled": false,
+    "enabled": true,
     "url": "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.csv",
     "outfile": "data/quakes.json",
     "icon_zoom": 0.7,
@@ -203,13 +203,13 @@
     "runs_per_day": 1
   },
   "shipping": {
-    "enabled": false,
+    "enabled": true,
     "outfile": "data/ships.json",
     "icon_zoom": 0.6,
     "runs_per_day": 24
   },
   "satellites": {
-    "enabled": false,
+    "enabled": true,
     "sat_names": [
       "ISS (ZARYA)",
       "HST"

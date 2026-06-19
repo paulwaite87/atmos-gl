@@ -411,16 +411,31 @@ export function createCurrentParticleGLLayer(map, opts) {
         else { gl.bindTexture(gl.TEXTURE_2D, cmapTex);
                gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 256, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, lut); }
     };
-    const loadVelocity = (cfg) => {
+    let velRetryTimer = null;
+    const loadVelocity = (cfg, bust = bustKey) => {
         const hour = timeline.get().hour;
-        const url = hourDataUrl(cfg, hour, bustKey);
-        if (!url) return;                            // URL not resolvable yet (e.g. currents
-                                                     // reconciler not ready) -> skip, no 404
+        const url = hourDataUrl(cfg, hour, bust);
+        if (!url) {
+            // URL not resolvable yet (currents reconciler not ready) -> retry shortly so
+            // the layer appears once forecast_state has loaded, without user action.
+            if (!velRetryTimer) velRetryTimer = setTimeout(() => {
+                velRetryTimer = null;
+                if (timeline.get().hour === hour) loadVelocity(cfg, Date.now());
+            }, 2000);
+            return;
+        }
         const img = new Image(); img.crossOrigin = 'anonymous';
         img.onload = () => { pendingVelImg = img; map.triggerRepaint(); };
         img.onerror = () => {
-            // Per-hour velocity texture 404'd — flag demand-driven backfill for this hour.
+            // Per-hour velocity texture 404'd — flag demand-driven backfill for this hour,
+            // then retry with a FRESH cache-buster after the backfill has had time to land
+            // (only if the user is still on this hour). The frozen run-level bustKey alone
+            // wouldn't change the URL, so the browser would serve the cached 404.
             flagBackfill(sectionKey, { ...timeline.get(), hour }, backfillKey);
+            if (!velRetryTimer) velRetryTimer = setTimeout(() => {
+                velRetryTimer = null;
+                if (timeline.get().hour === hour) loadVelocity(cfg, Date.now());
+            }, 15000);
         };
         img.src = url;
     };
