@@ -32,7 +32,7 @@
     "cache_expiry_days": 3
   },
   "isobars": {
-    "enabled": true,
+    "enabled": false,
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
     "outfile": "data/isobars.png",
     "level_of_detail": "3",
@@ -45,10 +45,10 @@
     "cache_expiry_days": 3
   },
   "wind": {
-    "enabled": false,
+    "enabled": true,
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
     "outfile": "data/wind.png",
-    "level_of_detail": "1",
+    "level_of_detail": "2",
     "particle_speed": 5,
     "particle_alpha": 80,
     "particle_size": 0.45,
@@ -60,7 +60,7 @@
     "cache_expiry_days": 3
   },
   "precipitation": {
-    "enabled": true,
+    "enabled": false,
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
     "outfile": "data/precipitation.png",
     "level_of_detail": "1",
@@ -151,7 +151,7 @@
     "cache_expiry_days": 3
   },
   "storms": {
-    "enabled": true,
+    "enabled": false,
     "jtwc_url": "https://www.ssd.noaa.gov/PS/TROP/DATA/ATCF/JTWC/",
     "nhc_url": "https://ftp.nhc.noaa.gov/atcf/fst/",
     "outfile": "data/storms.json",
@@ -174,7 +174,7 @@
     "runs_per_day": 24
   },
   "quakes": {
-    "enabled": true,
+    "enabled": false,
     "url": "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.csv",
     "outfile": "data/quakes.json",
     "icon_zoom": 0.7,
@@ -201,13 +201,13 @@
     "runs_per_day": 1
   },
   "shipping": {
-    "enabled": true,
+    "enabled": false,
     "outfile": "data/ships.json",
     "icon_zoom": 0.6,
     "runs_per_day": 24
   },
   "satellites": {
-    "enabled": true,
+    "enabled": false,
     "sat_names": [
       "ISS (ZARYA)",
       "HST"
