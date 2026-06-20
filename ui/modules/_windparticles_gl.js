@@ -47,6 +47,39 @@ vec2 decodePos(vec4 c){ return vec2(unpackPos(c.rg), unpackPos(c.ba)); }
 vec4 encodePos(vec2 p){ return vec4(packPos(p.x), packPos(p.y)); }
 float rand(vec2 co){ return fract(sin(dot(co, vec2(12.9898,78.233))) * 43758.5453); }`;
 
+// Alpha-weighted smoothed velocity sample. The raw GFS field is coarse and has sharp
+// shear lines / step-changes between cells; particles advecting along it collapse onto
+// those discontinuities (the "convergence line" artifacts). This averages the DECODED
+// velocity over a Gaussian-ish neighbourhood (radius u_smoothPx texels, ~3 cells) so the
+// flow field is coherent and streamlines don't pile onto edges.
+//   - ALPHA-WEIGHTED: only taps with data (a>=0.5) contribute, so we never blend the
+//     zero of a land/no-data cell into ocean wind (which would CREATE a false gradient
+//     and worsen coastline/dateline artifacts).
+//   - LONGITUDE WRAP: x offsets wrap via fract(), so the kernel is seamless across the
+//     antimeridian (dateline) — no seam there regardless of the encoder's edge columns.
+// Returns vec3(vx, vy, coverage): coverage<0.5 means no data nearby (treat as calm).
+const WSAMPLE = `
+uniform float u_smoothPx;
+vec3 sampleWindSmooth(sampler2D tex, vec2 p, float vmax){
+    vec2 texel = 1.0 / vec2(textureSize(tex, 0));
+    vec2 sumv = vec2(0.0); float sumw = 0.0;
+    // 3x3 Gaussian taps scaled by u_smoothPx (radius in texels). u_smoothPx<=0 -> single tap.
+    for (int j = -1; j <= 1; j++){
+        for (int i = -1; i <= 1; i++){
+            vec2 off = vec2(float(i), float(j)) * u_smoothPx * texel;
+            vec2 sp = vec2(fract(p.x + off.x + 1.0), clamp(p.y + off.y, 0.0, 1.0));
+            vec4 t = texture(tex, sp);
+            if (t.a >= 0.5){
+                float wgt = exp(-float(i*i + j*j) * 0.6);   // Gaussian-ish falloff
+                sumv += (t.rg * (2.0*vmax) - vmax) * wgt;
+                sumw += wgt;
+            }
+        }
+    }
+    if (sumw <= 0.0) return vec3(0.0, 0.0, 0.0);            // no data in neighbourhood
+    return vec3(sumv / sumw, 1.0);
+}`;
+
 // Advection in equirectangular [0,1] space. Wind propagates ALONG the encoded velocity
 // (no sign flip — that flip is a waves-only convention). Respawns inside the view box,
 // which may wrap the antimeridian (bmin.x > bmax.x).
@@ -66,11 +99,12 @@ layout(location = 1) out vec4 o_age;
 uniform sampler2D u_particles;
 uniform sampler2D u_age;
 uniform sampler2D u_wind;
-uniform float u_vmax, u_speed, u_seed, u_landReset, u_ageStep;
+uniform float u_vmax, u_speed, u_seed, u_landReset, u_ageStep, u_calmSpeed, u_calmDrop;
 uniform vec4 u_bboxPos;
 const float PI = 3.141592653589793;
 const float STEP = 0.0005;
 ${PACK}
+${WSAMPLE}
 void main(){
     vec2 pos = decodePos(texture(u_particles, v_uv));
     vec4 ageState = texture(u_age, v_uv);
@@ -78,8 +112,9 @@ void main(){
     float lifeFactor = ageState.g > 0.0 ? (0.5 + ageState.g) : 1.0;  // [0.5..1.5]
 
     float lat = (0.5 - pos.y) * PI;
-    vec4 w = texture(u_wind, pos);
-    vec2 vel = (w.a < 0.5) ? vec2(0.0) : (w.rg * (2.0*u_vmax) - u_vmax);
+    vec3 ws = sampleWindSmooth(u_wind, pos, u_vmax);
+    vec2 vel = ws.xy;                            // alpha-weighted smoothed velocity
+    float hasData = ws.z;                        // 0 = no data nearby
     float coslat = max(cos(lat), 0.05);
     vec2 d = vec2(vel.x / coslat * 0.5, -vel.y) * (u_speed * STEP);
     vec2 npos = pos + d;
@@ -106,10 +141,20 @@ void main(){
     bool lonOut = lonWrap ? (npos.x < bmin.x && npos.x > bmax.x)
                           : (npos.x < bmin.x || npos.x > bmax.x);
     bool outside = lonOut || (npos.y < bmin.y) || (npos.y > bmax.y);
-    // Respawn on: age expired (the timed lifecycle), leaving the domain/view, or onto
-    // land/no-data when landReset is on. NO speed-based drop -> no clumping.
+    // Calm-cell quick respawn: in genuinely low-wind cells (real troughs / lee zones)
+    // particles barely move, so they DWELL and pile up into bright lines even though the
+    // data is smooth. Give slow particles a respawn probability that ramps up as speed
+    // falls below u_calmSpeed, so they don't accumulate. This is gentle and narrow (only
+    // near-calm), unlike the old aggressive speed-drop — the age lifecycle still does the
+    // main recycling; this only de-clumps the calm troughs.
+    float spd = length(vel);
+    float calmDrop = (1.0 - clamp(spd / max(u_calmSpeed, 0.01), 0.0, 1.0)) * u_calmDrop;
+    bool calmReset = rand(seed + 3.9) < calmDrop;
+    // Respawn on: age expired (timed lifecycle), leaving the domain, calm-cell dwell, or
+    // land/no-data when landReset is on.
     bool reset = (age >= 1.0) || (npos.y <= 0.0) || (npos.y >= 1.0)
-                 || (u_landReset > 0.5 && w.a < 0.5)
+                 || (u_landReset > 0.5 && hasData < 0.5)
+                 || calmReset
                  || outside;
 
     if (reset) {
@@ -157,6 +202,7 @@ vec2 toMerc(vec2 p){
     float my = log(tan(WV_PI*0.25 + lat*0.5));
     return vec2(p.x, 0.5 - my/(2.0*WV_PI));
 }
+${WSAMPLE}
 void main(){
     int pid = gl_VertexID / 6;
     int corner = gl_VertexID - pid*6;
@@ -165,9 +211,9 @@ void main(){
     vec4 s = texelFetch(u_particles, ivec2(int(col), int(row)), 0);
     v_age = texelFetch(u_age, ivec2(int(col), int(row)), 0).r;
     vec2 pos = decodePos(s);
-    vec4 w = texture(u_wind, pos);
-    if (w.a < 0.5) { v_speed = 0.0; v_along = 0.0; v_age = 0.0; gl_Position = vec4(2.0, 2.0, 2.0, 1.0); return; }
-    vec2 vel = w.rg * (2.0*u_vmax) - u_vmax;
+    vec3 ws = sampleWindSmooth(u_wind, pos, u_vmax);
+    if (ws.z < 0.5) { v_speed = 0.0; v_along = 0.0; v_age = 0.0; gl_Position = vec4(2.0, 2.0, 2.0, 1.0); return; }
+    vec2 vel = ws.xy;                            // alpha-weighted smoothed velocity
     float spd = length(vel);
     v_speed = spd;
 
@@ -175,8 +221,21 @@ void main(){
     float coslat = max(cos(lat), 0.05);
     vec2 dirEq = vec2(vel.x / coslat, -vel.y);
     dirEq = (length(dirEq) > 1e-5) ? normalize(dirEq) : vec2(0.0, -1.0);
+    // Forward probe for the streak's screen-space direction. Longitude is periodic, but
+    // we must NOT let the probe straddle the antimeridian in screen space: if pos is at
+    // lon ~+180 and the step crosses to ~-180, the two projected points land on opposite
+    // edges of the map and (aN - cN) becomes a huge horizontal vector (streak explodes),
+    // while clamping the probe instead collapses the E-W component (streak flicks vertical
+    // — the reported artifact). Fix: probe forward unwrapped; if that lands across the
+    // seam, probe BACKWARD instead and negate, so the direction is always a small, correct
+    // local step on the same side of the seam.
     vec2 posA = pos + dirEq * u_eps;
-    posA.x = clamp(posA.x, 0.0002, 0.9998);
+    float dirSign = 1.0;
+    if (posA.x < 0.0 || posA.x > 1.0) {          // forward step crossed the seam
+        posA = pos - dirEq * u_eps;              // probe the other way
+        dirSign = -1.0;
+        posA.x = clamp(posA.x, 0.0002, 0.9998);  // safe: backward step stays in-domain
+    }
     posA.y = clamp(posA.y, 0.0002, 0.9998);
 
     vec4 cClip = projectTile(toMerc(pos));
@@ -188,7 +247,7 @@ void main(){
     if (cClip.w <= 0.0001 || aClip.w <= 0.0001) { v_speed = 0.0; v_along = 0.0; v_age = 0.0; gl_Position = vec4(2.0, 2.0, 2.0, 1.0); return; }
     vec2 cN = cClip.xy / cClip.w;
     vec2 aN = aClip.xy / aClip.w;
-    vec2 pxDir = (aN - cN) * (u_viewport * 0.5);
+    vec2 pxDir = (aN - cN) * (u_viewport * 0.5) * dirSign;
     vec2 sdir = (length(pxDir) > 1e-4) ? normalize(pxDir) : vec2(0.0, 1.0);   // flow dir (screen)
     vec2 perp = vec2(-sdir.y, sdir.x);
 
@@ -216,14 +275,19 @@ in float v_along;
 in float v_age;
 out vec4 fragColor;
 uniform sampler2D u_cmap;
-uniform float u_maxspeed, u_alpha;
+uniform float u_maxspeed, u_alpha, u_calmFade;
 void main(){
     float t = clamp(v_speed / u_maxspeed, 0.0, 1.0);
     float grad = smoothstep(-1.0, 1.0, v_along);            // bright head, faint tail
     float fadeIn  = smoothstep(0.0, 0.15, v_age);           // born -> visible
     float fadeOut = 1.0 - smoothstep(0.75, 1.0, v_age);     // visible -> gone
     float envelope = fadeIn * fadeOut;
-    fragColor = vec4(texture(u_cmap, vec2(t, 0.5)).rgb, u_alpha * grad * envelope);
+    // Speed fade: dim particles in low-wind areas so real calm troughs read as faint
+    // (windy.com style) rather than as bright crowded lines. u_calmFade in [0,1] sets how
+    // strongly low speed dims: 0 = no dimming, 1 = calm fully fades to nothing. Ramps with
+    // speed up to ~30% of u_maxspeed.
+    float spdFade = mix(1.0 - u_calmFade, 1.0, smoothstep(0.0, 0.3, t));
+    fragColor = vec4(texture(u_cmap, vec2(t, 0.5)).rgb, u_alpha * grad * envelope * spdFade);
 }`;
     return { VS, FS };
 };
@@ -285,11 +349,30 @@ export function createWindParticleGLController(map, opts) {
                                return isFinite(v) ? Math.min(5, Math.max(0.1, v)) : 1.0; },
         lenSpeedScale = 1.5,                              // fast wind streaks up to 2.5x longer
         // Age lifecycle (windy.com look): each frame a particle's normalized age advances
-        // by ageStep / lifetimeFactor; at age>=1 it respawns. Smaller ageStep => longer-
-        // lived particles (slower fade in/out, longer trails before rebirth). The
-        // particle_lifetime config (frames-to-live, default 250) maps to ageStep = 1/N.
+        // by ageStep / lifetimeFactor; at age>=1 it respawns. particle_lifetime is frames-
+        // to-live (ageStep = 1/N). DEFAULT 70 (was 250): with a long lifetime particles
+        // advect across whole oceans before respawning and self-organize into FILAMENTS
+        // along the flow's convergence lines (the "streaming artifact" — particles collect
+        // onto a track even though the DATA itself is smooth). A shorter life makes them
+        // fade and respawn before that bunching becomes visible, like windy.com. Raise
+        // toward 120 for longer trails if the filamenting stays acceptable.
         ageStep = (cfg) => { const n = Number(cfg.particle_lifetime);
-                             return 1.0 / (isFinite(n) && n > 10 ? n : 250); },
+                             return 1.0 / (isFinite(n) && n > 10 ? n : 70); },
+        // Velocity-field smoothing radius in TEXELS for the advection sample. The GFS
+        // field is already fairly smooth (the "streaming" lines were particle filamentation
+        // from over-long lifetimes, NOT data roughness), so this is a light touch by
+        // default — just enough to take the edge off orographic shear without washing out
+        // real detail. 0 disables. Config: wind_smooth (cells).
+        smoothPx = (cfg) => { const v = Number(cfg.wind_smooth);
+                              return isFinite(v) && v >= 0 ? v : 1.5; },
+        // Calm-zone handling — stops real low-wind troughs rendering as bright crowded
+        // lines. calmSpeed: speed (m/s) below which a cell counts as "calm". calmDrop:
+        // peak per-frame respawn probability at zero speed (ramps to 0 at calmSpeed) so
+        // slow particles don't dwell/accumulate. calmFade: how strongly low speed dims
+        // opacity [0..1] (calm reads faint, like windy.com).
+        calmSpeed = (cfg) => { const v = Number(cfg.calm_speed); return isFinite(v) && v > 0 ? v : 2.5; },
+        calmDrop  = (cfg) => { const v = Number(cfg.calm_drop);  return isFinite(v) && v >= 0 ? v : 0.06; },
+        calmFade  = (cfg) => { const v = Number(cfg.calm_fade);  return isFinite(v) && v >= 0 ? v : 0.6; },
         maxSpeedColor = (cfg) => (Number(cfg.max_speed_color) > 0 ? Number(cfg.max_speed_color) : 30.0),
         useViewDensity = true,
         // Reset particles that wander onto land/no-data (alpha<0.5). Wind blows over
@@ -322,14 +405,16 @@ export function createWindParticleGLController(map, opts) {
     let streakProgFailed = false;
 
     let curSpeed = 0.25, curAlpha = 0.9, curMaxSpeed = 30.0, curStreakLen = 9, curThick = 1.5,
-        curAgeStep = 0.004, curLandReset = 0.0;
+        curAgeStep = 0.014, curSmoothPx = 1.5, curLandReset = 0.0,
+        curCalmSpeed = 2.5, curCalmDrop = 0.06, curCalmFade = 0.6;
     let curBbox = [0, 0, 1, 1];
     let windReady = false, pendingWindImg = null, pendingLut = null, pendingRebuild = false;
 
     const applyParams = (cfg) => {
         curSpeed = speed(cfg) * speedScale; curAlpha = alpha(cfg); curMaxSpeed = maxSpeedColor(cfg);
         curStreakLen = streakLen(cfg); curThick = thickness(cfg);
-        curAgeStep = ageStep(cfg);
+        curAgeStep = ageStep(cfg); curSmoothPx = smoothPx(cfg);
+        curCalmSpeed = calmSpeed(cfg); curCalmDrop = calmDrop(cfg); curCalmFade = calmFade(cfg);
         curLandReset = landReset(cfg) > 0.5 ? 1.0 : 0.0;
     };
 
@@ -503,6 +588,9 @@ export function createWindParticleGLController(map, opts) {
         gl.uniform1f(u('u_vmax'), vmax);
         gl.uniform1f(u('u_speed'), curSpeed);
         gl.uniform1f(u('u_ageStep'), curAgeStep);
+        gl.uniform1f(u('u_smoothPx'), curSmoothPx);
+        gl.uniform1f(u('u_calmSpeed'), curCalmSpeed);
+        gl.uniform1f(u('u_calmDrop'), curCalmDrop);
         gl.uniform1f(u('u_landReset'), curLandReset);
         gl.uniform4f(u('u_bboxPos'), curBbox[0], curBbox[1], curBbox[2], curBbox[3]);
         gl.uniform1f(u('u_seed'), Math.random());
@@ -543,6 +631,8 @@ export function createWindParticleGLController(map, opts) {
         gl.uniform1f(u('u_eps'), eps);
         gl.uniform1f(u('u_lenSpeedScale'), lenSpeedScale);
         gl.uniform1f(u('u_maxspeed'), curMaxSpeed);
+        gl.uniform1f(u('u_smoothPx'), curSmoothPx);
+        gl.uniform1f(u('u_calmFade'), curCalmFade);
         gl.uniform1f(u('u_alpha'), curAlpha);
         gl.disable(gl.DEPTH_TEST);
         gl.enable(gl.BLEND);
