@@ -57,57 +57,51 @@ float rand(vec2 co){
     return fract((p3.x + p3.y) * p3.z);
 }`;
 
-// Smoothed velocity via BICUBIC B-spline interpolation (Tier 2). Replaces the box-Gaussian:
-// bicubic is C1-continuous, so the interpolated flow has no tap-structure or facet kinks —
-// streamlines curve smoothly through coarse-grid shear instead of bending along cell edges.
-//   - WIDTH: u_smoothPx scales the support. At 1 it's a tight ~2-cell bicubic (preserves
-//     detail); higher widens the cell spacing (the 4x4 stencil samples on a coarser grid)
-//     to blend broader shear — smoothly, because the cubic weights stay continuous.
-//   - LONGITUDE WRAP via fract(): seamless across the antimeridian.
-//   - ALPHA-WEIGHTED: no-data taps excluded, so land/edges never bleed in (wind has no
-//     mask, but kept correct for safety and for any masked reuse).
-// Returns vec3(vx, vy, coverage).
+// Alpha-weighted smoothed velocity sample. The raw GFS field is coarse and has sharp
+// shear lines / step-changes between cells; particles advecting along it collapse onto
+// those discontinuities (the "convergence line" artifacts). This averages the DECODED
+// velocity over a Gaussian-ish neighbourhood (radius u_smoothPx texels, ~3 cells) so the
+// flow field is coherent and streamlines don't pile onto edges.
+//   - ALPHA-WEIGHTED: only taps with data (a>=0.5) contribute, so we never blend the
+//     zero of a land/no-data cell into ocean wind (which would CREATE a false gradient
+//     and worsen coastline/dateline artifacts).
+//   - LONGITUDE WRAP: x offsets wrap via fract(), so the kernel is seamless across the
+//     antimeridian (dateline) — no seam there regardless of the encoder's edge columns.
+// Returns vec3(vx, vy, coverage): coverage<0.5 means no data nearby (treat as calm).
 const WSAMPLE = `
 uniform float u_smoothPx;
-// Cubic B-spline basis weights for offsets {-1,0,+1,+2} relative to the cell, given the
-// fractional position f in [0,1]. B-spline (approximating, not interpolating) gives a
-// SMOOTH C1 field with no kinks at cell edges — the property bilinear lacks and the
-// reason the literature points to bicubic for shear. Weights sum to 1.
-vec4 bsplineW(float f){
-    float f2 = f*f, f3 = f2*f;
-    return vec4(
-        (1.0 - 3.0*f + 3.0*f2 - f3) / 6.0,    // tap at -1
-        (4.0 - 6.0*f2 + 3.0*f3)     / 6.0,    // tap at  0
-        (1.0 + 3.0*f + 3.0*f2 - 3.0*f3) / 6.0,// tap at +1
-        f3 / 6.0                              // tap at +2
-    );
-}
 vec3 sampleWindSmooth(sampler2D tex, vec2 p, float vmax){
-    vec2 texSize = vec2(textureSize(tex, 0));
-    float s = max(u_smoothPx, 1.0);              // cell spacing in texels (>=1)
-    vec2 invReal = 1.0 / texSize;
-    vec2 tc = p * (texSize / s) - 0.5;           // position in coarse-cell units
-    vec2 base = floor(tc);
-    vec2 f = fract(tc);
-    vec4 wx = bsplineW(f.x);
-    vec4 wy = bsplineW(f.y);
+    vec2 texel = 1.0 / vec2(textureSize(tex, 0));
     vec2 sumv = vec2(0.0); float sumw = 0.0;
-    for (int j = 0; j < 4; j++){
-        for (int i = 0; i < 4; i++){
-            // coarse-cell index -> real UV at the cell centre
-            vec2 cpos = base + vec2(float(i) - 1.0, float(j) - 1.0);
-            vec2 uv = (cpos + 0.5) * s * invReal;
-            uv.x = fract(uv.x + 1.0);             // wrap longitude
-            uv.y = clamp(uv.y, 0.0, 1.0);         // clamp latitude (poles not periodic)
-            vec4 t = texture(tex, uv);
+    // 5x5 CONTIGUOUS Gaussian. Taps are spaced at (u_smoothPx/2) texels so the 5-wide
+    // stencil spans a continuous ±u_smoothPx-texel neighbourhood with NO gaps between
+    // samples (the old 3x3 at ±u_smoothPx sampled sparsely — widening it just aliased,
+    // it never actually blurred). Bilinear filtering fills between taps. This genuinely
+    // blends sharp velocity SHEAR interfaces (e.g. westerly meeting southerly) that the
+    // coarse GFS grid renders as a hard step, so particle paths curve through the
+    // transition instead of slamming into a wall of cross-flow. Alpha-weighted so no-data
+    // cells never bleed in; u_smoothPx<=0 falls back to a single centre tap.
+    float step = max(u_smoothPx, 0.0) * 0.5;
+    if (step <= 0.0){
+        vec4 t = texture(tex, p);
+        if (t.a < 0.5) return vec3(0.0);
+        return vec3(t.rg * (2.0*vmax) - vmax, 1.0);
+    }
+    float sigma2 = max(u_smoothPx*u_smoothPx, 0.25);   // Gaussian variance in texels
+    for (int j = -2; j <= 2; j++){
+        for (int i = -2; i <= 2; i++){
+            vec2 off = vec2(float(i), float(j)) * step * texel;
+            vec2 sp = vec2(fract(p.x + off.x + 1.0), clamp(p.y + off.y, 0.0, 1.0));
+            vec4 t = texture(tex, sp);
             if (t.a >= 0.5){
-                float w = wx[i] * wy[j];
-                sumv += (t.rg * (2.0*vmax) - vmax) * w;
-                sumw += w;
+                float d2 = float(i*i + j*j) * step * step;     // texel² distance
+                float wgt = exp(-d2 / (2.0 * sigma2));
+                sumv += (t.rg * (2.0*vmax) - vmax) * wgt;
+                sumw += wgt;
             }
         }
     }
-    if (sumw <= 0.0) return vec3(0.0, 0.0, 0.0);  // no data in neighbourhood
+    if (sumw <= 0.0) return vec3(0.0, 0.0, 0.0);            // no data in neighbourhood
     return vec3(sumv / sumw, 1.0);
 }`;
 
@@ -330,7 +324,104 @@ void main(){
     return { VS, FS };
 };
 
-// ---- controller -----------------------------------------------------------
+// ============================================================================
+// FADE-ACCUMULATION TRAIL RENDERING (the authentic earth.nullschool / Agafonkin /
+// windy.com approach). Instead of stamping an oriented STREAK QUAD per particle each
+// frame (which can't follow a curving streamline -> the "sideways"/shear-intersection
+// look), particles are drawn as 1px POINTS into a persistent screen-space buffer that is
+// slightly FADED every frame. The visible trails are therefore the accumulated, decaying
+// path each point actually traces — automatically smooth and curved, with no orientation
+// to be wrong. Flow:
+//   bgTex (last frame's trails) --fade--> screenTex ; draw points on top ; composite
+//   screenTex over the map ; swap bg<->screen.
+// On a globe the buffer is screen-space, so a camera move invalidates it -> we clear and
+// let it rebuild (windy does the same: trails are brief while you drag, build when still).
+// ============================================================================
+
+// Fullscreen quad in clip space; v_uv in [0,1]. Used for both the fade and the composite.
+const SCREEN_QUAD_VS = `#version 300 es
+precision highp float;
+in vec2 a_pos;
+out vec2 v_uv;
+void main(){
+    v_uv = a_pos;
+    gl_Position = vec4(2.0*a_pos - 1.0, 0.0, 1.0);
+}`;
+
+// Samples a texture and scales by u_opacity. The floor() forces the value to actually
+// reach zero as it fades (plain *0.96 each frame asymptotes and leaves permanent ghosts).
+// When u_opacity == 1.0 it's a straight copy/composite.
+const SCREEN_FS = `#version 300 es
+precision highp float;
+in vec2 v_uv;
+out vec4 fragColor;
+uniform sampler2D u_screen;
+uniform float u_opacity;
+void main(){
+    vec4 c = texture(u_screen, v_uv);
+    fragColor = floor(255.0 * c * u_opacity) / 255.0;
+}`;
+
+// Particle POINT vertex shader BODY (assembled with MapLibre's projection prelude, like
+// the streak VS, so projectTile() + the globe clipping plane are available). Reads each
+// particle's position + age from the state textures via gl_VertexID, projects to clip,
+// and colours by smoothed wind speed with the same age + calm opacity envelope the streak
+// path used (so particles still fade in/out and stay faint in calm air).
+const POINT_VS_BODY = `
+precision highp float;
+uniform sampler2D u_particles;
+uniform sampler2D u_age;
+uniform sampler2D u_wind;
+uniform sampler2D u_cmap;
+uniform float u_res, u_vmax, u_maxspeed, u_pointSize, u_smoothPx, u_calmFade, u_alpha;
+out vec4 v_color;
+const float WV_PI = 3.141592653589793;
+const float WV_LATMAX = 1.4844222297453324;
+float unpackPos(vec2 c){ return (c.x*255.0*256.0 + c.y*255.0)/65535.0; }
+vec2 decodePos(vec4 c){ return vec2(unpackPos(c.rg), unpackPos(c.ba)); }
+vec2 toMerc(vec2 p){
+    float lat = clamp((0.5 - p.y) * WV_PI, -WV_LATMAX, WV_LATMAX);
+    float my = log(tan(WV_PI*0.25 + lat*0.5));
+    return vec2(p.x, 0.5 - my/(2.0*WV_PI));
+}
+${WSAMPLE}
+void main(){
+    int pid = gl_VertexID;
+    float col = mod(float(pid), u_res);
+    float row = floor(float(pid) / u_res);
+    vec4 s = texelFetch(u_particles, ivec2(int(col), int(row)), 0);
+    float age = texelFetch(u_age, ivec2(int(col), int(row)), 0).r;
+    vec2 pos = decodePos(s);
+    vec3 ws = sampleWindSmooth(u_wind, pos, u_vmax);
+    vec4 cClip = projectTile(toMerc(pos));
+    // Discard no-data and points at/behind the globe horizon (the clipping plane in the
+    // prelude handles the far hemisphere; the w guard handles the camera plane).
+    if (ws.z < 0.5 || cClip.w <= 0.0001) {
+        gl_Position = vec4(2.0, 2.0, 2.0, 1.0); gl_PointSize = 0.0; v_color = vec4(0.0); return;
+    }
+    gl_Position = cClip;
+    gl_PointSize = u_pointSize;
+    float spd = length(ws.xy);
+    float t = clamp(spd / u_maxspeed, 0.0, 1.0);
+    vec3 rgb = texture(u_cmap, vec2(t, 0.5)).rgb;
+    float fadeIn  = smoothstep(0.0, 0.15, age);
+    float fadeOut = 1.0 - smoothstep(0.75, 1.0, age);
+    float spdFade = mix(1.0 - u_calmFade, 1.0, smoothstep(0.0, 0.3, t));
+    v_color = vec4(rgb, u_alpha * fadeIn * fadeOut * spdFade);
+}`;
+
+// Point fragment shader: soft round dot (circular falloff via gl_PointCoord) so trails are
+// smooth, not blocky.
+const POINT_FS = `#version 300 es
+precision highp float;
+in vec4 v_color;
+out vec4 fragColor;
+void main(){
+    float d = length(gl_PointCoord - vec2(0.5));
+    float a = smoothstep(0.5, 0.15, d);
+    if (a <= 0.0) discard;
+    fragColor = vec4(v_color.rgb, v_color.a * a);
+}`;
 
 export function createWindParticleGLController(map, opts) {
     const {
@@ -385,12 +476,7 @@ export function createWindParticleGLController(map, opts) {
         // particle_size: streak thickness in px (0.1-5).
         thickness = (cfg) => { const v = Number(cfg.particle_size);
                                return isFinite(v) ? Math.min(5, Math.max(0.1, v)) : 1.0; },
-        lenSpeedScale = 0.6,                             // fast wind streaks up to 1.6x longer
-        //   ^ reduced from 1.5: a long STRAIGHT streak can't follow a CURVING streamline,
-        //   so in shear/high-curvature zones the streak's tail sits off the particle's
-        //   real (curved) path and reads as the particle "sliding sideways" to where it
-        //   points. The deviation scales with streak length, so shorter streaks (esp. the
-        //   fast ones that this scale lengthens) directly reduce the sideways look.
+        lenSpeedScale = 1.5,                              // fast wind streaks up to 2.5x longer
         // Age lifecycle (windy.com look): each frame a particle's normalized age advances
         // by ageStep / lifetimeFactor; at age>=1 it respawns. particle_lifetime is frames-
         // to-live (ageStep = 1/N). DEFAULT 70 (was 250): with a long lifetime particles
@@ -401,14 +487,15 @@ export function createWindParticleGLController(map, opts) {
         // toward 120 for longer trails if the filamenting stays acceptable.
         ageStep = (cfg) => { const n = Number(cfg.particle_lifetime);
                              return 1.0 / (isFinite(n) && n > 10 ? n : 70); },
-        // Bicubic support: the coarse-cell SPACING in texels for the B-spline interpolation
-        // (see sampleWindSmooth). The 0.25° GFS grid renders sharp velocity SHEAR interfaces
-        // (e.g. westerly meeting southerly) as near-steps; bicubic blends them into a smooth
-        // C1 transition so streamlines curve through. ~2 (the 4x4 stencil spans ~8 texels)
-        // is a smooth-but-detailed default; raise toward 3 to blend broader shear (softer,
-        // less detail), drop to 1 for a tight detail-preserving bicubic. Config: wind_smooth.
+        // Velocity-field smoothing radius in TEXELS for the advection sample, applied via
+        // a contiguous 5x5 Gaussian (see sampleWindSmooth). The coarse 0.25° GFS grid
+        // renders sharp velocity SHEAR interfaces (e.g. westerly meeting southerly) as a
+        // hard step — particles slam into a wall of cross-flow instead of curving through.
+        // ~4 cells (±1°) blends those transitions so streamlines bend gradually, like real
+        // air at sub-grid scale. Lower toward 2 to preserve more fine detail; 0 disables.
+        // Config: wind_smooth (cells).
         smoothPx = (cfg) => { const v = Number(cfg.wind_smooth);
-                              return isFinite(v) && v >= 0 ? v : 2.0; },
+                              return isFinite(v) && v >= 0 ? v : 4.0; },
         // Calm-zone handling — stops real low-wind troughs rendering as bright crowded
         // lines. calmSpeed: speed (m/s) below which a cell counts as "calm". calmDrop:
         // peak per-frame respawn probability at zero speed (ramps to 0 at calmSpeed) so
@@ -417,6 +504,17 @@ export function createWindParticleGLController(map, opts) {
         calmSpeed = (cfg) => { const v = Number(cfg.calm_speed); return isFinite(v) && v > 0 ? v : 2.5; },
         calmDrop  = (cfg) => { const v = Number(cfg.calm_drop);  return isFinite(v) && v >= 0 ? v : 0.06; },
         calmFade  = (cfg) => { const v = Number(cfg.calm_fade);  return isFinite(v) && v >= 0 ? v : 0.6; },
+        // Render mode: 'trails' = fade-accumulation point trails (authentic windy look);
+        // 'streaks' = the legacy oriented-quad streaks (kept as a fallback). Config:
+        // render_mode.
+        renderMode = (cfg) => (String(cfg.render_mode || 'trails') === 'streaks' ? 'streaks' : 'trails'),
+        // Point diameter in DEVICE pixels for trail mode (multiplied by nothing — already
+        // device px). ~2 gives the fine windy look. Config: point_size.
+        pointSize = (cfg) => { const v = Number(cfg.point_size); return isFinite(v) && v > 0 ? v : 2.0; },
+        // Per-frame trail persistence [0..1): higher = longer trails (slower fade). ~0.96
+        // is the windy-ish default; 0.9 = short trails, 0.985 = long. Config: trail_persist.
+        fadeOpacity = (cfg) => { const v = Number(cfg.trail_persist);
+                                 return isFinite(v) && v > 0 && v < 1 ? v : 0.96; },
         maxSpeedColor = (cfg) => (Number(cfg.max_speed_color) > 0 ? Number(cfg.max_speed_color) : 30.0),
         useViewDensity = true,
         // Reset particles that wander onto land/no-data (alpha<0.5). Wind blows over
@@ -448,9 +546,19 @@ export function createWindParticleGLController(map, opts) {
     const streakProgCache = new Map();
     let streakProgFailed = false;
 
+    // ---- fade-accumulation trail resources ----
+    let quadProg = null, vaoQuad = null;          // fullscreen quad (fade + composite)
+    let trailTex = [null, null], trailFbo = null, trailCur = 0;
+    let trailW = 0, trailH = 0;                   // current trail-buffer size (device px)
+    let resetTrails = true;                       // clear pending (first frame / move / resize)
+    let lastMatrix = null;                        // camera-move detection
+    const pointProgCache = new Map();
+    let pointProgFailed = false;
+
     let curSpeed = 0.25, curAlpha = 0.9, curMaxSpeed = 30.0, curStreakLen = 9, curThick = 1.5,
-        curAgeStep = 0.0167, curSmoothPx = 2.0, curLandReset = 0.0,
-        curCalmSpeed = 2.5, curCalmDrop = 0.06, curCalmFade = 0.6;
+        curAgeStep = 0.0167, curSmoothPx = 4.0, curLandReset = 0.0,
+        curCalmSpeed = 2.5, curCalmDrop = 0.06, curCalmFade = 0.6,
+        curRenderMode = 'trails', curPointSize = 2.0, curFadeOpacity = 0.96;
     let curBbox = [0, 0, 1, 1];
     let windReady = false, pendingWindImg = null, pendingLut = null, pendingRebuild = false;
 
@@ -460,6 +568,7 @@ export function createWindParticleGLController(map, opts) {
         curAgeStep = ageStep(cfg); curSmoothPx = smoothPx(cfg);
         curCalmSpeed = calmSpeed(cfg); curCalmDrop = calmDrop(cfg); curCalmFade = calmFade(cfg);
         curLandReset = landReset(cfg) > 0.5 ? 1.0 : 0.0;
+        curRenderMode = renderMode(cfg); curPointSize = pointSize(cfg); curFadeOpacity = fadeOpacity(cfg);
     };
 
     // equirect [0,1] respawn box. Latitude from bounds; longitude from centre + zoom
@@ -684,6 +793,132 @@ export function createWindParticleGLController(map, opts) {
         gl.drawArrays(gl.TRIANGLES, 0, count * 6);
     };
 
+    // ---- fade-accumulation trail rendering ----
+    // Build (or rebuild on resize) the two screen-sized ping-pong trail textures + the FBO.
+    const buildTrails = (gl, w, h) => {
+        for (let i = 0; i < 2; i++) {
+            if (trailTex[i]) gl.deleteTexture(trailTex[i]);
+            // start blank (zeros) so there are no garbage trails on first frame
+            trailTex[i] = makeTex(gl, w, h, new Uint8Array(w * h * 4), gl.LINEAR, gl.CLAMP_TO_EDGE);
+        }
+        if (!trailFbo) trailFbo = gl.createFramebuffer();
+        trailW = w; trailH = h; trailCur = 0; resetTrails = true;
+    };
+    // Clear both trail textures to transparent (on first frame, resize, or camera move).
+    const clearTrails = (gl) => {
+        const prevFbo = gl.getParameter(gl.FRAMEBUFFER_BINDING);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, trailFbo);
+        for (let i = 0; i < 2; i++) {
+            gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, trailTex[i], 0);
+            gl.clearColor(0, 0, 0, 0);
+            gl.clear(gl.COLOR_BUFFER_BIT);
+        }
+        gl.bindFramebuffer(gl.FRAMEBUFFER, prevFbo);
+    };
+
+    // Point program is built per MapLibre shader variant (same prelude mechanism as streaks).
+    const getPointProg = (gl, shaderData) => {
+        const key = shaderData.variantName || '__default__';
+        if (pointProgCache.has(key)) return pointProgCache.get(key);
+        if (pointProgFailed) return null;
+        const vs = `#version 300 es\n${shaderData.vertexShaderPrelude}\n${shaderData.define}\n${POINT_VS_BODY}`;
+        const prog = linkProg(gl, vs, POINT_FS);
+        if (!prog) { pointProgFailed = true; return null; }
+        pointProgCache.set(key, prog);
+        return prog;
+    };
+
+    // Draw a texture over the bound framebuffer via the fullscreen quad at the given opacity
+    // (opacity<1 = fade pass; opacity==1 = composite). Caller sets blend state.
+    const drawQuad = (gl, tex, opacity) => {
+        gl.useProgram(quadProg);
+        gl.bindVertexArray(vaoQuad);
+        gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, tex);
+        gl.uniform1i(gl.getUniformLocation(quadProg, 'u_screen'), 0);
+        gl.uniform1f(gl.getUniformLocation(quadProg, 'u_opacity'), opacity);
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+    };
+
+    // Draw all particles as soft points into the currently-bound framebuffer.
+    const drawPoints = (gl, args) => {
+        const prog = getPointProg(gl, args.shaderData);
+        if (!prog) return false;
+        gl.useProgram(prog);
+        gl.bindVertexArray(vaoStreaks);                 // empty VAO (positions via gl_VertexID)
+        const u = (n) => gl.getUniformLocation(prog, n);
+        const pd = args.defaultProjectionData;
+        gl.uniformMatrix4fv(u('u_projection_matrix'), false, pd.mainMatrix);
+        gl.uniformMatrix4fv(u('u_projection_fallback_matrix'), false, pd.fallbackMatrix);
+        gl.uniform4f(u('u_projection_clipping_plane'),
+            pd.clippingPlane[0], pd.clippingPlane[1], pd.clippingPlane[2], pd.clippingPlane[3]);
+        gl.uniform1f(u('u_projection_transition'), pd.projectionTransition);
+        gl.uniform4f(u('u_projection_tile_mercator_coords'),
+            pd.tileMercatorCoords[0], pd.tileMercatorCoords[1],
+            pd.tileMercatorCoords[2], pd.tileMercatorCoords[3]);
+        gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, stateTex[stateCur]);
+        gl.uniform1i(u('u_particles'), 0);
+        gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, windTex);
+        gl.uniform1i(u('u_wind'), 1);
+        gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, cmapTex);
+        gl.uniform1i(u('u_cmap'), 2);
+        gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D, ageTex[stateCur]);
+        gl.uniform1i(u('u_age'), 3);
+        gl.uniform1f(u('u_res'), RES);
+        gl.uniform1f(u('u_vmax'), vmax);
+        gl.uniform1f(u('u_maxspeed'), curMaxSpeed);
+        gl.uniform1f(u('u_pointSize'), curPointSize);
+        gl.uniform1f(u('u_smoothPx'), curSmoothPx);
+        gl.uniform1f(u('u_calmFade'), curCalmFade);
+        gl.uniform1f(u('u_alpha'), curAlpha);
+        gl.drawArrays(gl.POINTS, 0, count);
+        return true;
+    };
+
+    // Detect a camera move by comparing the projection matrix frame-to-frame.
+    const cameraMoved = (m) => {
+        if (!lastMatrix) { lastMatrix = m.slice ? m.slice() : Array.from(m); return true; }
+        let d = 0;
+        for (let i = 0; i < 16; i++) d += Math.abs(m[i] - lastMatrix[i]);
+        if (d > 1e-7) { lastMatrix = m.slice ? m.slice() : Array.from(m); return true; }
+        return false;
+    };
+
+    // One frame of fade-accumulation: fade prev trails into screenTex, draw points on top,
+    // composite screenTex over the map, swap. Saves/restores the FBO + viewport so MapLibre
+    // is unaffected.
+    const drawTrails = (gl, args) => {
+        const W = gl.drawingBufferWidth, H = gl.drawingBufferHeight;
+        if (W !== trailW || H !== trailH || !trailTex[0]) buildTrails(gl, W, H);
+        if (cameraMoved(args.defaultProjectionData.mainMatrix)) resetTrails = true;
+        if (resetTrails) { clearTrails(gl); resetTrails = false; }
+
+        const prevFbo = gl.getParameter(gl.FRAMEBUFFER_BINDING);
+        const prevVp = gl.getParameter(gl.VIEWPORT);
+        const dst = 1 - trailCur;                       // render the new frame into here
+
+        // 1. Fade last frame's trails (trailCur) into the destination, then points on top.
+        gl.bindFramebuffer(gl.FRAMEBUFFER, trailFbo);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, trailTex[dst], 0);
+        gl.drawBuffers([gl.COLOR_ATTACHMENT0]);
+        gl.viewport(0, 0, W, H);
+        gl.disable(gl.DEPTH_TEST);
+        gl.disable(gl.BLEND);
+        drawQuad(gl, trailTex[trailCur], curFadeOpacity);   // faded background (replaces)
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+        const ok = drawPoints(gl, args);                     // new points over the background
+
+        // 2. Composite the new trail texture over the map (MapLibre's framebuffer).
+        gl.bindFramebuffer(gl.FRAMEBUFFER, prevFbo);
+        gl.viewport(prevVp[0], prevVp[1], prevVp[2], prevVp[3]);
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+        drawQuad(gl, trailTex[dst], 1.0);
+
+        trailCur = dst;
+        return ok;
+    };
+
     const makeLayer = (cfg) => ({
         id: A_LYR,
         type: 'custom',
@@ -705,6 +940,19 @@ export function createWindParticleGLController(map, opts) {
             vaoStreaks = gl.createVertexArray();
             gl.bindVertexArray(null);
 
+            // Fullscreen-quad program for the fade + composite passes (trail mode). Reuses
+            // the same [0,1] screenQuad buffer; its own VAO binds a_pos for this program.
+            quadProg = linkProg(gl, SCREEN_QUAD_VS, SCREEN_FS);
+            if (quadProg) {
+                vaoQuad = gl.createVertexArray();
+                gl.bindVertexArray(vaoQuad);
+                gl.bindBuffer(gl.ARRAY_BUFFER, screenQuad);
+                const qloc = gl.getAttribLocation(quadProg, 'a_pos');
+                gl.enableVertexAttribArray(qloc);
+                gl.vertexAttribPointer(qloc, 2, gl.FLOAT, false, 0, 0);
+                gl.bindVertexArray(null);
+            }
+
             cmapTex = makeTex(gl, 1, 1, new Uint8Array([255, 255, 255, 255]), gl.LINEAR);
             buildState(gl);
             applyParams(cfg);
@@ -720,20 +968,34 @@ export function createWindParticleGLController(map, opts) {
             if (!windReady || !windTex) { map.triggerRepaint(); return; }
             curBbox = viewBox();
             advect(gl);
-            drawStreaks(gl, args);
+            // Trail mode (authentic windy look) unless explicitly set to streaks or the
+            // trail/point programs failed to build (then fall back to streaks so the layer
+            // is never blank).
+            let drewTrails = false;
+            if (curRenderMode === 'trails' && quadProg && !pointProgFailed) {
+                drewTrails = drawTrails(gl, args);
+            }
+            if (!drewTrails) drawStreaks(gl, args);
             gl.bindVertexArray(null);
             map.triggerRepaint();
         },
         onRemove(m, gl) {
             streakProgCache.forEach((p) => gl.deleteProgram(p));
             streakProgCache.clear(); streakProgFailed = false;
-            [windTex, cmapTex, ...stateTex, ...ageTex].forEach((t) => t && gl.deleteTexture(t));
+            pointProgCache.forEach((p) => gl.deleteProgram(p));
+            pointProgCache.clear(); pointProgFailed = false;
+            [windTex, cmapTex, ...stateTex, ...ageTex, ...trailTex].forEach((t) => t && gl.deleteTexture(t));
             [...stateFbo].forEach((f) => f && gl.deleteFramebuffer(f));
+            if (trailFbo) gl.deleteFramebuffer(trailFbo);
             if (screenQuad) gl.deleteBuffer(screenQuad);
             if (vaoUpdate) gl.deleteVertexArray(vaoUpdate);
             if (vaoStreaks) gl.deleteVertexArray(vaoStreaks);
+            if (vaoQuad) gl.deleteVertexArray(vaoQuad);
             if (updateProg) gl.deleteProgram(updateProg);
+            if (quadProg) gl.deleteProgram(quadProg);
             windTex = cmapTex = updateProg = screenQuad = vaoUpdate = vaoStreaks = null;
+            quadProg = vaoQuad = trailFbo = null;
+            trailTex = [null, null]; trailW = trailH = 0; lastMatrix = null; resetTrails = true;
             stateTex = [null, null]; ageTex = [null, null]; stateFbo = [null, null];
             windReady = false; pendingWindImg = pendingLut = null; pendingRebuild = false;
             glRef = null;
