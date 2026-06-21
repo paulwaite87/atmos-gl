@@ -52,46 +52,22 @@ export function loadLayer(map, config, fullConfig = {}) {
     };
     const removeLegend = () => document.getElementById(slotId)?.remove();
 
-    // Calculate current maximum speed threshold explicitly based on active config
-    const currentMaxSpeedMS = (Number(config.max_speed_color) > 0 ? Number(config.max_speed_color) : 100) / 3.6;
-
     return createWindParticleGLLayer(map, {
         sectionKey: 'wind',
         initialConfig: config,
-        // CRITICAL FIX: vmax must match the encoder scale, but let's pass a balanced
-        // local threshold constraint so our shader's divergence math is tightly bounded.
-        vmax: 40.0,
-        colormap: () => buildLUT(),
-        maxSpeedColor: () => currentMaxSpeedMS,
+        vmax: 40.0,                   // must match backend VMAX_WIND
+        colormap: () => buildLUT(),   // speed LUT (palette fixed for now)
+        // max_speed_color is in km/h (user-facing); convert to m/s for the speed shader.
+        maxSpeedColor: (cfg) => (Number(cfg.max_speed_color) > 0 ? Number(cfg.max_speed_color) : 100) / 3.6,
+        // Particle lifecycle, density, speed, smoothing and calm-zone handling all use
+        // the engine's windy.com-tuned defaults (see _windparticles_gl.js). Override per
+        // deployment via config: particle_lifetime, particle_count, particle_speed,
+        // wind_smooth, calm_speed / calm_drop / calm_fade.
         onMount: addLegend,
-        onRefresh: addLegend,
-
-        // =====================================================================
-        // DIRECT OVERRIDES: WINDY.COM VISUAL BLENDING & LINE THROTTLING
-        // =====================================================================
-        // Force the core engine (_windparticles_gl.js) to consume these tunables
-        // to balance out the particle clustering over high-shear boundaries:
-
-        // 1. Lower global asset counts slightly to avoid overcrowding the layout
-        particle_count: (cfg) => {
-            const baseCount = Number(cfg.particle_count) > 0 ? Number(cfg.particle_count) : 8000;
-            return Math.min(baseCount, 7500); // Caps allocation ceiling to force spacing
-        },
-
-        // 2. Increase neighborhood search padding on the GFS texture interpolation.
-        // Pushing this past 2.0 texels forces sharp vector transitions to blur into
-        // curves instead of computing as hard, pixel-snapped step adjustments.
-        wind_smooth: () => 2.5,
-
-        // 3. Accelerate trailing alpha decay rates so that when particles enter
-        // a convergence zone, their tails vanish quickly before a visual line forms.
-        trail_fade: () => 0.94,
-
-        // 4. Narrow quad dimensions so slow-moving wind streams taper off like fine hairs.
-        particle_size: () => 0.8,
-
-        // 5. Calm-zone cleanup configurations:
-        calm_speed: () => 1.5,     // Treat everything below 1.5 m/s as a candidate for deletion
-        calm_drop: () => 0.35,     // 35% chance to kill and scatter static boundary particles
+        onRefresh: addLegend,         // re-draw if max_speed_color changed
+        onUnmount: removeLegend,      // animated layer only -> legend hidden with barbs
+        // Tunables fall through to _windparticles defaults; override via wind config:
+        //   particle_count, particle_speed, trail_fade, particle_size,
+        //   drop_rate, drop_rate_bump, max_speed_color, particle_alpha
     });
 }
