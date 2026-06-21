@@ -229,7 +229,14 @@ void main(){
 
     float lat = (0.5 - pos.y) * WV_PI;
     float coslat = max(cos(lat), 0.05);
-    vec2 dirEq = vec2(vel.x / coslat, -vel.y);
+    // Direction in [0,1] tile space — MUST use the same metric as the advection step in
+    // the update shader (vel.x / coslat * 0.5), i.e. the 0.5 equirectangular aspect factor
+    // (x spans 360°, y spans 180°, so the x component is compressed 2:1 in [0,1] space).
+    // Omitting it doubled the streak's E-W component relative to its actual motion, so
+    // particles carrying an east-west component were DRAWN pointing too far east (e.g.
+    // SE) even where their real motion had turned more southward — orientation and motion
+    // visibly disagreed at flow interfaces.
+    vec2 dirEq = vec2(vel.x / coslat * 0.5, -vel.y);
     dirEq = (length(dirEq) > 1e-5) ? normalize(dirEq) : vec2(0.0, -1.0);
     // Forward probe for the streak's screen-space direction. Longitude is periodic, but
     // we must NOT let the probe straddle the antimeridian in screen space: if pos is at

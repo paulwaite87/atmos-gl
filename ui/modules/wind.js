@@ -59,13 +59,10 @@ export function loadLayer(map, config, fullConfig = {}) {
         colormap: () => buildLUT(),   // speed LUT (palette fixed for now)
         // max_speed_color is in km/h (user-facing); convert to m/s for the speed shader.
         maxSpeedColor: (cfg) => (Number(cfg.max_speed_color) > 0 ? Number(cfg.max_speed_color) : 100) / 3.6,
-        // Windy.com-style particle lifecycle: particles fade in, advect, fade out, and
-        // respawn on a timer (NOT on low speed), so there's no clumping at boundaries —
-        // a stalled particle simply ages out and is reborn elsewhere. Tune lifetime via
-        // the particle_lifetime config (frames-to-live, default 250; higher = longer,
-        // slower-fading trails).
-        ageStep: (cfg) => { const n = Number(cfg.particle_lifetime);
-                            return 1.0 / (isFinite(n) && n > 10 ? n : 250); },
+        // Particle lifecycle, density, speed, smoothing and calm-zone handling all use
+        // the engine's windy.com-tuned defaults (see _windparticles_gl.js). Override per
+        // deployment via config: particle_lifetime, particle_count, particle_speed,
+        // wind_smooth, calm_speed / calm_drop / calm_fade.
         onMount: addLegend,
         onRefresh: addLegend,         // re-draw if max_speed_color changed
         onUnmount: removeLegend,      // animated layer only -> legend hidden with barbs
