@@ -73,14 +73,29 @@ uniform float u_smoothPx;
 vec3 sampleWindSmooth(sampler2D tex, vec2 p, float vmax){
     vec2 texel = 1.0 / vec2(textureSize(tex, 0));
     vec2 sumv = vec2(0.0); float sumw = 0.0;
-    // 3x3 Gaussian taps scaled by u_smoothPx (radius in texels). u_smoothPx<=0 -> single tap.
-    for (int j = -1; j <= 1; j++){
-        for (int i = -1; i <= 1; i++){
-            vec2 off = vec2(float(i), float(j)) * u_smoothPx * texel;
+    // 5x5 CONTIGUOUS Gaussian. Taps are spaced at (u_smoothPx/2) texels so the 5-wide
+    // stencil spans a continuous ±u_smoothPx-texel neighbourhood with NO gaps between
+    // samples (the old 3x3 at ±u_smoothPx sampled sparsely — widening it just aliased,
+    // it never actually blurred). Bilinear filtering fills between taps. This genuinely
+    // blends sharp velocity SHEAR interfaces (e.g. westerly meeting southerly) that the
+    // coarse GFS grid renders as a hard step, so particle paths curve through the
+    // transition instead of slamming into a wall of cross-flow. Alpha-weighted so no-data
+    // cells never bleed in; u_smoothPx<=0 falls back to a single centre tap.
+    float step = max(u_smoothPx, 0.0) * 0.5;
+    if (step <= 0.0){
+        vec4 t = texture(tex, p);
+        if (t.a < 0.5) return vec3(0.0);
+        return vec3(t.rg * (2.0*vmax) - vmax, 1.0);
+    }
+    float sigma2 = max(u_smoothPx*u_smoothPx, 0.25);   // Gaussian variance in texels
+    for (int j = -2; j <= 2; j++){
+        for (int i = -2; i <= 2; i++){
+            vec2 off = vec2(float(i), float(j)) * step * texel;
             vec2 sp = vec2(fract(p.x + off.x + 1.0), clamp(p.y + off.y, 0.0, 1.0));
             vec4 t = texture(tex, sp);
             if (t.a >= 0.5){
-                float wgt = exp(-float(i*i + j*j) * 0.6);   // Gaussian-ish falloff
+                float d2 = float(i*i + j*j) * step * step;     // texel² distance
+                float wgt = exp(-d2 / (2.0 * sigma2));
                 sumv += (t.rg * (2.0*vmax) - vmax) * wgt;
                 sumw += wgt;
             }
@@ -375,13 +390,15 @@ export function createWindParticleGLController(map, opts) {
         // toward 120 for longer trails if the filamenting stays acceptable.
         ageStep = (cfg) => { const n = Number(cfg.particle_lifetime);
                              return 1.0 / (isFinite(n) && n > 10 ? n : 70); },
-        // Velocity-field smoothing radius in TEXELS for the advection sample. The GFS
-        // field is already fairly smooth (the "streaming" lines were particle filamentation
-        // from over-long lifetimes, NOT data roughness), so this is a light touch by
-        // default — just enough to take the edge off orographic shear without washing out
-        // real detail. 0 disables. Config: wind_smooth (cells).
+        // Velocity-field smoothing radius in TEXELS for the advection sample, applied via
+        // a contiguous 5x5 Gaussian (see sampleWindSmooth). The coarse 0.25° GFS grid
+        // renders sharp velocity SHEAR interfaces (e.g. westerly meeting southerly) as a
+        // hard step — particles slam into a wall of cross-flow instead of curving through.
+        // ~4 cells (±1°) blends those transitions so streamlines bend gradually, like real
+        // air at sub-grid scale. Lower toward 2 to preserve more fine detail; 0 disables.
+        // Config: wind_smooth (cells).
         smoothPx = (cfg) => { const v = Number(cfg.wind_smooth);
-                              return isFinite(v) && v >= 0 ? v : 1.5; },
+                              return isFinite(v) && v >= 0 ? v : 4.0; },
         // Calm-zone handling — stops real low-wind troughs rendering as bright crowded
         // lines. calmSpeed: speed (m/s) below which a cell counts as "calm". calmDrop:
         // peak per-frame respawn probability at zero speed (ramps to 0 at calmSpeed) so
@@ -422,7 +439,7 @@ export function createWindParticleGLController(map, opts) {
     let streakProgFailed = false;
 
     let curSpeed = 0.25, curAlpha = 0.9, curMaxSpeed = 30.0, curStreakLen = 9, curThick = 1.5,
-        curAgeStep = 0.014, curSmoothPx = 1.5, curLandReset = 0.0,
+        curAgeStep = 0.0167, curSmoothPx = 4.0, curLandReset = 0.0,
         curCalmSpeed = 2.5, curCalmDrop = 0.06, curCalmFade = 0.6;
     let curBbox = [0, 0, 1, 1];
     let windReady = false, pendingWindImg = null, pendingLut = null, pendingRebuild = false;
