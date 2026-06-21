@@ -57,51 +57,57 @@ float rand(vec2 co){
     return fract((p3.x + p3.y) * p3.z);
 }`;
 
-// Alpha-weighted smoothed velocity sample. The raw GFS field is coarse and has sharp
-// shear lines / step-changes between cells; particles advecting along it collapse onto
-// those discontinuities (the "convergence line" artifacts). This averages the DECODED
-// velocity over a Gaussian-ish neighbourhood (radius u_smoothPx texels, ~3 cells) so the
-// flow field is coherent and streamlines don't pile onto edges.
-//   - ALPHA-WEIGHTED: only taps with data (a>=0.5) contribute, so we never blend the
-//     zero of a land/no-data cell into ocean wind (which would CREATE a false gradient
-//     and worsen coastline/dateline artifacts).
-//   - LONGITUDE WRAP: x offsets wrap via fract(), so the kernel is seamless across the
-//     antimeridian (dateline) — no seam there regardless of the encoder's edge columns.
-// Returns vec3(vx, vy, coverage): coverage<0.5 means no data nearby (treat as calm).
+// Smoothed velocity via BICUBIC B-spline interpolation (Tier 2). Replaces the box-Gaussian:
+// bicubic is C1-continuous, so the interpolated flow has no tap-structure or facet kinks —
+// streamlines curve smoothly through coarse-grid shear instead of bending along cell edges.
+//   - WIDTH: u_smoothPx scales the support. At 1 it's a tight ~2-cell bicubic (preserves
+//     detail); higher widens the cell spacing (the 4x4 stencil samples on a coarser grid)
+//     to blend broader shear — smoothly, because the cubic weights stay continuous.
+//   - LONGITUDE WRAP via fract(): seamless across the antimeridian.
+//   - ALPHA-WEIGHTED: no-data taps excluded, so land/edges never bleed in (wind has no
+//     mask, but kept correct for safety and for any masked reuse).
+// Returns vec3(vx, vy, coverage).
 const WSAMPLE = `
 uniform float u_smoothPx;
+// Cubic B-spline basis weights for offsets {-1,0,+1,+2} relative to the cell, given the
+// fractional position f in [0,1]. B-spline (approximating, not interpolating) gives a
+// SMOOTH C1 field with no kinks at cell edges — the property bilinear lacks and the
+// reason the literature points to bicubic for shear. Weights sum to 1.
+vec4 bsplineW(float f){
+    float f2 = f*f, f3 = f2*f;
+    return vec4(
+        (1.0 - 3.0*f + 3.0*f2 - f3) / 6.0,    // tap at -1
+        (4.0 - 6.0*f2 + 3.0*f3)     / 6.0,    // tap at  0
+        (1.0 + 3.0*f + 3.0*f2 - 3.0*f3) / 6.0,// tap at +1
+        f3 / 6.0                              // tap at +2
+    );
+}
 vec3 sampleWindSmooth(sampler2D tex, vec2 p, float vmax){
-    vec2 texel = 1.0 / vec2(textureSize(tex, 0));
+    vec2 texSize = vec2(textureSize(tex, 0));
+    float s = max(u_smoothPx, 1.0);              // cell spacing in texels (>=1)
+    vec2 invReal = 1.0 / texSize;
+    vec2 tc = p * (texSize / s) - 0.5;           // position in coarse-cell units
+    vec2 base = floor(tc);
+    vec2 f = fract(tc);
+    vec4 wx = bsplineW(f.x);
+    vec4 wy = bsplineW(f.y);
     vec2 sumv = vec2(0.0); float sumw = 0.0;
-    // 5x5 CONTIGUOUS Gaussian. Taps are spaced at (u_smoothPx/2) texels so the 5-wide
-    // stencil spans a continuous ±u_smoothPx-texel neighbourhood with NO gaps between
-    // samples (the old 3x3 at ±u_smoothPx sampled sparsely — widening it just aliased,
-    // it never actually blurred). Bilinear filtering fills between taps. This genuinely
-    // blends sharp velocity SHEAR interfaces (e.g. westerly meeting southerly) that the
-    // coarse GFS grid renders as a hard step, so particle paths curve through the
-    // transition instead of slamming into a wall of cross-flow. Alpha-weighted so no-data
-    // cells never bleed in; u_smoothPx<=0 falls back to a single centre tap.
-    float step = max(u_smoothPx, 0.0) * 0.5;
-    if (step <= 0.0){
-        vec4 t = texture(tex, p);
-        if (t.a < 0.5) return vec3(0.0);
-        return vec3(t.rg * (2.0*vmax) - vmax, 1.0);
-    }
-    float sigma2 = max(u_smoothPx*u_smoothPx, 0.25);   // Gaussian variance in texels
-    for (int j = -2; j <= 2; j++){
-        for (int i = -2; i <= 2; i++){
-            vec2 off = vec2(float(i), float(j)) * step * texel;
-            vec2 sp = vec2(fract(p.x + off.x + 1.0), clamp(p.y + off.y, 0.0, 1.0));
-            vec4 t = texture(tex, sp);
+    for (int j = 0; j < 4; j++){
+        for (int i = 0; i < 4; i++){
+            // coarse-cell index -> real UV at the cell centre
+            vec2 cpos = base + vec2(float(i) - 1.0, float(j) - 1.0);
+            vec2 uv = (cpos + 0.5) * s * invReal;
+            uv.x = fract(uv.x + 1.0);             // wrap longitude
+            uv.y = clamp(uv.y, 0.0, 1.0);         // clamp latitude (poles not periodic)
+            vec4 t = texture(tex, uv);
             if (t.a >= 0.5){
-                float d2 = float(i*i + j*j) * step * step;     // texel² distance
-                float wgt = exp(-d2 / (2.0 * sigma2));
-                sumv += (t.rg * (2.0*vmax) - vmax) * wgt;
-                sumw += wgt;
+                float w = wx[i] * wy[j];
+                sumv += (t.rg * (2.0*vmax) - vmax) * w;
+                sumw += w;
             }
         }
     }
-    if (sumw <= 0.0) return vec3(0.0, 0.0, 0.0);            // no data in neighbourhood
+    if (sumw <= 0.0) return vec3(0.0, 0.0, 0.0);  // no data in neighbourhood
     return vec3(sumv / sumw, 1.0);
 }`;
 
@@ -379,7 +385,12 @@ export function createWindParticleGLController(map, opts) {
         // particle_size: streak thickness in px (0.1-5).
         thickness = (cfg) => { const v = Number(cfg.particle_size);
                                return isFinite(v) ? Math.min(5, Math.max(0.1, v)) : 1.0; },
-        lenSpeedScale = 1.5,                              // fast wind streaks up to 2.5x longer
+        lenSpeedScale = 0.6,                             // fast wind streaks up to 1.6x longer
+        //   ^ reduced from 1.5: a long STRAIGHT streak can't follow a CURVING streamline,
+        //   so in shear/high-curvature zones the streak's tail sits off the particle's
+        //   real (curved) path and reads as the particle "sliding sideways" to where it
+        //   points. The deviation scales with streak length, so shorter streaks (esp. the
+        //   fast ones that this scale lengthens) directly reduce the sideways look.
         // Age lifecycle (windy.com look): each frame a particle's normalized age advances
         // by ageStep / lifetimeFactor; at age>=1 it respawns. particle_lifetime is frames-
         // to-live (ageStep = 1/N). DEFAULT 70 (was 250): with a long lifetime particles
@@ -390,15 +401,14 @@ export function createWindParticleGLController(map, opts) {
         // toward 120 for longer trails if the filamenting stays acceptable.
         ageStep = (cfg) => { const n = Number(cfg.particle_lifetime);
                              return 1.0 / (isFinite(n) && n > 10 ? n : 70); },
-        // Velocity-field smoothing radius in TEXELS for the advection sample, applied via
-        // a contiguous 5x5 Gaussian (see sampleWindSmooth). The coarse 0.25° GFS grid
-        // renders sharp velocity SHEAR interfaces (e.g. westerly meeting southerly) as a
-        // hard step — particles slam into a wall of cross-flow instead of curving through.
-        // ~4 cells (±1°) blends those transitions so streamlines bend gradually, like real
-        // air at sub-grid scale. Lower toward 2 to preserve more fine detail; 0 disables.
-        // Config: wind_smooth (cells).
+        // Bicubic support: the coarse-cell SPACING in texels for the B-spline interpolation
+        // (see sampleWindSmooth). The 0.25° GFS grid renders sharp velocity SHEAR interfaces
+        // (e.g. westerly meeting southerly) as near-steps; bicubic blends them into a smooth
+        // C1 transition so streamlines curve through. ~2 (the 4x4 stencil spans ~8 texels)
+        // is a smooth-but-detailed default; raise toward 3 to blend broader shear (softer,
+        // less detail), drop to 1 for a tight detail-preserving bicubic. Config: wind_smooth.
         smoothPx = (cfg) => { const v = Number(cfg.wind_smooth);
-                              return isFinite(v) && v >= 0 ? v : 4.0; },
+                              return isFinite(v) && v >= 0 ? v : 2.0; },
         // Calm-zone handling — stops real low-wind troughs rendering as bright crowded
         // lines. calmSpeed: speed (m/s) below which a cell counts as "calm". calmDrop:
         // peak per-frame respawn probability at zero speed (ramps to 0 at calmSpeed) so
@@ -439,7 +449,7 @@ export function createWindParticleGLController(map, opts) {
     let streakProgFailed = false;
 
     let curSpeed = 0.25, curAlpha = 0.9, curMaxSpeed = 30.0, curStreakLen = 9, curThick = 1.5,
-        curAgeStep = 0.0167, curSmoothPx = 4.0, curLandReset = 0.0,
+        curAgeStep = 0.0167, curSmoothPx = 2.0, curLandReset = 0.0,
         curCalmSpeed = 2.5, curCalmDrop = 0.06, curCalmFade = 0.6;
     let curBbox = [0, 0, 1, 1];
     let windReady = false, pendingWindImg = null, pendingLut = null, pendingRebuild = false;
