@@ -57,52 +57,54 @@ float rand(vec2 co){
     return fract((p3.x + p3.y) * p3.z);
 }`;
 
-// Alpha-weighted smoothed velocity sample. The raw GFS field is coarse and has sharp
-// shear lines / step-changes between cells; particles advecting along it collapse onto
-// those discontinuities (the "convergence line" artifacts). This averages the DECODED
-// velocity over a Gaussian-ish neighbourhood (radius u_smoothPx texels, ~3 cells) so the
-// flow field is coherent and streamlines don't pile onto edges.
-//   - ALPHA-WEIGHTED: only taps with data (a>=0.5) contribute, so we never blend the
-//     zero of a land/no-data cell into ocean wind (which would CREATE a false gradient
-//     and worsen coastline/dateline artifacts).
-//   - LONGITUDE WRAP: x offsets wrap via fract(), so the kernel is seamless across the
-//     antimeridian (dateline) — no seam there regardless of the encoder's edge columns.
-// Returns vec3(vx, vy, coverage): coverage<0.5 means no data nearby (treat as calm).
+// Velocity sample via BICUBIC B-spline interpolation. The deployed version used a wide
+// box-Gaussian (~±8 texels at the old default) which blurred the field into mush — losing
+// the fine flow detail that makes windy.com look crisp. Bicubic is the doc-recommended
+// fix: C1-continuous (so no blocky bilinear kinks across cell edges) WITHOUT the heavy
+// blur. Now that RK2 integration handles boundary overshoot and the trail rendering
+// handles visual smoothness, we DON'T need brute-force field blur — so this runs at
+// (near-)native resolution to keep detail.
+//   - WIDTH: u_smoothPx is the coarse-cell SPACING in texels. 1 = native bicubic (crisp);
+//     raise (2-3) only if a sharp shear still tears. B-spline is APPROXIMATING (no
+//     overshoot), so it's safe at shear — unlike Catmull-Rom which preserves more detail
+//     but can ring.
+//   - LONGITUDE WRAP via fract(); latitude clamp. Wind has no no-data mask, so the centre
+//     tap alone gives coverage.
+// Returns vec3(vx, vy, coverage).
 const WSAMPLE = `
 uniform float u_smoothPx;
+vec4 bsplineW(float f){
+    float f2 = f*f, f3 = f2*f;
+    return vec4(
+        (1.0 - 3.0*f + 3.0*f2 - f3) / 6.0,     // tap at -1
+        (4.0 - 6.0*f2 + 3.0*f3)     / 6.0,     // tap at  0
+        (1.0 + 3.0*f + 3.0*f2 - 3.0*f3) / 6.0, // tap at +1
+        f3 / 6.0                               // tap at +2
+    );
+}
 vec3 sampleWindSmooth(sampler2D tex, vec2 p, float vmax){
-    vec2 texel = 1.0 / vec2(textureSize(tex, 0));
-    vec2 sumv = vec2(0.0); float sumw = 0.0;
-    // 5x5 CONTIGUOUS Gaussian. Taps are spaced at (u_smoothPx/2) texels so the 5-wide
-    // stencil spans a continuous ±u_smoothPx-texel neighbourhood with NO gaps between
-    // samples (the old 3x3 at ±u_smoothPx sampled sparsely — widening it just aliased,
-    // it never actually blurred). Bilinear filtering fills between taps. This genuinely
-    // blends sharp velocity SHEAR interfaces (e.g. westerly meeting southerly) that the
-    // coarse GFS grid renders as a hard step, so particle paths curve through the
-    // transition instead of slamming into a wall of cross-flow. Alpha-weighted so no-data
-    // cells never bleed in; u_smoothPx<=0 falls back to a single centre tap.
-    float step = max(u_smoothPx, 0.0) * 0.5;
-    if (step <= 0.0){
-        vec4 t = texture(tex, p);
-        if (t.a < 0.5) return vec3(0.0);
-        return vec3(t.rg * (2.0*vmax) - vmax, 1.0);
-    }
-    float sigma2 = max(u_smoothPx*u_smoothPx, 0.25);   // Gaussian variance in texels
-    for (int j = -2; j <= 2; j++){
-        for (int i = -2; i <= 2; i++){
-            vec2 off = vec2(float(i), float(j)) * step * texel;
-            vec2 sp = vec2(fract(p.x + off.x + 1.0), clamp(p.y + off.y, 0.0, 1.0));
-            vec4 t = texture(tex, sp);
-            if (t.a >= 0.5){
-                float d2 = float(i*i + j*j) * step * step;     // texel² distance
-                float wgt = exp(-d2 / (2.0 * sigma2));
-                sumv += (t.rg * (2.0*vmax) - vmax) * wgt;
-                sumw += wgt;
-            }
+    vec2 texSize = vec2(textureSize(tex, 0));
+    float s = max(u_smoothPx, 1.0);            // coarse-cell spacing (1 = native)
+    vec2 invReal = 1.0 / texSize;
+    vec2 tc = p * (texSize / s) - 0.5;
+    vec2 base = floor(tc);
+    vec2 f = fract(tc);
+    vec4 wx = bsplineW(f.x);
+    vec4 wy = bsplineW(f.y);
+    vec4 c0 = texture(tex, vec2(fract(p.x + 1.0), clamp(p.y, 0.0, 1.0)));  // centre = coverage
+    vec2 sumv = vec2(0.0);
+    for (int j = 0; j < 4; j++){
+        for (int i = 0; i < 4; i++){
+            vec2 cpos = base + vec2(float(i) - 1.0, float(j) - 1.0);
+            vec2 uv = (cpos + 0.5) * s * invReal;
+            uv.x = fract(uv.x + 1.0);          // wrap longitude (seamless dateline)
+            uv.y = clamp(uv.y, 0.0, 1.0);      // clamp latitude (poles)
+            vec4 t = texture(tex, uv);
+            sumv += (t.rg * (2.0*vmax) - vmax) * (wx[i] * wy[j]);  // B-spline weights sum to 1
         }
     }
-    if (sumw <= 0.0) return vec3(0.0, 0.0, 0.0);            // no data in neighbourhood
-    return vec3(sumv / sumw, 1.0);
+    if (c0.a < 0.5) return vec3(0.0, 0.0, 0.0);
+    return vec3(sumv, 1.0);
 }`;
 
 // Advection in equirectangular [0,1] space. Wind propagates ALONG the encoded velocity
@@ -136,12 +138,29 @@ void main(){
     float age = ageState.r;
     float lifeFactor = ageState.g > 0.0 ? (0.5 + ageState.g) : 1.0;  // [0.5..1.5]
 
-    float lat = (0.5 - pos.y) * PI;
+    // RK2 (midpoint) integration. Euler (npos = pos + vel(pos)*dt) OVERSHOOTS at sharp
+    // velocity boundaries — a particle steps the full way using only its STARTING velocity,
+    // so at a shear line the two streams tear apart with a dead zone between them. RK2
+    // samples the velocity at the half-step-ahead MIDPOINT and uses that for the full step,
+    // so particles curve smoothly into the changing flow instead of snapping past it.
+    // (coslat is re-evaluated at each sample — the equirect x-metric is latitude-dependent.)
     vec3 ws = sampleWindSmooth(u_wind, pos, u_vmax);
-    vec2 vel = ws.xy;                            // alpha-weighted smoothed velocity
+    vec2 vel = ws.xy;                            // velocity at the particle (for calm test)
     float hasData = ws.z;                        // 0 = no data nearby
+    float lat = (0.5 - pos.y) * PI;
     float coslat = max(cos(lat), 0.05);
-    vec2 d = vec2(vel.x / coslat * 0.5, -vel.y) * (u_speed * STEP);
+    vec2 d1 = vec2(ws.x / coslat * 0.5, -ws.y) * (u_speed * STEP);
+    vec2 pmid = pos + d1 * 0.5;
+    pmid.x = fract(pmid.x + 1.0);
+    vec3 wsm = sampleWindSmooth(u_wind, pmid, u_vmax);
+    vec2 d;
+    if (wsm.z >= 0.5) {                          // midpoint has data -> RK2 step
+        float latm = (0.5 - pmid.y) * PI;
+        float coslatm = max(cos(latm), 0.05);
+        d = vec2(wsm.x / coslatm * 0.5, -wsm.y) * (u_speed * STEP);
+    } else {
+        d = d1;                                  // midpoint off-data -> fall back to Euler
+    }
     vec2 npos = pos + d;
     npos.x = fract(npos.x + 1.0);
 
@@ -487,15 +506,12 @@ export function createWindParticleGLController(map, opts) {
         // toward 120 for longer trails if the filamenting stays acceptable.
         ageStep = (cfg) => { const n = Number(cfg.particle_lifetime);
                              return 1.0 / (isFinite(n) && n > 10 ? n : 70); },
-        // Velocity-field smoothing radius in TEXELS for the advection sample, applied via
-        // a contiguous 5x5 Gaussian (see sampleWindSmooth). The coarse 0.25° GFS grid
-        // renders sharp velocity SHEAR interfaces (e.g. westerly meeting southerly) as a
-        // hard step — particles slam into a wall of cross-flow instead of curving through.
-        // ~4 cells (±1°) blends those transitions so streamlines bend gradually, like real
-        // air at sub-grid scale. Lower toward 2 to preserve more fine detail; 0 disables.
-        // Config: wind_smooth (cells).
+        // Bicubic coarse-cell SPACING in texels (see sampleWindSmooth). 1 = native bicubic
+        // (crisp, full detail — the default now that RK2 + trails handle smoothness, so we
+        // no longer brute-force blur the field). Raise to 2-3 ONLY if a sharp shear still
+        // tears the flow; that trades detail for a wider blend. Config: wind_smooth.
         smoothPx = (cfg) => { const v = Number(cfg.wind_smooth);
-                              return isFinite(v) && v >= 0 ? v : 4.0; },
+                              return isFinite(v) && v >= 0 ? v : 1.0; },
         // Calm-zone handling — stops real low-wind troughs rendering as bright crowded
         // lines. calmSpeed: speed (m/s) below which a cell counts as "calm". calmDrop:
         // peak per-frame respawn probability at zero speed (ramps to 0 at calmSpeed) so
@@ -556,7 +572,7 @@ export function createWindParticleGLController(map, opts) {
     let pointProgFailed = false;
 
     let curSpeed = 0.25, curAlpha = 0.9, curMaxSpeed = 30.0, curStreakLen = 9, curThick = 1.5,
-        curAgeStep = 0.0167, curSmoothPx = 4.0, curLandReset = 0.0,
+        curAgeStep = 0.0167, curSmoothPx = 1.0, curLandReset = 0.0,
         curCalmSpeed = 2.5, curCalmDrop = 0.06, curCalmFade = 0.6,
         curRenderMode = 'trails', curPointSize = 2.0, curFadeOpacity = 0.96;
     let curBbox = [0, 0, 1, 1];
