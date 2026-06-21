@@ -45,7 +45,17 @@ vec2 packPos(float x){ float e = floor(clamp(x,0.0,1.0)*65535.0 + 0.5);
 float unpackPos(vec2 c){ return (c.x*255.0*256.0 + c.y*255.0)/65535.0; }
 vec2 decodePos(vec4 c){ return vec2(unpackPos(c.rg), unpackPos(c.ba)); }
 vec4 encodePos(vec2 p){ return vec4(packPos(p.x), packPos(p.y)); }
-float rand(vec2 co){ return fract(sin(dot(co, vec2(12.9898,78.233))) * 43758.5453); }`;
+float rand(vec2 co){
+    // Dave Hoskins hash (https://www.shadertoy.com/view/4djSRW). The classic
+    // fract(sin(dot(co, vec2(12.9898,78.233)))*43758.5) hash has STRONG diagonal
+    // correlation (~0.43) — particles respawning with nearby seeds got diagonally-
+    // correlated random positions, printing the RNG's structure as dead-straight diagonal
+    // lines onto the particle field (the "streaming artifact"). This integer-style hash
+    // has ~0 correlation, so respawns are genuinely uniform — no geometric lines.
+    vec3 p3 = fract(vec3(co.xyx) * 0.1031);
+    p3 += dot(p3, p3.yzx + 33.33);
+    return fract((p3.x + p3.y) * p3.z);
+}`;
 
 // Alpha-weighted smoothed velocity sample. The raw GFS field is coarse and has sharp
 // shear lines / step-changes between cells; particles advecting along it collapse onto
