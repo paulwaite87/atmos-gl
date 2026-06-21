@@ -357,7 +357,7 @@ export function createParticleController(map, opts) {
         for (let i = 0; i < 2; i++) {
             if (stateTex[i]) gl.deleteTexture(stateTex[i]);
             if (stateFbo[i]) gl.deleteFramebuffer(stateFbo[i]);
-            stateTex[i] = makeTex(RES, RES, randomState(), gl.NEAREST);
+            stateTex[i] = makeTex(RES, RES, randomState(), gl.LINEAR);
             stateFbo[i] = makeFbo(stateTex[i]);
         }
         stateCur = 0;
@@ -390,7 +390,7 @@ export function createParticleController(map, opts) {
         // empty (transparent) trail buffers
         const blank = new Uint8Array(W * H * 4);
         for (let i = 0; i < 2; i++) {
-            screenTex[i] = makeTex(W, H, blank, gl.NEAREST);
+            screenTex[i] = makeTex(W, H, blank, gl.LINEAR);
             screenFbo[i] = makeFbo(screenTex[i]);
         }
         screenCur = 0;

@@ -30,7 +30,7 @@ const MERCATOR_CORNERS = [
     [-180, 85.051129], [180, 85.051129], [180, -85.051129], [-180, -85.051129],
 ];
 const lodOf = (cfg) => { const n = parseInt(cfg.level_of_detail, 10); return (n === 1 || n === 3) ? n : 2; };
-const LOD_COUNT = { 1: 6000, 2: 12000, 3: 24000 };
+const LOD_COUNT = { 1: 3000, 2: 6000, 3: 10000 };
 
 // ---- shaders --------------------------------------------------------------
 
@@ -128,69 +128,180 @@ uniform float u_vmax, u_speed, u_seed, u_landReset, u_ageStep, u_calmSpeed, u_ca
 uniform vec4 u_bboxPos;
 const float PI = 3.141592653589793;
 const float STEP = 0.0005;
-${PACK}
-${WSAMPLE}
+
+// ---- pack/unpack utilities ----
+vec2 packPos(float x){ 
+    float e = floor(clamp(x,0.0,1.0)*65535.0 + 0.5);
+    float hi = floor(e/256.0); 
+    return vec2(hi, e - hi*256.0)/255.0; 
+}
+float unpackPos(vec2 c){ 
+    return (c.x*255.0*256.0 + c.y*255.0)/65535.0; 
+}
+vec2 decodePos(vec4 c){ 
+    return vec2(unpackPos(c.rg), unpackPos(c.ba)); 
+}
+vec4 encodePos(vec2 p){ 
+    return vec4(packPos(p.x), packPos(p.y)); 
+}
+float rand(vec2 co){
+    vec3 p3 = fract(vec3(co.xyx) * 0.1031);
+    p3 += dot(p3, p3.yzx + 33.33);
+    return fract((p3.x + p3.y) * p3.z);
+}
+
+// ---- wind sampling neighborhood smoothing ----
+uniform float u_smoothPx;
+vec3 sampleWindSmooth(sampler2D tex, vec2 p, float vmax){
+    vec2 texel = 1.0 / vec2(textureSize(tex, 0));
+    vec2 sumv = vec2(0.0); float sumw = 0.0;
+    float step = max(u_smoothPx, 0.0) * 0.5;
+    if (step <= 0.0){
+        vec4 t = texture(tex, p);
+        if (t.a < 0.5) return vec3(0.0);
+        return vec3(t.rg * (2.0*vmax) - vmax, 1.0);
+    }
+    float sigma2 = max(u_smoothPx*u_smoothPx, 0.25);
+    for (int j = -2; j <= 2; j++){
+        for (int i = -2; i <= 2; i++){
+            vec2 off = vec2(float(i), float(j)) * step * texel;
+            vec2 sp = vec2(fract(p.x + off.x + 1.0), clamp(p.y + off.y, 0.0, 1.0));
+            vec4 t = texture(tex, sp);
+            if (t.a >= 0.5){
+                float d2 = float(i*i + j*j) * step * step;
+                float wgt = exp(-d2 / (2.0 * sigma2));
+                sumv += (t.rg * (2.0*vmax) - vmax) * wgt;
+                sumw += wgt;
+            }
+        }
+    }
+    if (sumw <= 0.0) return vec3(0.0, 0.0, 0.0);
+    return vec3(sumv / sumw, 1.0);
+}
+
 void main(){
     vec2 pos = decodePos(texture(u_particles, v_uv));
     vec4 ageState = texture(u_age, v_uv);
     float age = ageState.r;
-    float lifeFactor = ageState.g > 0.0 ? (0.5 + ageState.g) : 1.0;  // [0.5..1.5]
+    float lifeFactor = ageState.g > 0.0 ? (0.5 + ageState.g) : 1.0;
 
-    float lat = (0.5 - pos.y) * PI;
-    vec3 ws = sampleWindSmooth(u_wind, pos, u_vmax);
-    vec2 vel = ws.xy;                            // alpha-weighted smoothed velocity
-    float hasData = ws.z;                        // 0 = no data nearby
-    float coslat = max(cos(lat), 0.05);
-    vec2 d = vec2(vel.x / coslat * 0.5, -vel.y) * (u_speed * STEP);
+    vec2 seed = (pos + v_uv) * (u_seed + 1.0);
+
+    // =================================================================
+    // RUNGE-KUTTA 2ND ORDER (MIDPOINT METHOD) ADVECTION
+    // =================================================================
+    vec3 ws1 = sampleWindSmooth(u_wind, pos, u_vmax);
+    vec2 vel1 = ws1.xy;
+    float hasData = ws1.z;
+    
+    float lat1 = (0.5 - pos.y) * PI;
+    float coslat1 = max(cos(lat1), 0.05);
+    
+    vec2 d_half = vec2(vel1.x / coslat1 * 0.5, -vel1.y) * (u_speed * STEP * 0.5);
+    vec2 pmid = pos + d_half;
+    pmid.x = fract(pmid.x + 1.0);
+    pmid.y = clamp(pmid.y, 0.0, 1.0);
+    
+    vec3 ws2 = sampleWindSmooth(u_wind, pmid, u_vmax);
+    vec2 vel2 = ws2.xy;
+    
+    if (ws2.z < 0.5) {
+        vel2 = vel1;
+    }
+
+    vec2 vel = vel2;
+
+    float lat2 = (0.5 - pmid.y) * PI;
+    float coslat2 = max(cos(lat2), 0.05);
+    
+    vec2 d = vec2(vel.x / coslat2 * 0.5, -vel.y) * (u_speed * STEP);
     vec2 npos = pos + d;
     npos.x = fract(npos.x + 1.0);
+    
+    // =================================================================
+    // TUNED METRIC: TRUE FLUID SQUEEZE (CONVERGENCE DETERMINANT)
+    // =================================================================
+    // Check if the two wind streams are directly slamming into each other.
+    // We compute the dot product of the velocity and the delta vector.
+    float speed1 = length(vel1);
+    float convergenceFactor = 0.0;
+    if (speed1 > 0.001) {
+        // Dot product measures alignment. If it's negative, the wind vectors 
+        // are collapsing inward toward a central line (true convergence).
+        convergenceFactor = clamp(-dot(normalize(vel1), vel2 - vel1) / (u_vmax * 0.5), 0.0, 1.0);
+    }
+    
+    // Smoothly accelerate age depending on the squeeze severity
+    age += (u_ageStep / lifeFactor) * (1.0 + convergenceFactor * 25.0);
 
-    // Advance age over this particle's lifetime (longer-lived particles age slower).
-    age += u_ageStep / lifeFactor;
-
-    // Respawn position inside the view box (may wrap the antimeridian: bmin.x > bmax.x).
-    vec2 seed = (pos + v_uv) * (u_seed + 1.0);
+    // Respawn position inside the view box 
     vec2 bmin = u_bboxPos.xy, bmax = u_bboxPos.zw;
     bool lonWrap = bmin.x > bmax.x;
     float rlon;
     if (!lonWrap) {
         rlon = bmin.x + rand(seed + 1.3) * (bmax.x - bmin.x);
     } else {
-        float wlo = 1.0 - bmin.x, whi = bmax.x;
-        float r = rand(seed + 1.3) * (wlo + whi);
-        rlon = (r < wlo) ? (bmin.x + r) : (r - wlo);
+        float w1 = 1.0 - bmin.x;
+        float w2 = bmax.x;
+        float totalW = w1 + w2;
+        float r = rand(seed + 1.3);
+        if (r * totalW < w1) {
+            rlon = bmin.x + (r * totalW);
+        } else {
+            rlon = (r * totalW) - w1;
+        }
     }
     float rlat = bmin.y + rand(seed + 2.7) * (bmax.y - bmin.y);
-    vec2 randPos = vec2(rlon, rlat);
+    vec2 respawnPos = vec2(fract(rlon + 1.0), clamp(rlat, 0.0, 1.0));
 
-    bool lonOut = lonWrap ? (npos.x < bmin.x && npos.x > bmax.x)
-                          : (npos.x < bmin.x || npos.x > bmax.x);
-    bool outside = lonOut || (npos.y < bmin.y) || (npos.y > bmax.y);
-    // Calm-cell quick respawn: in genuinely low-wind cells (real troughs / lee zones)
-    // particles barely move, so they DWELL and pile up into bright lines even though the
-    // data is smooth. Give slow particles a respawn probability that ramps up as speed
-    // falls below u_calmSpeed, so they don't accumulate. This is gentle and narrow (only
-    // near-calm), unlike the old aggressive speed-drop — the age lifecycle still does the
-    // main recycling; this only de-clumps the calm troughs.
-    float spd = length(vel);
-    float calmDrop = (1.0 - clamp(spd / max(u_calmSpeed, 0.01), 0.0, 1.0)) * u_calmDrop;
-    bool calmReset = rand(seed + 3.9) < calmDrop;
-    // Respawn on: age expired (timed lifecycle), leaving the domain, calm-cell dwell, or
-    // land/no-data when landReset is on.
-    bool reset = (age >= 1.0) || (npos.y <= 0.0) || (npos.y >= 1.0)
-                 || (u_landReset > 0.5 && hasData < 0.5)
-                 || calmReset
-                 || outside;
-
-    if (reset) {
-        o_pos = encodePos(randPos);
-        // New random lifetime factor + age reset to 0 (born fresh, will fade in).
-        float nl = rand(seed + 5.1);
-        o_age = vec4(0.0, nl, 0.0, 1.0);
+    // Custom respawn boundaries based on constraints
+    bool outOfBounds = false;
+    if (!lonWrap) {
+        if (npos.x < bmin.x || npos.x > bmax.x) outOfBounds = true;
     } else {
-        o_pos = encodePos(npos);
-        o_age = vec4(age, ageState.g, 0.0, 1.0);
+        if (npos.x < bmin.x && npos.x > bmax.x) outOfBounds = true;
     }
+    if (npos.y < bmin.y || npos.y > bmax.y) outOfBounds = true;
+
+    // Fast decay option for calm areas to prevent clump staging
+    float speedSq = dot(vel, vel);
+    if (speedSq < u_calmSpeed * u_calmSpeed) {
+        if (rand(seed + 4.1) < u_calmDrop) {
+            age = 1.1; 
+        }
+    }
+
+    // =================================================================
+    // NEW: STRUCTURAL THROTTLING (THE OVERCROWDING KILL SWITCH)
+    // =================================================================
+    // If convergence is high, we force a certain percentage of random 
+    // particles to immediately die and respawn elsewhere. 
+    // This acts like a pressure valve, breaking up dense visual lines.
+    bool killedByOvercrowding = false;
+    if (convergenceFactor > 0.05) {
+        // Use the particle's texture coordinate (v_uv) as a permanent 
+        // unique ID so the pruning looks stable frame-over-frame.
+        float structuralPruneChance = rand(v_uv + u_seed * 0.01);
+        if (structuralPruneChance < (convergenceFactor * 0.65)) {
+            killedByOvercrowding = true;
+        }
+    }
+
+    if (age >= 1.0 || outOfBounds || hasData < 0.5 || killedByOvercrowding) {
+        pos = respawnPos;
+        age = rand(seed + 0.5) * 0.1; // Staggered birth
+    } else {
+        // Apply directional scattering perpendicular to the front line
+        if (convergenceFactor > 0.02) {
+            vec2 perpendicular = vec2(-d.y, d.x);
+            float jitterAmount = (rand(seed + 8.9) - 0.5) * convergenceFactor * 0.012;
+            npos += perpendicular * jitterAmount;
+        }
+        pos = npos;
+    }
+
+    o_pos = encodePos(pos);
+    o_age = vec4(age, ageState.g, 0.0, 1.0);
 }`;
 
 // Draw shaders, parameterized by PRIMITIVE:
@@ -476,7 +587,7 @@ export function createWindParticleGLController(map, opts) {
         // particle_size: streak thickness in px (0.1-5).
         thickness = (cfg) => { const v = Number(cfg.particle_size);
                                return isFinite(v) ? Math.min(5, Math.max(0.1, v)) : 1.0; },
-        lenSpeedScale = 1.5,                              // fast wind streaks up to 2.5x longer
+        lenSpeedScale = 1.5,          // fast wind streaks up to 2.5x longer
         // Age lifecycle (windy.com look): each frame a particle's normalized age advances
         // by ageStep / lifetimeFactor; at age>=1 it respawns. particle_lifetime is frames-
         // to-live (ageStep = 1/N). DEFAULT 70 (was 250): with a long lifetime particles
@@ -535,8 +646,8 @@ export function createWindParticleGLController(map, opts) {
     let mode = null, webglFailed = false, layerAdded = false;
     let unsubTimeline = null;     // timeline subscription
     let curCfgWind = null;        // latest cfg, for timeline-driven reloads
-    let lastWindHour = -1;        // detect hour changes
-    let lastWindBust = -1;        // detect data-refresh busts
+    let lastWindHour = -1;     // detect hour changes
+    let lastWindBust = -1;     // detect data-refresh busts
     let glRef = null;
 
     let updateProg = null, screenQuad = null, vaoUpdate = null, vaoStreaks = null;

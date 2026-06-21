@@ -96,8 +96,10 @@ class Database:
 
         raw_time_str = metadata.get("time_utc", "")
         if raw_time_str:
-            clean_time_str = raw_time_str.replace(" UTC", "")
-            msg_datetime = datetime.strptime(clean_time_str, "%Y-%m-%d %H:%M:%S.%f %z")
+            timestamp = raw_time_str.replace(" UTC", "")
+            main_part, tz_part = timestamp.split(' +')
+            cleaned_timestamp = f"{main_part[:26]} +{tz_part}"
+            msg_datetime = datetime.strptime(cleaned_timestamp, "%Y-%m-%d %H:%M:%S.%f %z")
         else:
             msg_datetime = datetime.now()  # Fallback just in case
 

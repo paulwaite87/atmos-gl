@@ -318,7 +318,7 @@ export function createWaveParticleController(map, opts) {
         for (let i = 0; i < 2; i++) {
             if (stateTex[i]) gl.deleteTexture(stateTex[i]);
             if (stateFbo[i]) gl.deleteFramebuffer(stateFbo[i]);
-            stateTex[i] = makeTex(gl, RES, RES, randomState(), gl.NEAREST);
+            stateTex[i] = makeTex(gl, RES, RES, randomState(), gl.LINEAR);
             stateFbo[i] = gl.createFramebuffer();
             gl.bindFramebuffer(gl.FRAMEBUFFER, stateFbo[i]);
             gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, stateTex[i], 0);
