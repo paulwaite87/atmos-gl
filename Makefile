@@ -32,9 +32,9 @@ rebuild: stop
 ## logs: Tail logs for all containers
 logs:
 ifndef service
-	docker compose logs -f
+	docker compose logs -f -n 1000
 else
-	docker compose logs -f ${service}
+	docker compose logs -f ${service} -n 1000
 endif
 
 ## test: Run all tests (optional: make test include=pattern)
