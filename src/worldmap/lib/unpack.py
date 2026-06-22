@@ -240,7 +240,11 @@ def _regrid_curvilinear_nn(lat2d, lon2d, fields, step, lat_min, lat_max):
     vm = valid[sub]
     src = np.column_stack([lat[sub][vm].ravel(), lon180[sub][vm].ravel()])
 
-    tlat = np.arange(lat_min, lat_max + step, step)
+    # Build the target latitude axis NORTH-first by construction (row 0 = +90), so the
+    # regridded rows come out north-first directly — matching the GFS layers and what the
+    # GPU textures expect, without a late flipud. (Same values as an ascending arange,
+    # just reversed; verified output-identical to the previous ascending+flip approach.)
+    tlat = np.arange(lat_min, lat_max + step, step)[::-1]
     tlon = np.arange(-180.0, 180.0, step)
     mlat, mlon = np.meshgrid(tlat, tlon, indexing="ij")
     tgt = np.column_stack([mlat.ravel(), mlon.ravel()])
@@ -255,14 +259,11 @@ def _regrid_curvilinear_nn(lat2d, lon2d, fields, step, lat_min, lat_max):
         vals = np.asarray(arr)[sub][vm].ravel()
         safe_idx = np.clip(idx, 0, vals.size - 1)
         regridded = np.where(hit, vals[safe_idx], np.nan).reshape(mlat.shape)
-        # RTOFS native grid is SOUTH-first (j=0 at Antarctica). The regrid's tlat is
-        # built ascending, so `regridded` row 0 = south. But the GPU layers (fill VS
-        # ny = 0.5 - lat/180, and the particle layer's lat = (0.5 - pos.y)*PI) both
-        # assume the texture is NORTH-first (row 0 = +90), like the GFS layers. So we
-        # flip to north-first; without this the render is vertically mirrored.
-        out[name] = np.flipud(regridded).astype(np.float32)
-    # Latitudes north-first to match the flipped rows.
-    return tlat[::-1], tlon, out
+        # tlat is north-first by construction, so regridded is already north-first
+        # (the particle/fill GPU layers map row 0 -> +90; south-first would render
+        # vertically mirrored, turning rotation into divergence).
+        out[name] = regridded.astype(np.float32)
+    return tlat, tlon, out
 
 
 def waves_data_unpack(path):
