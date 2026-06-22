@@ -3,7 +3,7 @@ import os
 import logging
 
 from worldmap.lib.config import WorldMapConfig
-from .common import Updater, MapData, encode_uv
+from .common import Updater, MapData, encode_uv, smooth_flow_direction
 
 logging.getLogger("cfgrib").setLevel(logging.ERROR)
 
@@ -14,6 +14,11 @@ class WindUpdater(Updater):
     def __init__(self, config: WorldMapConfig, map_data: MapData):
         super().__init__(config, "Wind", map_data)
         self.VMAX_WIND = 40.0
+        # Direction-coherence radius (grid cells, ~0.25 deg each) for the advection field:
+        # broadens coarse-grid shear seams into gradual turns so particles curve through
+        # them instead of dwelling/stalling. Speed (colour) is untouched. 0 disables;
+        # ~2 is a good windy-like default. Tunable — raise for broader, softer curves.
+        self.FLOW_COHERENCE = 2.5
         # Wind has NO static PNG — only the GPU velocity texture.
         self.per_hour_outputs = ["_data.png"]
 
@@ -30,6 +35,11 @@ class WindUpdater(Updater):
         """
         u = field0["u"]  # m/s
         v = field0["v"]  # m/s
+
+        # Manufacture the gradual cross-shear bending the coarse grid lacks: smooth the
+        # flow DIRECTION (speed/colour untouched) so particles curve through boundaries
+        # instead of forming hard seams between independently-moving regions.
+        u, v = smooth_flow_direction(u, v, self.FLOW_COHERENCE)
 
         out_for_hour = self.get_output_path_for_hour(self.forecast_hour_str)
         base, _ = os.path.splitext(out_for_hour)
