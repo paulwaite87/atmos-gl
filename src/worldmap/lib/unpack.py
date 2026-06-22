@@ -138,6 +138,12 @@ def wind_data_unpack(path):
             "filter_by_keys": {"typeOfLevel": "heightAboveGround", "level": 10}
         },
     )
+    # Enforce the row-0 = north contract (see module docstring). cfgrib can return
+    # latitude ascending (south-first) depending on the GRIB; sortby reorders the data
+    # AND the latitude coordinate together (staying coordinate-aligned, unlike a bare
+    # numpy flip), so the GPU velocity texture isn't vertically mirrored — which would
+    # otherwise turn cyclonic rotation into radial divergence on the particle layer.
+    ds = ds.sortby("latitude", ascending=False)
     u = ds["u10"].values.squeeze()
     v = ds["v10"].values.squeeze()
     lats = ds["latitude"].values

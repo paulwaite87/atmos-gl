@@ -74,18 +74,35 @@ def encode_frames(frames, output_path, vmin, vmax, transform=None, bits=16):
     return True
 
 
-def encode_uv(u, v, output_path, vmax):
+def encode_uv(u, v, output_path, vmax, lat=None):
     """
     Encode a global vector field (U=east, V=north, in m/s) into a single RGBA PNG
     for a GPU particle layer:  R = (U + vmax) / (2*vmax),  G = (V + vmax) / (2*vmax),
-    B = 0,  A = 255 (0 where NaN).  Row 0 = north (GFS native), lon -180..180.
+    B = 0,  A = 255 (0 where NaN).  Row 0 = north, lon -180..180.
     Decode on the GPU as:  component = channel * (2*vmax) - vmax.
     vmax clips extremes; pick it a little above the strongest winds you care about.
+
+    The particle shader's toMerc() maps the top texture row to +90 lat and treats G as
+    the true northward component, so the texture MUST be north-at-top. cfgrib does not
+    guarantee a row order (it can hand back latitude ascending = south-first depending on
+    the GRIB), and unpack/_standardize_lon only normalises longitude. If south-first rows
+    reach here, the field is encoded vertically mirrored: every particle samples the wrong
+    hemisphere AND the (un-negated) V is inconsistent with the flipped geometry, which turns
+    rotation into divergence — highs render as radial outflow instead of circulating.
+    Passing `lat` lets this self-orient: if lat is ascending we flip the rows to north-first
+    so the output is correct regardless of what cfgrib produced. lat and u/v are guaranteed
+    consistent here (they come from the same fieldstore .npz).
     """
     u = np.asarray(u, dtype=np.float32)
     v = np.asarray(v, dtype=np.float32)
     if u.shape != v.shape:
         raise ValueError(f"U/V shape mismatch: {u.shape} vs {v.shape}")
+    # Guarantee north-at-top. If latitude runs south->north (ascending), flip the rows.
+    if lat is not None:
+        lat = np.asarray(lat)
+        if lat.ndim == 1 and lat.size >= 2 and float(lat[0]) < float(lat[-1]):
+            u = u[::-1]
+            v = v[::-1]
     span = 2.0 * float(vmax)
     mask = np.isnan(u) | np.isnan(v)
     ru = np.clip((np.nan_to_num(u) + vmax) / span, 0.0, 1.0)

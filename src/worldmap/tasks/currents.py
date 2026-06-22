@@ -92,7 +92,7 @@ class CurrentsUpdater(Updater):
 
         out_for_hour = self.get_output_path_for_hour(self.forecast_hour_str)
         base, _ = os.path.splitext(out_for_hour)
-        encode_uv(u, v, f"{base}_data.png", self.VMAX_CURRENT)
+        encode_uv(u, v, f"{base}_data.png", self.VMAX_CURRENT, lat=field0.get("lat"))
 
         # Key is hour-independent; write once at the base name the frontend requests.
         self.save_currents_key(self.output_path)

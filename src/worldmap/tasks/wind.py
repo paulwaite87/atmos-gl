@@ -33,7 +33,7 @@ class WindUpdater(Updater):
 
         out_for_hour = self.get_output_path_for_hour(self.forecast_hour_str)
         base, _ = os.path.splitext(out_for_hour)
-        encode_uv(u, v, f"{base}_data.png", self.VMAX_WIND)
+        encode_uv(u, v, f"{base}_data.png", self.VMAX_WIND, lat=field0.get("lat"))
         logger.info(
             f"Finished Wind velocity texture f{int(self.forecast_hour_str):03d} (R=U, G=V)."
         )
