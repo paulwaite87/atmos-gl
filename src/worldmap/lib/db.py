@@ -1031,38 +1031,6 @@ class Database:
         with self.conn.cursor() as cur:
             cur.execute(sql, params)
 
-    # -- Backfill request queue ----------------------------------------------
-    # A durable, deduplicated work queue bridging the (separate) map_api and
-    # data_collector processes, which share only the database. The frontend flags a
-    # missing per-hour field (404); the API enqueues a request; the collector drains
-    # it on its fast poll, fetches the field, and marks it done/failed. Status flow:
-    #   requested -> fetching -> done            (success)
-    #   requested -> fetching -> failed          (upstream genuinely lacks it; no retry)
-    def ensure_backfill_table(self):
-        """Create the backfill_requests table if absent. Called at startup by both the
-        collector and the API so it exists on already-initialised DBs too (the SQL in
-        docker-entrypoint-initdb.d only runs on a fresh data dir)."""
-        ddl = """
-            CREATE TABLE IF NOT EXISTS backfill_requests (
-                run_date     date         NOT NULL,
-                run_id      varchar(2)   NOT NULL,
-                fhour        integer      NOT NULL,
-                product      varchar(32)  NOT NULL,
-                status       varchar(16)  NOT NULL DEFAULT 'requested',
-                attempts     integer      NOT NULL DEFAULT 0,
-                requested_at timestamptz  NOT NULL DEFAULT now(),
-                updated_at   timestamptz  NOT NULL DEFAULT now(),
-                PRIMARY KEY (run_date, run_id, fhour, product)
-            );
-            CREATE INDEX IF NOT EXISTS idx_backfill_status ON backfill_requests (status);
-        """
-        try:
-            with self.conn.cursor() as cur:
-                cur.execute(ddl)
-        except Exception as e:
-            logger.error(f"Error ensuring backfill_requests table: {e}")
-            raise
-
     def enqueue_backfill(self, run_date, run_id, fhour, product):
         """Record a missing-data request. Idempotent: a key already in the queue is left
         as-is (so repeated 404 flags collapse to one row), EXCEPT a previously 'failed'

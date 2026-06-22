@@ -413,7 +413,6 @@ class DataCollector:
         done/failed. The render task then gap-fills the PNG on its next pass. Currents
         (RTOFS) is not serviced here — it uses a different run/hour mapping and the
         frontend reconciles its own hours — so such requests are marked failed."""
-        self.db.ensure_backfill_table()
         claimed = self.db.claim_backfill_requests(limit=20)
         if not claimed:
             return
@@ -507,10 +506,6 @@ class DataCollector:
         # ~a minute rather than waiting for the next full cycle.
         poll_s = int(self.settings.get("backfill_poll_seconds", 60))
         last_full = None  # None => run a full refresh immediately on first iteration
-        try:
-            self.db.ensure_backfill_table()
-        except Exception as e:
-            logger.error(f"could not ensure backfill table at startup: {e}")
         while True:
             self.refresh_settings()  # recomputes self.update_period_s, cache_hours, etc.
             poll_s = int(self.settings.get("backfill_poll_seconds", poll_s))

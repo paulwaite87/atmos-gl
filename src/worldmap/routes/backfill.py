@@ -69,7 +69,6 @@ async def request_backfill(req: BackfillRequest):
 
     try:
         db = Database()
-        db.ensure_backfill_table()
         db.enqueue_backfill(iso_date, req.run, int(req.hour), product)
     except Exception as e:
         logger.error(f"request_backfill failed: {e}")
