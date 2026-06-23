@@ -266,6 +266,18 @@
                     document.getElementById('key-warn-weather').classList.remove('d-none');
                 }
             }
+
+            const satellitesEnabled = document.getElementById('satellites_collector__enabled');
+            if (satellitesEnabled && data.satellites_collector) {
+                satellitesEnabled.checked = !!data.satellites_collector.enabled;
+                satellitesEnabled.addEventListener('change', toggleSectionVisibility);
+            }
+
+            const dataCollectorEnabled = document.getElementById('data_collector__enabled');
+            if (dataCollectorEnabled && data.data_collector) {
+                dataCollectorEnabled.checked = !!data.data_collector.enabled;
+                dataCollectorEnabled.addEventListener('change', toggleSectionVisibility);
+            }
         }
 
         function clearClimateRadio() {

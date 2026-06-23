@@ -227,7 +227,7 @@
     "marker_fontsize": 11
   },
   "data_collector": {
-    "enabled": false,
+    "enabled": true,
     "datasources": {
       "gfs": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
       "sst": "https://downloads.psl.noaa.gov/Datasets/noaa.oisst.v2.highres",
@@ -239,7 +239,7 @@
     "log_level": "DEBUG"
   },
   "satellites_collector": {
-    "enabled": false,
+    "enabled": true,
     "url": "https://celestrak.org/NORAD/elements",
     "groups": "stations,weather,science,resource",
     "update_hours": 12,
