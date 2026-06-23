@@ -48,13 +48,13 @@
     "enabled": true,
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
     "outfile": "data/wind.png",
-    "render_mode": "absolute",
-    "trail_persist": 0.2,
-    "point_size": 1,
+    "render_mode": "trails",
+    "trail_persist": 1.2,
+    "point_size": 2,
     "particle_speed": 5,
     "particle_alpha": 80,
-    "particle_size": 0.45,
-    "trail_fade": 10,
+    "particle_size": 0.65,
+    "trail_fade": 50,
     "drop_speed": 10,
     "max_speed_color": "White",
     "vector_color": "White",
@@ -226,7 +226,7 @@
     "marker_fontsize": 11
   },
   "data_collector": {
-    "enabled": true,
+    "enabled": false,
     "datasources": {
       "gfs": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
       "sst": "https://downloads.psl.noaa.gov/Datasets/noaa.oisst.v2.highres",
@@ -238,7 +238,7 @@
     "log_level": "DEBUG"
   },
   "satellites_collector": {
-    "enabled": true,
+    "enabled": false,
     "url": "https://celestrak.org/NORAD/elements",
     "groups": "stations,weather,science,resource",
     "update_hours": 12,

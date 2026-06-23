@@ -117,45 +117,6 @@ def encode_uv(u, v, output_path, vmax, lat=None):
     return True
 
 
-def smooth_flow_direction(u, v, radius):
-    """Direction-coherence smoothing for the particle ADVECTION field.
-
-    Coarse 0.25 deg GFS renders a shear (two flows meeting at an angle) as an abrupt
-    1-cell direction flip. When the frontend interpolates the raw Cartesian U/V across
-    that seam, the opposing components partially CANCEL, so the interpolated vector has a
-    collapsed magnitude right at the boundary — a low-speed 'dead zone'. Particles entering
-    it decelerate and dwell (piling into bright lines) or stall, so the two regions read as
-    independent blocks with a hard seam instead of one flow curving into the other.
-
-    This rewrites each cell as  SPEED * smoothed-unit-DIRECTION:
-      - SPEED (the per-cell magnitude) is kept EXACTLY, so the wind-speed colours / fine
-        detail are unchanged (colour depends only on magnitude).
-      - DIRECTION is averaged as unit vectors over a ~`radius`-cell Gaussian neighbourhood
-        (unit-vector form takes the shortest rotation and has no 360-degree wrap problem),
-        turning the 1-cell flip into a gradual, coherent multi-cell turn.
-    The seam no longer collapses in magnitude, so particles ride a smooth curve through it
-    at sustained speed — the windy.com look — without removing the calm/age recycling that
-    keeps genuinely dead zones from clumping.
-
-    radius is in grid cells (~0.25 deg each); 0 disables. Longitude wraps, latitude clamps.
-    """
-    if radius is None or radius <= 0:
-        return u, v
-    from scipy.ndimage import gaussian_filter
-    u = np.asarray(u, dtype=np.float64)
-    v = np.asarray(v, dtype=np.float64)
-    spd = np.hypot(u, v)
-    eps = 1e-6
-    ux = np.nan_to_num(u / (spd + eps))
-    uy = np.nan_to_num(v / (spd + eps))
-    # Smooth the unit-direction field. axis 0 = latitude (clamp at the poles), axis 1 =
-    # longitude (wrap around the globe so the dateline has no seam).
-    sux = gaussian_filter(ux, radius, mode=["nearest", "wrap"])
-    suy = gaussian_filter(uy, radius, mode=["nearest", "wrap"])
-    norm = np.hypot(sux, suy) + eps
-    return spd * sux / norm, spd * suy / norm
-
-
 def _opaque_cmap(cmap, n=256):
     """Return an opaque copy of a colormap (alpha forced to 1.0)."""
     import numpy as np

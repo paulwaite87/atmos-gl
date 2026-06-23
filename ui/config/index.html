@@ -266,18 +266,6 @@
                     document.getElementById('key-warn-weather').classList.remove('d-none');
                 }
             }
-
-            const satellitesCollectorEnabled = document.getElementById('satellites_collector__enabled');
-            if (satellitesCollectorEnabled && data.satellites_collector) {
-                satellitesCollectorEnabled.checked = !!data.satellites_collector.enabled;
-                satellitesCollectorEnabled.addEventListener('change', toggleSectionVisibility);
-            }
-            
-            const dataCollectorEnabled = document.getElementById('data_collector__enabled');
-            if (dataCollectorEnabled && data.data_collector) {
-                dataCollectorEnabled.checked = !!data.data_collector.enabled;
-                dataCollectorEnabled.addEventListener('change', toggleSectionVisibility);
-            }
         }
 
         function clearClimateRadio() {
@@ -773,12 +761,20 @@
                                     <option value="CRITICAL" ${value === 'CRITICAL' ? 'selected' : ''}>CRITICAL</option>
                                 </select>
                             `;
-                        } else if (option.includes('mode')) {
+                        } else if (option === 'mode') {
                             col.innerHTML = `
                                 <label class="form-label small text-white-50 fw-bold mb-1">${customLabelText}</label>
                                 <select class="form-select bg-dark text-light border-secondary dynamic-input" id="${domId}">
                                     <option value="absolute" ${value === 'absolute' ? 'selected' : ''}>Absolute</option>
                                     <option value="anomaly" ${value === 'anomaly' ? 'selected' : ''}>Anomaly</option>
+                                </select>
+                            `;
+                        } else if (option === 'render_mode') {
+                            col.innerHTML = `
+                                <label class="form-label small text-white-50 fw-bold mb-1">${customLabelText}</label>
+                                <select class="form-select bg-dark text-light border-secondary dynamic-input" id="${domId}">
+                                    <option value="trails" ${value === 'trails' ? 'selected' : ''}>Trails</option>
+                                    <option value="streaks" ${value === 'streaks' ? 'selected' : ''}>Streaks</option>
                                 </select>
                             `;
                         } else if (option.includes('palette')) {

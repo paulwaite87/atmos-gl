@@ -53,21 +53,21 @@ class LayerBuilder:
 
         signal.signal(signal.SIGUSR1, self.handle_force_refresh)
 
-        # Execution registry - order is not important
+        # Execution order registry: Isobars must run before Precip/Clouds to set the baseline
         self.task_registry: List[Tuple[str, Type[Any]]] = [
             ("isobars", IsobarUpdater),
-            ("wind", WindUpdater),
             ("precipitation", PrecipitationUpdater),
+            ("clouds", CloudUpdater),
+            ("wind", WindUpdater),
+            ("sst", SSTUpdater),
             ("currents", CurrentsUpdater),
             ("waves", WavesUpdater),
-            ("sst", SSTUpdater),
             ("temperature", TemperatureUpdater),
             ("ozone", OzoneUpdater),
             ("stormwatch", StormwatchUpdater),
             ("storms", StormUpdater),
             ("quakes", QuakeUpdater),
             ("volcanoes", VolcanoUpdater),
-            ("clouds", CloudUpdater),
         ]
 
     def refresh_settings(self):

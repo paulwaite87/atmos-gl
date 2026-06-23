@@ -32,9 +32,9 @@ rebuild: stop
 ## logs: Tail logs for all containers
 logs:
 ifndef service
-	docker compose logs -f -n 1000
+	docker compose logs -f
 else
-	docker compose logs -f ${service} -n 1000
+	docker compose logs -f ${service}
 endif
 
 ## test: Run all tests (optional: make test include=pattern)
@@ -113,20 +113,6 @@ purge:
 	   docker compose down --rmi all --volumes; \
 	   echo "System purged. Database volumes have been deleted."; \
 	fi
-
-## stop-desktop: Kill the desktop background updater
-stop-desktop:
-	@pkill -f $(WALLPAPER_UPDATER) || echo "No update process found."
-
-## start-desktop: Start the desktop map updater in the background
-start-desktop:
-	nohup ./$(WALLPAPER_UPDATER) &
-	@echo "Wallpaper updater started in the background."
-
-## start-desktop-fg: Start the desktop map updater in the foreground
-start-desktop-fg:
-	./$(WALLPAPER_UPDATER)
-	@echo "Wallpaper updater started."
 
 ## psql: Open psql session in map database
 psql:
