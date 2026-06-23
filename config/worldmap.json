@@ -49,6 +49,7 @@
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
     "outfile": "data/wind.png",
     "render_mode": "trails",
+    "flow_coherence_radius": 20,
     "trail_persist": 1.2,
     "point_size": 2,
     "particle_speed": 5,
