@@ -40,11 +40,16 @@ out vec2 v_uv;
 void main() { v_uv = a_pos; gl_Position = vec4(a_pos * 2.0 - 1.0, 0.0, 1.0); }`;
 
 const PACK = `
+#ifdef POS_FLOAT
+vec2 decodePos(vec4 c){ return c.xy; }
+vec4 encodePos(vec2 p){ return vec4(p, 0.0, 1.0); }
+#else
 vec2 packPos(float x){ float e = floor(clamp(x,0.0,1.0)*65535.0 + 0.5);
     float hi = floor(e/256.0); return vec2(hi, e - hi*256.0)/255.0; }
 float unpackPos(vec2 c){ return (c.x*255.0*256.0 + c.y*255.0)/65535.0; }
 vec2 decodePos(vec4 c){ return vec2(unpackPos(c.rg), unpackPos(c.ba)); }
 vec4 encodePos(vec2 p){ return vec4(packPos(p.x), packPos(p.y)); }
+#endif
 float rand(vec2 co){
     // Dave Hoskins hash (https://www.shadertoy.com/view/4djSRW). The classic
     // fract(sin(dot(co, vec2(12.9898,78.233)))*43758.5) hash has STRONG diagonal
@@ -239,8 +244,12 @@ out float v_along;
 out float v_age;
 const float WV_PI = 3.141592653589793;
 const float WV_LATMAX = 1.4844222297453324;
+#ifdef POS_FLOAT
+vec2 decodePos(vec4 c){ return c.xy; }
+#else
 float unpackPos(vec2 c){ return (c.x*255.0*256.0 + c.y*255.0)/65535.0; }
 vec2 decodePos(vec4 c){ return vec2(unpackPos(c.rg), unpackPos(c.ba)); }
+#endif
 vec2 toMerc(vec2 p){
     float lat = clamp((0.5 - p.y) * WV_PI, -WV_LATMAX, WV_LATMAX);
     float my = log(tan(WV_PI*0.25 + lat*0.5));
@@ -491,8 +500,12 @@ uniform float u_res, u_vmax, u_maxspeed, u_pointSize, u_calmFade, u_alpha;
 out vec4 v_color;
 const float WV_PI = 3.141592653589793;
 const float WV_LATMAX = 1.4844222297453324;
+#ifdef POS_FLOAT
+vec2 decodePos(vec4 c){ return c.xy; }
+#else
 float unpackPos(vec2 c){ return (c.x*255.0*256.0 + c.y*255.0)/65535.0; }
 vec2 decodePos(vec4 c){ return vec2(unpackPos(c.rg), unpackPos(c.ba)); }
+#endif
 vec2 toMerc(vec2 p){
     float lat = clamp((0.5 - p.y) * WV_PI, -WV_LATMAX, WV_LATMAX);
     float my = log(tan(WV_PI*0.25 + lat*0.5));
@@ -689,6 +702,7 @@ export function createWindParticleGLController(map, opts) {
     let curFrac = 0;                    // timeline cross-fade position, 0..1
     let lastWindNextHour = -1;          // which hour windTexNext currently holds
     let stateTex = [null, null], ageTex = [null, null], stateFbo = [null, null], stateCur = 0;
+    let floatPos = false;               // EXT_color_buffer_float available -> RGBA32F positions
     let RES = 256, count = 65536;
     let activeCount = count;             // zoom-thinned drawn subset (<= count)
     const streakProgCache = new Map();
@@ -772,6 +786,11 @@ export function createWindParticleGLController(map, opts) {
         return sh;
     };
     const linkProg = (gl, vs, fs) => {
+        if (floatPos) {
+            // Float position path: define POS_FLOAT so the pos helpers store raw floats.
+            const inj = (src) => src.replace('#version 300 es\n', '#version 300 es\n#define POS_FLOAT 1\n');
+            vs = inj(vs); fs = inj(fs);
+        }
         const v = compile(gl, gl.VERTEX_SHADER, vs), f = compile(gl, gl.FRAGMENT_SHADER, fs);
         if (!v || !f) return null;
         const p = gl.createProgram();
@@ -794,9 +813,33 @@ export function createWindParticleGLController(map, opts) {
         return t;
     };
     const randomState = () => {
+        if (floatPos) {                                  // raw [0,1] positions, full precision
+            const data = new Float32Array(RES * RES * 4);
+            for (let i = 0; i < RES * RES; i++) {
+                data[i*4+0] = Math.random();             // x
+                data[i*4+1] = Math.random();             // y
+                data[i*4+2] = 0.0;
+                data[i*4+3] = 1.0;
+            }
+            return data;
+        }
         const data = new Uint8Array(RES * RES * 4);
         for (let i = 0; i < data.length; i++) data[i] = Math.floor(Math.random() * 256);
         return data;
+    };
+    // Position state texture: RGBA32F (full float precision) when supported, else the
+    // 16-bit packed RGBA8 path. NEAREST sampled (per-particle exact fetch), so no
+    // float-linear extension is needed.
+    const makeStateTex = (gl, w, h, data) => {
+        if (!floatPos) return makeTex(gl, w, h, data, gl.NEAREST);
+        const t = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, t);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, w, h, 0, gl.RGBA, gl.FLOAT, data);
+        return t;
     };
     // Initial age state: r = random age [0,1] (so particles don't blink in unison),
     // g = random lifetime factor, b/a unused/opaque.
@@ -815,7 +858,7 @@ export function createWindParticleGLController(map, opts) {
             if (stateTex[i]) gl.deleteTexture(stateTex[i]);
             if (ageTex[i]) gl.deleteTexture(ageTex[i]);
             if (stateFbo[i]) gl.deleteFramebuffer(stateFbo[i]);
-            stateTex[i] = makeTex(gl, RES, RES, randomState(), gl.NEAREST);
+            stateTex[i] = makeStateTex(gl, RES, RES, randomState());
             ageTex[i]   = makeTex(gl, RES, RES, randomAge(), gl.NEAREST);
             stateFbo[i] = gl.createFramebuffer();
             gl.bindFramebuffer(gl.FRAMEBUFFER, stateFbo[i]);
@@ -1208,6 +1251,12 @@ export function createWindParticleGLController(map, opts) {
         renderingMode: '2d',
         onAdd(m, gl) {
             glRef = gl;
+            // Full-precision particle positions: requires rendering to a float color
+            // buffer. With the extension, RGBA32F is color-renderable (spec guarantee),
+            // so positions store raw [0,1] floats (~1e-7 quantum) instead of 16-bit packed
+            // (~1.5e-5) — sub-pixel advection no longer underflows when zoomed in. Falls
+            // back to the 16-bit path where the extension is absent.
+            floatPos = !!gl.getExtension('EXT_color_buffer_float');
             updateProg = linkProg(gl, QUAD_VS, UPDATE_FS);
             if (!updateProg) { webglFailed = true; return; }
             screenQuad = gl.createBuffer();
@@ -1274,8 +1323,11 @@ export function createWindParticleGLController(map, opts) {
             }
             // Zoom speed compensation: slow the [0,1]-space step as you zoom in so the
             // on-screen pixel-crossing rate stays constant (comp=1 -> exact, 0 -> off).
+            // Float positions don't underflow, so allow the step to shrink much further
+            // (constant rate holds to ~z12); the 16-bit path keeps the higher floor.
             speedZoomFactor = (curSpeedZoomComp > 0)
-                ? Math.min(4.0, Math.max(0.02, Math.pow(2, -curSpeedZoomComp * (zNow - curSpeedZoomRef))))
+                ? Math.min(4.0, Math.max(floatPos ? 0.001 : 0.02,
+                    Math.pow(2, -curSpeedZoomComp * (zNow - curSpeedZoomRef))))
                 : 1.0;
             // Temporal interpolation: when playing (frac>0) and the next hour is loaded,
             // lerp current->next into windBlendTex and advect/colour against that. Paused
