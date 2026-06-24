@@ -403,6 +403,79 @@ void main(){
     fragColor = mix(texture(u_a, v_uv), texture(u_b, v_uv), u_blend);
 }`;
 
+// DIRECTION-COHERENCE filter (the old backend smooth_flow_direction, moved to the GPU so
+// flow_coherence_radius is live-tunable). Coarse 0.25-deg GFS renders a shear as an abrupt
+// 1-cell direction flip; interpolating the raw Cartesian U/V across it makes the opposing
+// components cancel, collapsing magnitude into a low-speed "dead zone" right at the seam, so
+// particles dwell (bright lines) or stall (hard seam between independently-moving regions).
+// We rewrite each cell as SPEED * smoothed-unit-DIRECTION: each cell keeps its OWN magnitude
+// (so the wind-speed colours / fine detail are untouched) but its flow DIRECTION is averaged
+// as a unit vector over a ~radius-cell Gaussian, turning the flip into a gradual coherent
+// turn. Done SEPARABLY (H then V) so a large radius (sigma ~8) stays cheap, and only when a
+// texture loads or the radius changes — never per frame. The unit components are averaged
+// linearly across both passes and renormalised ONCE at the end (correct separable Gaussian).
+//
+// Pass H -> cohTempTex:  RG = horizontally-averaged unit-dir (signed, *0.5+0.5), B = mag/vmax,
+//                        A = coverage. Longitude wraps; far taps (>2.5 sigma) are skipped so
+//                        texture-read cost tracks the radius despite the fixed loop bound.
+const COH_H_FS = `#version 300 es
+precision highp float;
+in vec2 v_uv;
+out vec4 fragColor;
+uniform sampler2D u_src;
+uniform float u_vmax, u_radius;
+uniform vec2 u_texel;
+const int MAXK = 24;
+void main(){
+    vec4 c = texture(u_src, v_uv);
+    vec2 cv = c.rg * (2.0*u_vmax) - u_vmax;
+    float mag = length(cv);
+    float sig = max(u_radius, 1e-3);
+    float lim = 2.5 * sig;
+    vec2 acc = vec2(0.0); float wsum = 0.0;
+    for (int k = -MAXK; k <= MAXK; k++){
+        float fk = float(k);
+        if (abs(fk) > lim) continue;
+        float w = exp(-(fk*fk)/(2.0*sig*sig));
+        vec4 s = texture(u_src, vec2(fract(v_uv.x + fk*u_texel.x + 1.0), v_uv.y));
+        vec2 sv = s.rg * (2.0*u_vmax) - u_vmax;
+        float m = length(sv);
+        if (m > 0.01 && s.a > 0.5){ acc += w * (sv / m); wsum += w; }
+    }
+    vec2 hd = (wsum > 0.0) ? acc / wsum : (mag > 0.01 ? cv / mag : vec2(0.0));
+    fragColor = vec4(hd * 0.5 + 0.5, mag / u_vmax, c.a);
+}`;
+
+// Pass V (reads cohTempTex) -> coherent encoded texture: average the horiz-smoothed unit-dir
+// VERTICALLY (latitude clamps at the poles), renormalise once, multiply back by THIS cell's
+// preserved magnitude, and re-encode in the same rg*(2*vmax)-vmax form the sampler decodes.
+const COH_V_FS = `#version 300 es
+precision highp float;
+in vec2 v_uv;
+out vec4 fragColor;
+uniform sampler2D u_src;
+uniform float u_vmax, u_radius;
+uniform vec2 u_texel;
+const int MAXK = 24;
+void main(){
+    vec4 c = texture(u_src, v_uv);
+    float mag = c.b * u_vmax;          // this cell's own (preserved) speed
+    float sig = max(u_radius, 1e-3);
+    float lim = 2.5 * sig;
+    vec2 acc = vec2(0.0); float wsum = 0.0;
+    for (int k = -MAXK; k <= MAXK; k++){
+        float fk = float(k);
+        if (abs(fk) > lim) continue;
+        float w = exp(-(fk*fk)/(2.0*sig*sig));
+        vec4 s = texture(u_src, vec2(v_uv.x, clamp(v_uv.y + fk*u_texel.y, 0.0, 1.0)));
+        if (s.a > 0.5){ acc += w * (s.rg * 2.0 - 1.0); wsum += w; }
+    }
+    vec2 d = (wsum > 0.0) ? acc / wsum : (c.rg * 2.0 - 1.0);
+    float dl = length(d);
+    vec2 outv = (dl > 1e-4) ? mag * (d / dl) : vec2(0.0);
+    fragColor = vec4(clamp((outv + u_vmax) / (2.0*u_vmax), 0.0, 1.0), 0.0, c.a);
+}`;
+
 // Particle POINT vertex shader BODY (assembled with MapLibre's projection prelude, like
 // the streak VS, so projectTile() + the globe clipping plane are available). Reads each
 // particle's position + age from the state textures via gl_VertexID, projects to clip,
@@ -558,6 +631,8 @@ export function createWindParticleGLController(map, opts) {
         // each hour. Only active while playing; paused/stepped (frac==0) is unchanged.
         // Default on; disable with temporal_blend:false. Config: temporal_blend.
         temporalBlend = (cfg) => String(cfg.temporal_blend) !== 'false',
+        // Live direction-coherence radius (texels ~= 0.25-deg cells). 0 disables.
+        cohRadius = (cfg) => { const v = Number(cfg.flow_coherence_radius); return (isFinite(v) && v > 0) ? v : 0; },
         maxSpeedColor = (cfg) => (Number(cfg.max_speed_color) > 0 ? Number(cfg.max_speed_color) : 30.0),
         useViewDensity = true,
         // Reset particles that wander onto land/no-data (alpha<0.5). Wind blows over
@@ -589,6 +664,12 @@ export function createWindParticleGLController(map, opts) {
     let windTexNext = null;             // next forecast hour's velocity texture
     let windBlendTex = null, windBlendFbo = null;  // lerped (current,next) result
     let blendProg = null;               // fullscreen-quad two-texture mix program
+    // Direction-coherence (live flow_coherence_radius). Coherent textures are derived from
+    // the raw ones once per load / radius change; the per-frame blend then runs on these.
+    let windCohTex = null, windCohNextTex = null, cohTempTex = null;
+    let cohHProg = null, cohVProg = null;
+    let cohCurDirty = false, cohNextDirty = false, cohW = 0, cohH = 0;
+    let curCohRadius = 0;
     let activeWindTex = null;           // texture u_wind samples this frame (blend or current)
     let windNextReady = false, pendingWindNextImg = null;
     let blendW = 0, blendH = 0;         // blend-texture's currently-allocated size
@@ -625,6 +706,8 @@ export function createWindParticleGLController(map, opts) {
         curLandReset = landReset(cfg) > 0.5 ? 1.0 : 0.0;
         curRenderMode = renderMode(cfg); curPointSize = pointSize(cfg); curFadeOpacity = fadeOpacity(cfg);
         curTemporalBlend = temporalBlend(cfg);
+        const newCoh = cohRadius(cfg);
+        if (newCoh !== curCohRadius) { curCohRadius = newCoh; cohCurDirty = true; cohNextDirty = true; }
     };
 
     // equirect [0,1] respawn box. Latitude from bounds; longitude from centre + zoom
@@ -749,11 +832,13 @@ export function createWindParticleGLController(map, opts) {
         windTex = makeWindTex(gl, img);
         windImgW = img.width; windImgH = img.height;
         windReady = true;
+        cohCurDirty = true;
     };
     const uploadWindNextNow = (gl, img) => {
         if (windTexNext) gl.deleteTexture(windTexNext);
         windTexNext = makeWindTex(gl, img);
         windNextReady = true;
+        cohNextDirty = true;
     };
 
     // Lazily (re)create the blend output texture + FBO to match the wind texture size.
@@ -771,8 +856,8 @@ export function createWindParticleGLController(map, opts) {
         blendW = w; blendH = h;
     };
 
-    // One blend pass: windBlendTex = mix(windTex, windTexNext, curFrac). Saves/restores FBO.
-    const blendWind = (gl) => {
+    // One blend pass: windBlendTex = mix(srcA, srcB, curFrac). Saves/restores FBO.
+    const blendWind = (gl, srcA, srcB) => {
         ensureBlendTex(gl, windImgW, windImgH);
         const prevFbo = gl.getParameter(gl.FRAMEBUFFER_BINDING);
         const prevVp = gl.getParameter(gl.VIEWPORT);
@@ -783,11 +868,70 @@ export function createWindParticleGLController(map, opts) {
         gl.disable(gl.BLEND);
         gl.useProgram(blendProg);
         gl.bindVertexArray(vaoQuad);
-        gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, windTex);
+        gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, srcA);
         gl.uniform1i(gl.getUniformLocation(blendProg, 'u_a'), 0);
-        gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, windTexNext);
+        gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, srcB);
         gl.uniform1i(gl.getUniformLocation(blendProg, 'u_b'), 1);
         gl.uniform1f(gl.getUniformLocation(blendProg, 'u_blend'), curFrac);
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, prevFbo);
+        gl.viewport(prevVp[0], prevVp[1], prevVp[2], prevVp[3]);
+    };
+
+    const cohActive = () => curCohRadius > 0.001 && cohHProg && cohVProg;
+
+    // Coherence targets share the wind texture's filtering/wrap (LINEAR + REPEAT_S + CLAMP_T)
+    // so the bicubic sampler reads them exactly as it reads the raw wind texture.
+    const makeCohTarget = (gl, w, h) => {
+        const t = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, t);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+        return t;
+    };
+    const ensureCohTextures = (gl, w, h) => {
+        if (windCohTex && cohW === w && cohH === h) return;
+        [windCohTex, windCohNextTex, cohTempTex].forEach((t) => t && gl.deleteTexture(t));
+        windCohTex = makeCohTarget(gl, w, h);
+        windCohNextTex = makeCohTarget(gl, w, h);
+        cohTempTex = makeCohTarget(gl, w, h);
+        cohW = w; cohH = h;
+    };
+
+    // Build the direction-coherent version of srcTex into dstTex via two separable passes
+    // (reusing windBlendFbo). Runs only when a source changes or the radius is retuned.
+    const runCoherence = (gl, srcTex, dstTex) => {
+        if (!srcTex || !cohHProg || !cohVProg || windImgW <= 0) return;
+        ensureCohTextures(gl, windImgW, windImgH);
+        ensureBlendTex(gl, windImgW, windImgH);   // also creates windBlendFbo (reused here)
+        const prevFbo = gl.getParameter(gl.FRAMEBUFFER_BINDING);
+        const prevVp = gl.getParameter(gl.VIEWPORT);
+        const tx = 1.0 / windImgW, ty = 1.0 / windImgH;
+        gl.bindFramebuffer(gl.FRAMEBUFFER, windBlendFbo);
+        gl.drawBuffers([gl.COLOR_ATTACHMENT0]);
+        gl.viewport(0, 0, windImgW, windImgH);
+        gl.disable(gl.BLEND);
+        gl.bindVertexArray(vaoQuad);
+        // Pass H: srcTex -> cohTempTex
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, cohTempTex, 0);
+        gl.useProgram(cohHProg);
+        gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, srcTex);
+        gl.uniform1i(gl.getUniformLocation(cohHProg, 'u_src'), 0);
+        gl.uniform1f(gl.getUniformLocation(cohHProg, 'u_vmax'), vmax);
+        gl.uniform1f(gl.getUniformLocation(cohHProg, 'u_radius'), curCohRadius);
+        gl.uniform2f(gl.getUniformLocation(cohHProg, 'u_texel'), tx, ty);
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+        // Pass V: cohTempTex -> dstTex
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, dstTex, 0);
+        gl.useProgram(cohVProg);
+        gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, cohTempTex);
+        gl.uniform1i(gl.getUniformLocation(cohVProg, 'u_src'), 0);
+        gl.uniform1f(gl.getUniformLocation(cohVProg, 'u_vmax'), vmax);
+        gl.uniform1f(gl.getUniformLocation(cohVProg, 'u_radius'), curCohRadius);
+        gl.uniform2f(gl.getUniformLocation(cohVProg, 'u_texel'), tx, ty);
         gl.drawArrays(gl.TRIANGLES, 0, 6);
         gl.bindFramebuffer(gl.FRAMEBUFFER, prevFbo);
         gl.viewport(prevVp[0], prevVp[1], prevVp[2], prevVp[3]);
@@ -1077,6 +1221,9 @@ export function createWindParticleGLController(map, opts) {
             // Temporal-blend program: same fullscreen-quad VS as the trail quad (so it
             // shares vaoQuad's a_pos), lerps two wind textures into windBlendTex.
             blendProg = linkProg(gl, SCREEN_QUAD_VS, BLEND_FS);
+            // Separable direction-coherence programs (horizontal then vertical).
+            cohHProg = linkProg(gl, SCREEN_QUAD_VS, COH_H_FS);
+            cohVProg = linkProg(gl, SCREEN_QUAD_VS, COH_V_FS);
 
             cmapTex = makeTex(gl, 1, 1, new Uint8Array([255, 255, 255, 255]), gl.LINEAR);
             buildState(gl);
@@ -1097,12 +1244,21 @@ export function createWindParticleGLController(map, opts) {
             // Temporal interpolation: when playing (frac>0) and the next hour is loaded,
             // lerp current->next into windBlendTex and advect/colour against that. Paused
             // or next-not-ready -> sample the current hour directly (the old hard-cut path).
-            if (curTemporalBlend && blendProg && vaoQuad && windNextReady && windTexNext
+            // Live direction-coherence: rebuild the coherent texture(s) only when a source
+            // changed or the radius was retuned, then blend/sample those instead of the raw.
+            let sCur = windTex, sNext = windTexNext;
+            if (cohActive()) {
+                if (cohCurDirty && windTex) { runCoherence(gl, windTex, windCohTex); cohCurDirty = false; }
+                if (cohNextDirty && windTexNext) { runCoherence(gl, windTexNext, windCohNextTex); cohNextDirty = false; }
+                if (windCohTex) sCur = windCohTex;
+                if (windCohNextTex && windNextReady) sNext = windCohNextTex;
+            }
+            if (curTemporalBlend && blendProg && vaoQuad && windNextReady && sNext
                 && curFrac > 0.001 && windImgW > 0) {
-                blendWind(gl);
+                blendWind(gl, sCur, sNext);
                 activeWindTex = windBlendTex;
             } else {
-                activeWindTex = windTex;
+                activeWindTex = sCur;
             }
             advect(gl);
             // Trail mode (authentic windy look) unless explicitly set to streaks or the
@@ -1122,7 +1278,8 @@ export function createWindParticleGLController(map, opts) {
             pointProgCache.forEach((p) => gl.deleteProgram(p));
             pointProgCache.clear(); pointProgFailed = false;
             [windTex, cmapTex, ...stateTex, ...ageTex, ...trailTex,
-                windTexNext, windBlendTex].forEach((t) => t && gl.deleteTexture(t));
+                windTexNext, windBlendTex,
+                windCohTex, windCohNextTex, cohTempTex].forEach((t) => t && gl.deleteTexture(t));
             [...stateFbo].forEach((f) => f && gl.deleteFramebuffer(f));
             if (trailFbo) gl.deleteFramebuffer(trailFbo);
             if (windBlendFbo) gl.deleteFramebuffer(windBlendFbo);
@@ -1133,9 +1290,13 @@ export function createWindParticleGLController(map, opts) {
             if (updateProg) gl.deleteProgram(updateProg);
             if (quadProg) gl.deleteProgram(quadProg);
             if (blendProg) gl.deleteProgram(blendProg);
+            if (cohHProg) gl.deleteProgram(cohHProg);
+            if (cohVProg) gl.deleteProgram(cohVProg);
             windTex = cmapTex = updateProg = screenQuad = vaoUpdate = vaoStreaks = null;
             quadProg = vaoQuad = trailFbo = null;
             windTexNext = windBlendTex = windBlendFbo = blendProg = activeWindTex = null;
+            windCohTex = windCohNextTex = cohTempTex = cohHProg = cohVProg = null;
+            cohCurDirty = cohNextDirty = false; cohW = cohH = 0; curCohRadius = 0;
             windNextReady = false; pendingWindNextImg = null;
             blendW = blendH = windImgW = windImgH = 0; curFrac = 0; lastWindNextHour = -1;
             trailTex = [null, null]; trailW = trailH = 0; lastMatrix = null; resetTrails = true;
