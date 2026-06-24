@@ -638,6 +638,13 @@ export function createWindParticleGLController(map, opts) {
         // 1/falloff zoom levels above ref (0 disables — always draw the full budget).
         densityZoomRef = (cfg) => { const v = Number(cfg.density_zoom_ref); return isFinite(v) ? v : 3.5; },
         densityZoomFalloff = (cfg) => { const v = Number(cfg.density_zoom_falloff); return (isFinite(v) && v >= 0) ? v : 0.5; },
+        // Zoom speed compensation: advection happens in [0,1] space, which maps to
+        // ~512*2^zoom screen px, so a fixed ground step looks faster the more you zoom in.
+        // Scale the step by 2^(-comp*(zoom-ref)) to hold the on-screen crossing rate
+        // constant. speed_zoom_comp: 1 = full (constant px rate), 0 = off (old behaviour).
+        // speed_zoom_ref: zoom at which speed is unchanged (factor = 1).
+        speedZoomComp = (cfg) => { const v = Number(cfg.speed_zoom_comp); return (isFinite(v) && v >= 0) ? v : 1.0; },
+        speedZoomRef = (cfg) => { const v = Number(cfg.speed_zoom_ref); return isFinite(v) ? v : 2.0; },
         maxSpeedColor = (cfg) => (Number(cfg.max_speed_color) > 0 ? Number(cfg.max_speed_color) : 30.0),
         useViewDensity = true,
         // Reset particles that wander onto land/no-data (alpha<0.5). Wind blows over
@@ -702,31 +709,22 @@ export function createWindParticleGLController(map, opts) {
         curRenderMode = 'trails', curPointSize = 2.0, curFadeOpacity = 0.96;
     let curTemporalBlend = true;
     let curDensityZoomRef = 3.5, curDensityFalloff = 0.5;
+    let curSpeedZoomComp = 1.0, curSpeedZoomRef = 2.0, speedZoomFactor = 1.0;
     let curBbox = [0, 0, 1, 1];
     let windReady = false, pendingWindImg = null, pendingLut = null, pendingRebuild = false;
 
     const applyParams = (cfg) => {
-        curSpeed = speed(cfg) * speedScale;
-        curAlpha = alpha(cfg);
-        curMaxSpeed = maxSpeedColor(cfg);
-        curStreakLen = streakLen(cfg);
-        curThick = thickness(cfg);
-        curAgeStep = ageStep(cfg);
-        curSmoothPx = smoothPx(cfg);
-        curCalmSpeed = calmSpeed(cfg);
-        curCalmDrop = calmDrop(cfg);
-        curCalmFade = calmFade(cfg);
+        curSpeed = speed(cfg) * speedScale; curAlpha = alpha(cfg); curMaxSpeed = maxSpeedColor(cfg);
+        curStreakLen = streakLen(cfg); curThick = thickness(cfg);
+        curAgeStep = ageStep(cfg); curSmoothPx = smoothPx(cfg);
+        curCalmSpeed = calmSpeed(cfg); curCalmDrop = calmDrop(cfg); curCalmFade = calmFade(cfg);
         curLandReset = landReset(cfg) > 0.5 ? 1.0 : 0.0;
-        curRenderMode = renderMode(cfg);
-        curPointSize = pointSize(cfg);
-        curFadeOpacity = fadeOpacity(cfg);
+        curRenderMode = renderMode(cfg); curPointSize = pointSize(cfg); curFadeOpacity = fadeOpacity(cfg);
         curTemporalBlend = temporalBlend(cfg);
-        curDensityZoomRef = densityZoomRef(cfg);
-        curDensityFalloff = densityZoomFalloff(cfg);
+        curDensityZoomRef = densityZoomRef(cfg); curDensityFalloff = densityZoomFalloff(cfg);
+        curSpeedZoomComp = speedZoomComp(cfg); curSpeedZoomRef = speedZoomRef(cfg);
         const newCoh = cohRadius(cfg);
-        if (newCoh !== curCohRadius) {
-            curCohRadius = newCoh; cohCurDirty = true; cohNextDirty = true;
-        }
+        if (newCoh !== curCohRadius) { curCohRadius = newCoh; cohCurDirty = true; cohNextDirty = true; }
     };
 
     // equirect [0,1] respawn box. Latitude from bounds; longitude from centre + zoom
@@ -1024,7 +1022,7 @@ export function createWindParticleGLController(map, opts) {
         gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, ageTex[stateCur]);
         gl.uniform1i(u('u_age'), 2);
         gl.uniform1f(u('u_vmax'), vmax);
-        gl.uniform1f(u('u_speed'), curSpeed);
+        gl.uniform1f(u('u_speed'), curSpeed * speedZoomFactor);
         gl.uniform1f(u('u_ageStep'), curAgeStep);
         gl.uniform1f(u('u_smoothPx'), curSmoothPx);
         gl.uniform1f(u('u_calmSpeed'), curCalmSpeed);
@@ -1274,6 +1272,11 @@ export function createWindParticleGLController(map, opts) {
             } else {
                 activeCount = count;
             }
+            // Zoom speed compensation: slow the [0,1]-space step as you zoom in so the
+            // on-screen pixel-crossing rate stays constant (comp=1 -> exact, 0 -> off).
+            speedZoomFactor = (curSpeedZoomComp > 0)
+                ? Math.min(4.0, Math.max(0.02, Math.pow(2, -curSpeedZoomComp * (zNow - curSpeedZoomRef))))
+                : 1.0;
             // Temporal interpolation: when playing (frac>0) and the next hour is loaded,
             // lerp current->next into windBlendTex and advect/colour against that. Paused
             // or next-not-ready -> sample the current hour directly (the old hard-cut path).
