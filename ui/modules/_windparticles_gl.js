@@ -633,6 +633,11 @@ export function createWindParticleGLController(map, opts) {
         temporalBlend = (cfg) => String(cfg.temporal_blend) !== 'false',
         // Live direction-coherence radius (texels ~= 0.25-deg cells). 0 disables.
         cohRadius = (cfg) => { const v = Number(cfg.flow_coherence_radius); return (isFinite(v) && v > 0) ? v : 0; },
+        // Zoom-adaptive drawn density. density_zoom_ref: zoom at/below which the full
+        // particle budget is drawn. density_zoom_falloff: the drawn count halves every
+        // 1/falloff zoom levels above ref (0 disables — always draw the full budget).
+        densityZoomRef = (cfg) => { const v = Number(cfg.density_zoom_ref); return isFinite(v) ? v : 3.5; },
+        densityZoomFalloff = (cfg) => { const v = Number(cfg.density_zoom_falloff); return (isFinite(v) && v >= 0) ? v : 0.5; },
         maxSpeedColor = (cfg) => (Number(cfg.max_speed_color) > 0 ? Number(cfg.max_speed_color) : 30.0),
         useViewDensity = true,
         // Reset particles that wander onto land/no-data (alpha<0.5). Wind blows over
@@ -678,6 +683,7 @@ export function createWindParticleGLController(map, opts) {
     let lastWindNextHour = -1;          // which hour windTexNext currently holds
     let stateTex = [null, null], ageTex = [null, null], stateFbo = [null, null], stateCur = 0;
     let RES = 256, count = 65536;
+    let activeCount = count;             // zoom-thinned drawn subset (<= count)
     const streakProgCache = new Map();
     let streakProgFailed = false;
 
@@ -695,19 +701,32 @@ export function createWindParticleGLController(map, opts) {
         curCalmSpeed = 2.5, curCalmDrop = 0.06, curCalmFade = 0.6,
         curRenderMode = 'trails', curPointSize = 2.0, curFadeOpacity = 0.96;
     let curTemporalBlend = true;
+    let curDensityZoomRef = 3.5, curDensityFalloff = 0.5;
     let curBbox = [0, 0, 1, 1];
     let windReady = false, pendingWindImg = null, pendingLut = null, pendingRebuild = false;
 
     const applyParams = (cfg) => {
-        curSpeed = speed(cfg) * speedScale; curAlpha = alpha(cfg); curMaxSpeed = maxSpeedColor(cfg);
-        curStreakLen = streakLen(cfg); curThick = thickness(cfg);
-        curAgeStep = ageStep(cfg); curSmoothPx = smoothPx(cfg);
-        curCalmSpeed = calmSpeed(cfg); curCalmDrop = calmDrop(cfg); curCalmFade = calmFade(cfg);
+        curSpeed = speed(cfg) * speedScale;
+        curAlpha = alpha(cfg);
+        curMaxSpeed = maxSpeedColor(cfg);
+        curStreakLen = streakLen(cfg);
+        curThick = thickness(cfg);
+        curAgeStep = ageStep(cfg);
+        curSmoothPx = smoothPx(cfg);
+        curCalmSpeed = calmSpeed(cfg);
+        curCalmDrop = calmDrop(cfg);
+        curCalmFade = calmFade(cfg);
         curLandReset = landReset(cfg) > 0.5 ? 1.0 : 0.0;
-        curRenderMode = renderMode(cfg); curPointSize = pointSize(cfg); curFadeOpacity = fadeOpacity(cfg);
+        curRenderMode = renderMode(cfg);
+        curPointSize = pointSize(cfg);
+        curFadeOpacity = fadeOpacity(cfg);
         curTemporalBlend = temporalBlend(cfg);
+        curDensityZoomRef = densityZoomRef(cfg);
+        curDensityFalloff = densityZoomFalloff(cfg);
         const newCoh = cohRadius(cfg);
-        if (newCoh !== curCohRadius) { curCohRadius = newCoh; cohCurDirty = true; cohNextDirty = true; }
+        if (newCoh !== curCohRadius) {
+            curCohRadius = newCoh; cohCurDirty = true; cohNextDirty = true;
+        }
     };
 
     // equirect [0,1] respawn box. Latitude from bounds; longitude from centre + zoom
@@ -1056,7 +1075,7 @@ export function createWindParticleGLController(map, opts) {
         gl.disable(gl.DEPTH_TEST);
         gl.enable(gl.BLEND);
         gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-        gl.drawArrays(gl.TRIANGLES, 0, count * 6);
+        gl.drawArrays(gl.TRIANGLES, 0, activeCount * 6);
     };
 
     // ---- fade-accumulation trail rendering ----
@@ -1136,7 +1155,7 @@ export function createWindParticleGLController(map, opts) {
         gl.uniform1f(u('u_smoothPx'), curSmoothPx);
         gl.uniform1f(u('u_calmFade'), curCalmFade);
         gl.uniform1f(u('u_alpha'), curAlpha);
-        gl.drawArrays(gl.POINTS, 0, count);
+        gl.drawArrays(gl.POINTS, 0, activeCount);
         return true;
     };
 
@@ -1241,6 +1260,20 @@ export function createWindParticleGLController(map, opts) {
             if (pendingLut) { uploadColormapNow(gl, pendingLut); pendingLut = null; }
             if (!windReady || !windTex) { map.triggerRepaint(); return; }
             curBbox = viewBox();
+            // Zoom-adaptive thinning: the fixed particle budget concentrates into the
+            // shrinking respawn box as you zoom in, so DRAW fewer of the (randomly
+            // distributed) particles to keep on-screen density pleasant. Drawing the first
+            // activeCount is a uniform spatial sample; the update pass still runs the full
+            // set, so no rebuild and no respawn change.
+            let zNow = curDensityZoomRef;
+            try { zNow = map.getZoom(); } catch (_) { /* keep ref */ }
+            if (curDensityFalloff > 0) {
+                const f = Math.pow(2, -Math.max(0, zNow - curDensityZoomRef) * curDensityFalloff);
+                const floorN = Math.max(256, Math.round(count * 0.06));
+                activeCount = Math.min(count, Math.max(floorN, Math.round(count * f)));
+            } else {
+                activeCount = count;
+            }
             // Temporal interpolation: when playing (frac>0) and the next hour is loaded,
             // lerp current->next into windBlendTex and advect/colour against that. Paused
             // or next-not-ready -> sample the current hour directly (the old hard-cut path).
