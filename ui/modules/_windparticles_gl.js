@@ -381,6 +381,28 @@ void main(){
     fragColor = floor(255.0 * c * u_opacity) / 255.0;
 }`;
 
+// ============================================================================
+// TEMPORAL INTERPOLATION between forecast hours. The forecast field is only defined at
+// discrete hours; with a hard cut, the wind visibly snaps each time the timeline rolls to
+// the next hour during playback. windy.com blends consecutive hours so the field morphs
+// continuously. The timeline already exposes `frac` (0..1 from `hour` toward `hour+1`,
+// advancing only while playing), so we hold the current AND next hour as textures and lerp
+// them by frac into a blend texture each frame; the sampler (sampleWindSmooth) then reads
+// that single blended texture, so the whole bicubic/RK2 path is unchanged.
+// Encoded R/G are an AFFINE map of velocity (v = ch*2*vmax - vmax), so a linear mix of the
+// encoded channels equals a linear mix of the decoded velocity — we can lerp the raw
+// textures directly here.
+const BLEND_FS = `#version 300 es
+precision highp float;
+in vec2 v_uv;
+out vec4 fragColor;
+uniform sampler2D u_a;      // current hour
+uniform sampler2D u_b;      // next hour
+uniform float u_blend;      // frac toward next hour, 0..1
+void main(){
+    fragColor = mix(texture(u_a, v_uv), texture(u_b, v_uv), u_blend);
+}`;
+
 // Particle POINT vertex shader BODY (assembled with MapLibre's projection prelude, like
 // the streak VS, so projectTile() + the globe clipping plane are available). Reads each
 // particle's position + age from the state textures via gl_VertexID, projects to clip,
@@ -477,7 +499,7 @@ export function createWindParticleGLController(map, opts) {
         },
         // particle_speed: 0-100 -> internal advection multiplier (wind's original scale).
         speed = (cfg) => { const p = Number(cfg.particle_speed);
-                           return (isFinite(p) ? Math.min(100, Math.max(0, p)) : 50) / 500; },
+                           return (isFinite(p) ? Math.min(100, Math.max(0, p)) : 50) / 1000; },
         // Advection-step multiplier to compensate for layers whose velocity magnitudes
         // differ from wind's m/s range. The per-frame step is proportional to the raw
         // velocity, so a slow field (ocean currents ~0-2.5 m/s vs wind ~0-40 m/s) barely
@@ -531,6 +553,11 @@ export function createWindParticleGLController(map, opts) {
         // is the windy-ish default; 0.9 = short trails, 0.985 = long. Config: trail_persist.
         fadeOpacity = (cfg) => { const v = Number(cfg.trail_persist);
                                  return isFinite(v) && v > 0 && v < 1 ? v : 0.96; },
+        // Temporal interpolation: cross-fade the velocity field between forecast hours
+        // during playback (frac>0) so the wind morphs continuously instead of hard-cutting
+        // each hour. Only active while playing; paused/stepped (frac==0) is unchanged.
+        // Default on; disable with temporal_blend:false. Config: temporal_blend.
+        temporalBlend = (cfg) => String(cfg.temporal_blend) !== 'false',
         maxSpeedColor = (cfg) => (Number(cfg.max_speed_color) > 0 ? Number(cfg.max_speed_color) : 30.0),
         useViewDensity = true,
         // Reset particles that wander onto land/no-data (alpha<0.5). Wind blows over
@@ -557,6 +584,17 @@ export function createWindParticleGLController(map, opts) {
 
     let updateProg = null, screenQuad = null, vaoUpdate = null, vaoStreaks = null;
     let windTex = null, cmapTex = null;
+
+    // ---- temporal interpolation (cross-fade current hour -> next hour) ----
+    let windTexNext = null;             // next forecast hour's velocity texture
+    let windBlendTex = null, windBlendFbo = null;  // lerped (current,next) result
+    let blendProg = null;               // fullscreen-quad two-texture mix program
+    let activeWindTex = null;           // texture u_wind samples this frame (blend or current)
+    let windNextReady = false, pendingWindNextImg = null;
+    let blendW = 0, blendH = 0;         // blend-texture's currently-allocated size
+    let windImgW = 0, windImgH = 0;     // source wind image size (drives blend-tex size)
+    let curFrac = 0;                    // timeline cross-fade position, 0..1
+    let lastWindNextHour = -1;          // which hour windTexNext currently holds
     let stateTex = [null, null], ageTex = [null, null], stateFbo = [null, null], stateCur = 0;
     let RES = 256, count = 65536;
     const streakProgCache = new Map();
@@ -575,6 +613,7 @@ export function createWindParticleGLController(map, opts) {
         curAgeStep = 0.0167, curSmoothPx = 1.0, curLandReset = 0.0,
         curCalmSpeed = 2.5, curCalmDrop = 0.06, curCalmFade = 0.6,
         curRenderMode = 'trails', curPointSize = 2.0, curFadeOpacity = 0.96;
+    let curTemporalBlend = true;
     let curBbox = [0, 0, 1, 1];
     let windReady = false, pendingWindImg = null, pendingLut = null, pendingRebuild = false;
 
@@ -585,6 +624,7 @@ export function createWindParticleGLController(map, opts) {
         curCalmSpeed = calmSpeed(cfg); curCalmDrop = calmDrop(cfg); curCalmFade = calmFade(cfg);
         curLandReset = landReset(cfg) > 0.5 ? 1.0 : 0.0;
         curRenderMode = renderMode(cfg); curPointSize = pointSize(cfg); curFadeOpacity = fadeOpacity(cfg);
+        curTemporalBlend = temporalBlend(cfg);
     };
 
     // equirect [0,1] respawn box. Latitude from bounds; longitude from centre + zoom
@@ -692,17 +732,67 @@ export function createWindParticleGLController(map, opts) {
         gl.bindTexture(gl.TEXTURE_2D, cmapTex);
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 256, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, lut);
     };
-    const uploadWindNow = (gl, img) => {
-        if (windTex) gl.deleteTexture(windTex);
-        windTex = gl.createTexture();
-        gl.bindTexture(gl.TEXTURE_2D, windTex);
+    // Create a velocity texture with the sampling params sampleWindSmooth relies on
+    // (LINEAR, REPEAT in longitude for the dateline, CLAMP at the poles).
+    const makeWindTex = (gl, img) => {
+        const t = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, t);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
+        return t;
+    };
+    const uploadWindNow = (gl, img) => {
+        if (windTex) gl.deleteTexture(windTex);
+        windTex = makeWindTex(gl, img);
+        windImgW = img.width; windImgH = img.height;
         windReady = true;
     };
+    const uploadWindNextNow = (gl, img) => {
+        if (windTexNext) gl.deleteTexture(windTexNext);
+        windTexNext = makeWindTex(gl, img);
+        windNextReady = true;
+    };
+
+    // Lazily (re)create the blend output texture + FBO to match the wind texture size.
+    const ensureBlendTex = (gl, w, h) => {
+        if (windBlendTex && blendW === w && blendH === h) return;
+        if (windBlendTex) gl.deleteTexture(windBlendTex);
+        windBlendTex = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, windBlendTex);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);          // dateline wrap
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);   // poles
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+        if (!windBlendFbo) windBlendFbo = gl.createFramebuffer();
+        blendW = w; blendH = h;
+    };
+
+    // One blend pass: windBlendTex = mix(windTex, windTexNext, curFrac). Saves/restores FBO.
+    const blendWind = (gl) => {
+        ensureBlendTex(gl, windImgW, windImgH);
+        const prevFbo = gl.getParameter(gl.FRAMEBUFFER_BINDING);
+        const prevVp = gl.getParameter(gl.VIEWPORT);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, windBlendFbo);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, windBlendTex, 0);
+        gl.drawBuffers([gl.COLOR_ATTACHMENT0]);
+        gl.viewport(0, 0, blendW, blendH);
+        gl.disable(gl.BLEND);
+        gl.useProgram(blendProg);
+        gl.bindVertexArray(vaoQuad);
+        gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, windTex);
+        gl.uniform1i(gl.getUniformLocation(blendProg, 'u_a'), 0);
+        gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, windTexNext);
+        gl.uniform1i(gl.getUniformLocation(blendProg, 'u_b'), 1);
+        gl.uniform1f(gl.getUniformLocation(blendProg, 'u_blend'), curFrac);
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, prevFbo);
+        gl.viewport(prevVp[0], prevVp[1], prevVp[2], prevVp[3]);
+    };
+
     const loadWind = (cfg) => {
         const snap = timeline.get();
         const img = new Image();
@@ -723,6 +813,22 @@ export function createWindParticleGLController(map, opts) {
             img.onerror = () => console.warn(`[${sectionKey}] velocity texture not ready: ${dataUrl(cfg)}`);
             img.src = `${dataUrl(cfg)}?t=${Date.now()}`;
         }
+    };
+
+    // Preload the NEXT forecast hour for temporal blending (timeline-driven layers only).
+    // Clamped at maxHour (no hour beyond the end; the timeline loops to minHour there, so
+    // we just hold the last hour and let frac be a no-op until the wrap).
+    const loadWindNext = (cfg, snap) => {
+        if (!useTimeline || !curTemporalBlend) return;
+        const nextHour = snap.hour < snap.maxHour ? snap.hour + 1 : snap.hour;
+        if (nextHour === lastWindNextHour && windNextReady) return;  // already have it
+        lastWindNextHour = nextHour;
+        windNextReady = false;
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => { pendingWindNextImg = img; map.triggerRepaint(); };
+        img.onerror = () => { /* next-hour miss: blend simply stays off until it arrives */ };
+        img.src = hourDataUrl(cfg, nextHour, snap.refreshEpoch);
     };
 
     const { VS: DRAW_VS_BODY, FS: DRAW_FS } = buildDrawShaders(primitive);
@@ -750,7 +856,7 @@ export function createWindParticleGLController(map, opts) {
         const u = (n) => gl.getUniformLocation(updateProg, n);
         gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, stateTex[stateCur]);
         gl.uniform1i(u('u_particles'), 0);
-        gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, windTex);
+        gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, activeWindTex || windTex);
         gl.uniform1i(u('u_wind'), 1);
         gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, ageTex[stateCur]);
         gl.uniform1i(u('u_age'), 2);
@@ -786,7 +892,7 @@ export function createWindParticleGLController(map, opts) {
             pd.tileMercatorCoords[2], pd.tileMercatorCoords[3]);
         gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, stateTex[stateCur]);
         gl.uniform1i(u('u_particles'), 0);
-        gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, windTex);
+        gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, activeWindTex || windTex);
         gl.uniform1i(u('u_wind'), 1);
         gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, cmapTex);
         gl.uniform1i(u('u_cmap'), 2);
@@ -873,7 +979,7 @@ export function createWindParticleGLController(map, opts) {
             pd.tileMercatorCoords[2], pd.tileMercatorCoords[3]);
         gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, stateTex[stateCur]);
         gl.uniform1i(u('u_particles'), 0);
-        gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, windTex);
+        gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, activeWindTex || windTex);
         gl.uniform1i(u('u_wind'), 1);
         gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, cmapTex);
         gl.uniform1i(u('u_cmap'), 2);
@@ -968,21 +1074,36 @@ export function createWindParticleGLController(map, opts) {
                 gl.vertexAttribPointer(qloc, 2, gl.FLOAT, false, 0, 0);
                 gl.bindVertexArray(null);
             }
+            // Temporal-blend program: same fullscreen-quad VS as the trail quad (so it
+            // shares vaoQuad's a_pos), lerps two wind textures into windBlendTex.
+            blendProg = linkProg(gl, SCREEN_QUAD_VS, BLEND_FS);
 
             cmapTex = makeTex(gl, 1, 1, new Uint8Array([255, 255, 255, 255]), gl.LINEAR);
             buildState(gl);
             applyParams(cfg);
             if (colormap) uploadColormapNow(gl, colormap(cfg));
             loadWind(cfg);
+            if (useTimeline) loadWindNext(cfg, timeline.get());   // preload next hour for blending
             map.triggerRepaint();
         },
         render(gl, args) {
             if (webglFailed || !updateProg) return;
             if (pendingRebuild) { buildState(gl); pendingRebuild = false; }
             if (pendingWindImg) { uploadWindNow(gl, pendingWindImg); pendingWindImg = null; }
+            if (pendingWindNextImg) { uploadWindNextNow(gl, pendingWindNextImg); pendingWindNextImg = null; }
             if (pendingLut) { uploadColormapNow(gl, pendingLut); pendingLut = null; }
             if (!windReady || !windTex) { map.triggerRepaint(); return; }
             curBbox = viewBox();
+            // Temporal interpolation: when playing (frac>0) and the next hour is loaded,
+            // lerp current->next into windBlendTex and advect/colour against that. Paused
+            // or next-not-ready -> sample the current hour directly (the old hard-cut path).
+            if (curTemporalBlend && blendProg && vaoQuad && windNextReady && windTexNext
+                && curFrac > 0.001 && windImgW > 0) {
+                blendWind(gl);
+                activeWindTex = windBlendTex;
+            } else {
+                activeWindTex = windTex;
+            }
             advect(gl);
             // Trail mode (authentic windy look) unless explicitly set to streaks or the
             // trail/point programs failed to build (then fall back to streaks so the layer
@@ -1000,17 +1121,23 @@ export function createWindParticleGLController(map, opts) {
             streakProgCache.clear(); streakProgFailed = false;
             pointProgCache.forEach((p) => gl.deleteProgram(p));
             pointProgCache.clear(); pointProgFailed = false;
-            [windTex, cmapTex, ...stateTex, ...ageTex, ...trailTex].forEach((t) => t && gl.deleteTexture(t));
+            [windTex, cmapTex, ...stateTex, ...ageTex, ...trailTex,
+                windTexNext, windBlendTex].forEach((t) => t && gl.deleteTexture(t));
             [...stateFbo].forEach((f) => f && gl.deleteFramebuffer(f));
             if (trailFbo) gl.deleteFramebuffer(trailFbo);
+            if (windBlendFbo) gl.deleteFramebuffer(windBlendFbo);
             if (screenQuad) gl.deleteBuffer(screenQuad);
             if (vaoUpdate) gl.deleteVertexArray(vaoUpdate);
             if (vaoStreaks) gl.deleteVertexArray(vaoStreaks);
             if (vaoQuad) gl.deleteVertexArray(vaoQuad);
             if (updateProg) gl.deleteProgram(updateProg);
             if (quadProg) gl.deleteProgram(quadProg);
+            if (blendProg) gl.deleteProgram(blendProg);
             windTex = cmapTex = updateProg = screenQuad = vaoUpdate = vaoStreaks = null;
             quadProg = vaoQuad = trailFbo = null;
+            windTexNext = windBlendTex = windBlendFbo = blendProg = activeWindTex = null;
+            windNextReady = false; pendingWindNextImg = null;
+            blendW = blendH = windImgW = windImgH = 0; curFrac = 0; lastWindNextHour = -1;
             trailTex = [null, null]; trailW = trailH = 0; lastMatrix = null; resetTrails = true;
             stateTex = [null, null]; ageTex = [null, null]; stateFbo = [null, null];
             windReady = false; pendingWindImg = pendingLut = null; pendingRebuild = false;
@@ -1044,6 +1171,7 @@ export function createWindParticleGLController(map, opts) {
         if (layerAdded || map.getLayer(A_LYR)) return;
         const sz = sizeFor(cfg); RES = sz.RES; count = sz.count;
         webglFailed = false; streakProgFailed = false; windReady = false;
+        windNextReady = false; lastWindNextHour = -1; curFrac = 0; activeWindTex = null;
         curCfgWind = cfg;
         map.addLayer(makeLayer(cfg));
         layerAdded = true;
@@ -1060,10 +1188,12 @@ export function createWindParticleGLController(map, opts) {
         if (useTimeline) {
             const snap0 = timeline.get();
             lastWindHour = snap0.hour; lastWindBust = snap0.refreshEpoch;
+            curFrac = snap0.frac || 0;
             unsubTimeline = timeline.subscribe((snap) => {
+                curFrac = snap.frac || 0;   // every frame while playing; 0 when paused
                 if (snap.hour !== lastWindHour || snap.refreshEpoch !== lastWindBust) {
                     lastWindHour = snap.hour; lastWindBust = snap.refreshEpoch;
-                    if (curCfgWind) loadWind(curCfgWind);
+                    if (curCfgWind) { loadWind(curCfgWind); loadWindNext(curCfgWind, snap); }
                 }
             });
         }
@@ -1077,6 +1207,7 @@ export function createWindParticleGLController(map, opts) {
         applyParams(cfg);
         if (colormap) pendingLut = colormap(cfg);
         loadWind(cfg);
+        if (useTimeline) loadWindNext(cfg, timeline.get());
         map.triggerRepaint();
         onRefresh(cfg);
     };
