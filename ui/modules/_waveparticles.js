@@ -1,7 +1,7 @@
 /**
  * Wave swell bars as a MapLibre v5 CUSTOM WEBGL LAYER.
  *
- * Unlike the wind engine (_windparticles.js), which renders particles into an
+ * Unlike the wind engine (_windparticles_gl.js), which renders particles into an
  * offscreen canvas handed to MapLibre as an image/canvas source, this module draws
  * the bars DIRECTLY into the map's own GL context every frame using MapLibre's
  * `projectTile` projection function. That means the bars are rasterised at screen
@@ -20,7 +20,7 @@
  *      lies perpendicular to the swell direction (windy.com look), coloured by wave height.
  *
  * Drop-in for waves.js: createWaveParticleController(map, opts) -> { mount, refresh, unmount }.
- * _windparticles.js (wind) is intentionally left untouched.
+ * _windparticles_gl.js (wind) is intentionally left untouched.
  */
 
 const lodOf = (cfg) => { const n = parseInt(cfg.level_of_detail, 10); return (n === 1 || n === 3) ? n : 2; };
