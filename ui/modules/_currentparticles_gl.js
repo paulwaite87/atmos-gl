@@ -275,7 +275,7 @@ export function createCurrentParticleGLLayer(map, opts) {
         // How to turn the config into the advection multiplier. Default reads
         // particle_speed as a raw multiplier (back-compat). Currents passes a mapper that
         // translates the 0-100 UI slider into its own min..max speed range.
-        speedFromConfig = (cfg) => (Number(cfg.particle_speed) > 0 ? Number(cfg.particle_speed) : defaultSpeed),
+        speedFromConfig = (cfg) => (Number(cfg.particle_speed) > 0 ? Number(cfg.particle_speed) / 100 : defaultSpeed),
         hourDataUrl = (cfg, hour, bust) => {
             const base = cfg.outfile.replace(/\.png$/, '');
             const f = String(hour).padStart(3, '0');
