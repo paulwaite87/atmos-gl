@@ -81,7 +81,23 @@ function buildFlatLUT(rgb) {
     return lut;
 }
 
-export function loadLayer(map, config, fullConfig = {}) {
+// Heatmap opacity 0..1 from heatmap_opacity (accepts a 0-1 fraction or a 0-100 percent),
+// default 0.6. Drives BOTH the fill-mode per-pixel alpha and the static raster opacity.
+function heatmapAlpha(cfg) {
+    const op = Number(cfg.heatmap_opacity);
+    if (!isFinite(op) || op < 0) return 0.6;
+    return op > 1 ? Math.min(1, op / 100) : op;
+}
+
+export async function loadLayer(map, config, fullConfig = {}) {
+    // Fetch the backend-computed heatmap scale (written by wind.py after scanning all
+    // hours; round-tripped as wind_meta.json). Falls back to 100 km/h if missing.
+    let heatmapMaxKph = 100;
+    try {
+        const res = await fetch(`${window.MAP_UI}/data/wind_meta.json?t=${Date.now()}`);
+        if (res.ok) { const m = await res.json(); if (m.heatmap_max_kph > 0) heatmapMaxKph = m.heatmap_max_kph; }
+    } catch (_) { /* use default */ }
+    const vmaxMs = heatmapMaxKph / 3.6;
     const slotId = 'wind-legend-slot';
     const rgbCss = (c) => `rgb(${Math.round(c[0] * 255)},${Math.round(c[1] * 255)},${Math.round(c[2] * 255)})`;
     const gradient = () => PALETTE
@@ -92,7 +108,7 @@ export function loadLayer(map, config, fullConfig = {}) {
         const stack = document.getElementById('legend-stack');
         if (!stack) return;
         document.getElementById(slotId)?.remove();
-        const vmaxKph = Number(cfg.max_speed_color) > 0 ? Number(cfg.max_speed_color) : 100;
+        const vmaxKph = heatmapMaxKph;
         const ticks = [0, 0.25, 0.5, 0.75, 1].map(f => Math.round(vmaxKph * f));
         const slot = document.createElement('div');
         slot.id = slotId;
@@ -107,9 +123,16 @@ export function loadLayer(map, config, fullConfig = {}) {
     };
     const removeLegend = () => document.getElementById(slotId)?.remove();
 
-    // Speed colour scale: 0 .. max_speed_color (km/h -> m/s). Baked into the heatmap's
-    // value decode (changing max_speed_color needs a reload, like temperature's range).
-    const vmaxMs = (Number(config.max_speed_color) > 0 ? Number(config.max_speed_color) : 100) / 3.6;
+    // Keep the static-raster (non-stepping) heatmap opacity live too. Fill (stepping) mode
+    // gets its opacity from u_alpha; static mode is a raster layer, so set raster-opacity
+    // directly whenever config syncs.
+    const applyHeatmapOpacity = (cfg) => {
+        if (map.getLayer('wind-layer')) {
+            try { map.setPaintProperty('wind-layer', 'raster-opacity', heatmapAlpha(cfg)); } catch (e) {}
+        }
+    };
+
+    // vmaxMs set above from wind_meta.json (data-driven, rounded up to nearest 10 km/h)
     const dec = (2 * VMAX_WIND).toFixed(1), neg = VMAX_WIND.toFixed(1);
     // Decode the velocity texel (R=u, G=v) and return normalised speed |(u,v)| / vmax.
     const valueDecode = `length(vec2(d.r*${dec} - ${neg}, d.g*${dec} - ${neg})) / ${vmaxMs.toFixed(5)}`;
@@ -125,6 +148,7 @@ export function loadLayer(map, config, fullConfig = {}) {
         vmin: 0.0,
         vspan: 1.0,                      // valueDecode already returns normalised speed
         bicubic: true,
+        opacity: heatmapAlpha(config),   // static-mode raster opacity (fill mode uses u_alpha)
         beforeId: 'wind-anim-layer',     // particle layer id -> heatmap stays underneath
         valueDecode,
         fragmentBody: `
@@ -135,11 +159,11 @@ export function loadLayer(map, config, fullConfig = {}) {
                 return vec4(c, u_alpha);
             }`,
         customUniforms: (cfg) => ({
-            u_alpha: Number(cfg.heatmap_opacity) >= 0 ? Number(cfg.heatmap_opacity) : 0.6,
+            u_alpha: heatmapAlpha(cfg),   // fill-mode per-pixel opacity (live)
         }),
         colormap: () => buildLUT(),
-        onMount: addLegend,
-        onRefresh: addLegend,
+        onMount: (cfg) => { addLegend(cfg); applyHeatmapOpacity(cfg); },
+        onRefresh: (cfg) => { addLegend(cfg); applyHeatmapOpacity(cfg); },
         onUnmount: removeLegend,
     });
 
@@ -155,7 +179,7 @@ export function loadLayer(map, config, fullConfig = {}) {
         initialConfig: config,
         vmax: VMAX_WIND,
         colormap: () => buildFlatLUT(particleColor),   // fixed colour (not speed-based)
-        maxSpeedColor: (cfg) => (Number(cfg.max_speed_color) > 0 ? Number(cfg.max_speed_color) : 100) / 3.6,
+        maxSpeedColor: () => vmaxMs,
         staticFallback: false,           // the heatmap fill provides the static view now
         // Lifecycle/density/speed/coherence tunables fall through to engine defaults;
         // override via wind config (particle_count, particle_speed, flow_coherence_radius,

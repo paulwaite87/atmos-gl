@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import os
+import math
 import logging
 
 import numpy as np
@@ -34,19 +35,10 @@ class WindUpdater(Updater):
         super().__init__(config, "Wind", map_data)
         self.VMAX_WIND = 40.0          # m/s encoding range for the velocity texture
         self.level_of_detail = self.settings.get("level_of_detail", 1)
-        # Heatmap colour range: 0 .. max_speed_color (user-facing km/h) -> m/s. This is a
-        # SPEED; some configs carry a colour name here (legacy), so fall back to 100 km/h
-        # rather than crashing when it isn't numeric.
-        raw_max = self.settings.get("max_speed_color", 100)
-        try:
-            max_kph = float(raw_max)
-        except (TypeError, ValueError):
-            logger.warning(
-                "Wind: max_speed_color=%r is not numeric; using 100 km/h for the "
-                "heatmap range.", raw_max
-            )
-            max_kph = 100.0
-        self.VMAX_SPEED = max_kph / 3.6
+        # Heatmap speed scale — computed from actual data in run() (global max across all
+        # hours, rounded up to the nearest 10 km/h). Initialised to a safe default so
+        # plot() can be called standalone without a prior run().
+        self.VMAX_SPEED = 100.0 / 3.6   # m/s; overwritten by run()
         # Per hour: windspeed heatmap (.png, like temperature) + velocity texture
         # (_data.png, decoded as u,v by the particle shader AND shaded as speed by the
         # frontend GPU heatmap).
@@ -123,6 +115,52 @@ class WindUpdater(Updater):
 
     def run(self):
         self.get_gfs_state()
+
+        # --- pre-scan: find global max wind speed across all available hours ----------
+        # We want a SINGLE vmax for the whole run so the palette means the same speed
+        # at every hour (temporal blending between hours with different scales is wrong).
+        # Round up to the nearest 10 km/h so the legend has clean tick values.
+        try:
+            from worldmap.lib.db import Database
+            db = Database()
+            hours = db.get_product_hours(self.run_date_str, self.run_id, "wind")
+        except Exception as e:
+            logger.warning(f"Wind: could not list hours for pre-scan: {e}")
+            hours = []
+
+        max_speed_ms = 0.0
+        for fh in (hours or []):
+            field = self.get_db_field_at_hour("wind", fh)
+            if field and field.get("u") is not None and field.get("v") is not None:
+                peak = float(np.hypot(field["u"], field["v"]).max())
+                if peak > max_speed_ms:
+                    max_speed_ms = peak
+
+        if max_speed_ms > 0:
+            max_kph = max_speed_ms * 3.6
+            rounded_kph = math.ceil(max_kph / 10) * 10   # e.g. 51.7 -> 60
+            self.VMAX_SPEED = rounded_kph / 3.6
+            logger.info(
+                f"Wind: heatmap scale = {rounded_kph} km/h "
+                f"(data peak {max_kph:.1f} km/h across {len(hours)} hours)"
+            )
+        else:
+            self.VMAX_SPEED = 100.0 / 3.6
+            logger.info("Wind: no field data for pre-scan; using 100 km/h default scale")
+
+        # --- write meta for the frontend (fetched by wind.js to set the shader scale) --
+        if self.output_path:
+            import json
+            meta_path = os.path.join(
+                os.path.dirname(self.output_path), "wind_meta.json"
+            )
+            try:
+                with open(meta_path, "w") as f:
+                    json.dump({"heatmap_max_kph": round(self.VMAX_SPEED * 3.6)}, f)
+            except Exception as e:
+                logger.warning(f"Wind: could not write wind_meta.json: {e}")
+
+        # --- render all hours (plot() now has VMAX_SPEED set globally) ----------------
         self.render_all_hours(
             "wind",
             plot_fn=self.plot,
