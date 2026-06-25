@@ -1,6 +1,11 @@
 import { createWindParticleGLLayer } from './_windparticles_gl.js';
+import { createFillLayer } from './_webglfill.js';
 
-// Wind-speed colour ramp, calm -> strong, sampled across [0, max_speed_color] m/s.
+const VMAX_WIND = 40.0;   // m/s velocity-texture encoding range (must match backend)
+
+// windy.com-style wind-speed ramp, calm -> storm. Drives the underlying SPEED HEATMAP
+// (kept in sync with backend WIND_PALETTE in src/worldmap/tasks/wind.py). Particles no
+// longer use this — they render in a single fixed colour from config (particle_color).
 const PALETTE = [
     [0.25, 0.30, 0.60],   // calm   - deep blue
     [0.15, 0.60, 0.85],   // light  - cyan-blue
@@ -25,6 +30,57 @@ function buildLUT() {
     return lut;
 }
 
+// Resolve any CSS colour the browser understands ('White', 'white', '#fff', '#ffffff',
+// 'rgb(...)') -> [r,g,b] 0-255, or null if not a valid colour. Uses two sentinels so an
+// invalid string (which leaves fillStyle unchanged) is reliably detected.
+function cssColorToRgb(str) {
+    try {
+        const ctx = document.createElement('canvas').getContext('2d');
+        ctx.fillStyle = '#010203'; ctx.fillStyle = str; const a = ctx.fillStyle;
+        ctx.fillStyle = '#040506'; ctx.fillStyle = str; const b = ctx.fillStyle;
+        if (a === '#010203' && b === '#040506') return null;   // unchanged -> invalid
+        if (a[0] === '#') {
+            let h = a.slice(1);
+            if (h.length === 3) h = h.split('').map((ch) => ch + ch).join('');
+            const n = parseInt(h, 16);
+            return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+        }
+        const m = a.match(/rgba?\(([^)]+)\)/i);
+        if (m) { const p = m[1].split(',').map((x) => Math.round(parseFloat(x))); return [p[0], p[1], p[2]]; }
+        return null;
+    } catch (e) { return null; }
+}
+
+// Parse a config colour: CSS name/hex/rgb() ('White', '#ffffff'), bare 'r,g,b', or
+// [r,g,b] (0-255 or 0-1) -> [r,g,b] 0-255. Defaults to white.
+function parseColor(c) {
+    if (Array.isArray(c) && c.length >= 3) {
+        const sc = (c[0] <= 1 && c[1] <= 1 && c[2] <= 1) ? 255 : 1;
+        return c.slice(0, 3).map((v) => Math.max(0, Math.min(255, Math.round(v * sc))));
+    }
+    if (typeof c === 'string') {
+        const s = c.trim();
+        // bare "r,g,b" (not a CSS colour) -> parse directly
+        if (/^[\d.]+\s*,\s*[\d.]+\s*,\s*[\d.]+\s*$/.test(s)) {
+            const parts = s.split(',').map((p) => parseFloat(p));
+            const sc = parts.every((p) => p <= 1) ? 255 : 1;
+            return parts.map((p) => Math.max(0, Math.min(255, Math.round(p * sc))));
+        }
+        const rgb = cssColorToRgb(s);   // names, hex, rgb()
+        if (rgb) return rgb;
+    }
+    return [255, 255, 255];   // default: white
+}
+
+// A flat 256-entry LUT of a single colour -> particles ignore speed and render one colour.
+function buildFlatLUT(rgb) {
+    const lut = new Uint8Array(256 * 4);
+    for (let i = 0; i < 256; i++) {
+        lut[i*4] = rgb[0]; lut[i*4+1] = rgb[1]; lut[i*4+2] = rgb[2]; lut[i*4+3] = 255;
+    }
+    return lut;
+}
+
 export function loadLayer(map, config, fullConfig = {}) {
     const slotId = 'wind-legend-slot';
     const rgbCss = (c) => `rgb(${Math.round(c[0] * 255)},${Math.round(c[1] * 255)},${Math.round(c[2] * 255)})`;
@@ -38,7 +94,6 @@ export function loadLayer(map, config, fullConfig = {}) {
         document.getElementById(slotId)?.remove();
         const vmaxKph = Number(cfg.max_speed_color) > 0 ? Number(cfg.max_speed_color) : 100;
         const ticks = [0, 0.25, 0.5, 0.75, 1].map(f => Math.round(vmaxKph * f));
-
         const slot = document.createElement('div');
         slot.id = slotId;
         slot.className = 'legend-slot';
@@ -52,22 +107,64 @@ export function loadLayer(map, config, fullConfig = {}) {
     };
     const removeLegend = () => document.getElementById(slotId)?.remove();
 
-    return createWindParticleGLLayer(map, {
+    // Speed colour scale: 0 .. max_speed_color (km/h -> m/s). Baked into the heatmap's
+    // value decode (changing max_speed_color needs a reload, like temperature's range).
+    const vmaxMs = (Number(config.max_speed_color) > 0 ? Number(config.max_speed_color) : 100) / 3.6;
+    const dec = (2 * VMAX_WIND).toFixed(1), neg = VMAX_WIND.toFixed(1);
+    // Decode the velocity texel (R=u, G=v) and return normalised speed |(u,v)| / vmax.
+    const valueDecode = `length(vec2(d.r*${dec} - ${neg}, d.g*${dec} - ${neg})) / ${vmaxMs.toFixed(5)}`;
+
+    // 1) Underlying windspeed HEATMAP (windy palette), beneath the particles. Re-uses the
+    //    per-hour velocity _data.png (speed computed from u,v); the static .png covers the
+    //    non-stepping view. beforeId keeps it under the particle layer whatever the mount order.
+    const teardownHeatmap = createFillLayer(map, {
         sectionKey: 'wind',
         initialConfig: config,
-        vmax: 40.0,                   // must match backend VMAX_WIND
-        colormap: () => buildLUT(),   // speed LUT (palette fixed for now)
-        // max_speed_color is in km/h (user-facing); convert to m/s for the speed shader.
-        maxSpeedColor: (cfg) => (Number(cfg.max_speed_color) > 0 ? Number(cfg.max_speed_color) : 100) / 3.6,
-        // Particle lifecycle, density, speed, smoothing and calm-zone handling all use
-        // the engine's windy.com-tuned defaults (see _windparticles_gl.js). Override per
-        // deployment via config: particle_lifetime, particle_count, particle_speed,
-        // wind_smooth, calm_speed / calm_drop / calm_fade.
+        initialAnimation: fullConfig.animation || {},
+        initialCommon: fullConfig.common || {},
+        vmin: 0.0,
+        vspan: 1.0,                      // valueDecode already returns normalised speed
+        bicubic: true,
+        beforeId: 'wind-anim-layer',     // particle layer id -> heatmap stays underneath
+        valueDecode,
+        fragmentBody: `
+            uniform float u_alpha;
+            vec4 shade(float value, vec2 uv) {
+                float t = clamp(value, 0.0, 1.0);
+                vec3 c = texture(u_cmap, vec2(t, 0.5)).rgb;
+                return vec4(c, u_alpha);
+            }`,
+        customUniforms: (cfg) => ({
+            u_alpha: Number(cfg.heatmap_opacity) >= 0 ? Number(cfg.heatmap_opacity) : 0.6,
+        }),
+        colormap: () => buildLUT(),
         onMount: addLegend,
-        onRefresh: addLegend,         // re-draw if max_speed_color changed
-        onUnmount: removeLegend,      // animated layer only -> legend hidden with barbs
-        // Tunables fall through to _windparticles defaults; override via wind config:
-        //   particle_count, particle_speed, trail_fade, particle_size,
-        //   drop_rate, drop_rate_bump, max_speed_color, particle_alpha
+        onRefresh: addLegend,
+        onUnmount: removeLegend,
     });
+
+    // 2) Particles, exactly as before EXCEPT a single fixed colour (particle_color), which
+    //    we feed as a flat LUT so the engine's speed-sampled colour is constant.
+    // Particle colour: the existing `vector_color` config key (legacy wind-vector colour),
+    // overridable by an explicit `particle_color`. Accepts colour names or hex.
+    const colorCfg = config.particle_color != null ? config.particle_color
+        : (config.vector_color != null ? config.vector_color : '#ffffff');
+    const particleColor = parseColor(colorCfg);
+    const teardownParticles = createWindParticleGLLayer(map, {
+        sectionKey: 'wind',
+        initialConfig: config,
+        vmax: VMAX_WIND,
+        colormap: () => buildFlatLUT(particleColor),   // fixed colour (not speed-based)
+        maxSpeedColor: (cfg) => (Number(cfg.max_speed_color) > 0 ? Number(cfg.max_speed_color) : 100) / 3.6,
+        staticFallback: false,           // the heatmap fill provides the static view now
+        // Lifecycle/density/speed/coherence tunables fall through to engine defaults;
+        // override via wind config (particle_count, particle_speed, flow_coherence_radius,
+        // density_zoom_*, speed_zoom_*, trail_persist, point_size, particle_color, ...).
+    });
+
+    // Tear down both layers (particles first, then heatmap) on basemap style swap.
+    return () => {
+        try { teardownParticles && teardownParticles(); } catch (e) {}
+        try { teardownHeatmap && teardownHeatmap(); } catch (e) {}
+    };
 }

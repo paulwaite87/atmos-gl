@@ -57,6 +57,7 @@ export function createFillLayer(map, opts) {
         initialCommon = {},
         onMount = () => {}, onRefresh = () => {}, onUnmount = () => {},
         backfillKey = null,   // optional resolver (snap)=>{date,run,hour} for backfill
+        beforeId = null,      // insert beneath this layer id (guarded if it doesn't exist)
         refreshMs, syncMs,
         staticUrl = (cfg) => `${window.MAP_UI}/${cfg.outfile}`,
         hourDataUrl = (cfg, hour, bust) => {
@@ -70,6 +71,11 @@ export function createFillLayer(map, opts) {
     const S_SRC = `${sectionKey}-source`;
     const S_LYR = `${sectionKey}-layer`;
     const A_LYR = `${sectionKey}-fill-layer`;
+
+    // addLayer, optionally beneath beforeId (only if that layer currently exists, so a
+    // missing target degrades to "add on top" instead of throwing).
+    const addBelow = (layerDef) =>
+        map.addLayer(layerDef, (beforeId && map.getLayer(beforeId)) ? beforeId : undefined);
 
     let mode = null;                 // 'fill' | 'static'
     let webglFailed = false;
@@ -95,7 +101,7 @@ export function createFillLayer(map, opts) {
             type: 'image', url: `${staticUrl(cfg)}?t=${Date.now()}`,
             coordinates: [[-180, LAT_MAX], [180, LAT_MAX], [180, -LAT_MAX], [-180, -LAT_MAX]],
         });
-        map.addLayer({ id: S_LYR, type: 'raster', source: S_SRC,
+        addBelow({ id: S_LYR, type: 'raster', source: S_SRC,
             paint: { 'raster-opacity': opacity, 'raster-fade-duration': 0 } });
     };
     const refreshStatic = (cfg) => {
@@ -385,7 +391,7 @@ void main(){
     const mountFill = (cfg) => {
         if (layerAdded || map.getLayer(A_LYR)) return;
         curCfg = cfg; progFailed = false;
-        map.addLayer(layer(cfg));
+        addBelow(layer(cfg));
         layerAdded = true;
         if (progFailed) { unmountFill(); mountStatic(cfg); mode = 'static'; return; }
         // colour LUT is uploaded in onAdd (where gl is guaranteed); nothing to do here.
