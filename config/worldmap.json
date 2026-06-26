@@ -32,7 +32,7 @@
     "cache_expiry_days": 3
   },
   "isobars": {
-    "enabled": false,
+    "enabled": true,
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
     "outfile": "data/isobars.png",
     "level_of_detail": "3",
@@ -45,7 +45,7 @@
     "cache_expiry_days": 3
   },
   "wind": {
-    "enabled": false,
+    "enabled": true,
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
     "outfile": "data/wind.png",
     "level_of_detail": "2",
@@ -59,13 +59,13 @@
     "particle_size": 2,
     "trail_fade": 80,
     "drop_speed": 10,
-    "heatmap_opacity": 50,
+    "heatmap_opacity": 0,
     "alpha": 55,
     "runs_per_day": 8,
     "cache_expiry_days": 3
   },
   "precipitation": {
-    "enabled": false,
+    "enabled": true,
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
     "outfile": "data/precipitation.png",
     "level_of_detail": "1",
@@ -92,7 +92,7 @@
     "cache_expiry_days": 3
   },
   "waves": {
-    "enabled": true,
+    "enabled": false,
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
     "outfile": "data/waves.png",
     "level_of_detail": "2",

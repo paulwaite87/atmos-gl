@@ -39,7 +39,7 @@ export function loadLayer(map, config) {
     };
 
     const popup = new maplibregl.Popup({
-        closeButton: true, closeOnClick: true, offset: 12, maxWidth: '240px',
+        closeButton: false, closeOnClick: false, offset: 12, maxWidth: '240px',
     });
     const row = (label, value) =>
         `<div style="display:flex;justify-content:space-between;gap:14px;">` +
@@ -66,15 +66,30 @@ export function loadLayer(map, config) {
             `<hr style="border:0;border-top:1px solid #ddd;margin:6px 0;">${body}</div>`;
     };
 
-    const onMarkerClick = (e) => {
+    // Hover popups: show on mousemove over a marker (anchored to the marker, so it stays
+    // put while you're on it and follows when you slide to an adjacent one), hide on leave.
+    const onMarkerHover = (e) => {
         if (!weatherEnabled || !e.features || !e.features.length) return;
+        map.getCanvas().style.cursor = 'pointer';
         const f = e.features[0];
         const coords = f.geometry.coordinates.slice();
         const w = weather[wkey(f.properties.name, coords[0], coords[1])];
         popup.setLngLat(coords).setHTML(popupHtml(f.properties, w)).addTo(map);
     };
-    const onEnter = () => { if (weatherEnabled) map.getCanvas().style.cursor = 'pointer'; };
-    const onLeave = () => { map.getCanvas().style.cursor = ''; };
+    const onLeave = () => { map.getCanvas().style.cursor = ''; popup.remove(); };
+
+    // Keep the marker layers pinned to the top of the stack. Layers enabled AFTER markers
+    // (precipitation, etc.) would otherwise render above the small dots/labels, hiding
+    // them so there's nothing to hover. styledata fires whenever the layer stack changes;
+    // we only move when the labels aren't already topmost, so this can't loop (moving makes
+    // labels topmost -> the guard is false on the re-entrant styledata).
+    const ensureOnTop = () => {
+        const layers = map.getStyle()?.layers;
+        if (!layers || !layers.length) return;
+        if (layers[layers.length - 1].id === labelLayerId) return;   // already on top
+        if (map.getLayer(dotLayerId)) map.moveLayer(dotLayerId);      // dots to top
+        if (map.getLayer(labelLayerId)) map.moveLayer(labelLayerId);  // labels above dots
+    };
 
 
     const mount = async (cfg) => {
@@ -149,10 +164,13 @@ export function loadLayer(map, config) {
         weatherEnabled = !!cfg.weather_popup;
         if (weatherEnabled) await fetchWeather();
         for (const id of [dotLayerId, labelLayerId]) {
-            map.on('click', id, onMarkerClick);
-            map.on('mouseenter', id, onEnter);
+            map.on('mousemove', id, onMarkerHover);
             map.on('mouseleave', id, onLeave);
         }
+        // Keep markers clickable/hoverable above later-added layers, now and on every
+        // subsequent layer-stack change.
+        ensureOnTop();
+        map.on('styledata', ensureOnTop);
     };
 
     // The marker geometry is static, so a config-only change just re-applies styling.
@@ -175,9 +193,9 @@ export function loadLayer(map, config) {
     };
 
     const unmount = () => {
+        map.off('styledata', ensureOnTop);
         for (const id of [dotLayerId, labelLayerId]) {
-            map.off('click', id, onMarkerClick);
-            map.off('mouseenter', id, onEnter);
+            map.off('mousemove', id, onMarkerHover);
             map.off('mouseleave', id, onLeave);
         }
         popup.remove();
