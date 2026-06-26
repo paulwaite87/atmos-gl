@@ -95,9 +95,8 @@ class CurrentsUpdater(Updater):
         the texture can show, much cheaper than 10m over the whole globe). Returns None
         if geometry is unavailable, so plot() simply skips the cut that hour.
         """
-        cached = self._land_mask_cache.get(shape, "miss")
-        if cached != "miss":
-            return cached
+        if shape in self._land_mask_cache:
+            return self._land_mask_cache[shape]
         mesh_lon, mesh_lat = np.meshgrid(np.asarray(lon), np.asarray(lat))  # (nlat,nlon)
         land = coastline_land_mask(
             mesh_lon, mesh_lat, -180.0, -90.0, 180.0, 90.0, res="50m"
