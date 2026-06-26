@@ -130,6 +130,16 @@ class LayerBuilder:
                 ):
                     logger.info("Layer-builder scheduler run started")
 
+                    # Re-sync the model datum each scheduling run. The GFS/RTOFS baselines
+                    # are cached in shared_state for intra-run consistency (every layer in
+                    # one run shares one datum), but they MUST be cleared between runs or
+                    # they pin to the first run for the life of the process: the forecast
+                    # hour then climbs against an ever-older run until its data is pruned,
+                    # and baseline-driven paths (current-hour publish, the waves tile GRIB
+                    # download) silently go stale. Clearing here forces a fresh resolve.
+                    self.map_data.shared_state.pop("gfs_baseline", None)
+                    self.map_data.shared_state.pop("rtofs_baseline", None)
+
                     for section, task_class in self.task_registry:
                         logger.debug(f"Updater task '{section}' checking runnable")
                         updater = task_class(self.config, self.map_data)

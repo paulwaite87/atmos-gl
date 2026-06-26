@@ -776,6 +776,29 @@ class Updater:
             except Exception as e:
                 logger.warning(f"{self.section}: failed to publish {src} -> {dst}: {e}")
 
+    def latest_store_run(self, products):
+        """Resolve the freshest run actually present in the fieldstore catalog for the
+        given products, returning (run_date, run_id, hours) or None.
+
+        Field-reading layers should resolve their run from the CATALOG, not from the
+        cached GFS/RTOFS baseline. The baseline tracks what NOMADS has *published*, which
+        can run ahead of what the collector has *ingested* — and, because the baseline is
+        cached per process, it can also drift behind once it goes stale. Reading the
+        catalog renders exactly what is on disk. Scope by `products` so independent model
+        cycles (GFS 00/06/12/18 vs RTOFS "00") resolve to their own run.
+        """
+        try:
+            from worldmap.lib import fieldstore
+
+            store = fieldstore.get_store(self.workdir)
+            avail = store.db.get_latest_run_hours(products=list(products))
+        except Exception as e:
+            logger.warning(f"{self.section}: catalog run lookup failed: {e}")
+            return None
+        if not avail or not avail.get("hours"):
+            return None
+        return avail["run_date"], avail["run_id"], avail["hours"]
+
     def render_all_hours(self, product_name, plot_fn, field_ready):
         """Gap-filling per-hour render loop.
 
@@ -795,23 +818,24 @@ class Updater:
 
         Returns the number of hours actually (re)plotted.
         """
-        try:
-            from worldmap.lib.db import Database
-
-            db = Database()
-            hours = db.get_product_hours(self.run_date_str, self.run_id, product_name)
-        except Exception as e:
-            logger.warning(f"{self.section}: could not list hours: {e}")
-            hours = []
-
-        if not hours:
+        # Resolve the run from the CATALOG (what's actually ingested), not from
+        # self.run_date_str/run_id (set from the cached baseline, which can be stale or
+        # ahead of the collector). We save the caller's run state and restore it in the
+        # finally below, so callers that still use the baseline run afterwards (e.g. the
+        # waves heat-tile GRIB download) are unaffected.
+        saved_run = (
+            getattr(self, "run_date_str", None),
+            getattr(self, "run_id", None),
+            getattr(self, "forecast_hour_str", None),
+        )
+        resolved = self.latest_store_run([product_name])
+        if not resolved:
             logger.info(
                 f"{self.section}: no hours in catalog yet (collector may not have run)."
             )
             return 0
+        self.run_date_str, self.run_id, hours = resolved
 
-        # Preserve the task's notion of 'current hour' so we can restore it after.
-        saved_fhour = getattr(self, "forecast_hour_str", None)
         plotted = 0
         try:
             for fh in hours:
@@ -829,8 +853,8 @@ class Updater:
                 except Exception as e:
                     logger.warning(f"{self.section}: plot f{int(fh):03d} failed: {e}")
         finally:
-            if saved_fhour is not None:
-                self.forecast_hour_str = saved_fhour
+            # Restore the caller's run state (run + current hour) regardless of outcome.
+            self.run_date_str, self.run_id, self.forecast_hour_str = saved_run
 
         if plotted:
             logger.info(

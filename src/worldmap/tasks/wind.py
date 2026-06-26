@@ -120,12 +120,12 @@ class WindUpdater(Updater):
         # We want a SINGLE vmax for the whole run so the palette means the same speed
         # at every hour (temporal blending between hours with different scales is wrong).
         # Round up to the nearest 10 km/h so the legend has clean tick values.
-        try:
-            from worldmap.lib.db import Database
-            db = Database()
-            hours = db.get_product_hours(self.run_date_str, self.run_id, "wind")
-        except Exception as e:
-            logger.warning(f"Wind: could not list hours for pre-scan: {e}")
+        # Resolve the run from the catalog (what's ingested) so the scan and the
+        # subsequent render_all_hours agree on exactly the same run + hours.
+        resolved = self.latest_store_run(["wind"])
+        if resolved:
+            self.run_date_str, self.run_id, hours = resolved
+        else:
             hours = []
 
         max_speed_ms = 0.0

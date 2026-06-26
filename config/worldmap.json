@@ -210,7 +210,6 @@
   },
   "shipping": {
     "enabled": false,
-    "outfile": "data/ships.json",
     "icon_zoom": 0.6,
     "runs_per_day": 24
   },
@@ -228,6 +227,7 @@
   },
   "markers": {
     "enabled": true,
+    "outfile": "data/markers.json",
     "marker_color": "White",
     "marker_fontsize": 11,
     "weather_popup": true,
