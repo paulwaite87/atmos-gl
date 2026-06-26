@@ -112,6 +112,35 @@ def temperature_data_unpack(path):
     return out
 
 
+def rh_data_unpack(path):
+    """RH @ 2 m -> relative humidity in percent.
+
+    Same level slice as TMP@2m (heightAboveGround / level 2); the GRIB subset now
+    carries both, so cfgrib returns a dataset with t2m AND the RH variable — we pick the
+    RH one by short name (cfgrib usually names 2 m RH 'r2', sometimes 'r'). Stored as a
+    scalar 'values' field; consumed only by the marker-weather sampler (no GPU layer), so
+    row order is left exactly as cfgrib returns it and the sampler reads the lat axis.
+    """
+    ds = xr.open_dataset(
+        path,
+        engine="cfgrib",
+        backend_kwargs={
+            "filter_by_keys": {"typeOfLevel": "heightAboveGround", "level": 2}
+        },
+    )
+    key = next((k for k in ("r2", "r", "rh", "relative_humidity") if k in ds), None)
+    if key is None:
+        ds.close()
+        raise KeyError("RH @2m variable not found in GRIB subset")
+    rh = ds[key].values.squeeze()
+    lats = ds["latitude"].values
+    lons, (rh,) = _standardize_lon(ds["longitude"].values, rh)
+    ds.close()
+    out = _blank()
+    out.update(lat=np.asarray(lats), lon=lons, values=rh)
+    return out
+
+
 def ozone_data_unpack(path):
     """TOZNE -> total column ozone (raw units). Filter best-effort; verify shortName."""
     ds = xr.open_dataset(
@@ -346,6 +375,7 @@ ATMOS_UNPACKERS = {
     "isobars": isobars_data_unpack,
     "precipitation": precipitation_data_unpack,
     "temperature": temperature_data_unpack,
+    "humidity": rh_data_unpack,
     "ozone": ozone_data_unpack,
     "wind": wind_data_unpack,
     "stormwatch": stormwatch_data_unpack,

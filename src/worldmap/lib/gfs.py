@@ -29,6 +29,7 @@ ATMOS_TARGETS = [
     ":CAPE:surface:",
     ":CIN:surface:",
     ":TMP:2 m above ground:",
+    ":RH:2 m above ground:",
     ":UGRD:10 m above ground:",
     ":VGRD:10 m above ground:",
 ]

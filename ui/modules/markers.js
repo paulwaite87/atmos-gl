@@ -16,6 +16,67 @@ export function loadLayer(map, config) {
     // otherwise fall back to the configured marker_color.
     const colorExpr = (cfg) => ['coalesce', ['get', 'color'], colorOf(cfg)];
 
+    // ---- Weather popups -------------------------------------------------------
+    // Current conditions are precomputed for every marker by the backend
+    // markers backend task (it samples the GFS temperature/wind/humidity fields valid
+    // "now" at each marker) and served as data/marker_weather.json. We fetch it once
+    // here and join by a "name|lat|lon" key (markers carry no id); clicking a marker
+    // shows a popup. If the file is missing the popup still opens, just without data.
+    const weatherUrl = () => `${window.MAP_UI}/data/marker_weather.json?t=${Date.now()}`;
+    let weather = {};            // key -> { t, rh, ws, wd }
+    let weatherEnabled = !!config.weather_popup;   // markers.weather_popup toggle (live)
+    const wkey = (name, lon, lat) => `${name}|${lat.toFixed(3)}|${lon.toFixed(3)}`;
+    const COMPASS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+    const compassOf = (deg) => COMPASS[Math.round(deg / 45) % 8];
+
+    const fetchWeather = async () => {
+        try {
+            const r = await fetch(weatherUrl());
+            if (!r.ok) return;
+            const j = await r.json();
+            weather = j.markers || {};
+        } catch { /* popups degrade to name-only */ }
+    };
+
+    const popup = new maplibregl.Popup({
+        closeButton: true, closeOnClick: true, offset: 12, maxWidth: '240px',
+    });
+    const row = (label, value) =>
+        `<div style="display:flex;justify-content:space-between;gap:14px;">` +
+        `<span style="color:#666;">${label}</span><strong>${value}</strong></div>`;
+    const popupHtml = (props, w) => {
+        const country = props.country
+            ? `<div style="color:#888;font-size:11px;margin-top:-2px;">${props.country}</div>` : '';
+        let body;
+        if (w) {
+            const parts = [];
+            if (w.t !== undefined) parts.push(row('Temp', `${Number(w.t).toFixed(1)} &deg;C`));
+            if (w.rh !== undefined) parts.push(row('Humidity', `${w.rh}%`));
+            if (w.ws !== undefined) {
+                const kmh = Math.round(w.ws * 3.6);
+                const dir = (w.wd !== undefined) ? ` from ${compassOf(w.wd)}` : '';
+                parts.push(row('Wind', `${kmh} km/h${dir}`));
+            }
+            body = parts.length ? parts.join('') : '<div style="color:#888;">No data</div>';
+        } else {
+            body = '<div style="color:#888;font-size:12px;">Weather data unavailable</div>';
+        }
+        return `<div style="font-family:sans-serif;font-size:12.5px;color:#111;padding:2px 4px;min-width:150px;">` +
+            `<div style="font-size:14px;font-weight:700;">${props.name || 'Unknown'}</div>${country}` +
+            `<hr style="border:0;border-top:1px solid #ddd;margin:6px 0;">${body}</div>`;
+    };
+
+    const onMarkerClick = (e) => {
+        if (!weatherEnabled || !e.features || !e.features.length) return;
+        const f = e.features[0];
+        const coords = f.geometry.coordinates.slice();
+        const w = weather[wkey(f.properties.name, coords[0], coords[1])];
+        popup.setLngLat(coords).setHTML(popupHtml(f.properties, w)).addTo(map);
+    };
+    const onEnter = () => { if (weatherEnabled) map.getCanvas().style.cursor = 'pointer'; };
+    const onLeave = () => { map.getCanvas().style.cursor = ''; };
+
+
     const mount = async (cfg) => {
         if (map.getSource(sourceId)) return;                 // guard against races
         const res = await fetch(dataUrl, { cache: 'no-cache' });
@@ -81,10 +142,30 @@ export function loadLayer(map, config) {
                 'text-halo-width': 1.2,
             },
         });
+
+        // Weather popups: load the precomputed data (when enabled) and make markers
+        // clickable. Handlers are always bound but no-op unless weather_popup is on, so
+        // the toggle can flip live via refresh() without a remount.
+        weatherEnabled = !!cfg.weather_popup;
+        if (weatherEnabled) await fetchWeather();
+        for (const id of [dotLayerId, labelLayerId]) {
+            map.on('click', id, onMarkerClick);
+            map.on('mouseenter', id, onEnter);
+            map.on('mouseleave', id, onLeave);
+        }
     };
 
-    // The data file is static, so a config-only change just re-applies styling.
+    // The marker geometry is static, so a config-only change just re-applies styling.
+    // weather_popup can toggle live: refetch when on, drop the data (and any open popup)
+    // when off, without remounting the layer.
     const refresh = async (cfg) => {
+        weatherEnabled = !!cfg.weather_popup;
+        if (weatherEnabled) {
+            await fetchWeather();
+        } else {
+            weather = {};
+            popup.remove();
+        }
         if (map.getLayer(dotLayerId))
             map.setPaintProperty(dotLayerId, 'circle-color', colorExpr(cfg));
         if (map.getLayer(labelLayerId)) {
@@ -94,6 +175,12 @@ export function loadLayer(map, config) {
     };
 
     const unmount = () => {
+        for (const id of [dotLayerId, labelLayerId]) {
+            map.off('click', id, onMarkerClick);
+            map.off('mouseenter', id, onEnter);
+            map.off('mouseleave', id, onLeave);
+        }
+        popup.remove();
         if (map.getLayer(labelLayerId)) map.removeLayer(labelLayerId);
         if (map.getLayer(dotLayerId)) map.removeLayer(dotLayerId);
         if (map.getSource(sourceId)) map.removeSource(sourceId);

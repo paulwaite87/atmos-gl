@@ -77,22 +77,22 @@
     "cache_expiry_days": 3
   },
   "currents": {
-    "enabled": true,
+    "enabled": false,
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/rtofs/prod/",
     "outfile": "data/currents.png",
     "level_of_detail": "1",
-    "palette": "thermal_red",
+    "palette": "electric_blue",
     "alpha": 70,
-    "particle_speed": 10,
-    "current_speed_minimum": 0,
+    "particle_speed": 6,
+    "current_speed_minimum": 1,
     "trail_length": 50,
-    "width_factor": 2.6,
+    "width_factor": 1.6,
     "key_fontsize": 8,
     "runs_per_day": 2,
     "cache_expiry_days": 3
   },
   "waves": {
-    "enabled": false,
+    "enabled": true,
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
     "outfile": "data/waves.png",
     "level_of_detail": "2",
@@ -227,9 +227,11 @@
     "color": ""
   },
   "markers": {
-    "enabled": false,
+    "enabled": true,
     "marker_color": "White",
-    "marker_fontsize": 11
+    "marker_fontsize": 11,
+    "weather_popup": true,
+    "runs_per_day": 24
   },
   "data_collector": {
     "enabled": true,
@@ -259,7 +261,7 @@
     "log_level": "INFO"
   },
   "weather_scanner": {
-    "enabled": true,
+    "enabled": false,
     "url": "https://demo.openweathermap.org/lightning/1.0/data",
     "expiry_hours": 24,
     "log_level": "INFO"

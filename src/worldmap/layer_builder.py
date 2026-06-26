@@ -28,6 +28,7 @@ from worldmap.tasks.stormwatch import StormwatchUpdater
 from worldmap.tasks.storms import StormUpdater
 from worldmap.tasks.quakes import QuakeUpdater
 from worldmap.tasks.volcanoes import VolcanoUpdater
+from worldmap.tasks.markers import MarkerUpdater
 
 logger = logging.getLogger("worldmap.layer_builder")
 
@@ -68,6 +69,7 @@ class LayerBuilder:
             ("storms", StormUpdater),
             ("quakes", QuakeUpdater),
             ("volcanoes", VolcanoUpdater),
+            ("markers", MarkerUpdater),
         ]
 
     def refresh_settings(self):
