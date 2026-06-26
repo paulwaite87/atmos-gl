@@ -8,7 +8,7 @@ export function loadLayer(map, config) {
     const sourceId = 'markers-source';
     const dotLayerId = 'markers-dots';
     const labelLayerId = 'markers-labels';
-    const dataUrl = `${window.location.origin}/markers/markers.geojson`;
+    const dataUrl = `${window.MAP_UI}/api/markers/geojson`;
 
     const colorOf = (cfg) => cfg.marker_color || 'white';
     const sizeOf = (cfg) => Number(cfg.marker_fontsize) || 11;
@@ -17,26 +17,13 @@ export function loadLayer(map, config) {
     const colorExpr = (cfg) => ['coalesce', ['get', 'color'], colorOf(cfg)];
 
     // ---- Weather popups -------------------------------------------------------
-    // Current conditions are precomputed for every marker by the backend
-    // markers backend task (it samples the GFS temperature/wind/humidity fields valid
-    // "now" at each marker) and served as data/marker_weather.json. We fetch it once
-    // here and join by a "name|lat|lon" key (markers carry no id); clicking a marker
-    // shows a popup. If the file is missing the popup still opens, just without data.
-    const weatherUrl = () => `${window.MAP_UI}/data/marker_weather.json?t=${Date.now()}`;
-    let weather = {};            // key -> { t, rh, ws, wd }
+    // Both the markers AND their current weather come from /api/markers/geojson — the
+    // backend markers task samples the GFS temperature/wind/humidity fields valid "now"
+    // and stores them on each marker row, so the weather rides along in feature
+    // properties (t, rh, ws, wd). Hovering a marker shows it; weather_popup gates display.
     let weatherEnabled = !!config.weather_popup;   // markers.weather_popup toggle (live)
-    const wkey = (name, lon, lat) => `${name}|${lat.toFixed(3)}|${lon.toFixed(3)}`;
     const COMPASS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
     const compassOf = (deg) => COMPASS[Math.round(deg / 45) % 8];
-
-    const fetchWeather = async () => {
-        try {
-            const r = await fetch(weatherUrl());
-            if (!r.ok) return;
-            const j = await r.json();
-            weather = j.markers || {};
-        } catch { /* popups degrade to name-only */ }
-    };
 
     const popup = new maplibregl.Popup({
         closeButton: false, closeOnClick: false, offset: 12, maxWidth: '240px',
@@ -73,8 +60,16 @@ export function loadLayer(map, config) {
         map.getCanvas().style.cursor = 'pointer';
         const f = e.features[0];
         const coords = f.geometry.coordinates.slice();
-        const w = weather[wkey(f.properties.name, coords[0], coords[1])];
-        popup.setLngLat(coords).setHTML(popupHtml(f.properties, w)).addTo(map);
+        const p = f.properties || {};
+        // Weather rides along in the feature properties (null where not sampled).
+        const w = {};
+        if (p.t != null) w.t = p.t;
+        if (p.rh != null) w.rh = p.rh;
+        if (p.ws != null) w.ws = p.ws;
+        if (p.wd != null) w.wd = p.wd;
+        popup.setLngLat(coords)
+            .setHTML(popupHtml(p, Object.keys(w).length ? w : null))
+            .addTo(map);
     };
     const onLeave = () => { map.getCanvas().style.cursor = ''; popup.remove(); };
 
@@ -162,7 +157,6 @@ export function loadLayer(map, config) {
         // clickable. Handlers are always bound but no-op unless weather_popup is on, so
         // the toggle can flip live via refresh() without a remount.
         weatherEnabled = !!cfg.weather_popup;
-        if (weatherEnabled) await fetchWeather();
         for (const id of [dotLayerId, labelLayerId]) {
             map.on('mousemove', id, onMarkerHover);
             map.on('mouseleave', id, onLeave);
@@ -173,17 +167,19 @@ export function loadLayer(map, config) {
         map.on('styledata', ensureOnTop);
     };
 
-    // The marker geometry is static, so a config-only change just re-applies styling.
-    // weather_popup can toggle live: refetch when on, drop the data (and any open popup)
-    // when off, without remounting the layer.
+    // Marker geometry is static, but the weather on each feature refreshes every backend
+    // cycle — so re-pull the API and setData to pick up new conditions, then re-apply
+    // styling. weather_popup can toggle live (closes any open popup when turned off).
     const refresh = async (cfg) => {
         weatherEnabled = !!cfg.weather_popup;
-        if (weatherEnabled) {
-            await fetchWeather();
-        } else {
-            weather = {};
-            popup.remove();
-        }
+        if (!weatherEnabled) popup.remove();
+        try {
+            const res = await fetch(dataUrl, { cache: 'no-cache' });
+            if (res.ok) {
+                const src = map.getSource(sourceId);
+                if (src) src.setData(await res.json());
+            }
+        } catch { /* keep existing data on a failed refresh */ }
         if (map.getLayer(dotLayerId))
             map.setPaintProperty(dotLayerId, 'circle-color', colorExpr(cfg));
         if (map.getLayer(labelLayerId)) {

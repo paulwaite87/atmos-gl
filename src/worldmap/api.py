@@ -16,6 +16,7 @@ from worldmap.routes import (
     render,
     tiles,
     backfill,
+    markers,
 )
 
 app = FastAPI(title="WorldMap Configuration API")
@@ -48,6 +49,7 @@ app.include_router(shipping.router)
 app.include_router(config.router)
 app.include_router(render.router)
 app.include_router(tiles.router)
+app.include_router(markers.router)
 app.include_router(backfill.router)
 
 

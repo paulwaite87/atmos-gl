@@ -133,6 +133,36 @@ CREATE TABLE IF NOT EXISTS backfill_requests (
     PRIMARY KEY (gfs_date, gfs_run, fhour, product)
 );
 
+-- ===========================================================================
+-- markers : place/feature markers + their sampled current weather.
+--
+-- Static columns mirror src/worldmap/markers/markers.geojson and are kept
+-- consistent by the markers task's importer (upsert present + delete absent).
+-- The wx_* columns are refreshed each cycle by the markers weather sampler and
+-- are NULL until first sampled (and for non-'place' features, which get no weather).
+--
+CREATE TABLE IF NOT EXISTS markers (
+    id              TEXT PRIMARY KEY,              -- stable "name|lat|lon" key from the geojson
+    name            TEXT NOT NULL,
+    kind            TEXT NOT NULL DEFAULT 'place', -- 'place' | 'feature'
+    country         TEXT,
+    priority        INTEGER,
+    pop             BIGINT,
+    capital         BOOLEAN,
+    color           TEXT,
+    timezone        TEXT,
+    lat             DOUBLE PRECISION NOT NULL,
+    lon             DOUBLE PRECISION NOT NULL,
+    geom            GEOMETRY(Point, 4326),
+    -- sampled current weather (GFS model, valid "now")
+    wx_temp_c       REAL,
+    wx_humidity_pct REAL,
+    wx_wind_ms      REAL,
+    wx_wind_dir_deg REAL,
+    wx_valid_time   TIMESTAMP WITH TIME ZONE,
+    wx_updated_at   TIMESTAMP WITH TIME ZONE
+);
+
 -- Indices for high-performance lookups
 CREATE INDEX IF NOT EXISTS idx_map_region_boundary ON map_region USING GIST(boundary);
 CREATE INDEX IF NOT EXISTS idx_ships_geom ON ships USING GIST(geom);
@@ -150,6 +180,7 @@ CREATE INDEX IF NOT EXISTS idx_satellites_name ON satellites(name);
 CREATE INDEX IF NOT EXISTS idx_field_catalog_product ON field_catalog (product);
 CREATE INDEX IF NOT EXISTS idx_field_catalog_updated ON field_catalog (updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_backfill_status ON backfill_requests (status);
+CREATE INDEX IF NOT EXISTS idx_markers_kind_priority ON markers (kind, priority);
 
 
 -- Populate Regions

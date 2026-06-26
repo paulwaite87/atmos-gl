@@ -1,31 +1,18 @@
 #!/usr/bin/env python3
-"""Markers backend task: enriches the place-marker layer with current weather for popups.
+"""Markers backend task: maintains the DB 'markers' table.
 
-Rather than calling an external per-city weather API (thousands of markers would blow a
-free API budget), this samples the GFS fields we ALREADY ingest — temperature (TMP@2m),
-wind (UGRD/VGRD@10m) and humidity (RH@2m) — at the run hour valid "now" (the same hour
-the live layers display), bilinearly at each marker's lat/lon. The result is a compact
-data/marker_weather.json the markers layer fetches once and reads for its click popups.
+Two jobs each cycle:
+  1. Import — sync the table's static rows with the canonical geojson
+     (src/worldmap/markers/markers.geojson) via the markers importer. Runs ALWAYS, so
+     the frontend can render markers from the API whether or not weather is enabled.
+  2. Weather — when markers.weather_popup is on, sample the GFS fields we already ingest
+     (temperature TMP@2m, wind UGRD/VGRD@10m, humidity RH@2m) at the run hour valid "now",
+     bilinearly at each place marker, and write the wx_* columns.
 
-Values are therefore the GFS MODEL valid-now, not a station observation: good enough for
-a city weather popup, free, instant, and refreshed hourly alongside everything else.
-
-Output schema (data/marker_weather.json):
-    {
-      "generated": "<iso utc>",          # when this file was written
-      "valid_time": "<iso utc>",         # GFS valid time of the sampled hour
-      "run": "<YYYYMMDD HHZ>",
-      "fhour": <int>,
-      "count": <int>,                    # markers with at least one value
-      "markers": {
-        "<name>|<lat.3f>|<lon.3f>": {"t":<C>, "rh":<%>, "ws":<m/s>, "wd":<deg-from>},
-        ...
-      }
-    }
-The frontend builds the same "name|lat|lon" key per feature to join (markers have no id).
+No external weather API and no JSON file: the frontend reads everything (static markers +
+current weather) from /api/markers/geojson. Sampled values are the GFS model valid-now —
+good enough for a city weather popup, free, and refreshed each cycle.
 """
-import os
-import json
 import logging
 from datetime import datetime, timezone
 
@@ -33,6 +20,8 @@ import numpy as np
 
 from worldmap.lib.config import WorldMapConfig
 from worldmap.lib import fieldstore
+from worldmap.lib.db import Database
+from worldmap.markers_importer import import_markers, load_marker_rows
 from .common import Updater, MapData
 
 logger = logging.getLogger(__name__)
@@ -43,45 +32,6 @@ class MarkerUpdater(Updater):
         # Reads the existing "markers" config section (shared with the frontend markers
         # layer); driven by its weather_popup flag and runs_per_day.
         super().__init__(config, "Markers", map_data)
-        # Default output if the config section doesn't set one.
-        if not self.outfile:
-            self.outfile = "data/marker_weather.json"
-            self.set_output_path()
-
-    # ---- marker loading -----------------------------------------------------
-    def _markers_path(self):
-        """Path to the same markers.geojson the frontend serves. Overridable via
-        the markers.markers_file setting; defaults to the in-repo UI copy
-        (readable by this container via the full-repo mount)."""
-        cfg_path = self.settings.get("markers_file")
-        if cfg_path:
-            return (
-                cfg_path
-                if os.path.isabs(cfg_path)
-                else os.path.join(self.workdir, cfg_path)
-            )
-        return os.path.join(self.workdir, "ui", "markers", "markers.geojson")
-
-    def _load_markers(self):
-        path = self._markers_path()
-        with open(path) as f:
-            gj = json.load(f)
-        markers = []
-        for feat in gj.get("features", []):
-            props = feat.get("properties", {}) or {}
-            # Only land places get a popup; marine 'feature' entries (seas/straits) don't.
-            if props.get("kind") != "place":
-                continue
-            geom = feat.get("geometry", {}) or {}
-            if geom.get("type") != "Point":
-                continue
-            coords = geom.get("coordinates") or []
-            if len(coords) < 2:
-                continue
-            markers.append(
-                {"name": props.get("name", ""), "lat": float(coords[1]), "lon": float(coords[0])}
-            )
-        return markers
 
     # ---- field sampling -----------------------------------------------------
     @staticmethod
@@ -115,23 +65,12 @@ class MarkerUpdater(Updater):
             logger.warning(f"Markers: sampling failed: {e}")
             return None
 
-    # ---- main ---------------------------------------------------------------
     def _resolve_run_hour(self):
         """Resolve the freshest run + the available hour valid 'now' DIRECTLY from the
-        fieldstore catalog, NOT from the cached GFS baseline.
-
-        The GFS baseline that get_gfs_state() establishes is cached in shared_state and
-        synced only once per process. In a long-lived layer_builder it therefore drifts
-        to an ever-older run as the hours tick by (the forecast hour climbs f00x -> f0NN),
-        and once the data collector advances to a newer run and the housekeeper prunes the
-        old one, every baseline-based field lookup misses — which is what produced the
-        "no fields for f010" skips. Reading the catalog instead samples whatever data is
-        genuinely present right now.
-
-        Scoped to temperature+wind (always ingested together for a GFS run) so an unrelated
-        model cycle (e.g. RTOFS currents, run id "00") can't outrank the GFS run, and so
-        humidity — which can lag a cycle behind, especially right after the RH ingest was
-        added — doesn't gate the whole resolution. Returns (run_date, run_id, fhour) or None.
+        fieldstore catalog, NOT from the cached GFS baseline (which drifts stale in a
+        long-lived process). Scoped to temperature+wind (always ingested together) so an
+        unrelated cycle (RTOFS currents) can't outrank the GFS run and humidity — which
+        can lag a cycle — doesn't gate resolution. Returns (run_date, run_id, fhour)|None.
         """
         try:
             store = fieldstore.get_store(self.workdir)
@@ -148,23 +87,26 @@ class MarkerUpdater(Updater):
             )
         except (ValueError, TypeError):
             return None
-        # Pick the available forecast hour whose valid time is closest to now.
         target = (datetime.now(timezone.utc) - run_start).total_seconds() / 3600.0
         fhour = min(hours, key=lambda h: abs(int(h) - target))
         return run_date, run_id, int(fhour)
 
+    # ---- main ---------------------------------------------------------------
     def run(self):
-        if not self.settings.get("weather_popup", False):
-            logger.debug("Markers: weather_popup disabled; skipping.")
-            return
+        db = Database()
 
-        # Resolve the run + hour from what's actually in the store (robust to the cached
-        # GFS baseline drifting stale in a long-running process).
+        # 1) Keep the markers table consistent with the canonical geojson — ALWAYS, since
+        #    the frontend renders markers from this table regardless of weather.
+        try:
+            import_markers(db)
+        except Exception as e:
+            logger.error(f"Markers: importer failed: {e}")
+
         resolved = self._resolve_run_hour()
         if not resolved:
             logger.warning(
-                "Markers: no temperature/wind fields in the store yet; skipping "
-                "(data collector may not have ingested this run)."
+                "Markers: no temperature/wind fields in the store yet; skipping weather "
+                "sample this cycle (data collector may not have ingested this run)."
             )
             return
         run_date, run_id, fhour = resolved
@@ -173,26 +115,26 @@ class MarkerUpdater(Updater):
         self.run_id = run_id
         self.forecast_hour_str = f"{fhour:03d}"
 
+        # Only 'place' markers get weather; reuse the importer's ids so the UPDATE matches
+        # exactly the rows it upserted.
         try:
-            markers = self._load_markers()
+            places = [r for r in load_marker_rows() if r["kind"] == "place"]
         except Exception as e:
-            logger.error(f"Markers: could not read markers file: {e}")
+            logger.error(f"Markers: could not read markers file for sampling: {e}")
             return
-        if not markers:
-            logger.warning("Markers: no place markers found; nothing to do.")
+        if not places:
             return
 
-        lats_q = np.array([m["lat"] for m in markers], dtype=np.float64)
-        lons_q = np.array([m["lon"] for m in markers], dtype=np.float64)
+        lats_q = np.array([p["lat"] for p in places], dtype=np.float64)
+        lons_q = np.array([p["lon"] for p in places], dtype=np.float64)
 
         temp_f = self.get_db_field_at_hour("temperature", fhour)
         wind_f = self.get_db_field_at_hour("wind", fhour)
         rh_f = self.get_db_field_at_hour("humidity", fhour)
-        # temp+wind are guaranteed present by the resolver; humidity is best-effort.
         if temp_f is None and wind_f is None and rh_f is None:
             logger.warning(
                 f"Markers: fields vanished for {run_date} {run_id}Z f{fhour:03d} "
-                "between catalog lookup and read; skipping this cycle."
+                "between catalog lookup and read; skipping weather sample."
             )
             return
 
@@ -207,20 +149,6 @@ class MarkerUpdater(Updater):
             # Meteorological direction the wind blows FROM (deg, 0=N, 90=E).
             wd = (270.0 - np.degrees(np.arctan2(v, u))) % 360.0
 
-        records = {}
-        for i, m in enumerate(markers):
-            rec = {}
-            if t is not None and np.isfinite(t[i]):
-                rec["t"] = round(float(t[i]), 1)
-            if rh is not None and np.isfinite(rh[i]):
-                rec["rh"] = int(round(float(rh[i])))
-            if ws is not None and np.isfinite(ws[i]):
-                rec["ws"] = round(float(ws[i]), 1)
-            if wd is not None and np.isfinite(wd[i]):
-                rec["wd"] = int(round(float(wd[i]))) % 360
-            if rec:
-                records[f"{m['name']}|{m['lat']:.3f}|{m['lon']:.3f}"] = rec
-
         # Valid time from whichever field provided one.
         valid_iso = None
         for f in (temp_f, wind_f, rh_f):
@@ -229,24 +157,28 @@ class MarkerUpdater(Updater):
                 valid_iso = vt.isoformat() if hasattr(vt, "isoformat") else str(vt)
                 break
 
-        payload = {
-            "generated": datetime.now(timezone.utc).isoformat(),
-            "valid_time": valid_iso,
-            "run": f"{self.run_date_str} {self.run_id}Z",
-            "fhour": fhour,
-            "count": len(records),
-            "markers": records,
-        }
-        self._write_json(payload)
-        logger.info(
-            f"Markers: wrote {len(records)}/{len(markers)} marker records "
-            f"for f{fhour:03d} -> {os.path.basename(self.output_path)}"
-        )
+        updates = []
+        for i, p in enumerate(places):
+            ti = float(t[i]) if (t is not None and np.isfinite(t[i])) else None
+            rhi = float(rh[i]) if (rh is not None and np.isfinite(rh[i])) else None
+            wsi = float(ws[i]) if (ws is not None and np.isfinite(ws[i])) else None
+            wdi = float(wd[i]) if (wd is not None and np.isfinite(wd[i])) else None
+            if ti is None and rhi is None and wsi is None and wdi is None:
+                continue
+            updates.append(
+                {
+                    "id": p["id"],
+                    "t": round(ti, 1) if ti is not None else None,
+                    "rh": int(round(rhi)) if rhi is not None else None,
+                    "ws": round(wsi, 1) if wsi is not None else None,
+                    "wd": int(round(wdi)) % 360 if wdi is not None else None,
+                    "valid_time": valid_iso,
+                }
+            )
 
-    def _write_json(self, payload):
-        path = self.output_path
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        tmp = f"{path}.tmp"
-        with open(tmp, "w") as f:
-            json.dump(payload, f, separators=(",", ":"))
-        os.replace(tmp, path)
+        if updates:
+            db.update_marker_weather(updates)
+        logger.info(
+            f"Markers: weather updated for {len(updates)}/{len(places)} place markers "
+            f"(f{fhour:03d})."
+        )
