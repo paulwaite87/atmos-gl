@@ -45,7 +45,7 @@
     "cache_expiry_days": 3
   },
   "wind": {
-    "enabled": true,
+    "enabled": false,
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
     "outfile": "data/wind.png",
     "level_of_detail": "2",
@@ -77,12 +77,14 @@
     "cache_expiry_days": 3
   },
   "currents": {
-    "enabled": false,
+    "enabled": true,
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/rtofs/prod/",
     "outfile": "data/currents.png",
+    "level_of_detail": "1",
     "palette": "thermal_red",
     "alpha": 70,
-    "particle_speed": 20,
+    "particle_speed": 10,
+    "trail_length": 50,
     "width_factor": 2.6,
     "key_fontsize": 8,
     "runs_per_day": 2,
@@ -109,9 +111,9 @@
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
     "outfile": "data/temperature.png",
     "level_of_detail": "2",
-    "mode": "absolute",
+    "mode": "anomaly",
     "palette": "extreme_contrast",
-    "alpha": 100,
+    "alpha": 80,
     "show_freezing_line": true,
     "key_fontsize": 8,
     "runs_per_day": 8,
@@ -179,14 +181,14 @@
     "runs_per_day": 24
   },
   "quakes": {
-    "enabled": false,
+    "enabled": true,
     "url": "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.csv",
     "outfile": "data/quakes.json",
     "icon_zoom": 0.7,
     "marker_symbol_new": "earthquake_new.png",
     "marker_symbol_old": "earthquake_old.png",
     "recent_activity_hours": 3,
-    "expiry_hours": 12,
+    "expiry_hours": 36,
     "label_fontsize": 12,
     "min_mag": 3.5,
     "runs_per_day": 24

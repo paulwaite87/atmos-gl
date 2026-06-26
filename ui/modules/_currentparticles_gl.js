@@ -4,27 +4,36 @@ import { scrubber } from './scrubber.js';
 import { flagBackfill } from './_backfill.js';
 
 /**
- * Ocean-current FLOWING TRAIL particles as a MapLibre v5 CUSTOM WEBGL LAYER.
+ * Ocean-current FLOWING STREAMLINE particles as a MapLibre v5 CUSTOM WEBGL LAYER.
  *
- * Unlike the wind/wave engine (one stiff oriented quad per particle = "bars"), this
- * draws each particle as a short fading, tapering POLYLINE of its recent positions —
- * so it traces the curved streamline it has flowed along, giving the smooth
- * "flowing ribbon" look. Particles are advected on the GPU along the u/v texture
- * exactly like wind; the new part is a HISTORY CHAIN of state textures (the last
- * TRAIL_LEN positions) and a trail vertex shader that builds screen-space ribbon
- * segments between consecutive history positions, projected through MapLibre's
- * projectTile (so trails follow the globe and stay crisp at any zoom).
+ * Each particle is a slowly-drifting HEAD position; its tail is the instantaneous
+ * STREAMLINE traced UPSTREAM from the head through the u/v field — i.e. the tail shows
+ * where the water just came from. The head is advected on the GPU each frame (one tiny
+ * ping-pong state texture); the trail vertex shader integrates backward through u_vel to
+ * generate the tail on the fly, projected through MapLibre's projectTile so it follows
+ * the globe and stays crisp at any zoom.
+ *
+ * WHY STREAMLINE (vs the old stored-history ring): the ribbon used to be the last N head
+ * positions, so one new vertex was committed per frame. That fused two things that should
+ * be independent — on-screen DRIFT SPEED (step x frame-rate) and TAIL LENGTH (step x N).
+ * Slowing the drift collapsed the tail to "slow dots". Here the two are decoupled:
+ *   drift speed  = head advection step  (u_speed, the particle_speed slider)
+ *   tail length  = integration arc      (u_H x STREAM_STEPS, the trail_length slider)
+ * so you can have long tails that drift slowly — the "Perpetual Ocean" look. It also only
+ * ever samples ONE history texture + u_vel in the vertex stage (vs the old 14+1 sampler
+ * binds that capped the tail near the WebGL2 vertex-texture-unit ceiling), and makes the
+ * reset-bridge "meteor" class of artifact structurally impossible: a reset just relocates
+ * the head and the tail re-integrates from the new spot next frame — no history to bridge.
  *
  * Isolated module — wind (_windparticles_gl.js) and waves are untouched.
  *
  * createCurrentParticleGLLayer(map, opts) — opts mirror the wind layer where useful:
  *   sectionKey, initialConfig, vmax, colormap, hourDataUrl, maxSpeedColor, landReset,
- *   plus trail tunables (trail_len via config, particle_count, particle_speed, etc.).
+ *   plus tunables (particle_count, particle_speed=drift, trail_length=tail arc, etc.).
  */
 
-const TRAIL_LEN = 14;            // history positions per trail (medium ribbons)
+const STREAM_STEPS = 40;        // streamline integration segments (tail = STREAM_STEPS+1 points)
 const LOD_COUNT = { 1: 4000, 2: 9000, 3: 18000 };
-const LAT_MAX = 1.4844222297453324;   // mercator clamp (85.0511 deg, radians)
 
 const lodOf = (cfg) => { const n = parseInt(cfg.level_of_detail, 10); return (n === 1 || n === 3) ? n : 2; };
 
@@ -94,22 +103,24 @@ void main(){
     fragColor = encodePos(reset ? randPos : npos);
 }`;
 
-// Trail vertex shader BODY (MapLibre projection prelude + define prepended at link).
-// One ribbon SEGMENT per (particle, history-step). gl_VertexID layout: 6 verts per
-// segment, (TRAIL_LEN-1) segments per particle. Segment k connects history slot k
-// (older, tail side) to k+1 (newer, head side). Reads two history textures bound to
-// units, projects both endpoints via projectTile(toMerc()), builds a screen-space
-// quad, tapered + faded toward the tail.
+// Trail vertex shader BODY (MapLibre projection prelude + #version + define prepended at
+// link). One ribbon SEGMENT per (particle, streamline-step). gl_VertexID layout: 6 verts
+// per segment, STREAM_STEPS segments per particle. The tail is NOT stored — it is the
+// instantaneous streamline integrated UPSTREAM from the head through u_vel, so segment
+// `seg` connects streamline point[seg] (head side) to point[seg+1] (tail side). Both
+// endpoints are projected via projectTile(toMerc()) into a screen-space quad, tapered +
+// faded toward the tail. Only u_head + u_vel are sampled in the vertex stage.
 const TRAIL_VS_BODY = `
 precision highp float;
-uniform sampler2D u_hist[${TRAIL_LEN}];   // ring of history position textures (0=newest)
+uniform sampler2D u_head;     // single head-position state texture (newest positions)
 uniform sampler2D u_vel;
-uniform float u_res, u_vmax, u_halfThick, u_maxspeed, u_alpha, u_trailLen;
+uniform float u_res, u_vmax, u_halfThick, u_maxspeed, u_alpha, u_H;
 uniform vec2 u_viewport;
 out float v_speed;
-out float v_t;            // 0 at tail .. 1 at head (for fade/taper in FS)
+out float v_t;            // 0 at tail tip .. 1 at head (for fade/taper in FS)
 const float CP_PI = 3.141592653589793;
 const float CP_LATMAX = 1.4844222297453324;
+const float CP_MAXSTEP = 0.005;   // per integration step clamp (tames 1/coslat near poles)
 float cp_unpack(vec2 c){ return (c.x*255.0*256.0 + c.y*255.0)/65535.0; }
 vec2 cp_decode(vec4 c){ return vec2(cp_unpack(c.rg), cp_unpack(c.ba)); }
 vec2 cp_toMerc(vec2 p){
@@ -117,47 +128,55 @@ vec2 cp_toMerc(vec2 p){
     float my = log(tan(CP_PI*0.25 + lat*0.5));
     return vec2(p.x, 0.5 - my/(2.0*CP_PI));
 }
-vec4 cp_hist(int slot, ivec2 tc){
-    // GLSL ES 3.00 forbids indexing a sampler array with a non-constant. Even
-    // u_hist[i] inside a loop is a *variable* index and fails to compile. So we
-    // generate an explicit chain of CONSTANT-index fetches at build time.
-${Array.from({length: TRAIL_LEN}, (_, i) =>
-    `    if (slot == ${i}) return texelFetch(u_hist[${i}], tc, 0);`).join('\n')}
-    return vec4(0.0);
+// One UPSTREAM (backward) streamline step from p. Uses the SAME field geometry as the
+// head advection (vel.x/coslat*0.5, -vel.y) so the tail aligns with how the head moves.
+// Tail length therefore scales with current speed (faster water -> longer tail), while
+// the head's DRIFT speed is a separate uniform — that is the slow-drift/long-tail decouple.
+vec2 cp_step(vec2 p, out bool land){
+    vec4 w = texture(u_vel, p);
+    land = (w.a < 0.5);
+    vec2 vel = land ? vec2(0.0) : (w.rg * (2.0*u_vmax) - u_vmax);
+    float lat = (0.5 - p.y) * CP_PI;
+    float coslat = max(cos(lat), 0.05);
+    vec2 g = vec2(vel.x / coslat * 0.5, -vel.y);
+    vec2 disp = -g * u_H;                          // backward = upstream
+    float dm = length(disp);
+    if (dm > CP_MAXSTEP) disp *= (CP_MAXSTEP / dm);
+    vec2 nx = p + disp; nx.x = fract(nx.x + 1.0);
+    return nx;
 }
 void main(){
-    int segCount = int(u_trailLen) - 1;
+    int segCount = 20;
     int pid = gl_VertexID / (6 * segCount);
     int rem = gl_VertexID - pid * (6 * segCount);
-    int seg = rem / 6;                 // 0 .. segCount-1  (0 = tail segment)
+    int seg = rem / 6;                 // 0 = head segment .. segCount-1 = tail segment
     int corner = rem - seg * 6;
     float col = mod(float(pid), u_res);
     float row = floor(float(pid) / u_res);
     ivec2 tc = ivec2(int(col), int(row));
 
-    // slot indices: newest = 0, oldest = TRAIL_LEN-1. Tail segment uses the oldest.
-    int slotA = (int(u_trailLen) - 1) - seg;          // older end
-    int slotB = slotA - 1;                            // newer end (closer to head)
-    vec2 pA = cp_decode(cp_hist(slotA, tc));
-    vec2 pB = cp_decode(cp_hist(slotB, tc));
+    vec2 head = cp_decode(texelFetch(u_head, tc, 0));
 
-    // Discard degenerate / land / antimeridian-wrapping segments (push offscreen).
+    // Integrate upstream from the head to this segment's two endpoints:
+    //   pB = streamline point[seg]   (head side, newer, brighter, thicker)
+    //   pA = streamline point[seg+1] (tail side, older, fainter, thinner)
+    vec2 pCur = head, pA = head, pB = head;
+    bool ended = false;
+    for (int k = 0; k <= segCount; k++){
+        if (k == seg)     pB = pCur;
+        if (k == seg + 1){ pA = pCur; break; }
+        bool hitLand;
+        vec2 nx = cp_step(pCur, hitLand);
+        if (hitLand) ended = true;
+        pCur = ended ? pCur : nx;       // once on land, freeze -> coincident -> discarded
+    }
+
     vec4 wB = texture(u_vel, pB);
     float dlon = abs(pA.x - pB.x);
     float dlat = abs(pA.y - pB.y);
-    // A real per-frame advection step is tiny (<~5e-4). When a particle RESETS (drop /
-    // land / pole), it teleports to a fresh random spawn, so the ribbon segment joining
-    // its pre-reset and post-reset history points spans a large distance — drawn as a
-    // long line streaking across the globe (and, with many particles, the screen-filling
-    // tangle that precedes the GPU hang). Discard any segment longer than a plausible
-    // step. 0.02 is ~40x a max step yet far below any reset jump (typically 0.1..1.0).
-    // Real per-frame steps are now clamped to MAX_STEP (0.004) in the advection, so any
-    // segment longer than that is a reset teleport or a transient bad sample, not real
-    // flow. Discard above 0.008 (2x the clamp) — well below any reset jump (>=0.1),
-    // tight enough to catch the stray "meteor" segments the looser 0.02 let through.
     float seg2 = dlon*dlon + dlat*dlat;
-    if (wB.a < 0.5 || dlon > 0.5 || seg2 > (0.008*0.008)
-        || (pA.x==0.0&&pA.y==0.0) || (pB.x==0.0&&pB.y==0.0)) {
+    // discard: land, antimeridian wrap, degenerate (land-frozen coincident), stray-long.
+    if (wB.a < 0.5 || dlon > 0.5 || seg2 < 1e-12 || seg2 > (0.02*0.02)) {
         v_speed = 0.0; v_t = 0.0; gl_Position = vec4(2.0,2.0,2.0,1.0); return;
     }
     vec2 vel = wB.rg * (2.0*u_vmax) - u_vmax;
@@ -165,9 +184,7 @@ void main(){
 
     vec4 clipA = projectTile(cp_toMerc(pA));
     vec4 clipB = projectTile(cp_toMerc(pB));
-    // Discard if either endpoint is at/behind the horizon. A near-zero positive w makes
-    // nA/nB explode and the ribbon span the screen -> overdraw -> GPU watchdog hang on
-    // rotate. The epsilon keeps us clear of the singular w~0 band at the globe limb.
+    // Discard if either endpoint is at/behind the horizon (near-zero w explodes nA/nB).
     if (clipA.w <= 0.0001 || clipB.w <= 0.0001) { v_speed=0.0; v_t=0.0; gl_Position=vec4(2.0,2.0,2.0,1.0); return; }
     vec2 nA = clipA.xy / clipA.w;
     vec2 nB = clipB.xy / clipB.w;
@@ -175,24 +192,21 @@ void main(){
     vec2 sdir = (length(dirPx) > 1e-4) ? normalize(dirPx) : vec2(0.0, 1.0);
     vec2 perp = vec2(-sdir.y, sdir.x);
 
-    // taper: thickness grows toward the head; segment fraction along the trail
-    float fOld = float(seg) / float(segCount);          // 0 tail .. ~1 head
-    float fNew = float(seg + 1) / float(segCount);
-    // 6 corners of the quad: (-1 end = A/older, +1 end = B/newer); y = +/-1 across width
+    // along-trail fraction: head = 1, tail tip = 0
+    float fOld = 1.0 - float(seg + 1) / float(segCount);   // tail side of this segment
+    float fNew = 1.0 - float(seg)     / float(segCount);   // head side
     vec2 ab[6] = vec2[6](vec2(0.0,-1.0), vec2(1.0,-1.0), vec2(0.0,1.0),
                          vec2(0.0, 1.0), vec2(1.0,-1.0), vec2(1.0,1.0));
     vec2 cc = ab[corner];
     float endF = mix(fOld, fNew, cc.x);                 // along-trail fraction at this vertex
     v_t = endF;
-    float thick = u_halfThick * mix(0.25, 1.0, endF);   // taper thin->thick toward head
+    float thick = u_halfThick * mix(0.25, 1.0, endF);   // taper thin(tail)->thick(head)
     vec4 baseClip = (cc.x < 0.5) ? clipA : clipB;
-    vec2 baseN    = (cc.x < 0.5) ? nA : nB;
     vec2 offPix = perp * (cc.y * thick);
     vec2 offNDC = offPix * 2.0 / u_viewport;
     gl_Position = baseClip;
     gl_Position.xy += offNDC * baseClip.w;
 }`;
-
 const TRAIL_FS = `#version 300 es
 precision highp float;
 in float v_speed; in float v_t;
@@ -208,52 +222,6 @@ void main(){
     fragColor = vec4(c, a);
 }`;
 
-// ---- DIAGNOSTIC: render particles as plain points (isolates projection/decode from
-// the ribbon/screen-space geometry). Flip DIAG_POINTS to true to draw one point per
-// particle at its newest projected position, bypassing all ribbon math. If points
-// spread across the globe, the projection+decode are fine and the bug is in the
-// ribbon construction; if points also clump, the bug is upstream. ----
-const DIAG_POINTS = false;
-const POINT_VS_BODY = `
-precision highp float;
-uniform sampler2D u_hist[${TRAIL_LEN}];
-uniform sampler2D u_vel;
-uniform float u_res, u_vmax, u_maxspeed;
-out float v_speed;
-const float CP_PI = 3.141592653589793;
-const float CP_LATMAX = 1.4844222297453324;
-float cp_unpack(vec2 c){ return (c.x*255.0*256.0 + c.y*255.0)/65535.0; }
-vec2 cp_decode(vec4 c){ return vec2(cp_unpack(c.rg), cp_unpack(c.ba)); }
-vec2 cp_toMerc(vec2 p){
-    float lat = clamp((0.5 - p.y) * CP_PI, -CP_LATMAX, CP_LATMAX);
-    float my = log(tan(CP_PI*0.25 + lat*0.5));
-    return vec2(p.x, 0.5 - my/(2.0*CP_PI));
-}
-void main(){
-    int pid = gl_VertexID;
-    // DIAGNOSTIC STAGE 3: fully self-contained. Hardcoded 64x64 grid in clip space,
-    // independent of u_res/count/RES/textures. Draws exactly 4096 points filling the
-    // screen. If THIS doesn't fill the screen, the draw call (count passed to
-    // drawArrays) is the problem, not any uniform.
-    const float GRID = 64.0;
-    float gcol = mod(float(pid), GRID);
-    float grow = floor(float(pid) / GRID);
-    vec2 p = vec2((gcol + 0.5) / GRID, (grow + 0.5) / GRID);
-    v_speed = p.x;
-    gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
-    gl_PointSize = 3.0;
-}`;
-const POINT_FS = `#version 300 es
-precision highp float;
-in float v_speed;
-out vec4 fragColor;
-uniform sampler2D u_cmap;
-uniform float u_maxspeed;
-void main(){
-    float s = clamp(v_speed / u_maxspeed, 0.0, 1.0);
-    vec3 c = texture(u_cmap, vec2(s, 0.5)).rgb;
-    fragColor = vec4(c, 0.9);
-}`;
 
 export function createCurrentParticleGLLayer(map, opts) {
     const {
@@ -275,7 +243,7 @@ export function createCurrentParticleGLLayer(map, opts) {
         // How to turn the config into the advection multiplier. Default reads
         // particle_speed as a raw multiplier (back-compat). Currents passes a mapper that
         // translates the 0-100 UI slider into its own min..max speed range.
-        speedFromConfig = (cfg) => (Number(cfg.particle_speed) > 0 ? Number(cfg.particle_speed) / 100 : defaultSpeed),
+        speedFromConfig = (cfg) => (Number(cfg.particle_speed) > 0 ? Number(cfg.particle_speed) / 500 : defaultSpeed),
         hourDataUrl = (cfg, hour, bust) => {
             const base = cfg.outfile.replace(/\.png$/, '');
             const f = String(hour).padStart(3, '0');
@@ -288,20 +256,30 @@ export function createCurrentParticleGLLayer(map, opts) {
 
     let glRef = null, webglFailed = false;
     let updateProg = null, trailProgCache = new Map(), trailProgFailed = false;
-    let pointProgCache = new Map(), pointProgFailed = false;
     let screenQuad = null, vaoUpdate = null, vaoTrails = null;
     let velTex = null, cmapTex = null;
-    // history ring: TRAIL_LEN textures + matching FBOs; head index advances each frame
-    let hist = [], histFbo = [], head = 0;
+    // head position state as a 2-texture ping-pong (advected one step per frame). The tail
+    // is the streamline integrated from the head in the trail VS — no stored history ring.
+    let headTex = [], headFbo = [], headIdx = 0;
     let RES = 96, count = RES * RES;
     let velReady = false, pendingVelImg = null, pendingLut = null, pendingRebuild = false;
     let curCfg = initialConfig, curAnim = initialAnimation;
     let curSpeed = defaultSpeed, curThick = 2.0, curMaxSpeed = vmax, curAlpha = 0.9, curLandReset = 1.0;
+    let curH = 8.0e-4;            // streamline integration step (tail arc); set in applyParams
     let bustKey = (timeline.get().refreshEpoch) || Date.now();
 
     const particleCount = (cfg) => {
         const explicit = parseInt(cfg.particle_count, 10);
         return Math.max(256, explicit > 0 ? explicit : (LOD_COUNT[lodOf(cfg)] || 9000));
+    };
+    // Tail length is decoupled from drift speed: it is the per-step integration arc times
+    // STREAM_STEPS, independent of u_speed. trail_length is a 0..100 slider mapped into a
+    // sensible arc range; faster currents still get proportionally longer tails (the arc
+    // scales with local speed inside the shader). Default ~mid.
+    const hFromConfig = (cfg) => {
+        const t = Number(cfg.trail_length);
+        const frac = (t >= 0 && t <= 100) ? t / 100 : 0.5;
+        return 2.0e-4 + frac * (1.4e-3 - 2.0e-4);   // ~2e-4 .. 1.4e-3
     };
     const applyParams = (cfg) => {
         curSpeed = speedFromConfig(cfg);
@@ -309,6 +287,7 @@ export function createCurrentParticleGLLayer(map, opts) {
         curAlpha = Number(cfg.particle_alpha) > 0 ? Number(cfg.particle_alpha) / 100 : 0.9;
         curMaxSpeed = maxSpeedColor(cfg) || vmax;
         curLandReset = landReset(cfg) > 0.5 ? 1.0 : 0.0;
+        curH = hFromConfig(cfg);
     };
 
     const compile = (gl, type, src) => {
@@ -340,18 +319,6 @@ export function createCurrentParticleGLLayer(map, opts) {
         return p;
     };
 
-    // DIAGNOSTIC point program (same projection prelude as the trail program).
-    const getPointProg = (gl, shaderData) => {
-        const key = shaderData.variantName || '__default__';
-        if (pointProgCache.has(key)) return pointProgCache.get(key);
-        if (pointProgFailed) return null;
-        const vs = `#version 300 es\n${shaderData.vertexShaderPrelude}\n${shaderData.define}\n${POINT_VS_BODY}`;
-        const p = linkProg(gl, vs, POINT_FS);
-        if (!p) { pointProgFailed = true; return null; }
-        pointProgCache.set(key, p);
-        return p;
-    };
-
     const makeTex = (gl, w, h, data, filter) => {
         const t = gl.createTexture();
         gl.bindTexture(gl.TEXTURE_2D, t);
@@ -373,16 +340,16 @@ export function createCurrentParticleGLLayer(map, opts) {
     };
     const buildState = (gl) => {
         RES = Math.ceil(Math.sqrt(particleCount(curCfg))); count = RES * RES;
-        hist.forEach((t) => t && gl.deleteTexture(t));
-        histFbo.forEach((f) => f && gl.deleteFramebuffer(f));
-        hist = []; histFbo = []; head = 0;
+        headTex.forEach((t) => t && gl.deleteTexture(t));
+        headFbo.forEach((f) => f && gl.deleteFramebuffer(f));
+        headTex = []; headFbo = []; headIdx = 0;
         const seed = randomState();
-        for (let i = 0; i < TRAIL_LEN; i++) {
+        for (let i = 0; i < 2; i++) {                  // ping-pong pair
             const t = makeTex(gl, RES, RES, seed, gl.NEAREST);
             const fbo = gl.createFramebuffer();
             gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
             gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t, 0);
-            hist.push(t); histFbo.push(fbo);
+            headTex.push(t); headFbo.push(fbo);
         }
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     };
@@ -440,11 +407,12 @@ export function createCurrentParticleGLLayer(map, opts) {
         img.src = url;
     };
 
-    // Advance the history ring by one: advect newest head -> the slot we overwrite
-    // (the oldest), which then becomes the new newest.
+    // Advance the head by one advection step: read the current head, write the other
+    // ping-pong slot, then swap. (The tail is not stored — it is re-integrated from the
+    // head each frame in the trail VS.)
     const advect = (gl) => {
-        const newestSlot = head;                       // current newest
-        const writeSlot = (head + TRAIL_LEN - 1) % TRAIL_LEN; // oldest -> overwrite
+        const src = headIdx;
+        const dst = headIdx ^ 1;
         // Save the GL viewport + FBO MapLibre set up for us; the FBO render below
         // clobbers the viewport (to RES x RES) and binding, and we MUST restore them
         // or the subsequent on-globe draw is confined to a tiny RES x RES box in the
@@ -453,17 +421,20 @@ export function createCurrentParticleGLLayer(map, opts) {
         const prevVp = gl.getParameter(gl.VIEWPORT);
         gl.useProgram(updateProg);
         gl.bindVertexArray(vaoUpdate);
-        gl.bindFramebuffer(gl.FRAMEBUFFER, histFbo[writeSlot]);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, headFbo[dst]);
         gl.viewport(0, 0, RES, RES);
         const u = (n) => gl.getUniformLocation(updateProg, n);
-        gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, hist[newestSlot]);
+        gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, headTex[src]);
         gl.uniform1i(u('u_particles'), 0);
         gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, velTex);
         gl.uniform1i(u('u_vel'), 1);
         gl.uniform1f(u('u_vmax'), vmax);
         gl.uniform1f(u('u_speed'), curSpeed);
-        gl.uniform1f(u('u_dropRate'), 0.002);
-        gl.uniform1f(u('u_dropBump'), 0.010);
+        // Slow-drift particles travel less ground per lifetime, so keep them alive longer
+        // (lower drop) — otherwise slow regions thin out into sparse dots. The streamline
+        // tail means a near-stationary head still reads as a flowing streak.
+        gl.uniform1f(u('u_dropRate'), 0.0010);
+        gl.uniform1f(u('u_dropBump'), 0.0050);
         gl.uniform1f(u('u_dropSpeed'), 10.0);
         gl.uniform1f(u('u_seed'), Math.random());
         gl.uniform1f(u('u_landReset'), curLandReset);
@@ -473,49 +444,10 @@ export function createCurrentParticleGLLayer(map, opts) {
         // Restore the viewport + FBO so the trail draw covers the full globe.
         gl.bindFramebuffer(gl.FRAMEBUFFER, prevFbo);
         gl.viewport(prevVp[0], prevVp[1], prevVp[2], prevVp[3]);
-        head = writeSlot;                              // new newest = the slot we wrote
-    };
-
-    const drawPointsDiag = (gl, args) => {
-        const prog = getPointProg(gl, args.shaderData);
-        if (!prog) { webglFailed = true; return; }
-        gl.useProgram(prog);
-        gl.bindVertexArray(vaoTrails);   // attributeless (gl_VertexID)
-        const u = (n) => gl.getUniformLocation(prog, n);
-        const pd = args.defaultProjectionData;
-        gl.uniformMatrix4fv(u('u_projection_matrix'), false, pd.mainMatrix);
-        gl.uniformMatrix4fv(u('u_projection_fallback_matrix'), false, pd.fallbackMatrix);
-        gl.uniform4f(u('u_projection_clipping_plane'),
-            pd.clippingPlane[0], pd.clippingPlane[1], pd.clippingPlane[2], pd.clippingPlane[3]);
-        gl.uniform1f(u('u_projection_transition'), pd.projectionTransition);
-        gl.uniform4f(u('u_projection_tile_mercator_coords'),
-            pd.tileMercatorCoords[0], pd.tileMercatorCoords[1],
-            pd.tileMercatorCoords[2], pd.tileMercatorCoords[3]);
-        // newest history slot bound at unit 0 (matches POINT_VS u_hist[0])
-        const units = [];
-        for (let i = 0; i < TRAIL_LEN; i++) {
-            const slot = (head + i) % TRAIL_LEN;
-            gl.activeTexture(gl.TEXTURE0 + i);
-            gl.bindTexture(gl.TEXTURE_2D, hist[slot]);
-            units.push(i);
-        }
-        gl.uniform1iv(u('u_hist'), units);
-        gl.activeTexture(gl.TEXTURE0 + TRAIL_LEN); gl.bindTexture(gl.TEXTURE_2D, velTex);
-        gl.uniform1i(u('u_vel'), TRAIL_LEN);
-        gl.activeTexture(gl.TEXTURE0 + TRAIL_LEN + 1); gl.bindTexture(gl.TEXTURE_2D, cmapTex);
-        gl.uniform1i(u('u_cmap'), TRAIL_LEN + 1);
-        gl.uniform1f(u('u_res'), RES);
-        gl.uniform1f(u('u_vmax'), vmax);
-        gl.uniform1f(u('u_maxspeed'), curMaxSpeed);
-        gl.disable(gl.DEPTH_TEST);
-        gl.enable(gl.BLEND);
-        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-        gl.drawArrays(gl.POINTS, 0, 4096);   // STAGE 3: fixed 64x64 grid
-        gl.bindVertexArray(null);
+        headIdx = dst;                                 // swap: dst is the new head
     };
 
     const drawTrails = (gl, args) => {
-        if (DIAG_POINTS) { drawPointsDiag(gl, args); return; }
         const prog = getTrailProg(gl, args.shaderData);
         if (!prog) { webglFailed = true; return; }
         gl.useProgram(prog);
@@ -530,22 +462,17 @@ export function createCurrentParticleGLLayer(map, opts) {
         gl.uniform4f(u('u_projection_tile_mercator_coords'),
             pd.tileMercatorCoords[0], pd.tileMercatorCoords[1],
             pd.tileMercatorCoords[2], pd.tileMercatorCoords[3]);
-        // bind the history ring to texture units 0..TRAIL_LEN-1, ordered newest->oldest
-        const units = [];
-        for (let i = 0; i < TRAIL_LEN; i++) {
-            const slot = (head + i) % TRAIL_LEN;       // i=0 newest
-            gl.activeTexture(gl.TEXTURE0 + i);
-            gl.bindTexture(gl.TEXTURE_2D, hist[slot]);
-            units.push(i);
-        }
-        gl.uniform1iv(u('u_hist'), units);
-        gl.activeTexture(gl.TEXTURE0 + TRAIL_LEN); gl.bindTexture(gl.TEXTURE_2D, velTex);
-        gl.uniform1i(u('u_vel'), TRAIL_LEN);
-        gl.activeTexture(gl.TEXTURE0 + TRAIL_LEN + 1); gl.bindTexture(gl.TEXTURE_2D, cmapTex);
-        gl.uniform1i(u('u_cmap'), TRAIL_LEN + 1);
+        // Only the current head texture + the velocity field are sampled in the vertex
+        // stage (2 samplers total — far under the WebGL2 vertex-texture-unit floor).
+        gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, headTex[headIdx]);
+        gl.uniform1i(u('u_head'), 0);
+        gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, velTex);
+        gl.uniform1i(u('u_vel'), 1);
+        gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, cmapTex);
+        gl.uniform1i(u('u_cmap'), 2);
         gl.uniform1f(u('u_res'), RES);
         gl.uniform1f(u('u_vmax'), vmax);
-        gl.uniform1f(u('u_trailLen'), TRAIL_LEN);
+        gl.uniform1f(u('u_H'), curH);
         gl.uniform1f(u('u_halfThick'), Math.max(0.5, curThick));
         gl.uniform1f(u('u_maxspeed'), curMaxSpeed);
         gl.uniform1f(u('u_alpha'), curAlpha);
@@ -553,7 +480,7 @@ export function createCurrentParticleGLLayer(map, opts) {
         gl.disable(gl.DEPTH_TEST);
         gl.enable(gl.BLEND);
         gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-        gl.drawArrays(gl.TRIANGLES, 0, count * 6 * (TRAIL_LEN - 1));
+        gl.drawArrays(gl.TRIANGLES, 0, count * 6 * STREAM_STEPS);
     };
 
     const makeLayer = (cfg) => ({
@@ -593,11 +520,11 @@ export function createCurrentParticleGLLayer(map, opts) {
         },
         onRemove(m, gl) {
             trailProgCache.forEach((p) => gl.deleteProgram(p)); trailProgCache.clear();
-            hist.forEach((t) => t && gl.deleteTexture(t));
-            histFbo.forEach((f) => f && gl.deleteFramebuffer(f));
+            headTex.forEach((t) => t && gl.deleteTexture(t));
+            headFbo.forEach((f) => f && gl.deleteFramebuffer(f));
             [velTex, cmapTex].forEach((t) => t && gl.deleteTexture(t));
             if (updateProg) gl.deleteProgram(updateProg);
-            hist = []; histFbo = []; velTex = cmapTex = null; updateProg = null; glRef = null;
+            headTex = []; headFbo = []; velTex = cmapTex = null; updateProg = null; glRef = null;
         },
     });
 
