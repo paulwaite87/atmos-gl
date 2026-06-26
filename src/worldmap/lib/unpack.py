@@ -200,8 +200,8 @@ CURRENTS_STEP = 0.1
 CURRENTS_LAT_MIN, CURRENTS_LAT_MAX = -90.0, 90.0
 
 
-def _regrid_curvilinear_nn(lat2d, lon2d, fields, step, lat_min, lat_max):
-    """Nearest-neighbour regrid of 2-D curvilinear fields onto a regular lat/lon grid.
+def _regrid_curvilinear(lat2d, lon2d, fields, step, lat_min, lat_max, k=4, power=2.0):
+    """Inverse-distance-weighted regrid of 2-D curvilinear fields onto a regular grid.
 
     RTOFS Latitude/Longitude are 2-D (Y,X): regular Mercator south of ~47N, tripolar
     (curvilinear) above it, longitudes running ~74..434E with a junk-filled last
@@ -210,19 +210,24 @@ def _regrid_curvilinear_nn(lat2d, lon2d, fields, step, lat_min, lat_max):
       - mask invalid / fill / junk-column points,
       - subsample the source ~2x (still denser than a 0.1 deg target) to keep the
         KD-tree small and memory bounded,
-      - nearest-neighbour map onto the target grid with a distance cap so land/gaps
+      - map onto the target grid by blending the k nearest source points with
+        inverse-distance weights (1/dist^power), all within a distance cap so land/gaps
         stay NaN instead of smearing currents across continents.
 
-    TODO(perf/quality): nearest-neighbour shows slight blockiness where the target
-    approaches source resolution. A linear/bicubic scattered interpolation (or a
-    structured regrid like xESMF) would be smoother; deferred to keep ingest light
-    and dependency-free. The fill-layer's bicubic sampling hides most of it at
-    typical zooms.
+    IDW (vs the old k=1 nearest-neighbour) removes the blockiness you get where the
+    target resolution approaches the source's: NN snaps every target cell to one source
+    sample, so adjacent cells share values in visible steps; IDW interpolates smoothly
+    between the surrounding samples. Coverage is identical to NN (a cell is filled iff at
+    least one source point is within the cap), so no new gaps appear; only the smoothness
+    improves. For even more raw detail (beyond the ~0.16 deg the 2x subsample leaves),
+    drop the subsample below — that is the lever, at a memory cost.
 
     Args:
         lat2d, lon2d: (Y,X) coordinate arrays (degrees).
         fields: dict name->(Y,X) array to regrid together (e.g. {"u":..,"v":..}).
         step, lat_min, lat_max: target grid definition.
+        k: number of nearest source points to blend per target cell.
+        power: inverse-distance exponent (higher = more local / nearer NN).
     Returns:
         (tlat, tlon, {name: regridded 2-D array}) on the regular grid.
     """
@@ -250,15 +255,26 @@ def _regrid_curvilinear_nn(lat2d, lon2d, fields, step, lat_min, lat_max):
     tgt = np.column_stack([mlat.ravel(), mlon.ravel()])
 
     tree = cKDTree(src)
-    # distance_upper_bound in degrees; ~2.5 target cells. Beyond -> no source -> NaN.
-    dist, idx = tree.query(tgt, k=1, distance_upper_bound=step * 2.5)
-    hit = np.isfinite(dist) & (idx < src.shape[0])
+    # k nearest within a distance cap (degrees; ~2.5 target cells). Beyond -> no source.
+    kq = max(1, int(k))
+    dist, idx = tree.query(tgt, k=kq, distance_upper_bound=step * 2.5)
+    if kq == 1:                       # cKDTree squeezes the k axis when k==1
+        dist = dist[:, None]
+        idx = idx[:, None]
+    # A neighbour slot is usable iff it found a real point (finite dist, in-range index).
+    usable = np.isfinite(dist) & (idx < src.shape[0])
+    eps = 1e-12
+    w = np.where(usable, 1.0 / (np.power(dist, power) + eps), 0.0)
+    wsum = w.sum(axis=1)
+    hit = wsum > 0.0                  # same coverage criterion as NN
+    safe_idx = np.clip(idx, 0, src.shape[0] - 1)
 
     out = {}
     for name, arr in fields.items():
         vals = np.asarray(arr)[sub][vm].ravel()
-        safe_idx = np.clip(idx, 0, vals.size - 1)
-        regridded = np.where(hit, vals[safe_idx], np.nan).reshape(mlat.shape)
+        contrib = np.where(usable, vals[safe_idx] * w, 0.0).sum(axis=1)
+        regridded = np.where(hit, contrib / np.where(hit, wsum, 1.0), np.nan)
+        regridded = regridded.reshape(mlat.shape)
         # tlat is north-first by construction, so regridded is already north-first
         # (the particle/fill GPU layers map row 0 -> +90; south-first would render
         # vertically mirrored, turning rotation into divergence).
@@ -304,7 +320,7 @@ def currents_data_unpack(path):
 
     Source variables: u_velocity / v_velocity, dims (MT, Layer, Y, X) with singleton
     MT (time) and Layer; coordinates Latitude/Longitude are 2-D curvilinear. We squeeze
-    the singleton dims and regrid to a regular lat/lon grid (see _regrid_curvilinear_nn).
+    the singleton dims and regrid to a regular lat/lon grid (see _regrid_curvilinear).
     """
     ds = xr.open_dataset(path)
     u = ds["u_velocity"].values.squeeze()  # (Y,X) after dropping MT, Layer
@@ -313,7 +329,7 @@ def currents_data_unpack(path):
     lon2d = ds["Longitude"].values  # (Y,X)
     ds.close()
 
-    tlat, tlon, reg = _regrid_curvilinear_nn(
+    tlat, tlon, reg = _regrid_curvilinear(
         lat2d,
         lon2d,
         {"u": u, "v": v},

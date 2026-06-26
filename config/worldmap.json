@@ -84,6 +84,7 @@
     "palette": "thermal_red",
     "alpha": 70,
     "particle_speed": 10,
+    "current_speed_minimum": 0,
     "trail_length": 50,
     "width_factor": 2.6,
     "key_fontsize": 8,

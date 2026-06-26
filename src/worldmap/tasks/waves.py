@@ -99,57 +99,19 @@ class WavesUpdater(Updater):
         plt.close(fig)
         logger.debug(f"Saved Waves key to: {key_path}")
 
-    # Cache unioned coastline geometry per (resolution, rounded-bbox) so we don't
-    # re-read the shapefile and re-union on every scheduled run.
-    _coast_cache = {}
-
     def _coastline_mask(
         self, mesh_lon, mesh_lat, lon_min, lat_min, lon_max, lat_max, res
     ):
         """Boolean land mask at grid resolution, cut from true coastline geometry.
-
-        Returns a mesh-shaped boolean array (True over land) using Natural Earth
-        'physical/land' polygons at the requested resolution, or None if the
-        geometry can't be loaded so the caller can fall back to the data-derived mask.
+        Thin wrapper over the shared common.coastline_land_mask (also used by currents)
+        so the Natural Earth read/union is cached once across layers. Returns None on
+        geometry-load failure so the caller falls back to the data-derived mask.
         """
-        try:
-            import cartopy.feature as cfeature
-            from shapely.ops import unary_union
+        from .common import coastline_land_mask
 
-            key = (
-                res,
-                round(lon_min, 2),
-                round(lat_min, 2),
-                round(lon_max, 2),
-                round(lat_max, 2),
-            )
-            land_geom = self._coast_cache.get(key)
-            if land_geom is None:
-                land = cfeature.NaturalEarthFeature("physical", "land", res)
-                geoms = list(
-                    land.intersecting_geometries([lon_min, lon_max, lat_min, lat_max])
-                )
-                if not geoms:
-                    # No land in this region -> everything is water.
-                    return np.zeros(mesh_lon.shape, dtype=bool)
-                land_geom = unary_union(geoms)
-                self._coast_cache[key] = land_geom
-
-            try:
-                import shapely
-
-                mask = shapely.contains_xy(land_geom, mesh_lon, mesh_lat)
-            except (ImportError, AttributeError):
-                import shapely.vectorized as shpvec
-
-                mask = shpvec.contains(land_geom, mesh_lon, mesh_lat)
-            return np.asarray(mask, dtype=bool)
-        except Exception as exc:  # network/data/parse failure -> graceful fallback
-            logger.warning(
-                f"Coastline geometry unavailable ({exc!r}); "
-                "falling back to data-derived land mask."
-            )
-            return None
+        return coastline_land_mask(
+            mesh_lon, mesh_lat, lon_min, lat_min, lon_max, lat_max, res
+        )
 
     def plot(self):
         """Plots an underlying significant wave height contour heatmap
