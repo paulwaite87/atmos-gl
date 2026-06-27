@@ -65,14 +65,17 @@ class WavesUpdater(Updater):
 
     def save_waves_key(self, output_path, cmap, norm, threshold=0.0):
         """Generates a standalone Wave Height key image (separate _key.png)."""
-        import matplotlib.pyplot as plt
+        from matplotlib.figure import Figure
+        from matplotlib.backends.backend_agg import FigureCanvasAgg
         import matplotlib as mpl
 
         base, ext = os.path.splitext(output_path)
         key_path = f"{base}_key{ext}"
         key_fontsize = self.settings.get("key_fontsize", 10)
 
-        fig, ax = plt.subplots(figsize=(4, 0.3))
+        fig = Figure(figsize=(4, 0.3))
+        FigureCanvasAgg(fig)
+        ax = fig.subplots()
         cbar = fig.colorbar(
             mpl.cm.ScalarMappable(norm=norm, cmap=_opaque_cmap(cmap)),
             cax=ax,
@@ -96,7 +99,7 @@ class WavesUpdater(Updater):
         cbar.ax.tick_params(colors="white", labelsize=8)
 
         fig.savefig(key_path, transparent=True, bbox_inches="tight")
-        plt.close(fig)
+        fig.clear()
         logger.debug(f"Saved Waves key to: {key_path}")
 
     def _coastline_mask(

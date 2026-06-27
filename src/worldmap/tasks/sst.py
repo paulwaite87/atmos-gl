@@ -4,7 +4,7 @@ import logging
 import gc
 import numpy as np
 import xarray as xr
-import matplotlib.pyplot as plt
+import matplotlib as mpl
 import matplotlib.colors as mcolors
 import cartopy.crs as ccrs
 from datetime import datetime
@@ -23,28 +23,32 @@ class SSTUpdater(Updater):
 
     def save_sst_key(self, output_path, cmap, norm, ticks, title_text, tick_format):
         """Generates a standalone SST key image (separate _key.png)."""
-        import matplotlib.pyplot as plt
+        from matplotlib.figure import Figure
+        from matplotlib.backends.backend_agg import FigureCanvasAgg
+        from matplotlib.ticker import FormatStrFormatter
         import matplotlib as mpl
 
         base, ext = os.path.splitext(output_path)
         key_path = f"{base}_key{ext}"
         key_fontsize = self.settings.get("key_fontsize", 10)
 
-        fig, ax = plt.subplots(figsize=(4, 0.3))
+        fig = Figure(figsize=(4, 0.3))
+        FigureCanvasAgg(fig)
+        ax = fig.subplots()
         cbar = fig.colorbar(
             mpl.cm.ScalarMappable(norm=norm, cmap=cmap),
             cax=ax,
             orientation="horizontal",
             ticks=ticks,
         )
-        cbar.ax.xaxis.set_major_formatter(plt.FormatStrFormatter(tick_format))
+        cbar.ax.xaxis.set_major_formatter(FormatStrFormatter(tick_format))
         cbar.ax.set_title(
             title_text, color="white", fontsize=key_fontsize, pad=2, weight="bold"
         )
         cbar.ax.tick_params(colors="white", labelsize=8)
 
         fig.savefig(key_path, transparent=True, bbox_inches="tight")
-        plt.close(fig)
+        fig.clear()
         logger.debug(f"Saved SST key to: {key_path}")
 
     def plot(self):
@@ -96,7 +100,7 @@ class SSTUpdater(Updater):
 
             vmin, vmax = -anomaly_range, anomaly_range
             norm = mcolors.TwoSlopeNorm(vmin=vmin, vcenter=0, vmax=vmax)
-            cmap = plt.get_cmap("coolwarm")
+            cmap = mpl.cm.get_cmap("coolwarm")
             title_text = "SST Climatological Anomaly (°C)"
             tick_format = "%.1f"
         else:
@@ -112,7 +116,7 @@ class SSTUpdater(Updater):
                 "deep": "viridis",
                 "ocean": "inferno",
             }
-            cmap = plt.get_cmap(palettes.get(palette_key, "magma"))
+            cmap = mpl.cm.get_cmap(palettes.get(palette_key, "magma"))
             title_text = "Sea Surface Temp (°C)"
             tick_format = "%d"
 

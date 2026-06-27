@@ -3,7 +3,6 @@ import os
 import sys
 import json
 import logging
-import threading
 import requests
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_agg import FigureCanvasAgg
@@ -464,14 +463,6 @@ class MapData:
         common_settings = self.config.get_section("common")
         target_geometry = common_settings.get("target_geometry", "2048x1024")
         self.region = MapRegion(target_geometry=target_geometry)
-
-
-# pyplot keeps a global figure registry and is NOT safe to use from multiple threads.
-# The Plot class below is fully object-oriented (Figure + Agg canvas, no pyplot), so it
-# needs no lock and the per-hour renders of every layer can run concurrently. The per-layer
-# legend/key renderers still use pyplot, though, so they acquire this lock — keeping their
-# (infrequent, once-per-cycle) draws mutually exclusive without serialising the hot path.
-MPL_LOCK = threading.Lock()
 
 
 class Plot:

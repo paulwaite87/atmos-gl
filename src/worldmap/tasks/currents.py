@@ -56,7 +56,9 @@ class CurrentsUpdater(Updater):
     def save_currents_key(self, output_path):
         """Standalone current-speed colourbar (_key.png). Regenerated each cycle so
         palette/range/font config changes take effect (no existence guard)."""
-        import matplotlib.pyplot as plt
+        from matplotlib.figure import Figure
+        from matplotlib.backends.backend_agg import FigureCanvasAgg
+        from matplotlib.ticker import FormatStrFormatter
 
         base, ext = os.path.splitext(output_path)
         key_path = f"{base}_key{ext}"
@@ -68,14 +70,16 @@ class CurrentsUpdater(Updater):
         norm = mcolors.Normalize(vmin=0.0, vmax=self.VMAX_CURRENT)
         ticks = np.linspace(0.0, self.VMAX_CURRENT, 4)
 
-        fig, ax = plt.subplots(figsize=(4, 0.3))
+        fig = Figure(figsize=(4, 0.3))
+        FigureCanvasAgg(fig)
+        ax = fig.subplots()
         cbar = fig.colorbar(
             mpl.cm.ScalarMappable(norm=norm, cmap=_opaque_cmap(cmap)),
             cax=ax,
             orientation="horizontal",
             ticks=ticks,
         )
-        cbar.ax.xaxis.set_major_formatter(plt.FormatStrFormatter("%.1f"))
+        cbar.ax.xaxis.set_major_formatter(FormatStrFormatter("%.1f"))
         cbar.ax.set_title(
             "Current Speed (m/s)",
             color="white",
@@ -85,7 +89,7 @@ class CurrentsUpdater(Updater):
         )
         cbar.ax.tick_params(colors="white", labelsize=8)
         fig.savefig(key_path, transparent=True, bbox_inches="tight")
-        plt.close(fig)
+        fig.clear()
         logger.debug(f"Saved Currents key to: {key_path}")
 
     def _land_mask_for(self, lat, lon, shape):

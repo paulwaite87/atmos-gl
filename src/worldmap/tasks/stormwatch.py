@@ -26,7 +26,8 @@ class StormwatchUpdater(Updater):
 
     def save_stormwatch_key(self, output_path):
         """Generates a stormwatch (CAPE) key image."""
-        import matplotlib.pyplot as plt
+        from matplotlib.figure import Figure
+        from matplotlib.backends.backend_agg import FigureCanvasAgg
         import matplotlib as mpl
 
         base, ext = os.path.splitext(output_path)
@@ -34,7 +35,9 @@ class StormwatchUpdater(Updater):
         # Hour-independent, but regenerated each render cycle so palette / range /
         # font config changes are reflected without manual file deletion.
 
-        fig, ax = plt.subplots(figsize=(4, 0.3))
+        fig = Figure(figsize=(4, 0.3))
+        FigureCanvasAgg(fig)
+        ax = fig.subplots()
         key_ticks = [0, 1000, 2000, 3000, 4000, 5000]
 
         cmap = mpl.cm.get_cmap("YlOrRd")
@@ -56,7 +59,7 @@ class StormwatchUpdater(Updater):
         cbar.ax.tick_params(colors="white", labelsize=6)
 
         fig.savefig(key_path, transparent=True, bbox_inches="tight")
-        plt.close(fig)
+        fig.clear()
         logger.debug(f"Saved stormwatch key to: {key_path}")
 
     def plot(self, field0):
