@@ -3,8 +3,10 @@ import os
 import sys
 import json
 import logging
+import threading
 import requests
-import matplotlib.pyplot as plt
+from matplotlib.figure import Figure
+from matplotlib.backends.backend_agg import FigureCanvasAgg
 import cartopy.crs as ccrs
 import cartopy.mpl.geoaxes as geoaxes
 import numpy as np
@@ -464,6 +466,14 @@ class MapData:
         self.region = MapRegion(target_geometry=target_geometry)
 
 
+# pyplot keeps a global figure registry and is NOT safe to use from multiple threads.
+# The Plot class below is fully object-oriented (Figure + Agg canvas, no pyplot), so it
+# needs no lock and the per-hour renders of every layer can run concurrently. The per-layer
+# legend/key renderers still use pyplot, though, so they acquire this lock — keeping their
+# (infrequent, once-per-cycle) draws mutually exclusive without serialising the hot path.
+MPL_LOCK = threading.Lock()
+
+
 class Plot:
     def __init__(self, region: MapRegion, projection=WEB_MERCATOR):
         self.region = region
@@ -474,7 +484,9 @@ class Plot:
     def get_figure(self):
         plot_target_width = float(self.region.target_width) / 100
         plot_target_height = float(self.region.target_height) / 100
-        self.fig = plt.figure(figsize=(plot_target_width, plot_target_height), dpi=100)
+        # OO figure with an explicit Agg canvas — no pyplot, no global state, thread-safe.
+        self.fig = Figure(figsize=(plot_target_width, plot_target_height), dpi=100)
+        FigureCanvasAgg(self.fig)
         self.ax = cast(
             geoaxes.GeoAxes, self.fig.add_axes((0, 0, 1, 1), projection=self.projection)
         )
@@ -493,10 +505,11 @@ class Plot:
         # Atomic write/move to avoid timing issues
         base, ext = os.path.splitext(output_path)
         tmp_img = f"{base}.tmp{ext}"
-        plt.savefig(tmp_img, transparent=True, bbox_inches=None, pad_inches=0)
+        self.fig.savefig(tmp_img, transparent=True, bbox_inches=None, pad_inches=0)
         os.replace(tmp_img, output_path)
 
-        plt.close(self.fig)
+        # No global figure registry to close; just release the artists.
+        self.fig.clear()
 
 
 class Updater:
