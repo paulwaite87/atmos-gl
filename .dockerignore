@@ -1,5 +1,6 @@
 # Ignore local data
 data/
+files/
 config/worldmap.json
 
 # Ignore Python artifacts

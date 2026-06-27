@@ -54,7 +54,7 @@ prod:
 prod-down:
 	docker compose -f docker-compose.yml down
 
-## logs: Tail all logs; service=name for specify service
+## logs: Tail all logs; service=name for specific service
 logs:
 ifndef service
 	docker compose logs -f

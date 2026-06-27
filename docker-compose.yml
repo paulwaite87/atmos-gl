@@ -197,7 +197,8 @@ services:
 
   worldmap_db:
     image: ghcr.io/paulwaite87/worldmap-ng-db:latest
-    # The database STILL needs the user directive because it uses a pre-built image, not your custom Dockerfile
+    # The database STILL needs the user directive because it uses a pre-built image,
+    # not your custom Dockerfile
     user: "${UID:-1000}:${GID:-1000}"
     depends_on:
       worldmap_db_init:
