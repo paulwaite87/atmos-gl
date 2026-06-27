@@ -21,7 +21,7 @@
     "edge_softness": 45
   },
   "clouds": {
-    "enabled": false,
+    "enabled": true,
     "url": "https://gibs.earthdata.nasa.gov/wms/epsg4326/best/wms.cgi",
     "outfile": "data/cloud_map.png",
     "threshold": 168,
@@ -32,7 +32,7 @@
     "cache_expiry_days": 3
   },
   "isobars": {
-    "enabled": true,
+    "enabled": false,
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
     "outfile": "data/isobars.png",
     "level_of_detail": "3",
@@ -45,7 +45,7 @@
     "cache_expiry_days": 3
   },
   "wind": {
-    "enabled": true,
+    "enabled": false,
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
     "outfile": "data/wind.png",
     "level_of_detail": "2",
@@ -65,7 +65,7 @@
     "cache_expiry_days": 3
   },
   "precipitation": {
-    "enabled": true,
+    "enabled": false,
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
     "outfile": "data/precipitation.png",
     "level_of_detail": "1",
@@ -81,10 +81,10 @@
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/rtofs/prod/",
     "outfile": "data/currents.png",
     "level_of_detail": "1",
-    "palette": "electric_blue",
+    "palette": "thermal_red",
     "alpha": 70,
     "particle_speed": 6,
-    "current_speed_minimum": 1,
+    "current_speed_minimum": 0,
     "trail_length": 50,
     "width_factor": 1.6,
     "key_fontsize": 8,
@@ -145,7 +145,7 @@
     "cache_expiry_days": 3
   },
   "sst": {
-    "enabled": false,
+    "enabled": true,
     "url": "https://downloads.psl.noaa.gov/Datasets/noaa.oisst.v2.highres",
     "outfile": "data/sst.png",
     "level_of_detail": "3",

@@ -4,6 +4,8 @@ import glob
 import logging
 import asyncio
 import tempfile
+import time
+import urllib.request
 from datetime import datetime, timedelta, timezone
 
 from worldmap.lib.config import WorldMapConfig
@@ -27,6 +29,8 @@ from worldmap.lib.rtofs import (
     RTOFS_MAX_HOURLY_FHOUR,
 )
 from worldmap.lib.unpack import ATMOS_UNPACKERS, CURRENTS_UNPACKERS, WAVES_UNPACKERS
+from worldmap.lib.oisst import build_oisst_url, oisst_cache_path, remote_is_newer
+from worldmap.lib.gibs import build_clouds_url, clouds_cache_path
 
 logger = logging.getLogger("worldmap.data_collector")
 
@@ -55,6 +59,7 @@ class DataCollector:
         # arrays live as compressed files under {workdir}/fields; the db keeps
         # only the catalog rows.
         workdir = self.config.get_setting("common", "workdir", ".")
+        self.workdir = workdir
         self.store = fieldstore.get_store(workdir, db=self.db)
         logger.debug("Initializing Data Collector")
 
@@ -484,6 +489,102 @@ class DataCollector:
                 logger.debug(f"backfill {product} f{fhour:03d} error: {e}")
                 self.db.mark_backfill(d_str, run, fhour, product, "failed")
 
+    def _collect_sst(self, base_url):
+        """Download the yearly OISST netCDF (the mode the sst layer renders) into the
+        shared file cache the sst updater reads, refreshing only when the remote is
+        newer. SST is a single yearly netCDF, not a per-hour field, so it's a file cache
+        rather than a stored fieldstore product."""
+        sst_cfg = self.config.get_section("sst") or {}
+        if not sst_cfg.get("enabled", False):
+            logger.debug("Data Collector (sst): sst layer disabled; skipping download.")
+            return
+        mode = sst_cfg.get("mode", "absolute")
+        url = build_oisst_url(base_url, mode)
+        dest = oisst_cache_path(self.workdir, mode)
+        os.makedirs(os.path.dirname(dest), exist_ok=True)
+
+        if not remote_is_newer(url, dest):
+            logger.debug(
+                f"Data Collector (sst): cache up to date ({os.path.basename(dest)})"
+            )
+            return
+        try:
+            logger.info(f"Data Collector (sst): downloading {url}")
+            data = download_whole(url, timeout=300)
+        except Exception as e:
+            logger.error(f"Data Collector (sst): download failed: {e}")
+            return
+        tmp = f"{dest}.tmp"
+        with open(tmp, "wb") as f:
+            f.write(data)
+        os.replace(tmp, dest)
+        logger.info(
+            f"Data Collector (sst): wrote {len(data) / 1e6:.1f} MB -> "
+            f"{os.path.basename(dest)}"
+        )
+
+    def _collect_clouds(self):
+        """Fetch the global NASA GIBS cloud image into the shared cache the clouds layer
+        reads. Gated on the clouds layer being enabled; refreshed only when the cache is
+        older than expiry_hours. The date is the most recent complete day (now -
+        offset_days) so VIIRS swaths are complete."""
+        cfg = self.config.get_section("clouds") or {}
+        if not cfg.get("enabled", False):
+            logger.debug("Data Collector (clouds): clouds layer disabled; skipping.")
+            return
+        base_url = cfg.get("url")
+        if not base_url:
+            logger.warning("Data Collector (clouds): no clouds url configured; skipping.")
+            return
+
+        dest = clouds_cache_path(self.workdir)
+        os.makedirs(os.path.dirname(dest), exist_ok=True)
+
+        # Refresh only if the cache is missing or older than expiry_hours.
+        expiry_hours = float(cfg.get("expiry_hours", 3))
+        if os.path.exists(dest):
+            age_h = (time.time() - os.path.getmtime(dest)) / 3600.0
+            if age_h < expiry_hours:
+                logger.debug(
+                    f"Data Collector (clouds): cache fresh ({age_h:.1f}h); skipping."
+                )
+                return
+
+        # Dimensions from the global target geometry; date = now - offset_days.
+        geom = self.config.get_setting("common", "target_geometry", "2048x1024")
+        try:
+            width, height = (int(x) for x in geom.lower().split("x"))
+        except Exception:
+            width, height = 2048, 1024
+        offset_days = int(cfg.get("offset_days", 1))
+        time_param = (
+            datetime.now(timezone.utc) - timedelta(days=offset_days)
+        ).strftime("%Y-%m-%d")
+        layers = cfg.get("layers", "VIIRS_SNPP_CorrectedReflectance_TrueColor")
+        url = build_clouds_url(base_url, width, height, time_param, layers=layers)
+
+        try:
+            logger.info(
+                f"Data Collector (clouds): fetching GIBS {time_param} "
+                f"({width}x{height})"
+            )
+            req = urllib.request.Request(
+                url, headers={"User-Agent": "WorldMap-Cloud-Fetcher/1.0"}
+            )
+            with urllib.request.urlopen(req, timeout=60) as response:
+                data = response.read()
+        except Exception as e:
+            logger.error(f"Data Collector (clouds): fetch failed: {e}")
+            return
+        tmp = f"{dest}.tmp"
+        with open(tmp, "wb") as f:
+            f.write(data)
+        os.replace(tmp, dest)
+        logger.info(
+            f"Data Collector (clouds): wrote {len(data) / 1e6:.1f} MB -> "
+            f"{os.path.basename(dest)}"
+        )
+
     def collect_once(self):
         for datasource, base_url in self.datasources.items():
             try:
@@ -493,11 +594,17 @@ class DataCollector:
                 elif datasource == "currents":
                     self._collect_rtofs_currents(base_url.rstrip("/"))
                 elif datasource == "sst":
-                    pass  # TODO: OISST -> sst_data_unpack
+                    self._collect_sst(base_url.rstrip("/"))
                 else:
                     logger.error(f"unknown datasource {datasource}")
             except Exception as e:
                 logger.error(f"datasource {datasource} failed: {e}")
+        # Clouds' endpoint lives in the clouds layer config (not datasources); fetch it
+        # each cycle, gated internally on the layer being enabled.
+        try:
+            self._collect_clouds()
+        except Exception as e:
+            logger.error(f"datasource clouds failed: {e}")
 
     async def run(self):
         # Two cadences: the heavy full refresh runs every update_period_s (set via

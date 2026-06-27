@@ -147,17 +147,27 @@ class SSTUpdater(Updater):
         logger.debug(f"Successfully rendered raw NOAA OISST map in {self.mode} mode.")
 
     def run(self):
-        # Construct paths and target endpoints using the common base_url
-        current_year = datetime.now().year
-        if self.mode == "anomaly":
-            self.nc_path = self.cache_path("noaa_oisst_anomaly.nc")
-            self.target_url = f"{self.base_url}/sst.day.anom.{current_year}.nc"
-        else:
-            self.nc_path = self.cache_path("noaa_oisst_mean.nc")
-            self.target_url = f"{self.base_url}/sst.day.mean.{current_year}.nc"
+        # The data_collector now owns the OISST download; we just render from the shared
+        # cache it maintains. Read it, and (re)render only when the cache is newer than
+        # our output, so we don't repaint every cycle for an unchanged daily field.
+        from worldmap.lib.oisst import oisst_cache_path
 
-        if self.remote_data_update(
-            remote_url=self.target_url, cache_file_path=self.nc_path
+        self.nc_path = oisst_cache_path(self.workdir, self.mode)
+        if not os.path.exists(self.nc_path):
+            logger.info(
+                f"SST: cache {os.path.basename(self.nc_path)} not present yet "
+                "(data collector hasn't fetched it); skipping."
+            )
+            return
+
+        out = self.output_path
+        if (
+            out
+            and os.path.exists(out)
+            and os.path.getmtime(out) >= os.path.getmtime(self.nc_path)
         ):
-            logger.info(f"Generating SST {self.mode} plot...")
-            self.plot()
+            logger.debug("SST: output already up to date with cache; skipping render.")
+            return
+
+        logger.info(f"Generating SST {self.mode} plot...")
+        self.plot()
