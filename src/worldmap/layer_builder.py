@@ -25,9 +25,6 @@ from worldmap.tasks.waves import WavesUpdater
 from worldmap.tasks.temperature import TemperatureUpdater
 from worldmap.tasks.ozone import OzoneUpdater
 from worldmap.tasks.stormwatch import StormwatchUpdater
-from worldmap.tasks.storms import StormUpdater
-from worldmap.tasks.quakes import QuakeUpdater
-from worldmap.tasks.volcanoes import VolcanoUpdater
 from worldmap.tasks.markers import MarkerUpdater
 
 logger = logging.getLogger("worldmap.layer_builder")
@@ -66,9 +63,6 @@ class LayerBuilder:
             ("temperature", TemperatureUpdater),
             ("ozone", OzoneUpdater),
             ("stormwatch", StormwatchUpdater),
-            ("storms", StormUpdater),
-            ("quakes", QuakeUpdater),
-            ("volcanoes", VolcanoUpdater),
             ("markers", MarkerUpdater),
         ]
 
