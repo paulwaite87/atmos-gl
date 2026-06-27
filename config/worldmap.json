@@ -21,7 +21,7 @@
     "edge_softness": 45
   },
   "clouds": {
-    "enabled": true,
+    "enabled": false,
     "url": "https://gibs.earthdata.nasa.gov/wms/epsg4326/best/wms.cgi",
     "outfile": "data/cloud_map.png",
     "threshold": 168,
@@ -92,7 +92,7 @@
     "cache_expiry_days": 3
   },
   "waves": {
-    "enabled": false,
+    "enabled": true,
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
     "outfile": "data/waves.png",
     "level_of_detail": "2",
@@ -145,7 +145,7 @@
     "cache_expiry_days": 3
   },
   "sst": {
-    "enabled": true,
+    "enabled": false,
     "url": "https://downloads.psl.noaa.gov/Datasets/noaa.oisst.v2.highres",
     "outfile": "data/sst.png",
     "level_of_detail": "3",

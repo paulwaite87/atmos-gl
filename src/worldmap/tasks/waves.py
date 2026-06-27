@@ -437,17 +437,20 @@ class WavesUpdater(Updater):
             field_ready=lambda f: f.get("u") is not None and f.get("v") is not None,
         )
 
-        # 2) Heat tiles + legend (single current-hour GRIB; the coloration layer).
-        self.grib_path = self.cache_path(f"gfs_waves_{self.forecast_hour_str}.grib2")
-
-        url = f"{self.base_url}/gfs.{self.run_date_str}/{self.run_id}/wave/gridded/gfswave.t{self.run_id}z.global.0p25.f{self.forecast_hour_str}.grib2"
-        # Ensure the latest GRIB is cached (downloads only if new/updated).
-        self.remote_data_update(remote_url=url, cache_file_path=self.grib_path)
-        if not os.path.exists(self.grib_path):
-            logger.warning("Waves: no GRIB available yet; skipping tile build.")
-            return
-
+        # 2) Heat tiles + legend. The data_collector keeps the current-hour GFS-Wave GRIB
+        # cached; discover it the same way the tile versioner does (newest by mtime), so
+        # the GRIB we bake from and the one current_version() hashes are always the same.
         from worldmap.tiles import waves_tiles as wt
+
+        self.grib_path = wt.current_grib(
+            os.path.join(self.workdir, "data")
+        )
+        if not self.grib_path or not os.path.exists(self.grib_path):
+            logger.warning(
+                "Waves: heat GRIB not cached yet (data collector hasn't fetched it); "
+                "skipping tile build."
+            )
+            return
 
         # The legend key is cheap to draw and depends on palette/alpha/threshold AND
         # key_fontsize. Refresh it whenever the task runs, so settings like key_fontsize
