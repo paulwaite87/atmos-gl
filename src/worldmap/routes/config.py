@@ -189,10 +189,10 @@ def get_config():
             data["shipping_collector"]["enabled"] = False
             data["shipping_collector"]["RULE__missing_ais"] = True
 
-    if "weather_scanner" in data:
+    if "lightning_collector" in data:
         if not owm_key:
-            data["weather_scanner"]["enabled"] = False
-            data["weather_scanner"]["RULE__missing_weather"] = True
+            data["lightning_collector"]["enabled"] = False
+            data["lightning_collector"]["RULE__missing_weather"] = True
 
     if "common" in data:
         if not maptiler_key:
@@ -207,8 +207,8 @@ async def update_config(payload: dict):
 
     if "shipping_collector" in payload:
         payload["shipping_collector"].pop("RULE__missing_ais", None)
-    if "weather_scanner" in payload:
-        payload["weather_scanner"].pop("RULE__missing_weather", None)
+    if "lightning_collector" in payload:
+        payload["lightning_collector"].pop("RULE__missing_weather", None)
     if "common" in payload:
         payload["common"].pop("RULE__missing_maptiler", None)
 

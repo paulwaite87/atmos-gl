@@ -136,12 +136,12 @@ If you use the control script thusly:
     ./worldmap.sh logs
 
 The logging will be tailed to your console. A healthy repeating cycle might look 
-something like this. Obviously the below example shows shipping and weather 
-scanner output, which you won't see out of the box unless you already acquired
+something like this. Obviously the below example shows shipping and lightning
+collector output, which you won't see out of the box unless you already acquired
 API keys and enabled them.
 
     shipping_collector  | 2026-05-28 23:06:32,213 [INFO] worldmap.shipping_collector: Shipping Collector Service: Starting weighted global rotation
-    weather_scanner     | 2026-05-28 23:06:33,453 [INFO] worldmap.weather_scanner: Weather Scanner Service: Starting regional scans.
+    lightning_collector     | 2026-05-28 23:06:33,453 [INFO] worldmap.lightning_collector: Weather Scanner Service: Starting regional scans.
     layer_builder         | 2026-05-28 23:06:34,599 [INFO] worldmap.layer_builder: Map-builder scheduler run started
     layer_builder         | 2026-05-28 23:06:34,599 [INFO] worldmap.layer_builder: Running scheduled task: 'isobars'
     layer_builder         | 2026-05-28 23:06:34,875 [INFO] worldmap.tasks.isobars: Downloading fresh isobar data...
@@ -208,16 +208,16 @@ The process of obtaining the API Key is easy once you are signed in. There is a 
 and you can create one there. Copy the key, and then back in the root directory edit the
 file named `.env` and replace the `AIS_API_KEY` placeholder there with your newly minted 
 API Key. You will now be able to go into the World Map Configurator and on the `Show` tab 
-in the `Background Processes` enable either or both the Shipping and Weather processes.
+in the `Background Processes` enable either or both the Shipping and Lightning processes.
 
 ### Obtaining an API Key for Weather/Lightning Strikes
-This is for the `weather_scanner` and it's a similar deal, but also easy. You just need to
+This is for the `lightning_collector` and it's a similar deal, but also easy. You just need to
 create an account on https://openweathermap.org and the link to acquire an API Key is right
 there on the homepage. Just be aware it will take some hours before the key is made active.
 
 In your `.env` file do as above and put the key in for the `OPENWEATHER_API_KEY` setting.
 
-Once the `weather_scanner` process is enabled and running, you will find that the table
+Once the `lightning_collector` process is enabled and running, you will find that the table
 in the database called `lightning_strikes` will acquire data, though it also gets culled
 every few hours (`expiry_hours` setting in that section) so won't get too populated.
 

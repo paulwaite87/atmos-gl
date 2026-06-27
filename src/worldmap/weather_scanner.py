@@ -9,10 +9,10 @@ from worldmap.lib.config import WorldMapConfig
 from worldmap.lib.db import Database
 from worldmap.lib.logging import set_loglevel
 
-logger = logging.getLogger("worldmap.weather_scanner")
+logger = logging.getLogger("worldmap.lightning_collector")
 
 
-class WeatherScanner:
+class LightningCollector:
     settings = None
     api_key = None
     url = None
@@ -28,7 +28,7 @@ class WeatherScanner:
     def refresh_settings(self):
         self.config.load()
         self.primary_region_label = self.config.get_setting("common", "region")
-        self.settings = self.config.get_section("weather_scanner")
+        self.settings = self.config.get_section("lightning_collector")
         self.url = self.settings.get("url")
         self.api_key = self.settings.get("api_key", None)
         if not self.api_key:
@@ -160,7 +160,7 @@ def main():
     parser.add_argument("--config", required=True)
     args = parser.parse_args()
 
-    scanner = WeatherScanner(args.config)
+    scanner = LightningCollector(args.config)
     asyncio.run(scanner.run())
 
 

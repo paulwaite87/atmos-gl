@@ -33,7 +33,7 @@ services:
     <<: *app-dev
   satellites_collector:
     <<: *app-dev
-  weather_scanner:
+  lightning_collector:
     <<: *app-dev
   layer_builder:
     <<: *app-dev

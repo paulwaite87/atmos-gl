@@ -11,15 +11,11 @@ DB_USER = wmap
 DB_NAME = worldmap
 DB_SERVICE = worldmap_db
 BUILDER_SERVICE = layer_builder
-SHIP_COLLECTOR_SERVICE = shipping_collector
-WEATHER_SCANNER_SERVICE = weather_scanner
-SATELLITES_COLLECTOR_SERVICE = satellites_collector
-WALLPAPER_UPDATER = wallpaper_updater.sh
 DUMP_FILE = worldmap_dump.sql
 
 # Backend services that run your mounted Python code (everything except UI/DB).
 BACKEND_SERVICES = shipping_collector data_collector satellites_collector \
-                   weather_scanner layer_builder housekeeper map_api
+                   lightning_collector layer_builder housekeeper map_api
 
 ## reload: Apply CODE changes live — just restart (no rebuild)
 reload:
@@ -114,14 +110,14 @@ restore:
 	@if [ ! -f $(DUMP_FILE) ]; then echo "Error: $(DUMP_FILE) not found."; exit 1; fi
 	@read -p "Are you sure? [y/N] " ans; \
 	if [ "$${ans:-N}" = "y" ] || [ "$${ans:-N}" = "Y" ]; then \
-		echo "Stopping services" ; \
-		docker compose stop $(SHIP_COLLECTOR_SERVICE) $(WEATHER_SCANNER_SERVICE) $(SATELLITES_COLLECTOR_SERVICE) $(BUILDER_SERVICE); \
+		echo "Stopping backend services" ; \
+		docker compose stop $(BACKEND_SERVICES); \
 		echo "Ensuring worldmap database is running..." ; \
 		docker compose up $(DB_SERVICE) -d && sleep 5 ; \
 		echo "Restoring database..." ; \
 		cat $(DUMP_FILE) | docker compose exec -T $(DB_SERVICE) pg_restore -U $(DB_USER) -d postgres --clean --create --if-exists ; \
 		echo "Restore complete." ; \
-		echo "Stopping worldmap database." ; \
+		echo "Stopping worldmap database. Backend left as stopped." ; \
 		docker compose stop $(DB_SERVICE) ; \
 	fi
 

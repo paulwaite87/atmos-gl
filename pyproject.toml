@@ -57,7 +57,7 @@ layerbuilder = "worldmap.layer_builder:main"
 housekeeper = "worldmap.housekeeper:main"
 satellitescollector = "worldmap.satellites_collector:main"
 shippingcollector = "worldmap.shipping_collector:main"
-weatherscanner = "worldmap.weather_scanner:main"
+lightningcollector = "worldmap.lightning_collector:main"
 
 
 [build-system]

@@ -108,8 +108,8 @@
                                 </div>
                                 <div class="col-md-6">
                                     <div class="form-check form-switch">
-                                        <input class="form-check-input" type="checkbox" id="weather_scanner__enabled">
-                                        <label class="form-check-label fw-bold ms-2" for="weather_scanner__enabled">Weather Scanner Daemon</label>
+                                        <input class="form-check-input" type="checkbox" id="lightning_collector__enabled">
+                                        <label class="form-check-label fw-bold ms-2" for="lightning_collector__enabled">Lightning Collector Daemon</label>
                                         <div id="key-warn-weather" class="text-danger small mt-1 d-none">⚠️ Deactivated: Missing OPENWEATHER_API_KEY.</div>
                                     </div>
                                 </div>
@@ -161,7 +161,7 @@
             "events": ["quakes", "volcanoes"],
             "misc": ["satellites", "terminator", "markers"],
             "shipping": ["shipping"],
-            "background": ["shipping_collector", "weather_scanner", "satellites_collector", "data_collector", "housekeeper"]
+            "background": ["shipping_collector", "lightning_collector", "satellites_collector", "data_collector", "housekeeper"]
         };
 
         const COLOR_MAP = {
@@ -257,11 +257,11 @@
                 }
             }
 
-            const weatherEnabled = document.getElementById('weather_scanner__enabled');
-            if (weatherEnabled && data.weather_scanner) {
-                weatherEnabled.checked = !!data.weather_scanner.enabled;
+            const weatherEnabled = document.getElementById('lightning_collector__enabled');
+            if (weatherEnabled && data.lightning_collector) {
+                weatherEnabled.checked = !!data.lightning_collector.enabled;
                 weatherEnabled.addEventListener('change', toggleSectionVisibility);
-                if (data.weather_scanner.RULE__missing_weather) {
+                if (data.lightning_collector.RULE__missing_weather) {
                     weatherEnabled.disabled = true; weatherEnabled.checked = false;
                     document.getElementById('key-warn-weather').classList.remove('d-none');
                 }
@@ -1014,7 +1014,7 @@
                 "ozone": document.getElementById('radio__ozone')?.checked,
                 "stormwatch": document.getElementById('radio__stormwatch')?.checked,
                 "shipping_collector": document.getElementById('shipping_collector__enabled')?.checked,
-                "weather_scanner": document.getElementById('weather_scanner__enabled')?.checked,
+                "lightning_collector": document.getElementById('lightning_collector__enabled')?.checked,
                 "satellites_collector": document.getElementById('satellites_collector__enabled')?.checked,
                 "data_collector": document.getElementById('data_collector__enabled')?.checked
             };
@@ -1034,7 +1034,7 @@
         async function saveActiveConfig() {
             const payload = JSON.parse(JSON.stringify(masterConfigCache));
 
-            ['clouds', 'isobars', 'wind', 'precipitation', 'lightning', 'storms', 'quakes', 'volcanoes', 'satellites', 'terminator', 'markers', 'shipping', 'shipping_collector', 'weather_scanner', 'satellites_collector', 'data_collector'].forEach(layer => {
+            ['clouds', 'isobars', 'wind', 'precipitation', 'lightning', 'storms', 'quakes', 'volcanoes', 'satellites', 'terminator', 'markers', 'shipping', 'shipping_collector', 'lightning_collector', 'satellites_collector', 'data_collector'].forEach(layer => {
                 if (payload[layer]) payload[layer].enabled = document.getElementById(`${layer}__enabled`)?.checked || false;
             });
 
