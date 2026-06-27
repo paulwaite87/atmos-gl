@@ -214,7 +214,7 @@
     "runs_per_day": 24
   },
   "satellites": {
-    "enabled": false,
+    "enabled": true,
     "sat_names": [
       "ISS (ZARYA)",
       "HST"

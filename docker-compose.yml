@@ -1,13 +1,7 @@
 name: worldmap-ng
 services:
   shipping_collector:
-    image: worldmap:latest
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        UID: "${UID:-1000}"
-        GID: "${GID:-1000}"
+    image: ghcr.io/paulwaite87/worldmap-ng:latest
     command: python -m worldmap.shipping_collector --config /opt/project/config/worldmap.json
     env_file:
       - .env
@@ -29,18 +23,11 @@ services:
     volumes:
       - ./data:/opt/project/data
       - ./config:/opt/project/config
-      - .:/opt/project
     networks:
       - wmap
 
   data_collector:
-    image: worldmap:latest
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        UID: "${UID:-1000}"
-        GID: "${GID:-1000}"
+    image: ghcr.io/paulwaite87/worldmap-ng:latest
     command: python -m worldmap.data_collector --config /opt/project/config/worldmap.json
     env_file:
       - .env
@@ -61,18 +48,11 @@ services:
     volumes:
       - ./data:/opt/project/data
       - ./config:/opt/project/config
-      - .:/opt/project
     networks:
       - wmap
 
   satellites_collector:
-    image: worldmap:latest
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        UID: "${UID:-1000}"
-        GID: "${GID:-1000}"
+    image: ghcr.io/paulwaite87/worldmap-ng:latest
     command: python -m worldmap.satellites_collector --config /opt/project/config/worldmap.json
     env_file:
       - .env
@@ -93,18 +73,11 @@ services:
     volumes:
       - ./data:/opt/project/data
       - ./config:/opt/project/config
-      - .:/opt/project
     networks:
       - wmap
 
   weather_scanner:
-    image: worldmap:latest
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        UID: "${UID:-1000}"
-        GID: "${GID:-1000}"
+    image: ghcr.io/paulwaite87/worldmap-ng:latest
     command: python -m worldmap.weather_scanner --config /opt/project/config/worldmap.json
     env_file:
       - .env
@@ -126,18 +99,11 @@ services:
     volumes:
       - ./data:/opt/project/data
       - ./config:/opt/project/config
-      - .:/opt/project
     networks:
       - wmap
 
   layer_builder:
-    image: worldmap:latest
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        UID: "${UID:-1000}"
-        GID: "${GID:-1000}"
+    image: ghcr.io/paulwaite87/worldmap-ng:latest
     command: python -m worldmap.layer_builder --config /opt/project/config/worldmap.json
     env_file:
       - .env
@@ -158,18 +124,11 @@ services:
     volumes:
       - ./data:/opt/project/data
       - ./config:/opt/project/config
-      - .:/opt/project
     networks:
       - wmap
 
   housekeeper:
-    image: worldmap:latest
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        UID: "${UID:-1000}"
-        GID: "${GID:-1000}"
+    image: ghcr.io/paulwaite87/worldmap-ng:latest
     command: python -m worldmap.housekeeper --config /opt/project/config/worldmap.json
     env_file:
       - .env
@@ -182,18 +141,11 @@ services:
     volumes:
       - ./data:/opt/project/data
       - ./config:/opt/project/config
-      - .:/opt/project
     networks:
       - wmap
 
   map_api:
-    image: worldmap:latest
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        UID: "${UID:-1000}"
-        GID: "${GID:-1000}"
+    image: ghcr.io/paulwaite87/worldmap-ng:latest
     # Reverted to a simpler runtime installation since wmapuser now owns the virtual environment
     command: >
       bash -c "uv pip install fastapi uvicorn && python -m uvicorn worldmap.api:app --host 0.0.0.0 --port 9000"
@@ -220,17 +172,13 @@ services:
     volumes:
       - ./data:/opt/project/data
       - ./config:/opt/project/config
-      - .:/opt/project
     networks:
       - wmap
 
   map_ui:
-    image: nginxinc/nginx-unprivileged:alpine
+    image: ghcr.io/paulwaite87/worldmap-ng-ui:latest
     ports:
       - "8180:8080"
-    volumes:
-      - ./ui:/usr/share/nginx/html:ro
-      - ./config/nginx.conf:/etc/nginx/nginx.conf:ro
     depends_on:
       - map_api
     networks:
@@ -248,7 +196,7 @@ services:
       - wmap
 
   worldmap_db:
-    image: postgis/postgis:15-3.3
+    image: ghcr.io/paulwaite87/worldmap-ng-db:latest
     # The database STILL needs the user directive because it uses a pre-built image, not your custom Dockerfile
     user: "${UID:-1000}:${GID:-1000}"
     depends_on:
@@ -265,7 +213,6 @@ services:
     volumes:
       - wmap-pgdata:/var/lib/postgresql/data
       - postgres_logs:/var/log/postgresql
-      - ./config/database:/docker-entrypoint-initdb.d
     command: >
       postgres
       -c max_wal_size=512MB

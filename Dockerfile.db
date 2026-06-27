@@ -1,0 +1,7 @@
+# PostGIS with the schema / seed SQL baked into the entrypoint init directory, so a fresh
+# volume initialises itself with no host bind-mount. Built/pushed by the docker-publish
+# workflow as <repo>-db. (Init scripts only run on an EMPTY data volume, exactly like the
+# bind-mounted dev setup.) In development the override compose runs stock postgis with the
+# init SQL mounted from the tree, so schema edits apply without rebuilding.
+FROM postgis/postgis:15-3.3
+COPY config/database/ /docker-entrypoint-initdb.d/

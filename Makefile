@@ -1,5 +1,9 @@
 # Makefile for WorldMap Project Suite
-
+# The source is bind-mounted into the dev containers (see docker-compose.override.yml),
+# so a CODE edit is already on disk inside the container. You only need to RESTART
+# the service's process for Python to re-import it — NOT rebuild the image. `make build`
+# is now only for dependency or Dockerfile changes.
+# =============================================================================
 .PHONY: run stop build rebuild start-desktop-fg stop-desktop psql logs clean purge backup restore refresh-map test bash status help
 
 # Variables
@@ -13,23 +17,44 @@ SATELLITES_COLLECTOR_SERVICE = satellites_collector
 WALLPAPER_UPDATER = wallpaper_updater.sh
 DUMP_FILE = worldmap_dump.sql
 
-## run: Bring all containers up in background, build if required
-run:
-	docker compose up -d
+# Backend services that run your mounted Python code (everything except UI/DB).
+BACKEND_SERVICES = shipping_collector data_collector satellites_collector \
+                   weather_scanner layer_builder housekeeper map_api
+
+## reload: Apply CODE changes live — just restart (no rebuild)
+reload:
+ifndef service
+	docker compose restart $(BACKEND_SERVICES)
+else
+	docker compose restart $(service)
+endif
 
 ## stop: Bring all containers down
 stop:
 	docker compose down
 
-## build: Build images if changed
+## up|run: Start dev stack (auto-merges docker-compose.override.yml)
+up run:
+	docker compose up -d
+
+## build: Rebuild images — only needed for DEPENDENCY changes
 build: stop
 	docker compose build
 
-## rebuild: Rebuild all images from scratch
-rebuild: stop
+## rebuild: Rebuild all images from scratch (no cache)
+rebuild:
 	docker compose build --no-cache
 
-## logs: Tail logs for all containers
+## prod: Run EXACTLY as a package consumer would
+prod:
+	docker compose -f docker-compose.yml pull
+	docker compose -f docker-compose.yml up -d
+
+## prod-down: Stop the consumer-style stack
+prod-down:
+	docker compose -f docker-compose.yml down
+
+## logs: Tail all logs; service=name for specify service
 logs:
 ifndef service
 	docker compose logs -f

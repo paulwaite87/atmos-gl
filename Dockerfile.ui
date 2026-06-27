@@ -1,0 +1,7 @@
+# Static UI assets baked onto unprivileged nginx, so the published image is fully
+# self-contained (no host bind-mounts needed to run it). Built/pushed by the
+# docker-publish workflow as <repo>-ui. In development the override compose serves the
+# working tree through stock nginx instead, so live UI edits don't need a rebuild.
+FROM nginxinc/nginx-unprivileged:alpine
+COPY config/nginx.conf /etc/nginx/nginx.conf
+COPY ui/ /usr/share/nginx/html/
