@@ -340,7 +340,7 @@ def waves_data_unpack(path):
     v = mag * np.cos(rad)  # north component (m)
 
     out = _blank()
-    out.update(lat=lats, lon=lons, u=u, v=v)
+    out.update(lat=lats, lon=lons, u=u, v=v, values=mag)
     return out
 
 

@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
-"""Raster tile endpoints for the waves layer.
+"""Raster tile endpoints — generic across all tiled layers.
 
-  GET /api/tiles/waves/meta              -> {version, available, minzoom, maxzoom, tileSize}
-  GET /api/tiles/waves/{z}/{x}/{y}.png   -> a 256x256 Web-Mercator wave-height tile
+  GET /api/tiles/{layer}/meta             -> {version, available, minzoom, maxzoom, tileSize}
+  GET /api/tiles/{layer}/{z}/{x}/{y}.png  -> a 256x256 Web-Mercator tile for that layer
 
-Tiles are pre-rendered and published by the layer builder (see
-worldmap.tiles.waves_tiles); this route just serves the published version from disk,
-rendering on demand only beyond the pre-rendered depth. `version` changes when the
-data or render settings change, which busts the frontend tile cache.
+{layer} is any section registered in raster_tiles.SPECS (e.g. "waves"). Tiles are
+pre-rendered and published by the layer builder (see worldmap.tiles.raster_tiles); this
+route just serves the published version from disk, rendering on demand only beyond the
+pre-rendered depth. `version` changes when the data or render settings change, which busts
+the frontend tile cache.
 """
 
 import os
@@ -16,7 +17,7 @@ import logging
 from fastapi import APIRouter, HTTPException, Response
 
 from worldmap.lib.config import WorldMapConfig
-from worldmap.tiles import waves_tiles as wt
+from worldmap.tiles import raster_tiles as rt
 
 logger = logging.getLogger("worldmap.routes.tiles")
 router = APIRouter(prefix="/api/tiles", tags=["Raster Tiles"])
@@ -33,27 +34,36 @@ def _load_config():
     return config
 
 
-@router.get("/waves/meta")
-def waves_meta():
+def _spec(layer: str):
+    spec = rt.SPECS.get(layer)
+    if spec is None:
+        raise HTTPException(status_code=404, detail=f"unknown tile layer '{layer}'")
+    return spec
+
+
+@router.get("/{layer}/meta")
+def layer_meta(layer: str):
+    spec = _spec(layer)
     config = _load_config()
-    info = wt.published_info(config)
+    info = rt.published_info(spec, config)
     return {
         "status": "success",
         "data": {
             "version": info["version"] if info else None,
             "available": info is not None,
             "minzoom": MINZOOM,
-            "maxzoom": info.get("maxzoom", wt.ONDEMAND_MAXZOOM)
+            "maxzoom": info.get("maxzoom", rt.ONDEMAND_MAXZOOM)
             if info
-            else wt.ONDEMAND_MAXZOOM,
-            "tileSize": info.get("tileSize", wt.TILE_PX) if info else wt.TILE_PX,
+            else rt.ONDEMAND_MAXZOOM,
+            "tileSize": info.get("tileSize", rt.TILE_PX) if info else rt.TILE_PX,
         },
     }
 
 
-@router.get("/waves/{z}/{x}/{y}.png")
-def waves_tile(z: int, x: int, y: int):
-    if z < 0 or z > wt.ONDEMAND_MAXZOOM:
+@router.get("/{layer}/{z}/{x}/{y}.png")
+def layer_tile(layer: str, z: int, x: int, y: int):
+    spec = _spec(layer)
+    if z < 0 or z > rt.ONDEMAND_MAXZOOM:
         raise HTTPException(status_code=404, detail="zoom out of range")
     n = 1 << z
     if not (0 <= x < n and 0 <= y < n):
@@ -61,9 +71,9 @@ def waves_tile(z: int, x: int, y: int):
 
     config = _load_config()
     try:
-        png = wt.serve_tile(config, z, x, y)
+        png = rt.serve_tile(spec, config, z, x, y)
     except Exception as exc:  # noqa: BLE001
-        logger.exception("waves tile serve failed")
+        logger.exception(f"{layer} tile serve failed")
         raise HTTPException(status_code=500, detail=f"Tile failed: {exc}")
 
     if png is None:
