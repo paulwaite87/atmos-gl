@@ -260,7 +260,7 @@
     "vessel_track_expiry_days": 14,
     "log_level": "INFO"
   },
-  "lightning_collector": {
+  "weather_scanner": {
     "enabled": false,
     "url": "https://demo.openweathermap.org/lightning/1.0/data",
     "expiry_hours": 24,

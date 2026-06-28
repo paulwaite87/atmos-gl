@@ -24,7 +24,7 @@ export function loadLayer(map, config) {
     // backend markers task samples the GFS temperature/wind/humidity fields valid "now"
     // and stores them on each marker row, so the weather rides along in feature
     // properties (t, rh, ws, wd). Hovering a marker shows it; weather_popup gates display.
-    let lightningEnabled = !!config.weather_popup;   // markers.weather_popup toggle (live)
+    let weatherEnabled = !!config.weather_popup;   // markers.weather_popup toggle (live)
     const COMPASS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
     const compassOf = (deg) => COMPASS[Math.round(deg / 45) % 8];
 
@@ -60,7 +60,7 @@ export function loadLayer(map, config) {
     // Hover popups: show on mousemove over a marker (anchored to the marker, so it stays
     // put while you're on it and follows when you slide to an adjacent one), hide on leave.
     const onMarkerHover = (e) => {
-        if (!lightningEnabled || !e.features || !e.features.length) return;
+        if (!weatherEnabled || !e.features || !e.features.length) return;
         map.getCanvas().style.cursor = 'pointer';
         const f = e.features[0];
         const coords = f.geometry.coordinates.slice();
@@ -160,7 +160,7 @@ export function loadLayer(map, config) {
         // Weather popups: load the precomputed data (when enabled) and make markers
         // clickable. Handlers are always bound but no-op unless weather_popup is on, so
         // the toggle can flip live via refresh() without a remount.
-        lightningEnabled = !!cfg.weather_popup;
+        weatherEnabled = !!cfg.weather_popup;
         for (const id of [dotLayerId, labelLayerId]) {
             map.on('mousemove', id, onMarkerHover);
             map.on('mouseleave', id, onLeave);
@@ -175,8 +175,8 @@ export function loadLayer(map, config) {
     // cycle — so re-pull the API and setData to pick up new conditions, then re-apply
     // styling. weather_popup can toggle live (closes any open popup when turned off).
     const refresh = async (cfg) => {
-        lightningEnabled = !!cfg.weather_popup;
-        if (!lightningEnabled) popup.remove();
+        weatherEnabled = !!cfg.weather_popup;
+        if (!weatherEnabled) popup.remove();
         try {
             const res = await fetch(dataUrl, { cache: 'no-cache' });
             if (res.ok) {
