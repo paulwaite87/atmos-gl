@@ -25,7 +25,6 @@ renders fast.
 import os
 import io
 import json
-import glob
 import shutil
 import hashlib
 import logging
@@ -159,39 +158,29 @@ def land_mask(lon2d, lat2d):
 
 
 # --------------------------------------------------------------------------- #
-# Dataset bake: GRIB -> dense global wave-height field on the native 0.25 deg grid
+# Dataset bake: fieldstore now-hour field -> dense global wave-height grid
 # --------------------------------------------------------------------------- #
-def current_grib(data_dir: str):
-    gribs = sorted(
-        glob.glob(os.path.join(data_dir, "waves_cache_gfs_waves_*.grib2")),
-        key=os.path.getmtime,
-    )
-    return gribs[-1] if gribs else None
+def bake_field(field0):
+    """Bake the significant-wave-height grid from a fieldstore waves field (no GRIB).
 
-
-def dataset_key(grib_path: str) -> str:
-    return hashlib.md5(
-        f"{os.path.basename(grib_path)}|{os.path.getmtime(grib_path):.0f}".encode()
-    ).hexdigest()[:12]
-
-
-def bake_field(grib_path: str):
-    import xarray as xr
+    The collector stores the swell as a vector — u = swh*sin(dir), v = swh*cos(dir) — so
+    the wave height is simply the vector magnitude: sqrt(u^2 + v^2) == swh exactly. This
+    reads u/v straight from the fieldstore field, so the tile path no longer touches the
+    GRIB cache or cfgrib. Bad/land cells (NaN) are nearest-neighbour filled so tiles never
+    have holes. Grid layout comes from the field's own lat/lon, so meta describes it
+    correctly regardless of lon convention (the sampler is wrap-agnostic).
+    """
     from scipy.ndimage import distance_transform_edt
 
-    ds = xr.open_dataset(
-        grib_path,
-        engine="cfgrib",
-        backend_kwargs={"filter_by_keys": {"typeOfLevel": "surface"}},
-    )
-    lat = np.asarray(ds["latitude"].values, dtype=np.float64)
-    lon = np.asarray(ds["longitude"].values, dtype=np.float64)
-    swh = np.asarray(ds["swh"].values, dtype=np.float32)
-    ds.close()
+    lat = np.asarray(field0["lat"], dtype=np.float64)
+    lon = np.asarray(field0["lon"], dtype=np.float64)
+    u = np.asarray(field0["u"], dtype=np.float32)
+    v = np.asarray(field0["v"], dtype=np.float32)
+    swh = np.hypot(u, v).astype(np.float32)
 
     bad = ~np.isfinite(swh) | (swh < 0.0) | (swh > 60.0)
     if bad.all():
-        raise ValueError("No valid wave data in GRIB")
+        raise ValueError("No valid wave data in fieldstore field")
     idx = distance_transform_edt(bad, return_distances=False, return_indices=True)
     field = swh[tuple(idx)].astype(np.float32)
     meta = {
@@ -228,23 +217,20 @@ def _settings(config):
     return palette, alpha255, threshold
 
 
-def current_version(config):
-    """Identity of the *tiles* the live config implies — the rebuild trigger.
+def current_version(config, run_date_str, run_id, fhour):
+    """Identity of the *tiles* the live data + config imply — the rebuild trigger.
 
-    Includes ONLY inputs that change tile pixels: the wave data (GRIB identity) and
-    the palette, alpha, and min_wave_height settings. Every other waves setting
-    (key_fontsize, runs_per_day, arrow_*, level_of_detail, prebuild_maxzoom, ...) is
-    intentionally excluded, so editing those never forces a tile rebuild. Also used as
-    the frontend tile cache-buster.
+    Built from the fieldstore field's identity (run date / run / forecast hour — which
+    changes whenever the collector ingests a newer run, or the now-hour advances within a
+    run) plus ONLY the settings that change tile pixels: palette, alpha, min_wave_height.
+    Every other waves setting (key_fontsize, runs_per_day, arrow_*, level_of_detail,
+    prebuild_maxzoom, ...) is intentionally excluded, so editing those never forces a tile
+    rebuild. Also used as the frontend tile cache-buster.
     """
-    grib = current_grib(
-        os.path.join(config.get_setting("common", "workdir", "."), "data")
-    )
-    if not grib:
-        return None
     waves = config.get_section("waves")
     raw = (
-        f"{dataset_key(grib)}|{waves.get('palette', 'ocean_storm')}"
+        f"{run_date_str}|{run_id}|{int(fhour):03d}"
+        f"|{waves.get('palette', 'ocean_storm')}"
         f"|{waves.get('alpha', 70)}|{waves.get('min_wave_height', 0)}"
     )
     return hashlib.md5(raw.encode()).hexdigest()[:12]
@@ -292,18 +278,19 @@ def _compose_and_write(path, field, meta, lut, alpha255, threshold, z, x, y):
 # --------------------------------------------------------------------------- #
 # Builder side: publish immediately, then warm the base pyramid
 # --------------------------------------------------------------------------- #
-def publish_dataset(config, grib_path):
+def publish_dataset(config, field0, run_date_str, run_id, fhour):
     """Bake the field and PUBLISH the new version immediately (before any tiles).
 
-    Returns (version, field, meta). After this returns, the API can already serve the
-    new version on demand. Superseded version directories are pruned.
+    Takes the fieldstore now-hour waves field (not a GRIB path). Returns
+    (version, field, meta). After this returns, the API can already serve the new version
+    on demand. Superseded version directories are pruned.
     """
-    version = current_version(config)
+    version = current_version(config, run_date_str, run_id, fhour)
     root = _tiles_root(config)
     vdir = os.path.join(root, version)
     os.makedirs(vdir, exist_ok=True)
 
-    field, meta = bake_field(grib_path)
+    field, meta = bake_field(field0)
     np.save(os.path.join(vdir, "field.npy"), field)
     with open(os.path.join(vdir, "meta.json"), "w") as fh:
         json.dump(meta, fh)

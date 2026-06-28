@@ -369,37 +369,15 @@ class WavesUpdater(Updater):
             f"Waves: wrote swell velocity texture f{int(self.forecast_hour_str):03d}."
         )
 
-    def _write_velocity_texture(self):
-        """Encode the global swell vector field into <outfile_base>_data.png for the
-        animated particle layer. Direction matches the arrows (u=sin, v=cos of the wave
-        direction); magnitude is significant wave height, so taller swell drifts faster.
-        Land / missing cells are flagged transparent so particles respawn there."""
-        ds = xr.open_dataset(
-            self.grib_path,
-            engine="cfgrib",
-            backend_kwargs={"filter_by_keys": {"typeOfLevel": "surface"}},
-        )
-        direction_key = "dirpw" if "dirpw" in ds else "mwd"
-        lon = np.asarray(ds["longitude"].values, dtype=np.float64)
-        swh = np.asarray(ds["swh"].values, dtype=np.float32)
-        mwd = np.asarray(ds[direction_key].values, dtype=np.float32)
-        ds.close()
-
-        # GFS native grid is row0=north already (matches encode_uv); just wrap lon to
-        # -180..180 and sort columns so the texture is a clean equirect -180..180.
-        lon = ((lon + 180.0) % 360.0) - 180.0
-        order = np.argsort(lon)
-        swh = swh[:, order]
-        mwd = mwd[:, order]
-
-        bad = ~np.isfinite(swh) | (swh < 0.0) | (swh > 60.0) | ~np.isfinite(mwd)
-        rad = np.radians(np.nan_to_num(mwd))
-        mag = np.where(bad, np.nan, swh)
-        u = mag * np.sin(rad)  # east  component (m), NaN where bad -> A=0
-        v = mag * np.cos(rad)  # north component (m)
-
+    def _write_velocity_texture(self, field0):
+        """Encode the now-hour swell vector field into <outfile_base>_data.png for the
+        static (forecast_stepping=off) particle layer. u/v already come from the collector
+        (direction = wave direction, magnitude = significant wave height, so taller swell
+        drifts faster), already wrapped to a clean -180..180 equirect grid by the unpacker,
+        so this just encodes the now-hour fieldstore field — the static-base analogue of
+        plot_swell's per-hour textures. NaN/land cells stay transparent (alpha 0)."""
         base, _ = os.path.splitext(self.output_path)
-        encode_uv(u, v, f"{base}_data.png", VMAX_WAVES)
+        encode_uv(field0["u"], field0["v"], f"{base}_data.png", VMAX_WAVES)
         logger.info("Waves: wrote swell velocity texture for the animated layer.")
 
     def _write_legend_key(self):
@@ -440,18 +418,24 @@ class WavesUpdater(Updater):
             field_ready=lambda f: f.get("u") is not None and f.get("v") is not None,
         )
 
-        # 2) Heat tiles + legend. The data_collector keeps the current-hour GFS-Wave GRIB
-        # cached; discover it the same way the tile versioner does (newest by mtime), so
-        # the GRIB we bake from and the one current_version() hashes are always the same.
+        # 2) Heat tiles + legend, baked from the fieldstore now-hour field (no GRIB).
+        # The collector stores fhour_0..end, so the earliest catalog hour IS the now-hour;
+        # both the heat tile and the static velocity texture bake from that one field.
         from worldmap.tiles import waves_tiles as wt
 
-        self.grib_path = wt.current_grib(
-            os.path.join(self.workdir, "data")
-        )
-        if not self.grib_path or not os.path.exists(self.grib_path):
+        resolved = self.latest_store_run(["waves"])
+        if not resolved:
             logger.warning(
-                "Waves: heat GRIB not cached yet (data collector hasn't fetched it); "
+                "Waves: no waves field in the fieldstore yet (collector hasn't run); "
                 "skipping tile build."
+            )
+            return
+        self.run_date_str, self.run_id, hours = resolved
+        now_fh = hours[0]
+        field0 = self.get_db_field_at_hour("waves", now_fh)
+        if not field0 or field0.get("u") is None or field0.get("v") is None:
+            logger.warning(
+                "Waves: now-hour field missing u/v in the fieldstore; skipping tile build."
             )
             return
 
@@ -460,10 +444,13 @@ class WavesUpdater(Updater):
         # apply to the legend WITHOUT forcing a tile rebuild.
         self._write_legend_key()
 
-        # Tiles depend only on the wave DATA and the settings that change tile pixels
-        # (palette, alpha, min_wave_height) — see wt.current_version. Unrelated settings
-        # never change the version, so they never trigger a (re)build.
-        if wt.current_version(self.config) == wt.published_version(self.config):
+        # Tiles depend only on the wave DATA identity (run/hour in the fieldstore) and the
+        # settings that change tile pixels (palette, alpha, min_wave_height) — see
+        # wt.current_version. Unrelated settings never change the version, so they never
+        # trigger a (re)build.
+        if wt.current_version(
+            self.config, self.run_date_str, self.run_id, now_fh
+        ) == wt.published_version(self.config):
             return
 
         # Publish-then-fill: bake + publish the new version IMMEDIATELY so the API can
@@ -471,8 +458,10 @@ class WavesUpdater(Updater):
         # prioritised). Then warm the base pyramid in the background; the API keeps
         # serving on demand throughout, so the user never waits for the whole world.
         logger.info("Waves: data or tile settings changed — publishing dataset...")
-        self._write_velocity_texture()
-        version, field, meta = wt.publish_dataset(self.config, self.grib_path)
+        self._write_velocity_texture(field0)
+        version, field, meta = wt.publish_dataset(
+            self.config, field0, self.run_date_str, self.run_id, now_fh
+        )
         logger.info(f"Waves: version {version} published; warming base pyramid...")
         wt.warm_pyramid(self.config, version, field, meta)
         logger.info("Waves: base pyramid warmed.")

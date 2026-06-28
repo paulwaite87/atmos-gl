@@ -220,32 +220,6 @@ class DataCollector:
                     except OSError:
                         pass
 
-        # Keep a whole GRIB for the now-hour so the waves heat tiles have data. Named with
-        # the per-hour convention waves_tiles.current_grib() globs for (newest by mtime),
-        # and written only when that hour's file is missing — so its mtime, and therefore
-        # the tile version (dataset_key hashes mtime), stays stable within the hour and
-        # doesn't churn tile rebuilds. Done independently of the swell loop above so it
-        # still refreshes when the now-hour's swell field was already stored earlier.
-        heat_path = os.path.join(
-            self.workdir, "data", f"waves_cache_gfs_waves_{fhour_0:03d}.grib2"
-        )
-        if not os.path.exists(heat_path):
-            heat_url = build_wave_url(base_url, run_date_str, run_id, fhour_0)
-            if remote_exists(heat_url):
-                try:
-                    hdata = download_whole(heat_url)
-                    if hdata:
-                        os.makedirs(os.path.dirname(heat_path), exist_ok=True)
-                        heat_tmp = f"{heat_path}.tmp"
-                        with open(heat_tmp, "wb") as hf:
-                            hf.write(hdata)
-                        os.replace(heat_tmp, heat_path)
-                        logger.info(
-                            f"Data Collector (waves): cached heat GRIB f{fhour_0:03d}"
-                        )
-                except Exception as e:
-                    logger.debug(f"waves heat-grib cache write failed: {e}")
-
         logger.info(
             f"Data Collector (waves): {run_date_str} {run_id}Z, "
             f"hours {fhour_0:03d}..{fhour_end - 1:03d}; stored {stored} field(s)."
