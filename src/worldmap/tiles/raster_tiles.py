@@ -54,11 +54,17 @@ class TileSpec:
     of RGB stops (palettes + palette_setting/default_palette). value_key is the fieldstore
     slot holding the scalar; hypot_fallback derives it from sqrt(u^2+v^2) when that slot is
     absent (waves back-compat). clip_lo/clip_hi are validity bounds for the nearest-fill.
+
+    Value->colour is linear over [vmin, vmax] by default. If `levels` is given (monotone
+    boundary edges), the layer is non-linear instead: each [levels[i], levels[i+1]) band
+    maps to one colour (matplotlib BoundaryNorm semantics), so narrow low-value bands keep
+    full visual weight — used by precipitation.
     """
 
     section: str  # config section, tiles-root dirname, fieldstore product
     vmin: float = 0.0
     vmax: float = 1.0
+    levels: tuple | None = None  # boundary edges -> non-linear banding (BoundaryNorm)
     mask_land: bool = False  # True only for ocean-only fields (waves, sst)
     value_key: str = "values"
     hypot_fallback: bool = False
@@ -107,7 +113,16 @@ def build_lut(spec: TileSpec, palette_id: str) -> np.ndarray:
         cmap = mcolors.LinearSegmentedColormap.from_list(spec.section, rgb, N=256)
     else:
         cmap = cm.get_cmap(spec.cmap_name)
-    lut = (cmap(np.linspace(0.0, 1.0, 256))[:, :3] * 255.0).astype(np.uint8)
+
+    if spec.levels is not None:
+        # Non-linear: one colour per [levels[i], levels[i+1]) band, coloured exactly as
+        # matplotlib's contourf would (same cmap + BoundaryNorm, sampled at band midpoints).
+        edges = np.asarray(spec.levels, dtype=np.float64)
+        norm = mcolors.BoundaryNorm(list(spec.levels), cmap.N)
+        mids = (edges[:-1] + edges[1:]) / 2.0
+        lut = (cmap(norm(mids))[:, :3] * 255.0).astype(np.uint8)  # (nbands, 3)
+    else:
+        lut = (cmap(np.linspace(0.0, 1.0, 256))[:, :3] * 255.0).astype(np.uint8)
     _lut_cache[key] = lut
     return lut
 
@@ -127,9 +142,19 @@ def compose_tile_rgba(
     lon2d, lat2d = np.meshgrid(lon, lat)
     val = sample_field(field, meta, lon2d, lat2d)
 
-    span = spec.vmax - spec.vmin
-    idx = (np.clip((val - spec.vmin) / span, 0.0, 1.0) * 255.0).astype(np.uint8)
-    rgb = lut[idx]
+    if spec.levels is not None:
+        # Non-linear: place each value in its [levels[i], levels[i+1]) band, then index the
+        # per-band LUT. Below levels[0] clips to band 0 (kept transparent by the threshold);
+        # at/above levels[-1] clips to the top band.
+        nbands = len(spec.levels) - 1
+        idx = np.clip(
+            np.searchsorted(spec.levels, val, side="right") - 1, 0, nbands - 1
+        )
+        rgb = lut[idx]
+    else:
+        span = spec.vmax - spec.vmin
+        idx = (np.clip((val - spec.vmin) / span, 0.0, 1.0) * 255.0).astype(np.uint8)
+        rgb = lut[idx]
 
     alpha = np.full(val.shape, alpha255, dtype=np.uint8)
     if threshold is not None and threshold > spec.vmin:
@@ -283,7 +308,7 @@ def current_version(spec: TileSpec, config, run_date_str, run_id, fhour):
     palette_id, alpha255, threshold = _settings(spec, config)
     raw = (
         f"{spec.section}|{run_date_str}|{run_id}|{int(fhour):03d}"
-        f"|{palette_id}|{alpha255}|{threshold}|{spec.vmin}|{spec.vmax}"
+        f"|{palette_id}|{alpha255}|{threshold}|{spec.vmin}|{spec.vmax}|{spec.levels}"
     )
     return hashlib.md5(raw.encode()).hexdigest()[:12]
 
@@ -504,6 +529,64 @@ WAVES_SPEC = TileSpec(
 
 # Registry keyed by section, so the API can serve any layer generically.
 # Additional layers (temperature, ozone, stormwatch, ...) are added here as each is wired.
+# --- precipitation: non-linear bands (BoundaryNorm), no land mask -------------- #
+# Palettes mirror precipitation.py (single source moved here). The colour ramp is built
+# from these stops and sampled per band; the legend renderer in precipitation.py imports
+# PRECIP_PALETTES so the key matches the tiles exactly.
+PRECIP_PALETTES = {
+    "standard": [
+        (0.0, 1.0, 1.0),
+        (0.0, 0.5, 1.0),
+        (0.0, 1.0, 0.0),
+        (1.0, 1.0, 0.0),
+        (1.0, 0.5, 0.0),
+        (1.0, 0.0, 0.0),
+        (1.0, 0.0, 1.0),
+    ],
+    "ocean_blue": [
+        (0.8, 0.9, 1.0),
+        (0.6, 0.8, 1.0),
+        (0.4, 0.6, 1.0),
+        (0.2, 0.4, 1.0),
+        (0.0, 0.2, 0.8),
+        (0.0, 0.0, 0.6),
+        (0.0, 0.0, 0.4),
+    ],
+    "high_contrast": [
+        (0.0, 0.9, 0.0),
+        (0.0, 0.6, 0.0),
+        (1.0, 1.0, 0.0),
+        (1.0, 0.6, 0.0),
+        (1.0, 0.0, 0.0),
+        (0.7, 0.0, 0.0),
+        (1.0, 0.0, 1.0),
+    ],
+}
+
+# Same 11-band scale precipitation.py renders with (mm/hr). Below levels[0] is transparent
+# (the min_mm_hr threshold); at/above levels[-1] uses the top band.
+PRECIP_LEVELS = (0.1, 0.5, 1.0, 2.0, 3.0, 5.0, 10.0, 15.0, 20.0, 30.0, 50.0, 100.0)
+
+PRECIP_SPEC = TileSpec(
+    section="precipitation",
+    vmin=0.0,
+    vmax=100.0,
+    levels=PRECIP_LEVELS,
+    mask_land=False,
+    value_key="values",
+    clip_lo=0.0,
+    clip_hi=1.0e30,
+    palettes=PRECIP_PALETTES,
+    default_palette="standard",
+    palette_setting="palette",
+    alpha_setting="alpha",
+    alpha_default=50.0,
+    threshold_setting="min_mm_hr",
+)
+
+# Registry keyed by section, so the API serves any layer generically. Additional layers
+# (temperature, ozone, stormwatch, ...) are added here as each is wired to tiles.
 SPECS: dict[str, TileSpec] = {
     "waves": WAVES_SPEC,
+    "precipitation": PRECIP_SPEC,
 }
