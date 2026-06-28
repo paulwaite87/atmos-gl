@@ -12,7 +12,6 @@ from scipy.interpolate import RegularGridInterpolator
 # Internal imports
 from worldmap.lib.config import WorldMapConfig
 from .common import Updater, MapData, Plot, encode_frames
-from worldmap.tiles import raster_tiles as rt
 
 # Silence warnings
 warnings.filterwarnings("ignore", message=".*missingValue.*")
@@ -34,7 +33,35 @@ class PrecipitationUpdater(Updater):
         # Static PNG + GPU data texture.
         self.per_hour_outputs = [".png", "_data.png"]
 
-        self.PALETTES = rt.PRECIP_PALETTES
+        self.PALETTES = {
+            "standard": [
+                (0.0, 1.0, 1.0),
+                (0.0, 0.5, 1.0),
+                (0.0, 1.0, 0.0),
+                (1.0, 1.0, 0.0),
+                (1.0, 0.5, 0.0),
+                (1.0, 0.0, 0.0),
+                (1.0, 0.0, 1.0),
+            ],
+            "ocean_blue": [
+                (0.8, 0.9, 1.0),
+                (0.6, 0.8, 1.0),
+                (0.4, 0.6, 1.0),
+                (0.2, 0.4, 1.0),
+                (0.0, 0.2, 0.8),
+                (0.0, 0.0, 0.6),
+                (0.0, 0.0, 0.4),
+            ],
+            "high_contrast": [
+                (0.0, 0.9, 0.0),
+                (0.0, 0.6, 0.0),
+                (1.0, 1.0, 0.0),
+                (1.0, 0.6, 0.0),
+                (1.0, 0.0, 0.0),
+                (0.7, 0.0, 0.0),
+                (1.0, 0.0, 1.0),
+            ],
+        }
 
     def save_precipitation_key(self, output_path):
         """Generates a standalone key image using a standardized naming strategy."""
