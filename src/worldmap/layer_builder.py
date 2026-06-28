@@ -5,8 +5,7 @@ import sys
 import os
 import signal
 import asyncio
-from datetime import datetime
-from typing import Dict, Optional, Type, Tuple, List, Any
+from typing import Type, Tuple, List, Any
 
 # Library imports
 from worldmap.lib.config import WorldMapConfig
@@ -29,6 +28,11 @@ from worldmap.tasks.markers import MarkerUpdater
 
 logger = logging.getLogger("worldmap.layer_builder")
 
+# How long to wait between fan-out cycles. Every cycle runs all updaters concurrently;
+# per-hour freshness checks make a steady-state (nothing-changed) cycle cheap, so this is
+# just the responsiveness window for picking up new data or deleted output.
+CYCLE_SECONDS = 15
+
 
 class LayerBuilder:
     enabled = False
@@ -46,25 +50,29 @@ class LayerBuilder:
         # Initialize a shared state dictionary for inter-updater communication
         self.map_data.shared_state = {}
 
-        self.starting_up = True
-        self.last_run_times: Dict[str, datetime] = {}
-
         signal.signal(signal.SIGUSR1, self.handle_force_refresh)
 
-        # Execution order registry: Isobars must run before Precip/Clouds to set the baseline
+        # All layer updaters. They run CONCURRENTLY each cycle (see start_scheduler), so
+        # there is no execution-order constraint any more — the only shared datum (the
+        # GFS/RTOFS baseline) is resolved once, up front, before the fan-out.
         self.task_registry: List[Tuple[str, Type[Any]]] = [
-            # ("isobars", IsobarUpdater),
-            # ("precipitation", PrecipitationUpdater),
-            # ("clouds", CloudUpdater),
-            # ("wind", WindUpdater),
-            # ("sst", SSTUpdater),
-            # ("currents", CurrentsUpdater),
-            # ("waves", WavesUpdater),
-            # ("temperature", TemperatureUpdater),
-            # ("ozone", OzoneUpdater),
-            # ("stormwatch", StormwatchUpdater),
+            ("isobars", IsobarUpdater),
+            ("precipitation", PrecipitationUpdater),
+            ("clouds", CloudUpdater),
+            ("wind", WindUpdater),
+            ("sst", SSTUpdater),
+            ("currents", CurrentsUpdater),
+            ("waves", WavesUpdater),
+            ("temperature", TemperatureUpdater),
+            ("ozone", OzoneUpdater),
+            ("stormwatch", StormwatchUpdater),
             ("markers", MarkerUpdater),
         ]
+
+        # Persistent updater instances: built once and reused across cycles (rebuilt on
+        # config change). Each owns its own DB connection, so the concurrent fan-out never
+        # shares a psycopg2 connection across threads.
+        self.updaters: List[Tuple[str, Updater]] = []
 
     def refresh_settings(self):
         self.config.load()
@@ -75,94 +83,86 @@ class LayerBuilder:
             set_loglevel(log_level)
 
     def handle_force_refresh(self, signum, frame):
-        """Signal handler to reset the schedule."""
-        logger.debug("External trigger received (SIGUSR1): Resetting task timings")
-        self.last_run_times.clear()
+        """SIGUSR1: drop the cached GFS/RTOFS datum so the next cycle re-resolves it."""
+        logger.debug("External trigger (SIGUSR1): clearing cached baselines")
+        ss = getattr(self.map_data, "shared_state", None)
+        if isinstance(ss, dict):
+            ss.pop("gfs_baseline", None)
+            ss.pop("rtofs_baseline", None)
 
-    def tasks_ready_to_run(self) -> bool:
-        for section, task_class in self.task_registry:
-            updater = task_class(self.config, self.map_data)
-            if self.should_run(updater):
-                return True
-        return False
+    def _build_updaters(self):
+        """(Re)instantiate every updater once. Instances are persistent and reused across
+        cycles; each owns its own DB connection. Rebuilt on config change because an
+        updater caches its settings/derived values at construction and config.load()
+        replaces the underlying dict."""
+        self.updaters = [
+            (section, cls(self.config, self.map_data))
+            for section, cls in self.task_registry
+        ]
+        logger.info(f"Built {len(self.updaters)} updater instance(s)")
 
-    def should_run(self, updater: Updater) -> bool:
-        """
-        Determines if an updater task is due based on runs_per_day.
-        Returns True if the elapsed time exceeds (86400 / runs_per_day).
-        """
-        # Refresh everything if config changed
-        if self.starting_up or self.config.has_changed:
-            return True
+    def _resolve_baselines(self):
+        """Resolve the GFS/RTOFS datums ONCE, up front, into shared_state, so the
+        concurrent updaters all read one cached baseline instead of racing to establish
+        it. Cleared first so a long-lived process can't pin to an ever-older run."""
+        ss = self.map_data.shared_state
+        ss.pop("gfs_baseline", None)
+        ss.pop("rtofs_baseline", None)
+        if not self.updaters:
+            return
+        primer = self.updaters[0][1]
+        for label, resolve in (
+            ("GFS", primer.get_gfs_state),
+            ("RTOFS", primer.get_rtofs_state),
+        ):
+            try:
+                resolve()
+            except Exception as e:
+                logger.warning(f"{label} baseline pre-resolve failed: {e}")
 
-        runs_per_day = int(updater.settings.get("runs_per_day", 0))
-        if runs_per_day <= 0:
-            return False
-
-        # Calculate frequency interval
-        interval_seconds: float = 86400.0 / runs_per_day
-
-        last_run: Optional[datetime] = self.last_run_times.get(updater.section, None)
-
-        if last_run is None:
-            return True
-
-        elapsed_seconds: float = (datetime.now() - last_run).total_seconds()
-        return elapsed_seconds >= interval_seconds
+    def _run_one(self, section: str, updater: Updater):
+        """Run a single updater, isolating failures so one bad layer can't abort the
+        whole cycle. Executed in a worker thread via asyncio.to_thread."""
+        try:
+            updater.run()
+        except Exception as e:
+            logger.error(f"Task '{section}' execution failed: {e}", exc_info=True)
 
     async def start_scheduler(self):
+        # Build persistent instances once, after an initial refresh so the region/config
+        # are current before any updater is constructed.
+        self.refresh_settings()
+        self.map_data.refresh()
+        self._build_updaters()
+
         while True:
             self.refresh_settings()
 
             if self.enabled:
                 self.map_data.refresh()
 
-                if (
-                    self.starting_up
-                    or self.config.has_changed
-                    or self.tasks_ready_to_run()
-                ):
-                    logger.info("Layer-builder scheduler run started")
+                # Config edits change cached settings/derived values, so rebuild instances
+                # (and their connections) when the file changes.
+                if self.config.has_changed:
+                    logger.info("Config changed: rebuilding updaters")
+                    self._build_updaters()
 
-                    # Re-sync the model datum each scheduling run. The GFS/RTOFS baselines
-                    # are cached in shared_state for intra-run consistency (every layer in
-                    # one run shares one datum), but they MUST be cleared between runs or
-                    # they pin to the first run for the life of the process: the forecast
-                    # hour then climbs against an ever-older run until its data is pruned,
-                    # and baseline-driven paths (current-hour publish, the waves tile GRIB
-                    # download) silently go stale. Clearing here forces a fresh resolve.
-                    self.map_data.shared_state.pop("gfs_baseline", None)
-                    self.map_data.shared_state.pop("rtofs_baseline", None)
-
-                    for section, task_class in self.task_registry:
-                        logger.debug(f"Updater task '{section}' checking runnable")
-                        updater = task_class(self.config, self.map_data)
-                        if self.should_run(updater):
-                            try:
-                                logger.info(f"Running scheduled task: '{section}'")
-
-                                # Handle both sync and async run methods
-                                if section in ["shipping", "lightning"]:
-                                    await updater.run()
-                                else:
-                                    updater.run()
-
-                                # Timestamp the completion with high precision
-                                self.last_run_times[section] = datetime.now()
-
-                            except Exception as e:
-                                logger.error(
-                                    f"Task '{section}' execution failed: {e}",
-                                    exc_info=True,
-                                )
-
-                    self.starting_up = False
-                    logger.info("Layer-builder scheduler run finished")
+                # Resolve the shared datum once, then fan out: every updater runs
+                # concurrently in its own thread (numpy/PIL release the GIL). No should_run
+                # gating — each updater's per-hour freshness check skips work that's already
+                # current, so a steady-state cycle is cheap and a changed or deleted layer
+                # re-renders promptly, now-hour first.
+                self._resolve_baselines()
+                await asyncio.gather(
+                    *(
+                        asyncio.to_thread(self._run_one, section, updater)
+                        for section, updater in self.updaters
+                    )
+                )
             else:
                 logger.info("Layer-builder scheduler disabled: skipping")
 
-            # Heartbeat sleep
-            await asyncio.sleep(10)
+            await asyncio.sleep(CYCLE_SECONDS)
 
 
 def main():

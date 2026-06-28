@@ -371,6 +371,19 @@ def get_store(workdir: str = ".", db=None):
     return _store_instance
 
 
+def make_store(workdir: str = ".") -> "FieldStore":
+    """Create a NEW, independent FieldStore with its OWN Database connection — NOT the
+    process-wide singleton returned by get_store().
+
+    Each concurrently-running updater owns one of these. A single psycopg2 connection is
+    not safe to share across threads, so the async layer_builder fan-out gives every
+    updater its own store/connection rather than the shared singleton.
+    """
+    from worldmap.lib.db import Database
+
+    return FieldStore(Database(), workdir)
+
+
 def init_fieldstore(db, workdir: str = ".") -> FieldStore:
     """Explicitly (re)initialise the global fieldstore instance.
 

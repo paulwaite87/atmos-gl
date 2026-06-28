@@ -512,6 +512,10 @@ class Updater:
         self.common = config.get_section("common")
         self.animation = config.get_section("animation")
         self.workdir = self.common.get("workdir", ".")
+        # Own, independent store+connection per updater (NOT the shared singleton), so the
+        # async fan-out in layer_builder can run updaters concurrently without sharing a
+        # psycopg2 connection across threads.
+        self._store = fieldstore.make_store(self.workdir)
         self.outfile = self.settings.get("outfile", "")
         self.output_path = None
         self.enabled = self.settings.get("enabled", False)
@@ -606,7 +610,7 @@ class Updater:
             return None
         fhour = int(self.forecast_hour_str)
         try:
-            fs = fieldstore.get_store(self.workdir)
+            fs = self._store
             field = fs.get_field(self.run_date_str, self.run_id, fhour, product_name)
             if field:
                 logger.debug(
@@ -646,7 +650,7 @@ class Updater:
             )
             return None
         try:
-            fs = fieldstore.get_store(self.workdir)
+            fs = self._store
             return fs.get_field(
                 self.run_date_str, self.run_id, int(fhour), product_name
             )
@@ -689,7 +693,7 @@ class Updater:
         # Use the static PNG's mtime as the reference (oldest-equivalent; all outputs
         # are written together in one plot() call).
         try:
-            fs = fieldstore.get_store(self.workdir)
+            fs = self._store
             meta = fs.get_field_meta(
                 self.run_date_str, self.run_id, fhour, product_name
             )
@@ -794,7 +798,7 @@ class Updater:
         try:
             from worldmap.lib import fieldstore
 
-            store = fieldstore.get_store(self.workdir)
+            store = self._store
             avail = store.db.get_latest_run_hours(products=list(products))
         except Exception as e:
             logger.warning(f"{self.section}: catalog run lookup failed: {e}")

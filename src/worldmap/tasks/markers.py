@@ -20,7 +20,6 @@ import numpy as np
 
 from worldmap.lib.config import WorldMapConfig
 from worldmap.lib import fieldstore
-from worldmap.lib.db import Database
 from worldmap.markers_importer import import_markers, load_marker_rows
 from .common import Updater, MapData
 
@@ -74,7 +73,7 @@ class MarkerUpdater(Updater):
         can lag a cycle — doesn't gate resolution. Returns (run_date, run_id, fhour)|None.
         """
         try:
-            store = fieldstore.get_store(self.workdir)
+            store = self._store
             avail = store.db.get_latest_run_hours(products=["temperature", "wind"])
             logger.debug(f"_resolve_run_hour returned: {avail}")
         except Exception as e:
@@ -97,7 +96,7 @@ class MarkerUpdater(Updater):
 
     # ---- main ---------------------------------------------------------------
     def run(self):
-        db = Database()
+        db = self._store.db
 
         # 1) Keep the markers table consistent with the canonical geojson — ALWAYS, since
         #    the frontend renders markers from this table regardless of weather.
