@@ -45,7 +45,7 @@
     "cache_expiry_days": 3
   },
   "wind": {
-    "enabled": false,
+    "enabled": true,
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
     "outfile": "data/wind.png",
     "level_of_detail": "2",
@@ -59,13 +59,13 @@
     "particle_size": 2,
     "trail_fade": 80,
     "drop_speed": 10,
-    "heatmap_opacity": 50,
+    "heatmap_opacity": 0,
     "alpha": 55,
     "runs_per_day": 8,
     "cache_expiry_days": 3
   },
   "precipitation": {
-    "enabled": false,
+    "enabled": true,
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
     "outfile": "data/precipitation.png",
     "level_of_detail": "1",
@@ -83,10 +83,10 @@
     "level_of_detail": "1",
     "palette": "thermal_red",
     "alpha": 70,
-    "particle_speed": 10,
+    "particle_speed": 6,
     "current_speed_minimum": 0,
     "trail_length": 50,
-    "width_factor": 2.6,
+    "width_factor": 1.6,
     "key_fontsize": 8,
     "runs_per_day": 2,
     "cache_expiry_days": 3
@@ -210,7 +210,6 @@
   },
   "shipping": {
     "enabled": false,
-    "outfile": "data/ships.json",
     "icon_zoom": 0.6,
     "runs_per_day": 24
   },
@@ -227,10 +226,12 @@
     "color": ""
   },
   "markers": {
-    "enabled": true,
+    "enabled": false,
+    "outfile": "data/markers.json",
     "marker_color": "White",
     "marker_fontsize": 11,
-    "weather_popup": true
+    "weather_popup": true,
+    "runs_per_day": 24
   },
   "data_collector": {
     "enabled": true,
