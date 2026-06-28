@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 SECTION = "quakes"
 
 
-class QuakeFeed:
+class QuakeCollector:
     def __init__(self, config, db):
         self.config = config
         self.db = db

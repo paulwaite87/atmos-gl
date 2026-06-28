@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 SECTION = "storms"
 
 
-class StormFeed:
+class StormsCollector:
     def __init__(self, config, db):
         self.config = config
         self.db = db

@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 SECTION = "volcanoes"
 
 
-class VolcanoFeed:
+class VolcanoesCollector:
     def __init__(self, config, db):
         self.config = config
         self.db = db
