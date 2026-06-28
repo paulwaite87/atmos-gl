@@ -19,12 +19,10 @@ function formatLastUpdate(lastUpdateStr) {
 
     const parts = [];
 
-    // Build the string dynamically based on the requested formats
     if (days > 0) parts.push(`${days}d`);
     if (hours > 0) parts.push(`${hours}h`);
     if (mins > 0) parts.push(`${mins} mins`);
 
-    // If perfectly on the hour/day with 0 mins, it won't add a blank 'mins' string
     return `${parts.join(' ')} ago`;
 }
 
@@ -32,6 +30,10 @@ export function loadLayer(map, config) {
     const sourceId = 'ships-source';
     const layerId  = 'ships-layer';
     const popup = new maplibregl.Popup({ closeButton: false, closeOnClick: false });
+
+    // Set X days here, or pass it in via the config object
+    const maxAgeDays = config.max_age_days || 7;
+
     const shipIcons = [
         { id: 'ship-red',    url: '/images/red_ship_base.png' },
         { id: 'ship-green',  url: '/images/green_ship_base.png' },
@@ -43,7 +45,23 @@ export function loadLayer(map, config) {
     const fetchData = async () => {
         const r = await fetch(urlFor());
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return r.json();
+        const geojson = await r.json();
+
+        // Calculate the absolute cutoff time in milliseconds
+        const cutoffTimeMs = Date.now() - (maxAgeDays * 24 * 60 * 60 * 1000);
+
+        // Filter the GeoJSON features based on the cutoff time
+        geojson.features = geojson.features.filter(feature => {
+            const updateStr = feature.properties.last_position_update;
+            if (!updateStr) return false; // Exclude if there's no timestamp
+
+            const updateTimeMs = new Date(updateStr).getTime();
+            if (isNaN(updateTimeMs)) return false; // Exclude if date is invalid
+
+            return updateTimeMs >= cutoffTimeMs;
+        });
+
+        return geojson;
     };
 
     const onEnter = (e) => {
@@ -52,7 +70,6 @@ export function loadLayer(map, config) {
         const s = e.features[0].properties;
         const coords = e.features[0].geometry.coordinates.slice();
 
-        // Calculate the formatted time string
         const lastSeenText = formatLastUpdate(s.last_position_update);
 
         popup.setLngLat(coords).setHTML(
@@ -72,6 +89,7 @@ export function loadLayer(map, config) {
                 <span style="color:#666;">Last seen:</span> ${lastSeenText}
             </div>`).addTo(map);
     };
+
     const onLeave = () => { map.getCanvas().style.cursor = ''; popup.remove(); };
 
     const mount = async () => {
@@ -81,8 +99,10 @@ export function loadLayer(map, config) {
             if (!res.ok) throw new Error(`Could not load ${ic.id}`);
             map.addImage(ic.id, await createImageBitmap(await res.blob()));
         }));
+
         const data = await fetchData();
         if (map.getSource(sourceId)) return;
+
         map.addSource(sourceId, { type: 'geojson', data, tolerance: 0.5 });
         map.addLayer({
             id: layerId, type: 'symbol', source: sourceId, minzoom: 3,
@@ -99,6 +119,7 @@ export function loadLayer(map, config) {
                 'icon-allow-overlap': true, 'icon-ignore-placement': true,
             },
         });
+
         map.on('mouseenter', layerId, onEnter);
         map.on('mouseleave', layerId, onLeave);
     };
@@ -116,6 +137,5 @@ export function loadLayer(map, config) {
         if (map.getSource(sourceId)) map.removeSource(sourceId);
     };
 
-    // Ships move — keep this fairly brisk.
     return liveDataSync(map, { sectionKey: 'shipping', initialConfig: config, mount, refresh, unmount, refreshMs: 60000 });
 }

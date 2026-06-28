@@ -159,7 +159,7 @@
     "cache_expiry_days": 3
   },
   "storms": {
-    "enabled": false,
+    "enabled": true,
     "jtwc_url": "https://www.ssd.noaa.gov/PS/TROP/DATA/ATCF/JTWC/",
     "nhc_url": "https://ftp.nhc.noaa.gov/atcf/fst/",
     "outfile": "data/storms.json",
@@ -209,8 +209,9 @@
     "runs_per_day": 1
   },
   "shipping": {
-    "enabled": false,
+    "enabled": true,
     "icon_zoom": 0.6,
+    "max_age_days": 3,
     "runs_per_day": 24
   },
   "satellites": {
@@ -226,7 +227,7 @@
     "color": ""
   },
   "markers": {
-    "enabled": false,
+    "enabled": true,
     "outfile": "data/markers.json",
     "marker_color": "White",
     "marker_fontsize": 11,
