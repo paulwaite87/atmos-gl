@@ -110,7 +110,7 @@
                                     <div class="form-check form-switch">
                                         <input class="form-check-input" type="checkbox" id="lightning_collector__enabled">
                                         <label class="form-check-label fw-bold ms-2" for="lightning_collector__enabled">Lightning Collector Daemon</label>
-                                        <div id="key-warn-weather" class="text-danger small mt-1 d-none">⚠️ Deactivated: Missing OPENWEATHER_API_KEY.</div>
+                                        <div id="key-warn-openweather" class="text-danger small mt-1 d-none">⚠️ Deactivated: Missing OPENWEATHER_API_KEY.</div>
                                     </div>
                                 </div>
                                 <div class="col-md-6">
@@ -257,13 +257,13 @@
                 }
             }
 
-            const weatherEnabled = document.getElementById('lightning_collector__enabled');
-            if (weatherEnabled && data.lightning_collector) {
-                weatherEnabled.checked = !!data.lightning_collector.enabled;
-                weatherEnabled.addEventListener('change', toggleSectionVisibility);
-                if (data.lightning_collector.RULE__missing_weather) {
-                    weatherEnabled.disabled = true; weatherEnabled.checked = false;
-                    document.getElementById('key-warn-weather').classList.remove('d-none');
+            const lightningEnabled = document.getElementById('lightning_collector__enabled');
+            if (lightningEnabled && data.lightning_collector) {
+                lightningEnabled.checked = !!data.lightning_collector.enabled;
+                lightningEnabled.addEventListener('change', toggleSectionVisibility);
+                if (data.lightning_collector.RULE__missing_openweather_apikey) {
+                    lightningEnabled.disabled = true; lightningEnabled.checked = false;
+                    document.getElementById('key-warn-openweather').classList.remove('d-none');
                 }
             }
 

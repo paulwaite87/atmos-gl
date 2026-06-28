@@ -23,7 +23,7 @@ class LightningCollector:
         self.config = WorldMapConfig(config_path)
         self.db = Database()
         self.refresh_settings()
-        logger.debug("Initializing Weather Scanner")
+        logger.debug("Initializing Lightning Collector")
 
     def refresh_settings(self):
         self.config.load()
@@ -107,7 +107,7 @@ class LightningCollector:
             self.refresh_settings()
 
             if self.settings.get("enabled", False):
-                logger.info("Weather Scanner Service: Starting regional scans.")
+                logger.info("Lightning Collector Service: Starting regional scans.")
 
                 # Time window for scan
                 now = datetime.now(timezone.utc)
@@ -145,7 +145,7 @@ class LightningCollector:
 
                 logger.info("Scan complete.")
             else:
-                logger.debug("Weather Scanner Service: disabled. Skipping scan.")
+                logger.debug("Lightning Collector Service: disabled. Skipping scan.")
 
             await asyncio.sleep(600)
 
