@@ -124,6 +124,7 @@ services:
     volumes:
       - ./data:/opt/project/data
       - ./config:/opt/project/config
+      - ./markers:/opt/project/markers
     networks:
       - wmap
 

@@ -29,8 +29,8 @@ endif
 stop:
 	docker compose down
 
-## up|run: Start dev stack (auto-merges docker-compose.override.yml)
-up run:
+## start|run|up: Start dev stack (auto-merges docker-compose.override.yml)
+up run start:
 	docker compose up -d
 
 ## build: Rebuild images — only needed for DEPENDENCY changes

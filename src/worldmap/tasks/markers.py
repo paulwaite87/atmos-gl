@@ -32,6 +32,7 @@ class MarkerUpdater(Updater):
         # Reads the existing "markers" config section (shared with the frontend markers
         # layer); driven by its weather_popup flag and runs_per_day.
         super().__init__(config, "Markers", map_data)
+        self.input_path = self.settings.get("infile", "markers/markers.geojson")
 
     # ---- field sampling -----------------------------------------------------
     @staticmethod
@@ -75,17 +76,20 @@ class MarkerUpdater(Updater):
         try:
             store = fieldstore.get_store(self.workdir)
             avail = store.db.get_latest_run_hours(products=["temperature", "wind"])
+            logger.debug(f"_resolve_run_hour returned: {avail}")
         except Exception as e:
             logger.warning(f"Markers: catalog lookup failed: {e}")
             return None
         if not avail or not avail.get("hours"):
             return None
         run_date, run_id, hours = avail["run_date"], avail["run_id"], avail["hours"]
+        logger.debug(f"Details: run_date: {run_date} run_id: {run_id} hours: {hours}")
         try:
-            run_start = datetime.strptime(run_date, "%Y%m%d").replace(
-                hour=int(run_id), tzinfo=timezone.utc
-            )
-        except (ValueError, TypeError):
+            run_datetime = datetime(run_date.year, run_date.month, run_date.day)
+            run_start = run_datetime.replace(hour=int(run_id), tzinfo=timezone.utc)
+            logger.debug(f"run_start: {run_start}")
+        except Exception as e:
+            logger.debug(f"failed run_start: {run_date} {e}")
             return None
         target = (datetime.now(timezone.utc) - run_start).total_seconds() / 3600.0
         fhour = min(hours, key=lambda h: abs(int(h) - target))
@@ -98,7 +102,7 @@ class MarkerUpdater(Updater):
         # 1) Keep the markers table consistent with the canonical geojson — ALWAYS, since
         #    the frontend renders markers from this table regardless of weather.
         try:
-            import_markers(db)
+            import_markers(db, geojson_path=self.input_path)
         except Exception as e:
             logger.error(f"Markers: importer failed: {e}")
 

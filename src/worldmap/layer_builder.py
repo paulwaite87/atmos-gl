@@ -53,16 +53,16 @@ class LayerBuilder:
 
         # Execution order registry: Isobars must run before Precip/Clouds to set the baseline
         self.task_registry: List[Tuple[str, Type[Any]]] = [
-            ("isobars", IsobarUpdater),
-            ("precipitation", PrecipitationUpdater),
-            ("clouds", CloudUpdater),
-            ("wind", WindUpdater),
-            ("sst", SSTUpdater),
-            ("currents", CurrentsUpdater),
-            ("waves", WavesUpdater),
-            ("temperature", TemperatureUpdater),
-            ("ozone", OzoneUpdater),
-            ("stormwatch", StormwatchUpdater),
+            # ("isobars", IsobarUpdater),
+            # ("precipitation", PrecipitationUpdater),
+            # ("clouds", CloudUpdater),
+            # ("wind", WindUpdater),
+            # ("sst", SSTUpdater),
+            # ("currents", CurrentsUpdater),
+            # ("waves", WavesUpdater),
+            # ("temperature", TemperatureUpdater),
+            # ("ozone", OzoneUpdater),
+            # ("stormwatch", StormwatchUpdater),
             ("markers", MarkerUpdater),
         ]
 

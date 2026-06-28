@@ -19,9 +19,7 @@ logger = logging.getLogger(__name__)
 
 
 def default_geojson_path():
-    """src/worldmap/markers/markers.geojson, resolved relative to this module so it
-    works regardless of the process working directory."""
-    return os.path.join(os.path.dirname(__file__), "markers", "markers.geojson")
+    return os.path.join("markers", "markers.geojson")
 
 
 def marker_id(name, lat, lon):
@@ -35,35 +33,40 @@ def load_marker_rows(geojson_path=None):
     """Parse the geojson into upsert-ready row dicts (ALL Point features — places AND
     marine 'feature' entries, since the frontend renders both)."""
     path = geojson_path or default_geojson_path()
-    with open(path) as f:
-        gj = json.load(f)
-    rows = []
-    for feat in gj.get("features", []):
-        props = feat.get("properties", {}) or {}
-        geom = feat.get("geometry", {}) or {}
-        if geom.get("type") != "Point":
-            continue
-        coords = geom.get("coordinates") or []
-        if len(coords) < 2:
-            continue
-        lon, lat = float(coords[0]), float(coords[1])
-        name = props.get("name", "") or ""
-        rows.append(
-            {
-                "id": marker_id(name, lat, lon),
-                "name": name,
-                "kind": props.get("kind", "place") or "place",
-                "country": props.get("country"),
-                "priority": props.get("priority"),
-                "pop": props.get("pop"),
-                "capital": props.get("capital"),
-                "color": props.get("color"),
-                "timezone": props.get("timezone"),
-                "lat": lat,
-                "lon": lon,
-            }
-        )
-    return rows
+
+    try:
+        with open(path) as f:
+            gj = json.load(f)
+        rows = []
+        for feat in gj.get("features", []):
+            props = feat.get("properties", {}) or {}
+            geom = feat.get("geometry", {}) or {}
+            if geom.get("type") != "Point":
+                continue
+            coords = geom.get("coordinates") or []
+            if len(coords) < 2:
+                continue
+            lon, lat = float(coords[0]), float(coords[1])
+            name = props.get("name", "") or ""
+            rows.append(
+                {
+                    "id": marker_id(name, lat, lon),
+                    "name": name,
+                    "kind": props.get("kind", "place") or "place",
+                    "country": props.get("country"),
+                    "priority": props.get("priority"),
+                    "pop": props.get("pop"),
+                    "capital": props.get("capital"),
+                    "color": props.get("color"),
+                    "timezone": props.get("timezone"),
+                    "lat": lat,
+                    "lon": lon,
+                }
+            )
+        return rows
+    except Exception as e:
+        logger.error(f"Error loading markers GeoJSON data: {e}")
+        return None
 
 
 def import_markers(db, geojson_path=None):

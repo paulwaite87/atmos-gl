@@ -229,7 +229,8 @@
   "markers": {
     "enabled": true,
     "marker_color": "White",
-    "marker_fontsize": 11
+    "marker_fontsize": 11,
+    "weather_popup": true
   },
   "data_collector": {
     "enabled": true,

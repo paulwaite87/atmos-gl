@@ -16,6 +16,9 @@ export function loadLayer(map, config) {
     // otherwise fall back to the configured marker_color.
     const colorExpr = (cfg) => ['coalesce', ['get', 'color'], colorOf(cfg)];
 
+    const numberWithCommas = (x) => {
+        return x.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+    }
     // ---- Weather popups -------------------------------------------------------
     // Both the markers AND their current weather come from /api/markers/geojson — the
     // backend markers task samples the GFS temperature/wind/humidity fields valid "now"
@@ -32,8 +35,9 @@ export function loadLayer(map, config) {
         `<div style="display:flex;justify-content:space-between;gap:14px;">` +
         `<span style="color:#666;">${label}</span><strong>${value}</strong></div>`;
     const popupHtml = (props, w) => {
+        const pop = numberWithCommas(props.pop)
         const country = props.country
-            ? `<div style="color:#888;font-size:11px;margin-top:-2px;">${props.country}</div>` : '';
+            ? `<div style="color:#888;font-size:11px;margin-top:-2px;">${props.country}<br/>Pop: ${pop}</div>` : '';
         let body;
         if (w) {
             const parts = [];
