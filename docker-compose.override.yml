@@ -31,8 +31,6 @@ services:
     <<: *app-dev
   data_collector:
     <<: *app-dev
-  satellites_collector:
-    <<: *app-dev
   lightning_collector:
     <<: *app-dev
   layer_builder:

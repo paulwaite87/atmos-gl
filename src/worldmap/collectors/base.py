@@ -129,3 +129,60 @@ class CollectorBase:
             return False  # unchanged
         cls._etag_cache[url] = marker
         return True  # new or changed marker → proceed
+
+
+class AsyncCollectorBase:
+    """Base for long-running async collectors (shipping, lightning).
+
+    These manage their own config/db lifecycle and run as persistent asyncio coroutines
+    with their own sleep/retry cadence. Unlike CollectorBase (sync, periodic), they are
+    not driven by collect_event_feeds() — they self-schedule via await asyncio.sleep().
+
+    They run as separate Docker services for now because the synchronous GFS downloads
+    in DataCollector.collect_once() would starve their event loops if merged into one
+    process. Consolidating them into data_collector is a follow-on step that requires
+    making the GFS/RTOFS downloads async (asyncio.to_thread + thread-safe DB handles).
+
+    The common interface here lets them live in one package, share logging conventions,
+    and be invoked via a standard main() entry point.
+    """
+
+    section: str = ""
+
+    def __init__(self, config_path: str):
+        from worldmap.lib.config import WorldMapConfig
+        from worldmap.lib.db import Database
+
+        self.config_path = config_path
+        self.config = WorldMapConfig(config_path)
+        self.db = Database()
+        self.settings: dict = {}
+        self.refresh_settings()
+
+    def refresh_settings(self) -> None:
+        self.config.load()
+        self.settings = self.config.get_section(self.section) or {}
+        from worldmap.lib.logging import set_loglevel
+        lvl = self.settings.get("log_level")
+        if lvl:
+            set_loglevel(lvl)
+
+    @property
+    def enabled(self) -> bool:
+        return bool(self.settings.get("enabled", False))
+
+    async def run(self) -> None:
+        raise NotImplementedError(f"{type(self).__name__}.run() not implemented")
+
+    @classmethod
+    def main(cls) -> None:
+        """Standard entry point for standalone / Docker service mode."""
+        import argparse
+        import asyncio
+        from worldmap.lib.logging import setup_logging
+
+        setup_logging()
+        parser = argparse.ArgumentParser(description=cls.__name__)
+        parser.add_argument("--config", required=True)
+        args = parser.parse_args()
+        asyncio.run(cls(args.config).run())

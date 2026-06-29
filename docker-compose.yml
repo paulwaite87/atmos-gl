@@ -2,7 +2,7 @@ name: worldmap-ng
 services:
   shipping_collector:
     image: ghcr.io/paulwaite87/worldmap-ng:latest
-    command: python -m worldmap.shipping_collector --config /opt/project/config/worldmap.json
+    command: python -m worldmap.collectors.shipping --config /opt/project/config/worldmap.json
     env_file:
       - .env
     environment:
@@ -51,34 +51,9 @@ services:
     networks:
       - wmap
 
-  satellites_collector:
-    image: ghcr.io/paulwaite87/worldmap-ng:latest
-    command: python -m worldmap.satellites_collector --config /opt/project/config/worldmap.json
-    env_file:
-      - .env
-    environment:
-      - LOG_LEVEL=INFO
-      - TZ=Pacific/Auckland
-      - PYTHONPATH=/opt/project/src
-      - PYTHONUNBUFFERED=1
-      - PGHOST=worldmap_db
-      - PGPORT=5432
-      - PGDATABASE=worldmap
-      - PGUSER=wmap
-      - PGPASSWORD=wmap
-    restart: unless-stopped
-    depends_on:
-      worldmap_db:
-        condition: service_healthy
-    volumes:
-      - ./data:/opt/project/data
-      - ./config:/opt/project/config
-    networks:
-      - wmap
-
   lightning_collector:
     image: ghcr.io/paulwaite87/worldmap-ng:latest
-    command: python -m worldmap.lightning_collector --config /opt/project/config/worldmap.json
+    command: python -m worldmap.collectors.lightning --config /opt/project/config/worldmap.json
     env_file:
       - .env
     environment:

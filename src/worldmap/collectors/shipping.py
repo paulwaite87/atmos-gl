@@ -1,0 +1,167 @@
+#!/usr/bin/env python3
+"""AIS WebSocket stream -> database (ship positions and static data).
+
+Long-running async collector: maintains a WebSocket connection to the AIS stream and
+processes incoming messages in a density-weighted global rotation. Runs as its own
+Docker service because the blocking GFS downloads in DataCollector.collect_once() would
+starve its event loop if merged into data_collector (follow-on: asyncio.to_thread).
+
+Moved from src/worldmap/shipping_collector.py to src/worldmap/collectors/shipping.py to
+live under the shared collectors umbrella. Core logic is unchanged.
+"""
+import os
+import json
+import logging
+import asyncio
+import websockets
+
+from .base import AsyncCollectorBase
+
+logger = logging.getLogger(__name__)
+
+# 10 longitude slices with density weights: >1.0 = more time, <1.0 = quick pass.
+SLICE_DENSITY_MAP = {
+    0: {"label": "Mid-Pacific (East)", "weight": 0.3},           # -180 to -144
+    1: {"label": "Eastern Pacific / Americas West", "weight": 0.5}, # -144 to -108
+    2: {"label": "Americas East / Panama / Caribbean", "weight": 1.5}, # -108 to -72
+    3: {"label": "Western Atlantic", "weight": 0.8},              # -72 to -36
+    4: {"label": "Eastern Atlantic / Gibraltar", "weight": 1.5},  # -36 to 0
+    5: {"label": "Europe / West Africa / Mediterranean", "weight": 2.0}, # 0 to 36
+    6: {"label": "Middle East / Suez / Hormuz / Aden", "weight": 2.0},  # 36 to 72
+    7: {"label": "Indian Ocean / Bay of Bengal", "weight": 1.0},  # 72 to 108
+    8: {"label": "SE Asia / Malacca / South China Sea", "weight": 2.0}, # 108 to 144
+    9: {"label": "Australia / NZ / Japan / West Pacific", "weight": 0.9}, # 144 to 180
+}
+
+
+class ShippingCollector(AsyncCollectorBase):
+    section = "shipping_collector"
+
+    def refresh_settings(self) -> None:
+        super().refresh_settings()
+        self.url = self.settings.get("url")
+        # API key: config file first, then environment variable.
+        self.api_key = (
+            self.settings.get("api_key")
+            or os.environ.get("AIS_API_KEY")
+        )
+        if not self.api_key:
+            logger.error("ShippingCollector: no AIS API key found in config or AIS_API_KEY env var.")
+
+    async def collect_ships_in_region(self, bbox, duration, label):
+        """Connect to AIS stream and process messages for a bounding box."""
+        if not self.api_key:
+            logger.warning(f"Skipping {label}: no API key.")
+            return
+
+        sub = {
+            "APIKey": self.api_key,
+            "BoundingBoxes": [bbox],
+            "FilterMessageTypes": [
+                "ShipStaticData",
+                "PositionReport",
+                "StandardClassBPositionReport",
+                "ExtendedClassBPositionReport",
+            ],
+        }
+
+        static_count = pos_count = 0
+        try:
+            async with websockets.connect(
+                self.url, ping_interval=20, ping_timeout=20
+            ) as ws:
+                await ws.send(json.dumps(sub))
+                start_time = asyncio.get_event_loop().time()
+                logger.debug(f"Collecting shipping for {duration}s — {label}")
+
+                while asyncio.get_event_loop().time() - start_time < duration:
+                    try:
+                        msg_raw = await asyncio.wait_for(ws.recv(), timeout=2.0)
+                        msg = json.loads(msg_raw)
+                        m_type = msg.get("MessageType")
+                        meta = msg.get("MetaData", {})
+                        mmsi = str(meta.get("MMSI") or "")
+                        if not mmsi:
+                            continue
+
+                        if m_type == "ShipStaticData":
+                            body = msg.get("Message", {}).get("ShipStaticData", {})
+                            await asyncio.to_thread(
+                                self.db.update_ship_static_data, mmsi, meta, body, "A"
+                            )
+                            static_count += 1
+                        elif m_type in (
+                            "PositionReport",
+                            "StandardClassBPositionReport",
+                            "ExtendedClassBPositionReport",
+                        ):
+                            tier = "A" if m_type == "PositionReport" else "B"
+                            body = msg.get("Message", {}).get(m_type, {})
+                            await asyncio.to_thread(
+                                self.db.update_ship_position_data, mmsi, meta, body, tier
+                            )
+                            pos_count += 1
+
+                    except asyncio.TimeoutError:
+                        continue
+                    except websockets.ConnectionClosed:
+                        logger.warning(f"WebSocket closed in {label}; reconnecting next slice.")
+                        break
+                    except Exception as exc:
+                        logger.error(f"Message error in {label}: {exc}")
+
+                logger.debug(f"{label}: {static_count} static, {pos_count} position updates.")
+
+        except Exception as exc:
+            logger.error(f"Connection error for {label}: {exc}")
+
+    async def run(self) -> None:
+        import random
+
+        while True:
+            self.refresh_settings()
+
+            if self.enabled:
+                base_duration = int(self.settings.get("listen_duration", 300))
+                sleep_between_runs = int(self.settings.get("sleep_interval", 60))
+                num_chunks = 10
+                slice_width = 36.0
+
+                logger.info("ShippingCollector: starting weighted global rotation.")
+                start_total = self.db.get_current_ship_total()
+
+                try:
+                    start_offset = random.randrange(num_chunks)
+                    for i in ((start_offset + j) % num_chunks for j in range(num_chunks)):
+                        meta = SLICE_DENSITY_MAP[i]
+                        lon_start = -180.0 + (i * slice_width)
+                        lon_end = 180.0 if i == num_chunks - 1 else lon_start + slice_width
+                        bbox = [[-90.0, lon_start], [90.0, lon_end]]
+                        label = f"Slice {i} [{meta['label']}]"
+                        logger.info(label)
+                        await self.collect_ships_in_region(
+                            bbox, int(base_duration * meta["weight"]), label
+                        )
+
+                    end_total = self.db.get_current_ship_total()
+                    logger.info(
+                        f"ShippingCollector: rotation complete. "
+                        f"Added {end_total - start_total} vessels."
+                    )
+                except Exception as exc:
+                    logger.error(f"ShippingCollector: loop error: {exc}")
+                    await asyncio.sleep(30)
+                    continue
+
+                await asyncio.sleep(sleep_between_runs)
+            else:
+                logger.debug("ShippingCollector: disabled.")
+                await asyncio.sleep(60)
+
+
+if __name__ == "__main__":
+    ShippingCollector.main()
+
+def main():
+    ShippingCollector.main()
+

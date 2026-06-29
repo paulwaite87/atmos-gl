@@ -55,9 +55,8 @@ dependencies = [
 datacollector = "worldmap.data_collector:main"
 layerbuilder = "worldmap.layer_builder:main"
 housekeeper = "worldmap.housekeeper:main"
-satellitescollector = "worldmap.satellites_collector:main"
-shippingcollector = "worldmap.shipping_collector:main"
-lightningcollector = "worldmap.lightning_collector:main"
+shippingcollector = "worldmap.collectors.shipping:main"
+lightningcollector = "worldmap.collectors.lightning:main"
 
 
 [build-system]

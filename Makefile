@@ -14,8 +14,8 @@ BUILDER_SERVICE = layer_builder
 DUMP_FILE = worldmap_dump.sql
 
 # Backend services that run your mounted Python code (everything except UI/DB).
-BACKEND_SERVICES = shipping_collector data_collector satellites_collector \
-                   lightning_collector layer_builder housekeeper map_api
+BACKEND_SERVICES = shipping_collector data_collector lightning_collector \
+                   layer_builder housekeeper map_api
 
 ## reload: Apply CODE changes live — just restart (no rebuild)
 reload:
