@@ -1,0 +1,12 @@
+name: Github Access
+version: 0.0.1
+schema: v1
+mcpServers:
+  - name: GitHub Access
+    command: npx
+    args:
+      - "-y"
+      - "@modelcontextprotocol/server-github"
+    env:
+      GITHUB_TOKEN: ${GITHUB_TOKEN}
+

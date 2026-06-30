@@ -182,7 +182,7 @@
     "runs_per_day": 24
   },
   "quakes": {
-    "enabled": false,
+    "enabled": true,
     "url": "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.csv",
     "outfile": "data/quakes.json",
     "icon_zoom": 0.7,
@@ -226,7 +226,7 @@
     "color": ""
   },
   "markers": {
-    "enabled": false,
+    "enabled": true,
     "outfile": "data/markers.json",
     "marker_color": "White",
     "marker_fontsize": 11,

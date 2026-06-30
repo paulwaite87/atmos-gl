@@ -6,6 +6,24 @@
    "geometry": {
     "type": "Point",
     "coordinates": [
+     175.4518021,
+     -41.072692
+    ]
+   },
+   "properties": {
+    "name": "Greytown",
+    "priority": 38,
+    "kind": "place",
+    "country": "New Zealand",
+    "pop": 2840,
+    "capital": false
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
      116.3942,
      39.9017
     ]
