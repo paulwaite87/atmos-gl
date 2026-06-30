@@ -35,6 +35,25 @@ from worldmap.collectors import collect_event_feeds
 
 logger = logging.getLogger("worldmap.data_collector")
 
+# Async collectors that can run IN-PROCESS inside data_collector instead of as their own
+# Docker service. Keyed by config-section name; resolved lazily (importlib) so a missing
+# optional dependency for one collector can't break data_collector startup. Selected via
+# config: data_collector.embedded_collectors = ["shipping_collector", "lightning_collector"].
+_EMBEDDABLE_COLLECTORS = {
+    "shipping_collector": ("worldmap.collectors.shipping", "ShippingCollector"),
+    "lightning_collector": ("worldmap.collectors.lightning", "LightningCollector"),
+}
+
+
+def _resolve_embeddable(name):
+    spec = _EMBEDDABLE_COLLECTORS.get(name)
+    if spec is None:
+        return None
+    import importlib
+
+    module_name, cls_name = spec
+    return getattr(importlib.import_module(module_name), cls_name)
+
 
 class DataCollector:
     """Background process that pre-fetches and UNPACKS data into the database.
@@ -53,6 +72,7 @@ class DataCollector:
     """
 
     def __init__(self, config_path):
+        self.config_path = config_path
         self.config = WorldMapConfig(config_path)
         self.db = Database()
         self.refresh_settings()
@@ -613,39 +633,105 @@ class DataCollector:
         # the download if the remote is unchanged (HEAD/ETag).
         collect_event_feeds(self.config, self.db, self._event_last_runs)
 
+    async def _supervise_collector(self, collector_cls):
+        """Run one embedded async collector in-process, restarting it on crash.
+
+        Each embedded collector constructs its OWN Database() (psycopg2 connections aren't
+        shareable across threads, and these collectors offload their DB writes via
+        asyncio.to_thread), and keeps its own `enabled` kill-switch — checked inside its
+        run() loop — so it can still be paused independently (e.g. to back off a rate
+        limit) without touching data_collector. A crash is logged and the collector is
+        restarted after a short delay rather than taking the whole process down.
+        """
+        name = collector_cls.__name__
+        while True:
+            try:
+                collector = collector_cls(self.config_path)
+                logger.info(f"Embedded collector {name}: started.")
+                await collector.run()
+                # run() is an infinite loop; returning means it exited cleanly somehow.
+                logger.warning(f"Embedded collector {name}: run() returned; restarting.")
+            except asyncio.CancelledError:
+                logger.info(f"Embedded collector {name}: cancelled.")
+                raise
+            except Exception as exc:  # noqa: BLE001
+                logger.error(
+                    f"Embedded collector {name}: crashed ({exc}); restarting in 30s.",
+                    exc_info=True,
+                )
+            await asyncio.sleep(30)
+
+    def _spawn_embedded_collectors(self):
+        """Spawn the configured in-process async collectors as supervised tasks.
+
+        Defaults to ALL known embeddable collectors, so that removing their standalone
+        Docker services doesn't silently stop them. Override via config to run a subset
+        in-process (e.g. [] to run none here and keep them as standalone services). Each
+        collector's own `enabled` flag still gates whether it actually collects, so an
+        embedded-but-disabled collector simply idles.
+        """
+        names = self.config.get_section("data_collector").get(
+            "embedded_collectors", list(_EMBEDDABLE_COLLECTORS)
+        )
+        tasks = []
+        for name in names:
+            cls = _resolve_embeddable(name)
+            if cls is None:
+                logger.warning(f"Unknown embedded collector '{name}'; skipping.")
+                continue
+            tasks.append(
+                asyncio.create_task(self._supervise_collector(cls), name=f"embed:{name}")
+            )
+            logger.info(f"Data Collector: running '{name}' in-process.")
+        return tasks
+
     async def run(self):
         # Two cadences: the heavy full refresh runs every update_period_s (set via
         # update_minutes, or legacy update_hours); a light backfill drain runs every
         # backfill_poll_seconds (default 60) so frontend-flagged missing data fills within
         # ~a minute rather than waiting for the next full cycle.
+        #
+        # collect_once() and the backfill drain are SYNCHRONOUS and do blocking network +
+        # CPU work, so they're offloaded to a worker thread (asyncio.to_thread). That keeps
+        # the event loop free for any embedded async collectors (shipping/lightning) which
+        # would otherwise be starved while a weather cycle runs. The heavy numeric work
+        # (cfgrib decode, numpy) releases the GIL, so the embedded collectors keep ticking.
+        embedded_tasks = self._spawn_embedded_collectors()
+
         poll_s = int(self.settings.get("backfill_poll_seconds", 60))
         last_full = None  # None => run a full refresh immediately on first iteration
-        while True:
-            self.refresh_settings()  # recomputes self.update_period_s, cache_hours, etc.
-            poll_s = int(self.settings.get("backfill_poll_seconds", poll_s))
-            full_period = self.update_period_s
-            enabled = self.settings.get("enabled", False)
-            now = asyncio.get_event_loop().time()
+        try:
+            while True:
+                self.refresh_settings()  # recomputes self.update_period_s, cache_hours, etc.
+                poll_s = int(self.settings.get("backfill_poll_seconds", poll_s))
+                full_period = self.update_period_s
+                enabled = self.settings.get("enabled", False)
+                now = asyncio.get_event_loop().time()
 
-            if enabled and (last_full is None or (now - last_full) >= full_period):
-                logger.info("Data Collector: refreshing datasets")
-                try:
-                    self.collect_once()
-                except Exception as e:
-                    logger.error(f"Data Collector cycle failed: {e}")
-                last_full = now
-            elif not enabled:
-                logger.debug("Data Collector disabled. Skipping full refresh.")
+                if enabled and (last_full is None or (now - last_full) >= full_period):
+                    logger.info("Data Collector: refreshing datasets")
+                    try:
+                        await asyncio.to_thread(self.collect_once)
+                    except Exception as e:
+                        logger.error(f"Data Collector cycle failed: {e}")
+                    last_full = now
+                elif not enabled:
+                    logger.debug("Data Collector disabled. Skipping full refresh.")
 
-            # Backfill drain runs every poll regardless of the full-refresh timer (still
-            # gated on enabled, so a disabled collector does nothing).
-            if enabled:
-                try:
-                    self._drain_backfill()
-                except Exception as e:
-                    logger.error(f"backfill drain failed: {e}")
+                # Backfill drain runs every poll regardless of the full-refresh timer
+                # (still gated on enabled, so a disabled collector does nothing).
+                if enabled:
+                    try:
+                        await asyncio.to_thread(self._drain_backfill)
+                    except Exception as e:
+                        logger.error(f"backfill drain failed: {e}")
 
-            await asyncio.sleep(max(5, poll_s))
+                await asyncio.sleep(max(5, poll_s))
+        finally:
+            for t in embedded_tasks:
+                t.cancel()
+            if embedded_tasks:
+                await asyncio.gather(*embedded_tasks, return_exceptions=True)
 
 
 def main():

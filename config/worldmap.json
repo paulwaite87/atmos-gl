@@ -246,7 +246,6 @@
     "log_level": "DEBUG"
   },
   "satellites_collector": {
-    "enabled": true,
     "url": "https://celestrak.org/NORAD/elements",
     "groups": "stations,weather,science,resource",
     "update_hours": 12,
