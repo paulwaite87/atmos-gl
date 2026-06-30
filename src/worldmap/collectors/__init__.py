@@ -16,6 +16,7 @@ Synchronous collectors — driven by collect_event_feeds() in DataCollector
   storms     — NHC/JTWC ATCF b/a-deck files, runs_per_day=8
   volcanoes  — NOAA HazEL REST API, runs_per_day=1
   satellites — CelesTrak OMM JSON, period derived from update_hours (default 12h)
+  markers    — LOCAL markers.geojson -> DB 'markers' table (mtime-gated, not a remote feed)
 
 Async collectors — persistent coroutines, run as separate Docker services for now
 ----------------------------------------------------------------------------------
@@ -35,11 +36,12 @@ from .quakes import QuakeCollector
 from .storms import StormsCollector
 from .volcanoes import VolcanoesCollector
 from .satellites import SatellitesCollector
+from .markers_sync import MarkersSyncCollector
 
 logger = logging.getLogger(__name__)
 
 # Synchronous periodic collectors: driven by collect_event_feeds().
-COLLECTORS = (QuakeCollector, StormsCollector, VolcanoesCollector, SatellitesCollector)
+COLLECTORS = (QuakeCollector, StormsCollector, VolcanoesCollector, SatellitesCollector, MarkersSyncCollector)
 
 
 def collect_event_feeds(config, db, last_runs: dict) -> None:

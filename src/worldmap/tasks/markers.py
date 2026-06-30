@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
-"""Markers backend task: maintains the DB 'markers' table.
+"""Markers backend task: samples weather onto the DB 'markers' table.
 
-Two jobs each cycle:
-  1. Import — sync the table's static rows with the canonical geojson
-     (src/worldmap/markers/markers.geojson) via the markers importer. Runs ALWAYS, so
-     the frontend can render markers from the API whether or not weather is enabled.
-  2. Weather — when markers.weather_popup is on, sample the GFS fields we already ingest
-     (temperature TMP@2m, wind UGRD/VGRD@10m, humidity RH@2m) at the run hour valid "now",
-     bilinearly at each place marker, and write the wx_* columns.
+The geojson->DB sync of marker definitions is owned by data_collector (the markers_sync
+collector); this task is now weather-only:
+  - Weather — when markers.weather_popup is on, sample the GFS fields we already ingest
+    (temperature TMP@2m, wind UGRD/VGRD@10m, humidity RH@2m) at the run hour valid "now",
+    bilinearly at each place marker, and write the wx_* columns.
+
+It reads the place list straight from the canonical geojson (load_marker_rows) so the ids
+match exactly the rows markers_sync upserts, and updates only the wx_* columns.
 
 No external weather API and no JSON file: the frontend reads everything (static markers +
 current weather) from /api/markers/geojson. Sampled values are the GFS model valid-now —
@@ -20,7 +21,7 @@ import numpy as np
 
 from worldmap.lib.config import WorldMapConfig
 from worldmap.lib import fieldstore
-from worldmap.markers_importer import import_markers, load_marker_rows
+from worldmap.collectors.markers_sync import load_marker_rows
 from .common import Updater, MapData
 
 logger = logging.getLogger(__name__)
@@ -97,13 +98,6 @@ class MarkerUpdater(Updater):
     # ---- main ---------------------------------------------------------------
     def run(self):
         db = self._store.db
-
-        # 1) Keep the markers table consistent with the canonical geojson — ALWAYS, since
-        #    the frontend renders markers from this table regardless of weather.
-        try:
-            import_markers(db, geojson_path=self.input_path)
-        except Exception as e:
-            logger.error(f"Markers: importer failed: {e}")
 
         resolved = self._resolve_run_hour()
         if not resolved:

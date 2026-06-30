@@ -1,0 +1,174 @@
+name: worldmap-ng
+services:
+  data_collector:
+    image: ghcr.io/paulwaite87/worldmap-ng:latest
+    command: python -m worldmap.data_collector --config /opt/project/config/worldmap.json
+    env_file:
+      - .env
+    environment:
+      - LOG_LEVEL=INFO
+      - AIS_API_KEY=${AIS_API_KEY}
+      - OPENWEATHER_API_KEY=${OPENWEATHER_API_KEY}
+      - TZ=Pacific/Auckland
+      - PYTHONPATH=/opt/project/src
+      - PYTHONUNBUFFERED=1
+      - PGHOST=worldmap_db
+      - PGPORT=5432
+      - PGDATABASE=worldmap
+      - PGUSER=wmap
+      - PGPASSWORD=wmap
+    restart: unless-stopped
+    depends_on:
+      worldmap_db:
+        condition: service_healthy
+    volumes:
+      - ./data:/opt/project/data
+      - ./config:/opt/project/config
+    networks:
+      - wmap
+
+  layer_builder:
+    image: ghcr.io/paulwaite87/worldmap-ng:latest
+    command: python -m worldmap.layer_builder --config /opt/project/config/worldmap.json
+    env_file:
+      - .env
+    environment:
+      - LOG_LEVEL=INFO
+      - TZ=Pacific/Auckland
+      - PYTHONPATH=/opt/project/src
+      - PYTHONUNBUFFERED=1
+      - PGHOST=worldmap_db
+      - PGPORT=5432
+      - PGDATABASE=worldmap
+      - PGUSER=wmap
+      - PGPASSWORD=wmap
+    restart: unless-stopped
+    depends_on:
+      worldmap_db:
+        condition: service_healthy
+    volumes:
+      - ./data:/opt/project/data
+      - ./config:/opt/project/config
+      - ./markers:/opt/project/markers
+    networks:
+      - wmap
+
+  housekeeper:
+    image: ghcr.io/paulwaite87/worldmap-ng:latest
+    command: python -m worldmap.housekeeper --config /opt/project/config/worldmap.json
+    env_file:
+      - .env
+    environment:
+      - LOG_LEVEL=INFO
+      - TZ=Pacific/Auckland
+      - PYTHONPATH=/opt/project/src
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+    volumes:
+      - ./data:/opt/project/data
+      - ./config:/opt/project/config
+    networks:
+      - wmap
+
+  map_api:
+    image: ghcr.io/paulwaite87/worldmap-ng:latest
+    # Reverted to a simpler runtime installation since wmapuser now owns the virtual environment
+    command: >
+      bash -c "uv pip install fastapi uvicorn && python -m uvicorn worldmap.api:app --host 0.0.0.0 --port 9000"
+    ports:
+      - "9000:9000"
+    env_file:
+      - .env
+    environment:
+      - LOG_LEVEL=INFO
+      - TZ=Pacific/Auckland
+      - PYTHONPATH=/opt/project/src
+      - PYTHONUNBUFFERED=1
+      - PGHOST=worldmap_db
+      - PGPORT=5432
+      - PGDATABASE=worldmap
+      - PGUSER=wmap
+      - PGPASSWORD=wmap
+      - CONFIG_PATH=/opt/project/config/worldmap.json
+      - MAPTILER_API_KEY=${MAPTILER_API_KEY}
+    restart: unless-stopped
+    depends_on:
+      worldmap_db:
+        condition: service_healthy
+    volumes:
+      - ./data:/opt/project/data
+      - ./config:/opt/project/config
+    networks:
+      - wmap
+
+  map_ui:
+    image: ghcr.io/paulwaite87/worldmap-ng-ui:latest
+    ports:
+      - "8180:8080"
+    depends_on:
+      - map_api
+    networks:
+      - wmap
+
+  worldmap_db_init:
+    image: alpine:latest
+    command: >
+      sh -c "chown ${UID:-1000}:${GID:-1000} /var/lib/postgresql/data && 
+             chown ${UID:-1000}:${GID:-1000} /var/log/postgresql"
+    volumes:
+      - wmap-pgdata:/var/lib/postgresql/data
+      - postgres_logs:/var/log/postgresql
+    networks:
+      - wmap
+
+  worldmap_db:
+    image: ghcr.io/paulwaite87/worldmap-ng-db:latest
+    # The database STILL needs the user directive because it uses a pre-built image,
+    # not your custom Dockerfile
+    user: "${UID:-1000}:${GID:-1000}"
+    depends_on:
+      worldmap_db_init:
+        condition: service_completed_successfully
+    environment:
+      POSTGRES_USER: wmap
+      POSTGRES_PASSWORD: wmap
+      POSTGRES_DB: worldmap
+      PGTZ: Pacific/Auckland
+    ports:
+      - "15432:5432"
+    restart: unless-stopped
+    volumes:
+      - wmap-pgdata:/var/lib/postgresql/data
+      - postgres_logs:/var/log/postgresql
+    command: >
+      postgres
+      -c max_wal_size=512MB
+      -c min_wal_size=128MB
+      -c checkpoint_timeout=15min
+      -c log_checkpoints=off
+      -c logging_collector=on
+      -c log_destination=stderr
+      -c log_statement=all
+      -c log_directory=/var/log/postgresql
+      -c log_filename='postgresql.log'
+      -c log_rotation_size=10MB
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U wmap -d worldmap"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - wmap
+
+networks:
+  wmap:
+    driver: bridge
+
+volumes:
+  wmap-pgdata:
+  postgres_logs:

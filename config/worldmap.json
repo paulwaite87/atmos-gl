@@ -32,7 +32,7 @@
     "cache_expiry_days": 3
   },
   "isobars": {
-    "enabled": false,
+    "enabled": true,
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
     "outfile": "data/isobars.png",
     "level_of_detail": "3",
@@ -45,7 +45,7 @@
     "cache_expiry_days": 3
   },
   "wind": {
-    "enabled": false,
+    "enabled": true,
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
     "outfile": "data/wind.png",
     "level_of_detail": "2",
@@ -65,7 +65,7 @@
     "cache_expiry_days": 3
   },
   "precipitation": {
-    "enabled": false,
+    "enabled": true,
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
     "outfile": "data/precipitation.png",
     "level_of_detail": "1",
@@ -159,7 +159,7 @@
     "cache_expiry_days": 3
   },
   "storms": {
-    "enabled": false,
+    "enabled": true,
     "jtwc_url": "https://www.ssd.noaa.gov/PS/TROP/DATA/ATCF/JTWC/",
     "nhc_url": "https://ftp.nhc.noaa.gov/atcf/fst/",
     "outfile": "data/storms.json",
@@ -173,7 +173,7 @@
     "runs_per_day": 8
   },
   "lightning": {
-    "enabled": false,
+    "enabled": true,
     "outfile": "data/lightning.json",
     "icon_zoom": 1,
     "strike_recent_minutes": 15,
@@ -214,7 +214,7 @@
     "runs_per_day": 24
   },
   "satellites": {
-    "enabled": false,
+    "enabled": true,
     "sat_names": [
       "ISS (ZARYA)",
       "HST"
@@ -246,6 +246,7 @@
     "log_level": "DEBUG"
   },
   "satellites_collector": {
+    "enabled": true,
     "url": "https://celestrak.org/NORAD/elements",
     "groups": "stations,weather,science,resource",
     "update_hours": 12,
@@ -260,7 +261,7 @@
     "log_level": "INFO"
   },
   "lightning_collector": {
-    "enabled": false,
+    "enabled": true,
     "url": "https://demo.openweathermap.org/lightning/1.0/data",
     "expiry_hours": 24,
     "log_level": "INFO"
