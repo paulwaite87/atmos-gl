@@ -31,6 +31,7 @@ from worldmap.lib.rtofs import (
 from worldmap.lib.unpack import ATMOS_UNPACKERS, CURRENTS_UNPACKERS, WAVES_UNPACKERS
 from worldmap.lib.oisst import build_oisst_url, oisst_cache_path, remote_is_newer
 from worldmap.lib.gibs import build_clouds_url, clouds_cache_path
+from worldmap.collectors import collect_event_feeds
 
 logger = logging.getLogger("worldmap.data_collector")
 
@@ -61,6 +62,7 @@ class DataCollector:
         workdir = self.config.get_setting("common", "workdir", ".")
         self.workdir = workdir
         self.store = fieldstore.get_store(workdir, db=self.db)
+        self._event_last_runs: dict[str, float] = {}
         logger.debug("Initializing Data Collector")
 
     def refresh_settings(self):
@@ -605,6 +607,11 @@ class DataCollector:
             self._collect_clouds()
         except Exception as e:
             logger.error(f"datasource clouds failed: {e}")
+
+        # Event feeds: quakes, storms, volcanoes, satellites. Each runs at its own
+        # schedule (runs_per_day / update_hours) via is_stale(); has_new_data() skips
+        # the download if the remote is unchanged (HEAD/ETag).
+        collect_event_feeds(self.config, self.db, self._event_last_runs)
 
     async def run(self):
         # Two cadences: the heavy full refresh runs every update_period_s (set via
