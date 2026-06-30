@@ -5,6 +5,11 @@ Each collector is a `CollectorBase` subclass responsible for ONE external source
 data_collector drives them via `collect_event_feeds()`, which handles per-collector rate
 limiting (runs_per_day) and cheap remote-freshness checks (HEAD/ETag) independently.
 
+Collection is UNCONDITIONAL of any layer `enabled` flag: `enabled` is a frontend
+visibility control, and the data must already be in the DB so a layer renders the moment
+a user toggles it on. Collectors run on their own schedule whether their layer is shown
+or not.
+
 Synchronous collectors — driven by collect_event_feeds() in DataCollector
 --------------------------------------------------------------------------
   quakes     — USGS earthquake CSV, runs_per_day=24 (every ~hour)
@@ -38,7 +43,12 @@ COLLECTORS = (QuakeCollector, StormsCollector, VolcanoesCollector, SatellitesCol
 
 
 def collect_event_feeds(config, db, last_runs: dict) -> None:
-    """Run each enabled event-feed collector, subject to per-collector scheduling.
+    """Run each event-feed collector, subject to per-collector scheduling.
+
+    Collection is UNCONDITIONAL — it does NOT depend on the layer's `enabled` flag. The
+    `enabled` flag is a FRONTEND visibility control (show/hide the layer); the data must
+    already be in the DB so a layer renders instantly the moment a user enables it. So a
+    collector runs whenever it is due, regardless of whether its layer is currently shown.
 
     Per-collector behaviour
     -----------------------
@@ -58,9 +68,6 @@ def collect_event_feeds(config, db, last_runs: dict) -> None:
         key = CollectorCls.section
         try:
             feed = CollectorCls(config, db)
-            if not feed.enabled:
-                logger.debug(f"{key}: disabled; skipping.")
-                continue
             if not feed.is_stale(last_runs.get(key)):
                 logger.debug(
                     f"{key}: not yet due "
