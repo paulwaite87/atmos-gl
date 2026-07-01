@@ -30,6 +30,7 @@ logger = logging.getLogger("worldmap.collectors.gfs_atmos")
 class GfsAtmosCollector(FieldCollectorBase):
     datasource_key = "gfs"
     baseline_key = "gfs"
+    products = ATMOS_UNPACKERS
 
     def resolve_baseline(self, base_url: str):
         return resolve_gfs_baseline_with_coverage(base_url, self.cache_hours)
@@ -114,3 +115,30 @@ class GfsAtmosCollector(FieldCollectorBase):
             )
         except Exception as e:
             logger.debug(f"prune skipped: {e}")
+
+    def backfill_hour(self, run_date: str, run_id: str, fhour: int, product: str) -> bool:
+        """Fetch a single atmos product for one (date, run, hour) via the byte-range path,
+        mirroring collect()'s inner body for exactly one hour/product."""
+        base_url = self.base_url()
+        unpacker = ATMOS_UNPACKERS[product]
+        aurl = build_atmos_url(base_url, run_date, run_id, fhour)
+        ranges = gfs_index_ranges(aurl, ATMOS_TARGETS)
+        if not ranges:
+            return False
+        data = download_byte_ranges(aurl, ranges)
+        if not data:
+            return False
+        valid = self._valid_time(run_date, run_id, fhour)
+        tmp = tempfile.NamedTemporaryFile(suffix=".grib2", delete=False)
+        tmp.write(data)
+        tmp.close()
+        try:
+            fields = unpacker(tmp.name)
+            self.store.store_field(run_date, run_id, fhour, product, fields, valid)
+            return True
+        finally:
+            for path in [tmp.name] + glob.glob(tmp.name + "*.idx"):
+                try:
+                    os.remove(path)
+                except OSError:
+                    pass

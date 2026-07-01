@@ -31,6 +31,7 @@ logger = logging.getLogger("worldmap.collectors.rtofs_currents")
 class RtofsCurrentsCollector(FieldCollectorBase):
     datasource_key = "currents"
     baseline_key = "rtofs"
+    products = CURRENTS_UNPACKERS
 
     def resolve_baseline(self, base_url: str):
         return resolve_rtofs_baseline(base_url)
@@ -120,3 +121,35 @@ class RtofsCurrentsCollector(FieldCollectorBase):
             )
         except Exception as e:
             logger.debug(f"currents prune skipped: {e}")
+
+    def backfill_hour(self, run_date: str, run_id: str, fhour: int, product: str) -> bool:
+        """Fetch a single RTOFS currents hour on demand. RTOFS URLs key off date + fhour (one
+        daily cycle), with the nowcast as a fallback when the forecast hour isn't published
+        — unconditionally here (unlike collect()'s window loop, which only falls back for
+        fhour_0): a backfill request is for one specific missing hour, so a nowcast is still
+        better than nothing for it."""
+        base_url = self.base_url()
+        unpacker = CURRENTS_UNPACKERS[product]
+        url = build_currents_url(base_url, run_date, fhour)
+        if not remote_exists(url):
+            fallback = build_currents_nowcast_url(base_url, run_date)
+            if remote_exists(fallback):
+                url = fallback
+            else:
+                return False
+        data = download_whole(url)
+        if not data:
+            return False
+        valid = self._valid_time(run_date, run_id, fhour)
+        tmp = tempfile.NamedTemporaryFile(suffix=".nc", delete=False)
+        tmp.write(data)
+        tmp.close()
+        try:
+            fields = unpacker(tmp.name)
+            self.store.store_field(run_date, run_id, fhour, product, fields, valid)
+            return True
+        finally:
+            try:
+                os.remove(tmp.name)
+            except OSError:
+                pass

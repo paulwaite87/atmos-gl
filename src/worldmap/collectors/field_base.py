@@ -18,8 +18,16 @@ CycleContext exists because GfsAtmosCollector and GfsWavesCollector both need th
 run baseline. Whoever drives the field collectors each full-refresh pass constructs ONE
 CycleContext and passes it to every collect(ctx) call; the second collector asking for a
 given baseline key gets the memoised result instead of a second NOMADS probe.
+
+drain_backfill() is the generic counterpart to collectors/__init__.py's _drive(): where
+_drive() drives CollectorBase subclasses through is_stale/has_new_data/collect(), this drives
+FieldCollectorBase subclasses through the frontend-flagged backfill queue, routing each
+claimed (run_date, run_id, fhour, product) request to whichever collector's `products` dict
+owns that product. Adding a new source's backfill support is then "add its class to the
+list", not a new branch here.
 """
 import logging
+from datetime import datetime, timedelta, timezone
 
 from .base import CollectorBase
 
@@ -59,6 +67,7 @@ class FieldCollectorBase(CollectorBase):
     section = "data_collector"
     datasource_key: str = ""  # override in every subclass
     baseline_key: str = ""  # override in every subclass
+    products: dict = {}  # override: {product_name: unpacker} this collector owns
 
     def __init__(self, config, db, store):
         super().__init__(config, db)
@@ -88,3 +97,73 @@ class FieldCollectorBase(CollectorBase):
         ctx.baseline(self.baseline_key, lambda: self.resolve_baseline(base_url)). Override in
         every subclass."""
         raise NotImplementedError(f"{type(self).__name__}.collect() not implemented")
+
+    @staticmethod
+    def _valid_time(run_date: str, run_id: str, fhour) -> datetime:
+        run_ts = datetime.strptime(f"{run_date} {run_id}", "%Y-%m-%d %H").replace(
+            tzinfo=timezone.utc
+        )
+        return run_ts + timedelta(hours=int(fhour))
+
+    def backfill_hour(self, run_date: str, run_id: str, fhour: int, product: str) -> bool:
+        """Fetch + store a single (run_date, run_id, fhour, product) hour on demand, for the
+        frontend-flagged backfill queue (drain_backfill(), below). Returns True if the field
+        was fetched and stored, False if upstream doesn't have it. Override per source."""
+        raise NotImplementedError(
+            f"{type(self).__name__}.backfill_hour() not implemented"
+        )
+
+
+def drain_backfill(config, db, store, collector_classes) -> None:
+    """Service demand-driven backfill requests flagged by the frontend (404s).
+
+    Claims pending rows (claim_backfill_requests uses SELECT ... FOR UPDATE SKIP LOCKED, so
+    this can safely run alongside FieldIngest.drain_backfill() during the Phase 3 shadow
+    period without either double-claiming a row), routes each to whichever collector_classes
+    entry owns that product via its `products` dict, fetches it, and marks the row done or
+    failed. The render task then gap-fills on its next pass.
+    """
+    claimed = db.claim_backfill_requests(limit=20)
+    if not claimed:
+        return
+    for req in claimed:
+        d, run, fhour, product = (
+            req["run_date"],
+            req["run_id"],
+            int(req["fhour"]),
+            req["product"],
+        )
+        d_str = d.isoformat() if hasattr(d, "isoformat") else str(d)
+
+        # Already present (raced with the normal cycle, or with FieldIngest's own drain)?
+        if store.field_exists(d_str, run, fhour, product):
+            db.mark_backfill(d_str, run, fhour, product, "done")
+            continue
+
+        collector_cls = next(
+            (c for c in collector_classes if product in c.products), None
+        )
+        if collector_cls is None:
+            logger.info(f"backfill: unknown product {product}; marking failed")
+            db.mark_backfill(d_str, run, fhour, product, "failed")
+            continue
+
+        collector = collector_cls(config, db, store)
+        if not collector.base_url():
+            logger.warning(
+                f"backfill: no '{collector.datasource_key}' datasource configured"
+            )
+            db.mark_backfill(d_str, run, fhour, product, "failed")
+            continue
+
+        try:
+            ok = collector.backfill_hour(d_str, run, fhour, product)
+            db.mark_backfill(d_str, run, fhour, product, "done" if ok else "failed")
+            logger.info(
+                f"backfill {product} {d_str} {run}Z f{fhour:03d}: "
+                f"{'fetched' if ok else 'upstream missing -> failed'}"
+            )
+        except Exception as e:
+            # Transient error: leave as failed (a later re-request resets to requested).
+            logger.debug(f"backfill {product} f{fhour:03d} error: {e}")
+            db.mark_backfill(d_str, run, fhour, product, "failed")

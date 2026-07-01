@@ -30,6 +30,7 @@ logger = logging.getLogger("worldmap.collectors.gfs_waves")
 class GfsWavesCollector(FieldCollectorBase):
     datasource_key = "gfs"
     baseline_key = "gfs"
+    products = WAVES_UNPACKERS
 
     def resolve_baseline(self, base_url: str):
         return resolve_gfs_baseline_with_coverage(base_url, self.cache_hours)
@@ -104,3 +105,29 @@ class GfsWavesCollector(FieldCollectorBase):
             self.store.prune_except_run(run_date_str, run_id, products=[product])
         except Exception as e:
             logger.debug(f"waves prune skipped: {e}")
+
+    def backfill_hour(self, run_date: str, run_id: str, fhour: int, product: str) -> bool:
+        """Fetch the GFS-Wave global 0p25 GRIB for one hour (whole-file), mirroring
+        collect()'s inner body for exactly one hour."""
+        base_url = self.base_url()
+        unpacker = WAVES_UNPACKERS[product]
+        url = build_wave_url(base_url, run_date, run_id, fhour)
+        if not remote_exists(url):
+            return False
+        data = download_whole(url)
+        if not data:
+            return False
+        valid = self._valid_time(run_date, run_id, fhour)
+        tmp = tempfile.NamedTemporaryFile(suffix=".grib2", delete=False)
+        tmp.write(data)
+        tmp.close()
+        try:
+            fields = unpacker(tmp.name)
+            self.store.store_field(run_date, run_id, fhour, product, fields, valid)
+            return True
+        finally:
+            for path in [tmp.name] + glob.glob(tmp.name + "*.idx"):
+                try:
+                    os.remove(path)
+                except OSError:
+                    pass

@@ -38,7 +38,7 @@ from worldmap.lib.logging import setup_logging, set_loglevel
 from worldmap.lib import fieldstore
 from worldmap.collectors import collect_event_feeds, collect_file_caches
 from worldmap.collectors.field_ingest import FieldIngest
-from worldmap.collectors.field_base import CycleContext
+from worldmap.collectors.field_base import CycleContext, drain_backfill
 from worldmap.collectors.gfs_atmos import GfsAtmosCollector
 from worldmap.collectors.gfs_waves import GfsWavesCollector
 from worldmap.collectors.rtofs_currents import RtofsCurrentsCollector
@@ -241,6 +241,21 @@ class CollectorService:
                         await asyncio.to_thread(self.fields.drain_backfill)
                     except Exception as e:
                         logger.error(f"backfill drain failed: {e}")
+
+                    # Shadow drain (see module docstring): claim_backfill_requests() uses
+                    # SELECT ... FOR UPDATE SKIP LOCKED, so this can run right after the
+                    # FieldIngest drain above without either double-claiming a row — it just
+                    # picks up whatever's left this poll.
+                    try:
+                        await asyncio.to_thread(
+                            drain_backfill,
+                            self.config,
+                            self.db,
+                            self.store,
+                            _FIELD_COLLECTOR_CLASSES,
+                        )
+                    except Exception as e:
+                        logger.error(f"shadow backfill drain failed: {e}")
 
                 await asyncio.sleep(max(5, poll_s))
         finally:
