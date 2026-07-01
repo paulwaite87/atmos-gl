@@ -173,7 +173,7 @@
     "runs_per_day": 8
   },
   "lightning": {
-    "enabled": true,
+    "enabled": false,
     "outfile": "data/lightning.json",
     "icon_zoom": 1,
     "strike_recent_minutes": 15,
@@ -261,7 +261,7 @@
     "log_level": "INFO"
   },
   "lightning_collector": {
-    "enabled": true,
+    "enabled": false,
     "url": "https://demo.openweathermap.org/lightning/1.0/data",
     "expiry_hours": 24,
     "log_level": "INFO"
