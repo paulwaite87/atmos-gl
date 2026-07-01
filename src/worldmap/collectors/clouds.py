@@ -77,8 +77,8 @@ class CloudsCollector(CollectorBase):
         layers = self.settings.get(
             "layers", "VIIRS_SNPP_CorrectedReflectance_TrueColor"
         )
-        url = build_clouds_url(base_url, width, height, time_param, layers=layers)
 
+        url = base_url if "matteason" in base_url else build_clouds_url(base_url, width, height, time_param, layers=layers)
         try:
             logger.info(f"Clouds: fetching GIBS {time_param} ({width}x{height})")
             req = urllib.request.Request(

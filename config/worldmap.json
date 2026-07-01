@@ -21,7 +21,7 @@
     "edge_softness": 45
   },
   "clouds": {
-    "enabled": false,
+    "enabled": true,
     "url": "https://gibs.earthdata.nasa.gov/wms/epsg4326/best/wms.cgi",
     "outfile": "data/cloud_map.png",
     "threshold": 168,
@@ -45,20 +45,20 @@
     "cache_expiry_days": 3
   },
   "wind": {
-    "enabled": false,
+    "enabled": true,
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
     "outfile": "data/wind.png",
     "level_of_detail": "2",
     "render_mode": "trails",
     "flow_coherence_radius": 8,
-    "trail_persist": 0.98,
+    "trail_persist": 1.4,
     "point_size": 4,
     "vector_color": "White",
-    "particle_speed": 70,
-    "particle_alpha": 55,
+    "particle_speed": 50,
+    "particle_alpha": 80,
     "particle_size": 2,
-    "trail_fade": 80,
-    "drop_speed": 10,
+    "trail_fade": 15,
+    "drop_speed": 5,
     "heatmap_opacity": 0,
     "alpha": 55,
     "runs_per_day": 8,
@@ -145,7 +145,7 @@
     "cache_expiry_days": 3
   },
   "sst": {
-    "enabled": true,
+    "enabled": false,
     "url": "https://downloads.psl.noaa.gov/Datasets/noaa.oisst.v2.highres",
     "outfile": "data/sst.png",
     "level_of_detail": "3",
