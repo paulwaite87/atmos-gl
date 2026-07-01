@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Validated: ast.parse clean (2026-07-02).
 """FieldCollectorBase + CycleContext — shared scaffolding for the GFS/RTOFS forecast-field
-collectors (gfs_atmos.py, gfs_waves.py, rtofs_currents.py — Phase 3, in progress).
+collectors (gfs_atmos.py, gfs_waves.py, rtofs_currents.py — Phase 3, complete).
 
 CollectorBase's is_stale/has_new_data scheduling contract doesn't fit these sources: they
 aren't polled on their own cadence, they're driven every full-refresh cycle (already gated by
@@ -9,7 +9,8 @@ data_collector.enabled + update_minutes at the service level) and self-gate per 
 via fieldstore.field_exists(). What they DO need from CollectorBase is the config/db/settings
 plumbing, so FieldCollectorBase stays a subclass but replaces the per-source scheduling with:
 
-  * a fieldstore handle (self.store), bound once at construction like FieldIngest today
+  * a fieldstore handle (self.store), bound at construction (constructed fresh each cycle
+    by CollectorService._collect_fields())
   * self.base_url()   — the configured datasources{} URL for this source
   * self.cache_hours  — the shared data_collector.cache_hours window
   * collect(ctx)      — takes a CycleContext, unlike CollectorBase's bare collect()
@@ -117,11 +118,10 @@ class FieldCollectorBase(CollectorBase):
 def drain_backfill(config, db, store, collector_classes) -> None:
     """Service demand-driven backfill requests flagged by the frontend (404s).
 
-    Claims pending rows (claim_backfill_requests uses SELECT ... FOR UPDATE SKIP LOCKED, so
-    this can safely run alongside FieldIngest.drain_backfill() during the Phase 3 shadow
-    period without either double-claiming a row), routes each to whichever collector_classes
-    entry owns that product via its `products` dict, fetches it, and marks the row done or
-    failed. The render task then gap-fills on its next pass.
+    Claims pending rows (claim_backfill_requests uses SELECT ... FOR UPDATE SKIP LOCKED),
+    routes each to whichever collector_classes entry owns that product via its `products`
+    dict, fetches it, and marks the row done or failed. The render task then gap-fills on
+    its next pass.
     """
     claimed = db.claim_backfill_requests(limit=20)
     if not claimed:
@@ -135,7 +135,7 @@ def drain_backfill(config, db, store, collector_classes) -> None:
         )
         d_str = d.isoformat() if hasattr(d, "isoformat") else str(d)
 
-        # Already present (raced with the normal cycle, or with FieldIngest's own drain)?
+        # Already present (raced with the normal collect_once() cycle)?
         if store.field_exists(d_str, run, fhour, product):
             db.mark_backfill(d_str, run, fhour, product, "done")
             continue

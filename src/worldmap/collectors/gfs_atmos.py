@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 # Validated: ast.parse clean (2026-07-02).
 """GfsAtmosCollector — atmospheric pgrb2.0p25 byte-range union (isobars/precip/temperature/
-ozone/wind/stormwatch), extracted from field_ingest.py's _collect_gfs_atmos as the first
-per-source FieldCollectorBase subclass (Phase 3).
+ozone/wind/stormwatch), extracted from the now-deleted field_ingest.py's _collect_gfs_atmos
+as the first per-source FieldCollectorBase subclass (Phase 3, complete).
 
 Shares its baseline (CycleContext key "gfs") with GfsWavesCollector, which needs the same GFS
-run — see field_base.CycleContext. field_ingest.py remains the collection path actually run
-by CollectorService until every source has been extracted and the service is switched over.
+run — see field_base.CycleContext.
 """
 import os
 import glob

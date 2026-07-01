@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
 # Validated: ast.parse clean (2026-07-02).
-"""GfsWavesCollector — the per-hour GFS-Wave global 0p25 swell field, extracted from
-field_ingest.py's _collect_gfs_waves as the second per-source FieldCollectorBase subclass
-(Phase 3).
+"""GfsWavesCollector — the per-hour GFS-Wave global 0p25 swell field, extracted from the
+now-deleted field_ingest.py's _collect_gfs_waves as the second per-source
+FieldCollectorBase subclass (Phase 3, complete).
 
 Runs on the SAME GFS run + forecast-hour cadence as GfsAtmosCollector, so it shares the
 baseline (CycleContext key "gfs") rather than probing NOMADS a second time — see
-field_base.CycleContext. field_ingest.py remains the path CollectorService actually runs
-until RtofsCurrentsCollector is extracted too and the service is switched over.
+field_base.CycleContext.
 """
 import os
 import glob

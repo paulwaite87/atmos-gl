@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
 # Validated: ast.parse clean (2026-07-02).
-"""RtofsCurrentsCollector — RTOFS daily-run hourly surface u/v (to f072), extracted from
-field_ingest.py's _collect_rtofs_currents as the third and final per-source
-FieldCollectorBase subclass (Phase 3).
+"""RtofsCurrentsCollector — RTOFS daily-run hourly surface u/v (to f072), extracted from the
+now-deleted field_ingest.py's _collect_rtofs_currents as the third and final per-source
+FieldCollectorBase subclass (Phase 3, complete).
 
 Uses its own baseline (CycleContext key "rtofs") since it's a different model on a
 different cadence to the GFS pair — no probe is shared here, but the same per-cycle
 memoisation still applies if something else ever needs the RTOFS baseline too. See
-field_base.CycleContext. field_ingest.py remains the path CollectorService actually runs
-until all three sources are extracted and the service is switched over to them.
+field_base.CycleContext.
 """
 import os
 import logging
