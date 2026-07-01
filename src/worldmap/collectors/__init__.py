@@ -1,32 +1,43 @@
 #!/usr/bin/env python3
-"""Event-feed collectors: pure data sources that write straight to the DB.
+"""Collectors: pure data sources that keep the backend warm, independent of any layer's
+frontend `enabled` flag.
 
-Each collector is a `CollectorBase` subclass responsible for ONE external source. The
-data_collector drives them via `collect_event_feeds()`, which handles per-collector rate
-limiting (runs_per_day) and cheap remote-freshness checks (HEAD/ETag) independently.
+Three families share one scheduling contract (CollectorBase: is_stale + has_new_data +
+collect) and one driver loop (_drive), so adding a source is "one file + one registry
+entry", not a new branch in a monolith:
 
-Collection is UNCONDITIONAL of any layer `enabled` flag: `enabled` is a frontend
-visibility control, and the data must already be in the DB so a layer renders the moment
-a user toggles it on. Collectors run on their own schedule whether their layer is shown
-or not.
-
-Synchronous collectors — driven by collect_event_feeds() in DataCollector
+Synchronous event feeds  (COLLECTORS)        — write straight to the DB
 --------------------------------------------------------------------------
   quakes     — USGS earthquake CSV, runs_per_day=24 (every ~hour)
   storms     — NHC/JTWC ATCF b/a-deck files, runs_per_day=8
   volcanoes  — NOAA HazEL REST API, runs_per_day=1
   satellites — CelesTrak OMM JSON, period derived from update_hours (default 12h)
-  markers    — LOCAL markers.geojson -> DB 'markers' table (mtime-gated, not a remote feed)
+  markers    — LOCAL markers.geojson -> DB 'markers' table (mtime-gated, not remote)
 
-Async collectors — persistent coroutines, run as separate Docker services for now
-----------------------------------------------------------------------------------
+Synchronous file caches  (CACHE_COLLECTORS)  — write an image/netCDF under {workdir}/data
+--------------------------------------------------------------------------
+  sst        — OISST yearly netCDF (SstCollector, collectors/sst.py)
+  clouds     — NASA GIBS global cloud image (CloudsCollector, collectors/clouds.py)
+
+  These are single fields (one daily netCDF / one global image), not per-forecast-hour
+  products, so they live as file caches rather than fieldstore rows. The layer updaters
+  render from the cache; this package only keeps the cache fresh.
+
+Async collectors  (AsyncCollectorBase)       — persistent coroutines
+--------------------------------------------------------------------------
   shipping   — AIS WebSocket stream   (ShippingCollector, collectors/shipping.py)
   lightning  — OpenWeather REST        (LightningCollector, collectors/lightning.py)
 
-  These two run as their own Docker services because the synchronous GFS/RTOFS
-  downloads in DataCollector.collect_once() would starve their event loops. The
-  consolidation path is to make collect_once() async (asyncio.to_thread + thread-safe
-  DB handles), then spawn them as asyncio tasks inside DataCollector.run().
+  Run in-process as supervised asyncio tasks (or as standalone Docker services). They
+  keep their own `enabled` kill-switch since they're API-key gated and user-specific.
+
+Collection is UNCONDITIONAL of any layer `enabled` flag: `enabled` is a FRONTEND
+visibility control, and the data must already be present so a layer renders the moment a
+user toggles it on. (The async pair is the deliberate exception: key-gated + enabled.)
+
+The heavy GFS/RTOFS *field* collectors still live in worldmap.data_collector for now;
+folding them in as FieldCollectorBase subclasses (with per-cycle baseline context) is the
+next slice of this refactor.
 """
 
 import time
@@ -37,36 +48,47 @@ from .storms import StormsCollector
 from .volcanoes import VolcanoesCollector
 from .satellites import SatellitesCollector
 from .markers_sync import MarkersSyncCollector
+from worldmap.collectors.sst import SstCollector
+from worldmap.collectors.clouds import CloudsCollector
 
 logger = logging.getLogger(__name__)
 
-# Synchronous periodic collectors: driven by collect_event_feeds().
-COLLECTORS = (QuakeCollector, StormsCollector, VolcanoesCollector, SatellitesCollector, MarkersSyncCollector)
+# Synchronous periodic collectors that write to the DB, driven by collect_event_feeds().
+COLLECTORS = (
+    QuakeCollector,
+    StormsCollector,
+    VolcanoesCollector,
+    SatellitesCollector,
+    MarkersSyncCollector,
+)
+
+# Synchronous file-cache collectors (image/netCDF under {workdir}/data), driven by
+# collect_file_caches(). Same contract as COLLECTORS; separate registry only because the
+# caller wants to schedule/observe the two families independently.
+CACHE_COLLECTORS = (
+    SstCollector,
+    CloudsCollector,
+)
 
 
-def collect_event_feeds(config, db, last_runs: dict) -> None:
-    """Run each event-feed collector, subject to per-collector scheduling.
+def _drive(collectors, config, db, last_runs: dict) -> None:
+    """Run each collector in `collectors`, subject to per-collector scheduling.
 
-    Collection is UNCONDITIONAL — it does NOT depend on the layer's `enabled` flag. The
-    `enabled` flag is a FRONTEND visibility control (show/hide the layer); the data must
-    already be in the DB so a layer renders instantly the moment a user enables it. So a
-    collector runs whenever it is due, regardless of whether its layer is currently shown.
+    The single loop shared by every synchronous collector family. Per collector:
+      * is_stale()      — gates on the collector's own runs_per_day / period_s, so a
+                          fast feed (quakes, 24/day) and a slow one (volcanoes, 1/day)
+                          share this loop without the loop knowing their cadence.
+      * has_new_data()  — cheap HEAD/ETag (or file-age) pre-check; on unchanged remote we
+                          record the timestamp and skip the full fetch.
+      * collect()       — full fetch, called only when stale AND changed.
 
-    Per-collector behaviour
-    -----------------------
-    * is_stale()      — gates on the collector's own runs_per_day (or update_hours for
-                        satellites) so quakes (24/day) runs hourly while volcanoes (1/day)
-                        runs once a day, regardless of the calling loop's cadence.
-    * has_new_data()  — cheap HEAD/ETag check; if the remote is unchanged we record
-                        the timestamp and move on without a full download.
-    * collect()       — full fetch + DB upsert, called only when stale AND changed.
-
-    last_runs is mutated in-place: {section -> time.monotonic() of last check}.
-    The timestamp is updated on BOTH "collected" and "unchanged" outcomes so each
-    collector's period counts down correctly between checks.
+    last_runs is mutated in-place: {section -> time.monotonic() of last check}. The
+    timestamp is updated on BOTH "collected" and "unchanged" outcomes so each collector's
+    period counts down correctly between checks. One collector failing is logged and
+    skipped; it never aborts the others.
     """
     now = time.monotonic()
-    for CollectorCls in COLLECTORS:
+    for CollectorCls in collectors:
         key = CollectorCls.section
         try:
             feed = CollectorCls(config, db)
@@ -84,4 +106,23 @@ def collect_event_feeds(config, db, last_runs: dict) -> None:
             feed.collect()
             last_runs[key] = now
         except Exception as exc:
-            logger.error(f"event feed {CollectorCls.__name__} failed: {exc}", exc_info=True)
+            logger.error(
+                f"collector {CollectorCls.__name__} failed: {exc}", exc_info=True
+            )
+
+
+def collect_event_feeds(config, db, last_runs: dict) -> None:
+    """Drive the DB-writing event feeds (quakes, storms, volcanoes, satellites, markers).
+
+    Collection is UNCONDITIONAL of the layer's `enabled` flag; see module docstring.
+    """
+    _drive(COLLECTORS, config, db, last_runs)
+
+
+def collect_file_caches(config, db, last_runs: dict) -> None:
+    """Drive the file-cache collectors (sst, clouds).
+
+    Same scheduling contract as collect_event_feeds; separate last_runs dict so the two
+    families schedule independently. Collection is UNCONDITIONAL of `enabled`.
+    """
+    _drive(CACHE_COLLECTORS, config, db, last_runs)

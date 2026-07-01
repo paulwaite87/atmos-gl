@@ -45,7 +45,7 @@
     "cache_expiry_days": 3
   },
   "wind": {
-    "enabled": true,
+    "enabled": false,
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
     "outfile": "data/wind.png",
     "level_of_detail": "2",
@@ -145,7 +145,7 @@
     "cache_expiry_days": 3
   },
   "sst": {
-    "enabled": false,
+    "enabled": true,
     "url": "https://downloads.psl.noaa.gov/Datasets/noaa.oisst.v2.highres",
     "outfile": "data/sst.png",
     "level_of_detail": "3",

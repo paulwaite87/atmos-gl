@@ -17,8 +17,10 @@ export function loadLayer(map, config) {
     const colorExpr = (cfg) => ['coalesce', ['get', 'color'], colorOf(cfg)];
 
     const numberWithCommas = (x) => {
-        return x.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-    }
+        // If x is null or undefined, default to 0 (or return an empty string "" if preferred)
+        const num = x ?? 0;
+        return new Intl.NumberFormat('en-US').format(num);
+    };
     // ---- Weather popups -------------------------------------------------------
     // Both the markers AND their current weather come from /api/markers/geojson — the
     // backend markers task samples the GFS temperature/wind/humidity fields valid "now"

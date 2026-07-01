@@ -51,6 +51,13 @@ class CollectorBase:
         return bool(self.settings.get("enabled", False))
 
     @property
+    def workdir(self) -> str:
+        """Process workdir (common.workdir). File-cache collectors (sst, clouds) write
+        their cache under {workdir}/data; pure-DB event feeds ignore it. Kept on the base
+        so every collector resolves the workdir the same way."""
+        return self.config.get_setting("common", "workdir", ".")
+
+    @property
     def period_s(self) -> float:
         """Seconds between runs, derived from the runs_per_day config key."""
         rpd = float(self.settings.get("runs_per_day", 1))
