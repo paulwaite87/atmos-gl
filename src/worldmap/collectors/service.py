@@ -19,6 +19,15 @@ Two cadences (identical semantics to the old DataCollector.run()):
 This replaces DataCollector; worldmap.data_collector is now a thin backward-compat shim
 that calls this. The follow-on refactor decomposes FieldIngest into per-source
 FieldCollectorBase classes sharing a per-cycle baseline context.
+
+Phase 3 status: GfsAtmosCollector/GfsWavesCollector/RtofsCurrentsCollector now run in SHADOW
+alongside FieldIngest.collect_cycle() each full-refresh pass (see _run_field_collectors).
+FieldIngest still runs first and remains authoritative — the shadow pass sees the same
+fieldstore, so in steady state field_exists() already returns True for everything and each
+collect() is a fast no-op. This exercises baseline resolution and CycleContext sharing for
+real without changing what's actually fetched/stored. Once the shadow pass has run cleanly
+for a while, it replaces the FieldIngest.collect_cycle() call outright and field_ingest.py
+is deleted.
 """
 import asyncio
 import logging
@@ -29,6 +38,15 @@ from worldmap.lib.logging import setup_logging, set_loglevel
 from worldmap.lib import fieldstore
 from worldmap.collectors import collect_event_feeds, collect_file_caches
 from worldmap.collectors.field_ingest import FieldIngest
+from worldmap.collectors.field_base import CycleContext
+from worldmap.collectors.gfs_atmos import GfsAtmosCollector
+from worldmap.collectors.gfs_waves import GfsWavesCollector
+from worldmap.collectors.rtofs_currents import RtofsCurrentsCollector
+
+# The Phase 3 FieldCollectorBase subclasses, run in shadow each cycle (see module
+# docstring). Order doesn't matter for correctness — GfsAtmosCollector and GfsWavesCollector
+# share their CycleContext("gfs") baseline regardless of which of the two runs first.
+_FIELD_COLLECTOR_CLASSES = [GfsAtmosCollector, GfsWavesCollector, RtofsCurrentsCollector]
 
 logger = logging.getLogger("worldmap.collector_service")
 
@@ -101,6 +119,11 @@ class CollectorService:
         # baseline-resolved, per-hour skip-if-present.
         self.fields.collect_cycle()
 
+        # Shadow pass: the Phase 3 FieldCollectorBase subclasses, exercised alongside
+        # FieldIngest (see module docstring). A failure here is logged but never allowed to
+        # break the cycle FieldIngest already completed.
+        self._run_field_collectors()
+
         # File-cache collectors: sst (OISST netCDF), clouds (GIBS image). Each self-gates
         # on its own cadence (is_stale) and freshness (remote_is_newer / expiry_hours).
         collect_file_caches(self.config, self.db, self._cache_last_runs)
@@ -108,6 +131,22 @@ class CollectorService:
         # Event feeds: quakes, storms, volcanoes, satellites, markers. Each runs at its
         # own schedule via is_stale(); has_new_data() skips unchanged remotes (HEAD/ETag).
         collect_event_feeds(self.config, self.db, self._event_last_runs)
+
+    def _run_field_collectors(self):
+        """Construct each Phase 3 field collector fresh this cycle (same per-cycle
+        instantiation convention as _drive() uses for the event feeds, so a live config
+        edit — e.g. cache_hours — reaches them without a restart) and share one
+        CycleContext across all of them, so GfsAtmosCollector and GfsWavesCollector resolve
+        their common GFS baseline only once."""
+        ctx = CycleContext()
+        for CollectorCls in _FIELD_COLLECTOR_CLASSES:
+            try:
+                CollectorCls(self.config, self.db, self.store).collect(ctx)
+            except Exception as e:
+                logger.error(
+                    f"shadow field collector {CollectorCls.__name__} failed: {e}",
+                    exc_info=True,
+                )
 
     # ------------------------------------------------------------------
     # Embedded async collector supervision
