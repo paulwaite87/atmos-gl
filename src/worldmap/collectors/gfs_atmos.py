@@ -27,6 +27,7 @@ logger = logging.getLogger("worldmap.collectors.gfs_atmos")
 
 
 class GfsAtmosCollector(FieldCollectorBase):
+    status_name = "gfs_atmos"
     datasource_key = "gfs"
     baseline_key = "gfs"
     products = ATMOS_UNPACKERS

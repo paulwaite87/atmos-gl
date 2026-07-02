@@ -22,6 +22,9 @@ logger = logging.getLogger(__name__)
 
 class LightningCollector(AsyncCollectorBase):
     section = "lightning_collector"
+    # The scan loop sleeps a fixed 600s between passes (see run()); no setting exists for
+    # the scan itself, so this is a generous fixed allowance rather than a computed value.
+    heartbeat_period_s = 900.0
 
     def refresh_settings(self) -> None:
         super().refresh_settings()
@@ -104,20 +107,27 @@ class LightningCollector(AsyncCollectorBase):
                 start_iso = (now - timedelta(minutes=20)).strftime("%Y-%m-%dT%H:%M:%SZ")
                 end_iso = now.strftime("%Y-%m-%dT%H:%M:%SZ")
 
-                regions = self.db.get_priority_region_list(self.primary_region_label)
-                async with aiohttp.ClientSession() as session:
-                    for reg in regions:
-                        label = reg["label"]
-                        bbox = (reg["lon_min"], reg["lat_min"], reg["lon_max"], reg["lat_max"])
-                        prefix = "[PRIORITY] " if label == self.primary_region_label else ""
-                        logger.debug(f"{prefix}Scanning {label}")
-                        await self.scan_region(session, label, bbox, start_iso, end_iso)
+                try:
+                    regions = self.db.get_priority_region_list(self.primary_region_label)
+                    async with aiohttp.ClientSession() as session:
+                        for reg in regions:
+                            label = reg["label"]
+                            bbox = (reg["lon_min"], reg["lat_min"], reg["lon_max"], reg["lat_max"])
+                            prefix = "[PRIORITY] " if label == self.primary_region_label else ""
+                            logger.debug(f"{prefix}Scanning {label}")
+                            await self.scan_region(session, label, bbox, start_iso, end_iso)
 
-                expiry_hours = self.settings.get("expiry_hours", 2)
-                pruned = self.db.prune_lightning(expiry_hours=expiry_hours)
-                if pruned:
-                    logger.debug(f"LightningCollector: pruned {pruned} expired strikes.")
-                logger.info("LightningCollector: scan complete.")
+                    expiry_hours = self.settings.get("expiry_hours", 2)
+                    pruned = self.db.prune_lightning(expiry_hours=expiry_hours)
+                    if pruned:
+                        logger.debug(f"LightningCollector: pruned {pruned} expired strikes.")
+                    logger.info("LightningCollector: scan complete.")
+                    self.db.record_process_run(self.section, "collector", success=True)
+                except Exception as exc:
+                    logger.error(f"LightningCollector: scan error: {exc}")
+                    self.db.record_process_run(
+                        self.section, "collector", success=False, error=str(exc)
+                    )
             else:
                 logger.debug("LightningCollector: disabled.")
 

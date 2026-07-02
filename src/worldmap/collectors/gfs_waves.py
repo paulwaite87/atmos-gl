@@ -27,6 +27,7 @@ logger = logging.getLogger("worldmap.collectors.gfs_waves")
 
 
 class GfsWavesCollector(FieldCollectorBase):
+    status_name = "gfs_waves"
     datasource_key = "gfs"
     baseline_key = "gfs"
     products = WAVES_UNPACKERS

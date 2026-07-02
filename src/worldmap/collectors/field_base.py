@@ -63,9 +63,15 @@ class FieldCollectorBase(CollectorBase):
     "currents") and `baseline_key` (the CycleContext memoisation key — GfsAtmosCollector and
     GfsWavesCollector both use "gfs"; RtofsCurrentsCollector uses "rtofs"), and implement
     resolve_baseline(base_url) and collect(ctx).
+
+    `section` is "data_collector" for ALL THREE subclasses (they share that config section),
+    so it can't double as a per-collector identity the way it does for CollectorBase's other
+    subclasses. `status_name` is that identity — a unique key for process_status rows and the
+    Data Status API, set per subclass (e.g. "gfs_atmos"). Never use `section` for that.
     """
 
     section = "data_collector"
+    status_name: str = ""  # override in every subclass — unique process_status key
     datasource_key: str = ""  # override in every subclass
     baseline_key: str = ""  # override in every subclass
     products: dict = {}  # override: {product_name: unpacker} this collector owns
@@ -98,6 +104,70 @@ class FieldCollectorBase(CollectorBase):
         ctx.baseline(self.baseline_key, lambda: self.resolve_baseline(base_url)). Override in
         every subclass."""
         raise NotImplementedError(f"{type(self).__name__}.collect() not implemented")
+
+    def _expected_fhour_end(self, fhour_0: int) -> int:
+        """The forecast hour (exclusive) the current window is expected to reach, given
+        fhour_0 (the hour valid 'now'). Default: the full cache_hours window. Override to
+        cap it (RtofsCurrentsCollector caps at its hourly-only-to-f072 limit, matching
+        collect()'s own window logic) so data_status() never expects hours the source
+        could never have published."""
+        return fhour_0 + self.cache_hours
+
+    def _service_period_s(self) -> float:
+        """How often CollectorService._collect_fields() runs (data_collector.update_minutes,
+        falling back to legacy update_hours) — mirrors CollectorService.refresh_settings's
+        own fallback so data_status()'s next_update matches the real cadence."""
+        if self.settings.get("update_minutes") is not None:
+            return float(self.settings.get("update_minutes")) * 60
+        return float(self.settings.get("update_hours", 12)) * 3600
+
+    def data_status(self) -> dict:
+        """Coverage-based override of CollectorBase.data_status(): percent is the fraction
+        of this collector's expected (product x forecast-hour) cells actually present for
+        the freshest run already in field_catalog — deliberately NOT a live NOMADS/RTOFS
+        re-probe (data_status() must be cheap and side-effect-free; a status check
+        shouldn't itself hit rate limits). last_updated/detail still come from
+        process_status (written by CollectorService._collect_fields()), same as the
+        CollectorBase default."""
+        row = self.store.db.get_process_status(self.status_name)
+        last_updated = row["last_updated"] if row else None
+        last_error = row["last_error"] if row else None
+
+        products = list(self.products.keys())
+        avail = self.store.db.get_latest_run_hours(products=products) if products else None
+        percent = 0.0
+        detail = last_error
+        if avail and avail.get("hours"):
+            run_date, run_id, hours = (
+                avail["run_date"],
+                avail["run_id"],
+                avail["hours"],
+            )
+            run_date_str = (
+                run_date.isoformat() if hasattr(run_date, "isoformat") else str(run_date)
+            )
+            run_ts = self._valid_time(run_date_str, run_id, 0)
+            now = datetime.now(timezone.utc)
+            fhour_0 = max(0, int(round((now - run_ts).total_seconds() / 3600.0)))
+            fhour_end = self._expected_fhour_end(fhour_0)
+            expected_total = max(0, fhour_end - fhour_0)
+            present = sum(1 for h in hours if fhour_0 <= h < fhour_end)
+            percent = 100.0 * present / expected_total if expected_total > 0 else 0.0
+            if not detail:
+                detail = f"{run_date_str} {run_id}Z: {present}/{expected_total} hour(s)"
+
+        period_s = self._service_period_s()
+        next_update = (
+            last_updated + timedelta(seconds=period_s) if last_updated else None
+        )
+        return {
+            "name": self.status_name,
+            "kind": "collector",
+            "percent": round(percent, 1),
+            "last_updated": last_updated,
+            "next_update": next_update,
+            "detail": detail,
+        }
 
     @staticmethod
     def _valid_time(run_date: str, run_id: str, fhour) -> datetime:

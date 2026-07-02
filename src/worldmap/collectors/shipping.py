@@ -37,6 +37,15 @@ SLICE_DENSITY_MAP = {
 class ShippingCollector(AsyncCollectorBase):
     section = "shipping_collector"
 
+    @property
+    def heartbeat_period_s(self) -> float:
+        """Expected duration of one full 10-slice rotation: each slice runs
+        listen_duration * its density weight, plus the sleep between rotations."""
+        base = float(self.settings.get("listen_duration", 300))
+        sleep = float(self.settings.get("sleep_interval", 60))
+        weight_sum = sum(m["weight"] for m in SLICE_DENSITY_MAP.values())
+        return base * weight_sum + sleep
+
     def refresh_settings(self) -> None:
         super().refresh_settings()
         self.url = self.settings.get("url")
@@ -148,8 +157,12 @@ class ShippingCollector(AsyncCollectorBase):
                         f"ShippingCollector: rotation complete. "
                         f"Added {end_total - start_total} vessels."
                     )
+                    self.db.record_process_run(self.section, "collector", success=True)
                 except Exception as exc:
                     logger.error(f"ShippingCollector: loop error: {exc}")
+                    self.db.record_process_run(
+                        self.section, "collector", success=False, error=str(exc)
+                    )
                     await asyncio.sleep(30)
                     continue
 
