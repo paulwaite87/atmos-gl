@@ -20,7 +20,6 @@ from datetime import datetime, timezone
 import numpy as np
 
 from worldmap.lib.config import WorldMapConfig
-from worldmap.lib import fieldstore
 from worldmap.collectors.markers_sync import load_marker_rows
 from .common import Updater, MapData
 

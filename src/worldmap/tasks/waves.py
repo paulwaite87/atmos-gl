@@ -3,7 +3,6 @@ import os
 import logging
 import warnings
 import numpy as np
-import matplotlib.colors as mcolors
 
 # Internal imports
 from worldmap.lib.config import WorldMapConfig
