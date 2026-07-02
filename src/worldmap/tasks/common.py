@@ -763,6 +763,13 @@ class Updater:
             and runs_per_day cadence. next_update falls back to an estimate (now +
             period_s) when this task hasn't completed a cycle yet, same as
             CollectorBase.data_status() — see _estimate_next_update.
+
+        self.enabled here is the layer's frontend-visibility flag, not a render
+        kill-switch — LayerBuilder.start_scheduler() dispatches every TASK_CLASSES entry
+        every cycle regardless of it (gated only by the separate layer_builder.enabled
+        master switch, which isn't a per-layer concept). next_update must reflect that
+        real, unconditional schedule rather than reporting "disabled" for a layer that is
+        in fact still being rendered in the background.
         """
         row = self._store.db.get_process_status(self.section)
         last_updated = row["last_updated"] if row else None
@@ -794,13 +801,13 @@ class Updater:
                 finally:
                     self.run_date_str, self.run_id, self.forecast_hour_str = saved_run
             next_update = _estimate_next_update(
-                last_updated, LAYER_CYCLE_SECONDS, self.enabled
+                last_updated, LAYER_CYCLE_SECONDS, True
             )
         else:
             rpd = float(self.settings.get("runs_per_day", 1))
             period_s = 86400.0 / max(rpd, 0.01)
             percent = _freshness_percent(last_updated, period_s)
-            next_update = _estimate_next_update(last_updated, period_s, self.enabled)
+            next_update = _estimate_next_update(last_updated, period_s, True)
 
         return {
             "name": self.section,
@@ -941,6 +948,12 @@ class Updater:
                 try:
                     plot_fn(field)
                     plotted += 1
+                    # Advance last_updated as each hour lands, not just once the whole
+                    # cycle (every TASK_CLASSES entry) finishes — a multi-hour layer can
+                    # take a long time to catch up on a cold start, and the Data Status
+                    # UI's percent bar already reflects per-hour progress live; last_updated
+                    # should too instead of sitting on "never" for the whole cycle.
+                    self._store.db.record_process_run(self.section, "layer", success=True)
                 except Exception as e:
                     logger.warning(f"{self.section}: plot f{int(fh):03d} failed: {e}")
         finally:

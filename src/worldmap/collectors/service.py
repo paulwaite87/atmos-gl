@@ -105,11 +105,14 @@ class CollectorService:
     # ------------------------------------------------------------------
     def collect_once(self):
         """One full pass over every synchronous collector family. Each family self-gates
-        on its own cadence/freshness, so a steady-state cycle is cheap."""
-        # Heavy field datasources (gfs atmos+waves, rtofs currents): fieldstore-backed,
-        # baseline-resolved, per-hour skip-if-present.
-        self._collect_fields()
+        on its own cadence/freshness, so a steady-state cycle is cheap.
 
+        Lightweight families run BEFORE the heavy field datasources: quakes/storms/
+        volcanoes/satellites/markers/sst/clouds each take seconds, while gfs/rtofs field
+        ingestion can take tens of minutes on a cold start. Running fields first would
+        head-of-line block every fast collector's "zero hour" run behind that, leaving
+        them showing no data for as long as the field ingest takes even though nothing
+        about them is actually slow."""
         # File-cache collectors: sst (OISST netCDF), clouds (GIBS image). Each self-gates
         # on its own cadence (is_stale) and freshness (remote_is_newer / expiry_hours).
         collect_file_caches(self.config, self.db, self._cache_last_runs)
@@ -117,6 +120,10 @@ class CollectorService:
         # Event feeds: quakes, storms, volcanoes, satellites, markers. Each runs at its
         # own schedule via is_stale(); has_new_data() skips unchanged remotes (HEAD/ETag).
         collect_event_feeds(self.config, self.db, self._event_last_runs)
+
+        # Heavy field datasources (gfs atmos+waves, rtofs currents): fieldstore-backed,
+        # baseline-resolved, per-hour skip-if-present.
+        self._collect_fields()
 
     def _collect_fields(self):
         """Construct each field collector fresh this cycle (same per-cycle instantiation

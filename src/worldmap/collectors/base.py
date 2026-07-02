@@ -154,7 +154,13 @@ class CollectorBase:
         `detail`. Read straight from process_status (written by _drive()); this method
         never writes. FieldCollectorBase overrides this with a coverage-based percent
         instead, since "how much of the forecast window is fetched" is more meaningful
-        for those than a freshness decay."""
+        for those than a freshness decay.
+
+        `self.enabled` here is the layer's frontend-visibility flag, not a collection
+        kill-switch — _drive() runs every COLLECTORS/CACHE_COLLECTORS entry unconditionally
+        of it (see collectors/__init__.py). next_update must reflect that real, unconditional
+        schedule rather than reporting "disabled" for a source that is in fact still being
+        collected in the background."""
         row = self.db.get_process_status(self.section)
         last_updated = row["last_updated"] if row else None
         last_error = row["last_error"] if row else None
@@ -163,7 +169,7 @@ class CollectorBase:
             "kind": "collector",
             "percent": round(_freshness_percent(last_updated, self.period_s), 1),
             "last_updated": last_updated,
-            "next_update": _estimate_next_update(last_updated, self.period_s, self.enabled),
+            "next_update": _estimate_next_update(last_updated, self.period_s, True),
             "enabled": self.enabled,
             "detail": last_error,
         }
