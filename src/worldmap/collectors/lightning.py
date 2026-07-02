@@ -98,6 +98,12 @@ class LightningCollector(AsyncCollectorBase):
             await asyncio.sleep(0.1)
 
     async def run(self) -> None:
+        # Startup heartbeat: the Data Status UI should show "the collector is alive" the
+        # moment this task starts, not leave a blank "never" until the first full scan
+        # (region list * grid) completes. Percent decays from here if the first scan
+        # itself hangs, so this can't mask a real problem.
+        self.db.record_process_run(self.section, "collector", success=True)
+
         while True:
             self.refresh_settings()
 

@@ -39,12 +39,14 @@ class ShippingCollector(AsyncCollectorBase):
 
     @property
     def heartbeat_period_s(self) -> float:
-        """Expected duration of one full 10-slice rotation: each slice runs
-        listen_duration * its density weight, plus the sleep between rotations."""
+        """Expected gap between heartbeats. run() records one after EVERY slice (not just
+        once per full rotation - with real-world settings a full rotation can take hours,
+        which would leave the Data Status UI showing "never" for a healthy collector), so
+        this is the longest a single slice can run (listen_duration * the heaviest weight)
+        rather than the full rotation sum."""
         base = float(self.settings.get("listen_duration", 300))
-        sleep = float(self.settings.get("sleep_interval", 60))
-        weight_sum = sum(m["weight"] for m in SLICE_DENSITY_MAP.values())
-        return base * weight_sum + sleep
+        max_weight = max(m["weight"] for m in SLICE_DENSITY_MAP.values())
+        return base * max_weight
 
     def refresh_settings(self) -> None:
         super().refresh_settings()
@@ -127,6 +129,13 @@ class ShippingCollector(AsyncCollectorBase):
     async def run(self) -> None:
         import random
 
+        # Startup heartbeat: a real rotation can take hours (10 slices * listen_duration *
+        # weight), and the Data Status UI should show "the collector is alive" the moment
+        # this task starts, not leave a blank "never" until the first full rotation
+        # completes. Percent naturally decays from here if nothing else follows within
+        # heartbeat_period_s, so this can't paper over a real hang.
+        self.db.record_process_run(self.section, "collector", success=True)
+
         while True:
             self.refresh_settings()
 
@@ -151,13 +160,15 @@ class ShippingCollector(AsyncCollectorBase):
                         await self.collect_ships_in_region(
                             bbox, int(base_duration * meta["weight"]), label
                         )
+                        # Per-slice heartbeat (not just once at the end of the full
+                        # rotation) - see heartbeat_period_s's docstring for why.
+                        self.db.record_process_run(self.section, "collector", success=True)
 
                     end_total = self.db.get_current_ship_total()
                     logger.info(
                         f"ShippingCollector: rotation complete. "
                         f"Added {end_total - start_total} vessels."
                     )
-                    self.db.record_process_run(self.section, "collector", success=True)
                 except Exception as exc:
                     logger.error(f"ShippingCollector: loop error: {exc}")
                     self.db.record_process_run(
