@@ -15,12 +15,57 @@ ETag/Last-Modified state is stored in a class-level dict keyed by URL so it pers
 across the per-cycle instance recreation inside collect_event_feeds(), without needing
 to thread state through the caller. The dict is process-scoped, which is correct: the
 DataCollector is a single long-running process.
+
+data_status() (on both CollectorBase and AsyncCollectorBase below) is read-only: it
+reports the process_status row written by the orchestration layer (collectors/__init__.py
+_drive(), the async collectors' own run() loops), it never writes one itself. That split
+matters because data_status() must also be callable from a process that never runs
+collection at all (map_api, serving the Config UI's Data Status tab) — constructing a
+throwaway collector instance there is cheap and side-effect-free, exactly like _drive()
+already does for collect().
 """
 
 import time
 import logging
+from datetime import datetime, timedelta, timezone
 
 logger = logging.getLogger(__name__)
+
+
+def _freshness_percent(last_updated, period_s: float) -> float:
+    """Shared decay formula for single-shot/continuous collectors: 100% right after a
+    successful run/check, decaying linearly to 0% by the time we're a full extra
+    period_s overdue past the expected next run. Deliberately not a flat binary — a
+    collector that's overdue (crashed, backend down, etc.) should visibly decay on the
+    Data Status bar rather than sit at a permanent 100%."""
+    if last_updated is None:
+        return 0.0
+    if last_updated.tzinfo is None:
+        last_updated = last_updated.replace(tzinfo=timezone.utc)
+    now = datetime.now(timezone.utc)
+    overdue = (now - last_updated).total_seconds() - period_s
+    if overdue <= 0:
+        return 100.0
+    return max(0.0, 100.0 * (1 - overdue / period_s))
+
+
+def _estimate_next_update(last_updated, period_s: float, enabled: bool):
+    """next_update for the Data Status UI. Three cases:
+      * disabled     -> None (it won't run again until re-enabled; showing a guessed time
+                         here would be actively misleading, not just imprecise)
+      * never run yet (last_updated is None) but enabled -> now + period_s, an estimate
+        (we don't know exactly when this cycle started, only that it's due within one
+        period) rather than leaving the UI with nothing at all for a collector that just
+        hasn't completed its first cycle
+      * has run before -> last_updated + period_s, the precise scheduled next run
+    """
+    if not enabled:
+        return None
+    if last_updated is None:
+        return datetime.now(timezone.utc) + timedelta(seconds=period_s)
+    if last_updated.tzinfo is None:
+        last_updated = last_updated.replace(tzinfo=timezone.utc)
+    return last_updated + timedelta(seconds=period_s)
 
 
 class CollectorBase:
@@ -99,6 +144,31 @@ class CollectorBase:
         raise NotImplementedError(f"{type(self).__name__}.collect() not implemented")
 
     # ------------------------------------------------------------------
+    # Data Status (read-only; see module docstring)
+    # ------------------------------------------------------------------
+
+    def data_status(self) -> dict:
+        """Snapshot for the Config UI's Data Status tab: a decaying-freshness `percent`
+        (100 right after a successful run, decaying to 0 as it becomes overdue past
+        period_s), `last_updated`, `next_update`, `enabled`, and an optional error
+        `detail`. Read straight from process_status (written by _drive()); this method
+        never writes. FieldCollectorBase overrides this with a coverage-based percent
+        instead, since "how much of the forecast window is fetched" is more meaningful
+        for those than a freshness decay."""
+        row = self.db.get_process_status(self.section)
+        last_updated = row["last_updated"] if row else None
+        last_error = row["last_error"] if row else None
+        return {
+            "name": self.section,
+            "kind": "collector",
+            "percent": round(_freshness_percent(last_updated, self.period_s), 1),
+            "last_updated": last_updated,
+            "next_update": _estimate_next_update(last_updated, self.period_s, self.enabled),
+            "enabled": self.enabled,
+            "detail": last_error,
+        }
+
+    # ------------------------------------------------------------------
     # Shared HEAD helper
     # ------------------------------------------------------------------
 
@@ -155,6 +225,11 @@ class AsyncCollectorBase:
     """
 
     section: str = ""
+    # Expected seconds between successful heartbeats (see data_status()). No is_stale/
+    # period_s equivalent exists for these (they self-schedule inside run()), so each
+    # subclass estimates its own from its own settings/cadence. Default is a placeholder;
+    # ShippingCollector/LightningCollector override with a real estimate.
+    heartbeat_period_s: float = 300.0
 
     def __init__(self, config_path: str):
         from worldmap.lib.config import WorldMapConfig
@@ -180,6 +255,26 @@ class AsyncCollectorBase:
 
     async def run(self) -> None:
         raise NotImplementedError(f"{type(self).__name__}.run() not implemented")
+
+    def data_status(self) -> dict:
+        """Same decaying-freshness snapshot as CollectorBase.data_status(), using
+        heartbeat_period_s in place of period_s (these have no is_stale cadence — they
+        self-schedule inside run() and record a heartbeat at their own natural
+        checkpoint, e.g. once per rotation/scan)."""
+        row = self.db.get_process_status(self.section)
+        last_updated = row["last_updated"] if row else None
+        last_error = row["last_error"] if row else None
+        return {
+            "name": self.section,
+            "kind": "collector",
+            "percent": round(_freshness_percent(last_updated, self.heartbeat_period_s), 1),
+            "last_updated": last_updated,
+            "next_update": _estimate_next_update(
+                last_updated, self.heartbeat_period_s, self.enabled
+            ),
+            "enabled": self.enabled,
+            "detail": last_error,
+        }
 
     @classmethod
     def main(cls) -> None:

@@ -12,6 +12,17 @@
         .grouping-box { background-color: #ffffff; color: #212529; border-radius: 8px; padding: 20px; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
         .grouping-box h5 { color: #0d6efd; border-bottom: 2px solid #dee2e6; padding-bottom: 8px; margin-bottom: 15px; font-weight: bold; }
         .form-check-input:checked { background-color: #0d6efd; border-color: #0d6efd; }
+
+        .status-row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+        .status-label { width: 160px; flex: 0 0 160px; font-weight: 600; font-size: 0.9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .status-track { flex: 1 1 auto; height: 18px; background-color: #e9ecef; border-radius: 9px; overflow: hidden; position: relative; }
+        .status-fill { height: 100%; border-radius: 9px; transition: width 0.4s ease; }
+        .status-fill.ok { background-color: #198754; }
+        .status-fill.warn { background-color: #ffc107; }
+        .status-fill.bad { background-color: #dc3545; }
+        .status-pct { width: 48px; flex: 0 0 48px; text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; font-size: 0.9rem; }
+        .status-times { width: 230px; flex: 0 0 230px; font-size: 0.78rem; color: #6c757d; text-align: right; }
+        .status-empty { color: #6c757d; font-size: 0.9rem; }
     </style>
 </head>
 <body class="bg-dark text-light">
@@ -33,6 +44,7 @@
             <li class="nav-item"><button class="nav-link" id="misc-tab" data-bs-toggle="tab" data-bs-target="#misc-pane" type="button">Miscellaneous</button></li>
             <li class="nav-item"><button class="nav-link" id="shipping-tab" data-bs-toggle="tab" data-bs-target="#shipping-pane" type="button">Shipping</button></li>
             <li class="nav-item"><button class="nav-link" id="background-tab" data-bs-toggle="tab" data-bs-target="#background-pane" type="button">Background</button></li>
+            <li class="nav-item"><button class="nav-link" id="data-status-tab" data-bs-toggle="tab" data-bs-target="#data-status-pane" type="button">Data Status</button></li>
         </ul>
 
         <div class="card bg-secondary text-light p-4 shadow">
@@ -135,6 +147,19 @@
                     <div class="tab-pane fade" id="misc-pane"><div id="container-misc"></div></div>
                     <div class="tab-pane fade" id="shipping-pane"><div id="container-shipping"></div></div>
                     <div class="tab-pane fade" id="background-pane"><div id="container-background"></div></div>
+
+                    <div class="tab-pane fade" id="data-status-pane">
+                        <div class="grouping-box">
+                            <h5>Collectors</h5>
+                            <p class="text-muted small mb-3">Backend data ingestion — how complete each source's data is, and when it last/next updates.</p>
+                            <div id="container-collectors-status"></div>
+                        </div>
+                        <div class="grouping-box">
+                            <h5>Layers</h5>
+                            <p class="text-muted small mb-3">Render tasks — how much of the available forecast data has been drawn to map layers.</p>
+                            <div id="container-layers-status"></div>
+                        </div>
+                    </div>
                 </div>
 
                 <button type="button" class="btn btn-primary w-100 mt-4 py-2 fw-bold shadow-lg" onclick="saveActiveConfig()">
@@ -1213,6 +1238,90 @@
 
             return accordionHTML;
         }
+
+        // -------------------------------------------------------------
+        // Data Status tab — read-only, independent of masterConfigCache /
+        // saveActiveConfig(). Nothing here uses the "dynamic-input" class or the
+        // "section__option" id convention, so it can never leak into a config save.
+        // -------------------------------------------------------------
+        const DATA_STATUS_API_URL = API_URL + "/data_status";
+        let dataStatusTimer = null;
+
+        function formatRelativeTime(isoString, { future = false } = {}) {
+            if (!isoString) return future ? "unknown" : "never";
+            const target = new Date(isoString).getTime();
+            if (Number.isNaN(target)) return future ? "unknown" : "never";
+            let deltaS = Math.round((target - Date.now()) / 1000);
+            if (!future) deltaS = -deltaS;
+            const overdue = deltaS < 0;
+            const abs = Math.abs(deltaS);
+            let label;
+            if (abs < 60) label = `${abs}s`;
+            else if (abs < 3600) label = `${Math.round(abs / 60)}m`;
+            else if (abs < 86400) label = `${Math.round(abs / 3600)}h`;
+            else label = `${Math.round(abs / 86400)}d`;
+            if (future) return overdue ? `overdue by ${label}` : `in ${label}`;
+            return `${label} ago`;
+        }
+
+        function statusFillClass(percent) {
+            if (percent >= 70) return "ok";
+            if (percent >= 35) return "warn";
+            return "bad";
+        }
+
+        function renderStatusRows(containerId, items) {
+            const container = document.getElementById(containerId);
+            if (!container) return;
+            if (!items || items.length === 0) {
+                container.innerHTML = '<div class="status-empty">No data yet.</div>';
+                return;
+            }
+            container.innerHTML = items.map(item => {
+                const pct = Math.max(0, Math.min(100, item.percent ?? 0));
+                const fillClass = statusFillClass(pct);
+                const lastUpdated = formatRelativeTime(item.last_updated);
+                const nextUpdate = item.enabled === false
+                    ? "disabled"
+                    : (item.next_update
+                        ? formatRelativeTime(item.next_update, { future: true })
+                        : "—");
+                const title = item.detail ? item.detail.replace(/"/g, "&quot;") : "";
+                return `
+                    <div class="status-row" title="${title}">
+                        <div class="status-label">${item.name}</div>
+                        <div class="status-track">
+                            <div class="status-fill ${fillClass}" style="width: ${pct}%;"></div>
+                        </div>
+                        <div class="status-pct">${pct.toFixed(0)}%</div>
+                        <div class="status-times">updated ${lastUpdated} &middot; next ${nextUpdate}</div>
+                    </div>
+                `;
+            }).join("");
+        }
+
+        async function loadDataStatus() {
+            try {
+                const res = await fetch(DATA_STATUS_API_URL);
+                const json = await res.json();
+                if (json.status !== "success") return;
+                renderStatusRows("container-collectors-status", json.data.collectors);
+                renderStatusRows("container-layers-status", json.data.layers);
+            } catch (err) {
+                console.error("Data Status fetch failed:", err);
+            }
+        }
+
+        document.getElementById("data-status-tab")?.addEventListener("shown.bs.tab", () => {
+            loadDataStatus();
+            if (!dataStatusTimer) {
+                dataStatusTimer = setInterval(loadDataStatus, 12000);
+            }
+        });
+        document.getElementById("data-status-tab")?.addEventListener("hidden.bs.tab", () => {
+            clearInterval(dataStatusTimer);
+            dataStatusTimer = null;
+        });
     </script>
 </body>
 </html>

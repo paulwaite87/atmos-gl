@@ -18,11 +18,18 @@ from pathlib import Path
 from worldmap.lib.config import WorldMapConfig
 from worldmap.lib.db import Database
 from worldmap.lib import fieldstore
+from worldmap.collectors.base import _freshness_percent, _estimate_next_update
 
 logger = logging.getLogger(__name__)
 
 WEB_MERCATOR = ccrs.Mercator.GOOGLE  # EPSG:3857
 MERCATOR_LAT_LIMIT = 85.0511  # NOTE: just *inside* GOOGLE's 85.0511288 max
+
+# Seconds between layer_builder's fan-out cycles (every cycle dispatches every updater).
+# Canonical home is here, not layer_builder.py, so Updater.layer_status() can use it for
+# next_update without layer_builder importing tasks.common creating a cycle the other way.
+# layer_builder.py imports this rather than defining its own copy.
+LAYER_CYCLE_SECONDS = 15
 
 
 def encode_frames(frames, output_path, vmin, vmax, transform=None, bits=16):
@@ -532,6 +539,12 @@ class Updater:
         # static PNG (legacy/plain layers).
         self.per_hour_outputs = [".png"]
 
+        # Fieldstore product this task renders from, for layer_status()'s multi-hour %
+        # (see render_all_hours). None (default) means single-shot: sst/clouds/markers
+        # don't render per-forecast-hour, so layer_status() falls back to a decaying
+        # freshness gauge instead. Multi-hour subclasses (isobars, wind, ...) set this.
+        self.status_product: str | None = None
+
         # Copy map data up to this class for convenience
         self.target_width = map_data.region.target_width
         self.target_height = map_data.region.target_height
@@ -726,6 +739,78 @@ class Updater:
             )
             # On error, be conservative — don't plot (file is probably fine)
             return False
+
+    def layer_status(self) -> dict:
+        """Read-only snapshot for the Config UI's Data Status tab — the layer-task
+        counterpart to CollectorBase.data_status(). Never writes; LayerBuilder records
+        process_status after each render cycle (see layer_builder.py's _handle_results).
+
+        Two shapes, depending on status_product:
+          * set (multi-hour: isobars, wind, ...) — percent is the fraction of the
+            forecast hours ALREADY IN THE CATALOG for status_product that are fully
+            rendered (should_plot_for_hour false, i.e. every per_hour_outputs suffix
+            present and fresh). Deliberately bounded by what the underlying collector
+            has fetched so far, not the theoretical full forecast window — a layer being
+            "100%" of what it currently has to work with is correct, not a defect, when
+            the collector itself is still catching up (that's the COLLECTOR's data_status
+            to report). next_update here means "next time LayerBuilder re-checks this
+            task" (LAYER_CYCLE_SECONDS, its fixed fan-out cadence) rather than "next new
+            forecast hour" — there's no single well-defined value for the latter since
+            rendering is continuous as hours arrive, but the former is still real and
+            worth showing rather than leaving blank.
+          * None (single-shot: sst, clouds, markers) — the same decaying-freshness
+            formula CollectorBase.data_status() uses, keyed by this task's own section
+            and runs_per_day cadence. next_update falls back to an estimate (now +
+            period_s) when this task hasn't completed a cycle yet, same as
+            CollectorBase.data_status() — see _estimate_next_update.
+        """
+        row = self._store.db.get_process_status(self.section)
+        last_updated = row["last_updated"] if row else None
+        last_error = row["last_error"] if row else None
+        detail = last_error
+        next_update = None
+
+        if self.status_product:
+            percent = 0.0
+            resolved = self.latest_store_run([self.status_product])
+            if resolved:
+                run_date, run_id, hours = resolved
+                saved_run = (
+                    getattr(self, "run_date_str", None),
+                    getattr(self, "run_id", None),
+                    getattr(self, "forecast_hour_str", None),
+                )
+                self.run_date_str, self.run_id = run_date, run_id
+                try:
+                    total = len(hours)
+                    rendered = 0
+                    for fh in hours:
+                        self.forecast_hour_str = f"{int(fh):03d}"
+                        if not self.should_plot_for_hour(self.status_product, fh):
+                            rendered += 1
+                    percent = 100.0 * rendered / total if total else 0.0
+                    if not detail:
+                        detail = f"{run_date} {run_id}Z: {rendered}/{total} hour(s) rendered"
+                finally:
+                    self.run_date_str, self.run_id, self.forecast_hour_str = saved_run
+            next_update = _estimate_next_update(
+                last_updated, LAYER_CYCLE_SECONDS, self.enabled
+            )
+        else:
+            rpd = float(self.settings.get("runs_per_day", 1))
+            period_s = 86400.0 / max(rpd, 0.01)
+            percent = _freshness_percent(last_updated, period_s)
+            next_update = _estimate_next_update(last_updated, period_s, self.enabled)
+
+        return {
+            "name": self.section,
+            "kind": "layer",
+            "percent": round(percent, 1),
+            "last_updated": last_updated,
+            "enabled": self.enabled,
+            "next_update": next_update,
+            "detail": detail,
+        }
 
     def get_output_path_for_hour(self, fhour: int | str = None) -> str:
         """Return a per-hour output path for caching renders.

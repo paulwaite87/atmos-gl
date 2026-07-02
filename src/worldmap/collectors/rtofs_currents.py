@@ -28,12 +28,19 @@ logger = logging.getLogger("worldmap.collectors.rtofs_currents")
 
 
 class RtofsCurrentsCollector(FieldCollectorBase):
+    status_name = "rtofs_currents"
     datasource_key = "currents"
     baseline_key = "rtofs"
     products = CURRENTS_UNPACKERS
 
     def resolve_baseline(self, base_url: str):
         return resolve_rtofs_baseline(base_url)
+
+    def _expected_fhour_end(self, fhour_0: int) -> int:
+        """RTOFS surface files are hourly only to f072 (see collect()'s own window cap);
+        data_status() must expect the same ceiling or it would report < 100% forever
+        once the window runs past what RTOFS could ever publish hourly."""
+        return min(fhour_0 + self.cache_hours, RTOFS_MAX_HOURLY_FHOUR + 1)
 
     def collect(self, ctx: CycleContext) -> None:
         base_url = self.base_url()

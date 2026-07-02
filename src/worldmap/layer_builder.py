@@ -11,11 +11,12 @@ from concurrent.futures.process import BrokenProcessPool
 
 # Library imports
 from worldmap.lib.config import WorldMapConfig
+from worldmap.lib.db import Database
 from worldmap.lib.logging import setup_logging, set_loglevel
 
 
 # Task imports
-from worldmap.tasks.common import MapData
+from worldmap.tasks.common import MapData, LAYER_CYCLE_SECONDS
 from worldmap.tasks.clouds import CloudUpdater
 from worldmap.tasks.isobars import IsobarUpdater
 from worldmap.tasks.wind import WindUpdater
@@ -32,8 +33,10 @@ logger = logging.getLogger("worldmap.layer_builder")
 
 # Seconds between fan-out cycles. Every cycle dispatches all updaters; per-hour freshness
 # checks make a steady-state (nothing-changed) cycle cheap, so this is just the
-# responsiveness window for picking up new data or deleted output.
-CYCLE_SECONDS = 15
+# responsiveness window for picking up new data or deleted output. Canonical definition
+# is tasks.common.LAYER_CYCLE_SECONDS (Updater.layer_status() needs it too, and
+# tasks/common.py can't import this module without a cycle).
+CYCLE_SECONDS = LAYER_CYCLE_SECONDS
 
 # section -> updater class. The parent dispatches one task per entry; each worker process
 # looks up the class it must build by section name. Order is informational only now —
@@ -102,6 +105,10 @@ class LayerBuilder:
         self.config_path = config_path
         self.config = WorldMapConfig(config_path)
         self.map_data = MapData(self.config)
+        # Own Database(), used ONLY to record process_status for the Data Status UI after
+        # each cycle (see _handle_results). Rendering itself happens in worker processes
+        # with their own fieldstore/db connections; this one never touches render data.
+        self.db = Database()
 
         # Ensure this folder exists
         data_dir = os.path.join(
@@ -171,17 +178,34 @@ class LayerBuilder:
                 logger.warning(f"{label} baseline pre-resolve failed: {e}")
         return {"gfs": ss.get("gfs_baseline"), "rtofs": ss.get("rtofs_baseline")}
 
-    def _handle_results(self, results):
-        """Log per-task errors. Returns True if the pool broke (a worker died) and must be
-        recreated."""
+    def _handle_results(self, sections, results):
+        """Log per-task errors and record process_status for the Data Status UI (one row
+        per TASK_CLASSES entry, success or failure). `sections` is the same ordered list
+        futures were built from, so zip(sections, results) reliably pairs each result with
+        its task even in the edge case where a result is a bare Exception (e.g. the
+        executor itself died) rather than _render_worker's own (section, error) tuple.
+
+        Returns True if the pool broke (a worker died) and must be recreated.
+        """
         broken = False
-        for r in results:
+        for section, r in zip(sections, results):
             if isinstance(r, BrokenProcessPool):
                 broken = True
+                self.db.record_process_run(
+                    section, "layer", success=False, error="render pool broke"
+                )
             elif isinstance(r, Exception):
                 logger.error(f"Render dispatch error: {r!r}")
+                self.db.record_process_run(
+                    section, "layer", success=False, error=repr(r)
+                )
             elif r and r[1]:
                 logger.error(f"Task '{r[0]}' failed in worker: {r[1]}")
+                self.db.record_process_run(
+                    section, "layer", success=False, error=r[1]
+                )
+            else:
+                self.db.record_process_run(section, "layer", success=True)
         if broken:
             logger.error("Render worker died (BrokenProcessPool); recreating pool")
         return broken
@@ -208,15 +232,16 @@ class LayerBuilder:
                     # a steady-state cycle is cheap and a changed/deleted layer re-renders
                     # promptly, now-hour first — and now genuinely in parallel.
                     baseline = self._resolve_baselines()
+                    sections = list(TASK_CLASSES)
                     futures = [
                         loop.run_in_executor(
                             self._pool, _render_worker, self.config_path, section, baseline
                         )
-                        for section in TASK_CLASSES
+                        for section in sections
                     ]
                     results = await asyncio.gather(*futures, return_exceptions=True)
 
-                    if self._handle_results(results):
+                    if self._handle_results(sections, results):
                         try:
                             self._pool.shutdown(wait=False, cancel_futures=True)
                         except Exception:

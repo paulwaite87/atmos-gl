@@ -124,15 +124,23 @@ class CollectorService:
         cache_hours — reaches them without a restart) and share one CycleContext across all
         of them, so GfsAtmosCollector and GfsWavesCollector resolve their common GFS baseline
         only once. One collector failing is logged and skipped; it never aborts the others
-        or the rest of collect_once()."""
+        or the rest of collect_once(). Every attempt (success or failure) is recorded to
+        process_status via status_name (NOT section - all three share section
+        "data_collector", so status_name is the only unique key), for the Data Status UI."""
         ctx = CycleContext()
         for CollectorCls in _FIELD_COLLECTOR_CLASSES:
             try:
                 CollectorCls(self.config, self.db, self.store).collect(ctx)
+                self.db.record_process_run(
+                    CollectorCls.status_name, "collector", success=True
+                )
             except Exception as e:
                 logger.error(
                     f"field collector {CollectorCls.__name__} failed: {e}",
                     exc_info=True,
+                )
+                self.db.record_process_run(
+                    CollectorCls.status_name, "collector", success=False, error=str(e)
                 )
 
     # ------------------------------------------------------------------

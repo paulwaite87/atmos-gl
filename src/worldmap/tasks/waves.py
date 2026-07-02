@@ -36,6 +36,7 @@ class WavesUpdater(Updater):
         # (in run()) writes waves_f{NNN}_data.png for each, alongside the heat tiles. The
         # "_data.png" entry tells the per-hour publish/staleness machinery what we emit.
         self.per_hour_outputs = ["_data.png"]
+        self.status_product = "waves"
 
     def save_waves_key(self, output_path, cmap, norm, threshold=0.0):
         """Generates a standalone Wave Height key image (separate _key.png)."""

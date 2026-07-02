@@ -86,6 +86,11 @@ def _drive(collectors, config, db, last_runs: dict) -> None:
     timestamp is updated on BOTH "collected" and "unchanged" outcomes so each collector's
     period counts down correctly between checks. One collector failing is logged and
     skipped; it never aborts the others.
+
+    Also records process_status for the Data Status UI (db.record_process_run): a
+    successful check OR collect both count as "success" (last_updated advances) — an
+    unchanged-but-verified remote is not staleness, it's the collector doing its job. A
+    not-yet-due collector (is_stale() False) records nothing; it wasn't checked at all.
     """
     now = time.monotonic()
     for CollectorCls in collectors:
@@ -101,14 +106,17 @@ def _drive(collectors, config, db, last_runs: dict) -> None:
                 continue
             if not feed.has_new_data():
                 last_runs[key] = now
+                db.record_process_run(key, "collector", success=True)
                 continue
             logger.info(f"{key}: collecting...")
             feed.collect()
             last_runs[key] = now
+            db.record_process_run(key, "collector", success=True)
         except Exception as exc:
             logger.error(
                 f"collector {CollectorCls.__name__} failed: {exc}", exc_info=True
             )
+            db.record_process_run(key, "collector", success=False, error=str(exc))
 
 
 def collect_event_feeds(config, db, last_runs: dict) -> None:
