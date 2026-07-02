@@ -796,8 +796,6 @@ class Updater:
         cycles (GFS 00/06/12/18 vs RTOFS "00") resolve to their own run.
         """
         try:
-            from worldmap.lib import fieldstore
-
             store = self._store
             avail = store.db.get_latest_run_hours(products=list(products))
         except Exception as e:

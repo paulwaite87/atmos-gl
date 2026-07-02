@@ -21,7 +21,7 @@
     "edge_softness": 45
   },
   "clouds": {
-    "enabled": true,
+    "enabled": false,
     "url": "https://gibs.earthdata.nasa.gov/wms/epsg4326/best/wms.cgi",
     "outfile": "data/cloud_map.png",
     "threshold": 168,
@@ -51,14 +51,14 @@
     "level_of_detail": "2",
     "render_mode": "trails",
     "flow_coherence_radius": 8,
-    "trail_persist": 1.4,
+    "trail_persist": 0.98,
     "point_size": 4,
     "vector_color": "White",
-    "particle_speed": 50,
-    "particle_alpha": 80,
+    "particle_speed": 70,
+    "particle_alpha": 55,
     "particle_size": 2,
-    "trail_fade": 15,
-    "drop_speed": 5,
+    "trail_fade": 80,
+    "drop_speed": 10,
     "heatmap_opacity": 0,
     "alpha": 55,
     "runs_per_day": 8,
@@ -173,7 +173,7 @@
     "runs_per_day": 8
   },
   "lightning": {
-    "enabled": false,
+    "enabled": true,
     "outfile": "data/lightning.json",
     "icon_zoom": 1,
     "strike_recent_minutes": 15,
@@ -182,7 +182,7 @@
     "runs_per_day": 24
   },
   "quakes": {
-    "enabled": true,
+    "enabled": false,
     "url": "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.csv",
     "outfile": "data/quakes.json",
     "icon_zoom": 0.7,
@@ -237,12 +237,11 @@
     "enabled": true,
     "datasources": {
       "gfs": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
-      "sst": "https://downloads.psl.noaa.gov/Datasets/noaa.oisst.v2.highres",
       "currents": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/rtofs/prod/"
     },
     "update_minutes": 15,
     "backfill_poll_seconds": 60,
-    "cache_hours": 24,
+    "cache_hours": 48,
     "log_level": "DEBUG"
   },
   "satellites_collector": {

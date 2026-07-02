@@ -4,7 +4,9 @@
 Owns scheduling and supervision only; every "what to fetch and how" detail lives in a
 collaborator, so adding a source never touches this file:
 
-  * Field ingestion + backfill  -> FieldIngest        (collectors/field_ingest.py)
+  * Field ingestion + backfill  -> the FieldCollectorBase subclasses (collectors/gfs_atmos.py,
+                                    gfs_waves.py, rtofs_currents.py), driven via
+                                    _collect_fields() / field_base.drain_backfill()
   * File-cache sources (sst/clouds) -> collect_file_caches()  (collectors/__init__.py)
   * DB event feeds              -> collect_event_feeds()       (collectors/__init__.py)
   * Async collectors (shipping/lightning) -> supervised in-process asyncio tasks
@@ -17,8 +19,12 @@ Two cadences (identical semantics to the old DataCollector.run()):
     fill within ~a minute rather than waiting for the next full cycle.
 
 This replaces DataCollector; worldmap.data_collector is now a thin backward-compat shim
-that calls this. The follow-on refactor decomposes FieldIngest into per-source
-FieldCollectorBase classes sharing a per-cycle baseline context.
+that calls this.
+
+Phase 3 is complete: the legacy field_ingest.py monolith (FieldIngest) has been decomposed
+into GfsAtmosCollector/GfsWavesCollector/RtofsCurrentsCollector and deleted. Each cycle
+shares one CycleContext across the three, so GfsAtmosCollector and GfsWavesCollector resolve
+their common GFS baseline only once (see field_base.CycleContext).
 """
 import asyncio
 import logging
@@ -28,7 +34,15 @@ from worldmap.lib.db import Database
 from worldmap.lib.logging import setup_logging, set_loglevel
 from worldmap.lib import fieldstore
 from worldmap.collectors import collect_event_feeds, collect_file_caches
-from worldmap.collectors.field_ingest import FieldIngest
+from worldmap.collectors.field_base import CycleContext, drain_backfill
+from worldmap.collectors.gfs_atmos import GfsAtmosCollector
+from worldmap.collectors.gfs_waves import GfsWavesCollector
+from worldmap.collectors.rtofs_currents import RtofsCurrentsCollector
+
+# The field collectors driven each cycle. Order doesn't matter for correctness —
+# GfsAtmosCollector and GfsWavesCollector share their CycleContext("gfs") baseline
+# regardless of which of the two runs first.
+_FIELD_COLLECTOR_CLASSES = [GfsAtmosCollector, GfsWavesCollector, RtofsCurrentsCollector]
 
 logger = logging.getLogger("worldmap.collector_service")
 
@@ -60,12 +74,12 @@ class CollectorService:
         self.refresh_settings()
 
         # Bind the fieldstore to this process's workdir + db handle (bulk field arrays
-        # live under {workdir}/fields; the db keeps only the catalog rows), then hand it
-        # to FieldIngest which owns all GFS/RTOFS ingestion + backfill.
+        # live under {workdir}/fields; the db keeps only the catalog rows). The field
+        # collectors are constructed fresh each cycle (see _collect_fields), so nothing
+        # else needs to be bound here.
         workdir = self.config.get_setting("common", "workdir", ".")
         self.workdir = workdir
         self.store = fieldstore.get_store(workdir, db=self.db)
-        self.fields = FieldIngest(self.config, self.db, self.store)
 
         # One last_runs dict per synchronous collector family; each collector's section is
         # the key, mutated in place so per-collector cadence counts down across cycles.
@@ -85,11 +99,6 @@ class CollectorService:
         log_level = self.settings.get("log_level")
         if log_level:
             set_loglevel(log_level)
-        # FieldIngest reads datasources + cache_hours from the same section; keep it in
-        # step so a live config edit reaches the field cycle too. (Guarded because
-        # refresh_settings runs once in __init__ before self.fields exists.)
-        if getattr(self, "fields", None) is not None:
-            self.fields.refresh()
 
     # ------------------------------------------------------------------
     # Synchronous full refresh — offloaded to a thread by run()
@@ -99,7 +108,7 @@ class CollectorService:
         on its own cadence/freshness, so a steady-state cycle is cheap."""
         # Heavy field datasources (gfs atmos+waves, rtofs currents): fieldstore-backed,
         # baseline-resolved, per-hour skip-if-present.
-        self.fields.collect_cycle()
+        self._collect_fields()
 
         # File-cache collectors: sst (OISST netCDF), clouds (GIBS image). Each self-gates
         # on its own cadence (is_stale) and freshness (remote_is_newer / expiry_hours).
@@ -108,6 +117,23 @@ class CollectorService:
         # Event feeds: quakes, storms, volcanoes, satellites, markers. Each runs at its
         # own schedule via is_stale(); has_new_data() skips unchanged remotes (HEAD/ETag).
         collect_event_feeds(self.config, self.db, self._event_last_runs)
+
+    def _collect_fields(self):
+        """Construct each field collector fresh this cycle (same per-cycle instantiation
+        convention as _drive() uses for the event feeds, so a live config edit — e.g.
+        cache_hours — reaches them without a restart) and share one CycleContext across all
+        of them, so GfsAtmosCollector and GfsWavesCollector resolve their common GFS baseline
+        only once. One collector failing is logged and skipped; it never aborts the others
+        or the rest of collect_once()."""
+        ctx = CycleContext()
+        for CollectorCls in _FIELD_COLLECTOR_CLASSES:
+            try:
+                CollectorCls(self.config, self.db, self.store).collect(ctx)
+            except Exception as e:
+                logger.error(
+                    f"field collector {CollectorCls.__name__} failed: {e}",
+                    exc_info=True,
+                )
 
     # ------------------------------------------------------------------
     # Embedded async collector supervision
@@ -199,7 +225,13 @@ class CollectorService:
                 # (still gated on enabled, so a disabled service does nothing).
                 if enabled:
                     try:
-                        await asyncio.to_thread(self.fields.drain_backfill)
+                        await asyncio.to_thread(
+                            drain_backfill,
+                            self.config,
+                            self.db,
+                            self.store,
+                            _FIELD_COLLECTOR_CLASSES,
+                        )
                     except Exception as e:
                         logger.error(f"backfill drain failed: {e}")
 

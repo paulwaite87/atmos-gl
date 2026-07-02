@@ -7,7 +7,6 @@ import xarray as xr
 import matplotlib as mpl
 import matplotlib.colors as mcolors
 import cartopy.crs as ccrs
-from datetime import datetime
 
 # Internal imports
 from worldmap.lib.config import WorldMapConfig
