@@ -43,6 +43,7 @@ class WindUpdater(Updater):
         # (_data.png, decoded as u,v by the particle shader AND shaded as speed by the
         # frontend GPU heatmap).
         self.per_hour_outputs = [".png", "_data.png"]
+        self.status_product = "wind"
 
     def plot(self, field0):
         """Render the per-hour windspeed heatmap (.png) + velocity texture (_data.png).

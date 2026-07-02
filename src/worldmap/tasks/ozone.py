@@ -24,6 +24,7 @@ class OzoneUpdater(Updater):
         self.VMIN_OZONE = 200.0
         self.VMAX_OZONE = 450.0
         self.per_hour_outputs = [".png", "_data.png"]
+        self.status_product = "ozone"
 
     def save_ozone_key(self, output_path):
         """Generates an ozone key image."""

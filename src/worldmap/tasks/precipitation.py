@@ -32,6 +32,7 @@ class PrecipitationUpdater(Updater):
         self.VMAX_PRECIP = 100.0
         # Static PNG + GPU data texture.
         self.per_hour_outputs = [".png", "_data.png"]
+        self.status_product = "precipitation"
 
         self.PALETTES = {
             "standard": [

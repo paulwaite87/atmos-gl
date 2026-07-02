@@ -23,6 +23,7 @@ class StormwatchUpdater(Updater):
         self.VMIN_CAPE = 0.0
         self.VMAX_CAPE = 5000.0
         self.per_hour_outputs = [".png", "_data.png"]
+        self.status_product = "stormwatch"
 
     def save_stormwatch_key(self, output_path):
         """Generates a stormwatch (CAPE) key image."""

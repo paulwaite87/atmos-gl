@@ -31,6 +31,7 @@ class CurrentsUpdater(Updater):
         super().__init__(config, "Currents", map_data)
         # No static PNG — only the GPU velocity texture (like wind).
         self.per_hour_outputs = ["_data.png"]
+        self.status_product = "currents"
         # The land mask depends only on the (fixed) regrid geometry, so compute it once
         # per run and reuse for every hour. Keyed by grid shape.
         self._land_mask_cache = {}
