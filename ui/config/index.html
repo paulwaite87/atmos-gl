@@ -1281,11 +1281,14 @@
                 const pct = Math.max(0, Math.min(100, item.percent ?? 0));
                 const fillClass = statusFillClass(pct);
                 const lastUpdated = formatRelativeTime(item.last_updated);
-                const nextUpdate = item.enabled === false
-                    ? "disabled"
-                    : (item.next_update
-                        ? formatRelativeTime(item.next_update, { future: true })
-                        : "—");
+                // next_update is only ever null for a real kill-switch (e.g. the async
+                // shipping/lightning collectors, or the data_collector master toggle) —
+                // collectors and layers gated only by a frontend-visibility `enabled`
+                // flag still get collected/rendered in the background and always report
+                // a real next_update, so trust the value over the enabled flag.
+                const nextUpdate = item.next_update
+                    ? formatRelativeTime(item.next_update, { future: true })
+                    : (item.enabled === false ? "disabled" : "—");
                 const title = item.detail ? item.detail.replace(/"/g, "&quot;") : "";
                 return `
                     <div class="status-row" title="${title}">
