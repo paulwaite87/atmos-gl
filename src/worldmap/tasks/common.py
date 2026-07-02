@@ -25,6 +25,12 @@ logger = logging.getLogger(__name__)
 WEB_MERCATOR = ccrs.Mercator.GOOGLE  # EPSG:3857
 MERCATOR_LAT_LIMIT = 85.0511  # NOTE: just *inside* GOOGLE's 85.0511288 max
 
+# Seconds between layer_builder's fan-out cycles (every cycle dispatches every updater).
+# Canonical home is here, not layer_builder.py, so Updater.layer_status() can use it for
+# next_update without layer_builder importing tasks.common creating a cycle the other way.
+# layer_builder.py imports this rather than defining its own copy.
+LAYER_CYCLE_SECONDS = 15
+
 
 def encode_frames(frames, output_path, vmin, vmax, transform=None, bits=16):
     """
@@ -747,9 +753,11 @@ class Updater:
             has fetched so far, not the theoretical full forecast window — a layer being
             "100%" of what it currently has to work with is correct, not a defect, when
             the collector itself is still catching up (that's the COLLECTOR's data_status
-            to report). next_update has no single well-defined value here (rendering is
-            continuous as new hours arrive, not on a fixed period), so it's left None even
-            when enabled — the UI shows "disabled" only when `enabled` is actually False.
+            to report). next_update here means "next time LayerBuilder re-checks this
+            task" (LAYER_CYCLE_SECONDS, its fixed fan-out cadence) rather than "next new
+            forecast hour" — there's no single well-defined value for the latter since
+            rendering is continuous as hours arrive, but the former is still real and
+            worth showing rather than leaving blank.
           * None (single-shot: sst, clouds, markers) — the same decaying-freshness
             formula CollectorBase.data_status() uses, keyed by this task's own section
             and runs_per_day cadence. next_update falls back to an estimate (now +
@@ -785,6 +793,9 @@ class Updater:
                         detail = f"{run_date} {run_id}Z: {rendered}/{total} hour(s) rendered"
                 finally:
                     self.run_date_str, self.run_id, self.forecast_hour_str = saved_run
+            next_update = _estimate_next_update(
+                last_updated, LAYER_CYCLE_SECONDS, self.enabled
+            )
         else:
             rpd = float(self.settings.get("runs_per_day", 1))
             period_s = 86400.0 / max(rpd, 0.01)

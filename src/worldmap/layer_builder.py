@@ -16,7 +16,7 @@ from worldmap.lib.logging import setup_logging, set_loglevel
 
 
 # Task imports
-from worldmap.tasks.common import MapData
+from worldmap.tasks.common import MapData, LAYER_CYCLE_SECONDS
 from worldmap.tasks.clouds import CloudUpdater
 from worldmap.tasks.isobars import IsobarUpdater
 from worldmap.tasks.wind import WindUpdater
@@ -33,8 +33,10 @@ logger = logging.getLogger("worldmap.layer_builder")
 
 # Seconds between fan-out cycles. Every cycle dispatches all updaters; per-hour freshness
 # checks make a steady-state (nothing-changed) cycle cheap, so this is just the
-# responsiveness window for picking up new data or deleted output.
-CYCLE_SECONDS = 15
+# responsiveness window for picking up new data or deleted output. Canonical definition
+# is tasks.common.LAYER_CYCLE_SECONDS (Updater.layer_status() needs it too, and
+# tasks/common.py can't import this module without a cycle).
+CYCLE_SECONDS = LAYER_CYCLE_SECONDS
 
 # section -> updater class. The parent dispatches one task per entry; each worker process
 # looks up the class it must build by section name. Order is informational only now —
