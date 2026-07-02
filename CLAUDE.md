@@ -47,13 +47,10 @@ src/worldmap/               ← PYTHONPATH root (PYTHONPATH=/opt/project/src)
 unreachable inside the container and will silently fail. Never create collector code
 at the repo root.
 
-**No `data_collector.py` shim currently exists.** `docker-compose.yml`'s `data_collector`
-service invokes `CollectorService` directly (`python -m worldmap.collectors.service`), so
-nothing depends on a shim module at runtime. `pyproject.toml` still declares a
-`datacollector = "worldmap.data_collector:main"` console-script entry point left over from
-before this decomposition — that entry point is currently broken (the module doesn't exist)
-and unused in practice. If you touch packaging, flag this rather than silently "fixing" it
-either way (recreate the shim, or drop the stale entry point) — that's the maintainer's call.
+**No `data_collector.py` shim exists.** `docker-compose.yml`'s `data_collector` service
+invokes `CollectorService` directly (`python -m worldmap.collectors.service`), so nothing
+depends on a shim module at runtime. `pyproject.toml`'s `[project.scripts]` no longer
+declares a `datacollector` entry point (it pointed at this now-nonexistent module).
 
 ---
 

@@ -52,7 +52,6 @@ dependencies = [
 ]
 
 [project.scripts]
-datacollector = "worldmap.data_collector:main"
 layerbuilder = "worldmap.layer_builder:main"
 housekeeper = "worldmap.housekeeper:main"
 shippingcollector = "worldmap.collectors.shipping:main"
