@@ -133,6 +133,21 @@ CREATE TABLE IF NOT EXISTS backfill_requests (
     PRIMARY KEY (gfs_date, gfs_run, fhour, product)
 );
 
+-- Last-run bookkeeping for every collector and layer-builder task, driving the Config UI's
+-- "Data Status" tab. Written by the orchestration layer (collectors/__init__.py::_drive(),
+-- CollectorService, the async collectors' own run() loops, and LayerBuilder), never by the
+-- read-only data_status()/layer_status() methods themselves.
+-- NOTE: the application also creates this table at runtime via
+-- Database._ensure_process_status_table(), so already-initialised databases (where the
+-- docker-entrypoint-initdb.d scripts only run on a fresh data dir) get it too.
+CREATE TABLE IF NOT EXISTS process_status (
+    name         text        PRIMARY KEY,
+    kind         text        NOT NULL,   -- 'collector' | 'layer'
+    last_updated timestamptz,            -- last successful run/check; NULL if never succeeded
+    last_error   text,                   -- last error message; cleared on the next success
+    updated_at   timestamptz NOT NULL DEFAULT now()
+);
+
 -- ===========================================================================
 -- markers : place/feature markers + their sampled current weather.
 --
