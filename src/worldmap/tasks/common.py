@@ -18,7 +18,7 @@ from pathlib import Path
 from worldmap.lib.config import WorldMapConfig
 from worldmap.lib.db import Database
 from worldmap.lib import fieldstore
-from worldmap.collectors.base import _freshness_percent
+from worldmap.collectors.base import _freshness_percent, _estimate_next_update
 
 logger = logging.getLogger(__name__)
 
@@ -748,10 +748,13 @@ class Updater:
             "100%" of what it currently has to work with is correct, not a defect, when
             the collector itself is still catching up (that's the COLLECTOR's data_status
             to report). next_update has no single well-defined value here (rendering is
-            continuous as new hours arrive, not on a fixed period), so it's omitted.
+            continuous as new hours arrive, not on a fixed period), so it's left None even
+            when enabled — the UI shows "disabled" only when `enabled` is actually False.
           * None (single-shot: sst, clouds, markers) — the same decaying-freshness
             formula CollectorBase.data_status() uses, keyed by this task's own section
-            and runs_per_day cadence.
+            and runs_per_day cadence. next_update falls back to an estimate (now +
+            period_s) when this task hasn't completed a cycle yet, same as
+            CollectorBase.data_status() — see _estimate_next_update.
         """
         row = self._store.db.get_process_status(self.section)
         last_updated = row["last_updated"] if row else None
@@ -786,15 +789,14 @@ class Updater:
             rpd = float(self.settings.get("runs_per_day", 1))
             period_s = 86400.0 / max(rpd, 0.01)
             percent = _freshness_percent(last_updated, period_s)
-            next_update = (
-                last_updated + timedelta(seconds=period_s) if last_updated else None
-            )
+            next_update = _estimate_next_update(last_updated, period_s, self.enabled)
 
         return {
             "name": self.section,
             "kind": "layer",
             "percent": round(percent, 1),
             "last_updated": last_updated,
+            "enabled": self.enabled,
             "next_update": next_update,
             "detail": detail,
         }

@@ -30,7 +30,7 @@ list", not a new branch here.
 import logging
 from datetime import datetime, timedelta, timezone
 
-from .base import CollectorBase
+from .base import CollectorBase, _estimate_next_update
 
 logger = logging.getLogger(__name__)
 
@@ -157,15 +157,13 @@ class FieldCollectorBase(CollectorBase):
                 detail = f"{run_date_str} {run_id}Z: {present}/{expected_total} hour(s)"
 
         period_s = self._service_period_s()
-        next_update = (
-            last_updated + timedelta(seconds=period_s) if last_updated else None
-        )
         return {
             "name": self.status_name,
             "kind": "collector",
             "percent": round(percent, 1),
             "last_updated": last_updated,
-            "next_update": next_update,
+            "next_update": _estimate_next_update(last_updated, period_s, self.enabled),
+            "enabled": self.enabled,
             "detail": detail,
         }
 

@@ -49,6 +49,25 @@ def _freshness_percent(last_updated, period_s: float) -> float:
     return max(0.0, 100.0 * (1 - overdue / period_s))
 
 
+def _estimate_next_update(last_updated, period_s: float, enabled: bool):
+    """next_update for the Data Status UI. Three cases:
+      * disabled     -> None (it won't run again until re-enabled; showing a guessed time
+                         here would be actively misleading, not just imprecise)
+      * never run yet (last_updated is None) but enabled -> now + period_s, an estimate
+        (we don't know exactly when this cycle started, only that it's due within one
+        period) rather than leaving the UI with nothing at all for a collector that just
+        hasn't completed its first cycle
+      * has run before -> last_updated + period_s, the precise scheduled next run
+    """
+    if not enabled:
+        return None
+    if last_updated is None:
+        return datetime.now(timezone.utc) + timedelta(seconds=period_s)
+    if last_updated.tzinfo is None:
+        last_updated = last_updated.replace(tzinfo=timezone.utc)
+    return last_updated + timedelta(seconds=period_s)
+
+
 class CollectorBase:
     """Abstract base for a stateless, schedulable event-feed collector.
 
@@ -131,23 +150,21 @@ class CollectorBase:
     def data_status(self) -> dict:
         """Snapshot for the Config UI's Data Status tab: a decaying-freshness `percent`
         (100 right after a successful run, decaying to 0 as it becomes overdue past
-        period_s), `last_updated`, `next_update`, and an optional error `detail`. Read
-        straight from process_status (written by _drive()); this method never writes.
-        FieldCollectorBase overrides this with a coverage-based percent instead, since
-        "how much of the forecast window is fetched" is more meaningful for those than
-        a freshness decay."""
+        period_s), `last_updated`, `next_update`, `enabled`, and an optional error
+        `detail`. Read straight from process_status (written by _drive()); this method
+        never writes. FieldCollectorBase overrides this with a coverage-based percent
+        instead, since "how much of the forecast window is fetched" is more meaningful
+        for those than a freshness decay."""
         row = self.db.get_process_status(self.section)
         last_updated = row["last_updated"] if row else None
         last_error = row["last_error"] if row else None
-        next_update = (
-            last_updated + timedelta(seconds=self.period_s) if last_updated else None
-        )
         return {
             "name": self.section,
             "kind": "collector",
             "percent": round(_freshness_percent(last_updated, self.period_s), 1),
             "last_updated": last_updated,
-            "next_update": next_update,
+            "next_update": _estimate_next_update(last_updated, self.period_s, self.enabled),
+            "enabled": self.enabled,
             "detail": last_error,
         }
 
@@ -247,17 +264,15 @@ class AsyncCollectorBase:
         row = self.db.get_process_status(self.section)
         last_updated = row["last_updated"] if row else None
         last_error = row["last_error"] if row else None
-        next_update = (
-            last_updated + timedelta(seconds=self.heartbeat_period_s)
-            if last_updated
-            else None
-        )
         return {
             "name": self.section,
             "kind": "collector",
             "percent": round(_freshness_percent(last_updated, self.heartbeat_period_s), 1),
             "last_updated": last_updated,
-            "next_update": next_update,
+            "next_update": _estimate_next_update(
+                last_updated, self.heartbeat_period_s, self.enabled
+            ),
+            "enabled": self.enabled,
             "detail": last_error,
         }
 

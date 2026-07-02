@@ -1281,9 +1281,11 @@
                 const pct = Math.max(0, Math.min(100, item.percent ?? 0));
                 const fillClass = statusFillClass(pct);
                 const lastUpdated = formatRelativeTime(item.last_updated);
-                const nextUpdate = item.next_update
-                    ? formatRelativeTime(item.next_update, { future: true })
-                    : "—";
+                const nextUpdate = item.enabled === false
+                    ? "disabled"
+                    : (item.next_update
+                        ? formatRelativeTime(item.next_update, { future: true })
+                        : "—");
                 const title = item.detail ? item.detail.replace(/"/g, "&quot;") : "";
                 return `
                     <div class="status-row" title="${title}">
