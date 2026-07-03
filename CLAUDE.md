@@ -294,9 +294,12 @@ Single-context layout — one `CONTEXT.md` + `docs/adr/` at the repo root. See `
 ### Prioritized skills
 
 The broader skill catalog under `~/.agents/skills/` is symlinked in globally, but these
-are the ones actively in use for this repo, on top of the general-purpose ones
-(`code-review`, `tdd`, `wayfinder`, `diagnosing-bugs`, etc.):
+are the ones actively in use for this repo:
 
+- `tdd` — test-driven development; build features or fix bugs test-first
+- `code-review` — review changes since a fixed point along Standards and Spec axes
+- `wayfinder` — plan and track work too large for one session as a map of tickets
+- `diagnosing-bugs` — diagnosis loop for hard bugs and performance regressions
 - `to-issues` — break a plan/PRD into independently-gradable GitHub issues
 - `to-prd` — turn a conversation into a PRD and publish it to GitHub
 - `triage` — move incoming issues/PRs through the triage label state machine
@@ -305,3 +308,7 @@ are the ones actively in use for this repo, on top of the general-purpose ones
 - `ubiquitous-language` — extract a domain glossary into `CONTEXT.md`
 - `handoff` — compact the current conversation into a handoff doc for another agent
 - `claude-handoff` — hand the current conversation to a fresh background agent
+- `grilling` — grill the user relentlessly about a plan or design before building
+- `grill-me` — a relentless interview to sharpen a plan or design
+- `domain-modeling` — build and sharpen the project's domain model, record ADRs
+- `prototype` — build a throwaway prototype to answer a design question
