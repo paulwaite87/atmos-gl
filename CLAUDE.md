@@ -274,3 +274,19 @@ file:
 - **Don't have multiple collectors independently probe NOMADS for the same baseline.**
 - **Don't stage `.idea/`** or any PyCharm-specific files.
 - **Don't make large structural changes without confirming the approach first.**
+
+---
+
+## Agent skills
+
+### Issue tracker
+
+Issues are tracked in this repo's GitHub Issues (paulwaite87/worldmap-ng), via the `gh` CLI. External PRs are not treated as a triage surface. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default label vocabulary (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`) — no repo-specific remapping. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context layout — one `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.
