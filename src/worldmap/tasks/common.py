@@ -3,7 +3,6 @@ import os
 import sys
 import json
 import logging
-import requests
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 import cartopy.crs as ccrs
@@ -11,7 +10,7 @@ import cartopy.mpl.geoaxes as geoaxes
 import numpy as np
 from PIL import Image
 from typing import cast
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from pathlib import Path
 
 # Internal library import
@@ -980,47 +979,20 @@ class Updater:
         sync to establish the GFS datum. All subsequent updaters read from memory.
         Returns a dictionary with the synchronized date, run, and true forecast hour.
         """
+        from worldmap.lib.gfs import resolve_gfs_baseline
+
         baseline = getattr(self.map_data, "shared_state", {}).get("gfs_baseline")
 
         # 1. ESTABLISH THE DATUM (Only runs once per map refresh)
         if not baseline:
             logger.debug(f"Section {self.section} setting up baseline")
-            now = datetime.now(timezone.utc)
-
-            gfs_base = "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod"
-            for day_offset in range(3):
-                target_date = now - timedelta(days=day_offset)
-                date_str = target_date.strftime("%Y%m%d")
-                date_str_Y_M_D = target_date.strftime("%Y-%m-%d")
-
-                for run in ["18", "12", "06", "00"]:
-                    # We ping the .idx file because it is incredibly lightweight
-                    url = f"{gfs_base}/gfs.{date_str}/{run}/atmos/gfs.t{run}z.pgrb2.0p25.f000.idx"
-                    logger.debug(f"Trying url={url}")
-                    try:
-                        response = requests.head(url, timeout=5)
-                        if response.status_code == 200:
-                            run_timestamp = target_date.replace(
-                                hour=int(run), minute=0, second=0, microsecond=0
-                            )
-                            baseline = {
-                                "date_str": date_str,
-                                "date_str_Y_M_D": date_str_Y_M_D,
-                                "run": run,
-                                "timestamp": run_timestamp,
-                            }
-                            logger.debug(f"Success: run timestamp={run_timestamp}")
-                            # Save globally for all other layers
-                            self.map_data.shared_state["gfs_baseline"] = baseline
-                            logger.debug(f"GFS Baseline Synced: {date_str} {run}Z")
-                            break
-                    except requests.RequestException:
-                        continue
-                if baseline:
-                    break
-
+            baseline = resolve_gfs_baseline()
             if not baseline:
                 raise RuntimeError("Failed to sync GFS baseline from NOMADS.")
+            self.map_data.shared_state["gfs_baseline"] = baseline
+            logger.debug(
+                f"GFS Baseline Synced: {baseline['date_str']} {baseline['run']}Z"
+            )
 
         # 2. CALCULATE THE DYNAMIC OFFSET (Runs for every layer)
         now = datetime.now(timezone.utc)
@@ -1081,4 +1053,3 @@ class Updater:
             f"Section {self.section} get_rtofs_state: fhour {self.forecast_hour_str}; "
             f"date {self.run_date_str}; run {self.run_id}"
         )
-
