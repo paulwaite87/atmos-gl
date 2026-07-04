@@ -3,15 +3,14 @@ import os
 import sys
 import json
 import logging
-import requests
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 import cartopy.crs as ccrs
 import cartopy.mpl.geoaxes as geoaxes
 import numpy as np
 from PIL import Image
-from typing import cast, Any
-from datetime import datetime, timezone, timedelta
+from typing import cast
+from datetime import datetime, timezone
 from pathlib import Path
 
 # Internal library import
@@ -980,47 +979,20 @@ class Updater:
         sync to establish the GFS datum. All subsequent updaters read from memory.
         Returns a dictionary with the synchronized date, run, and true forecast hour.
         """
+        from worldmap.lib.gfs import resolve_gfs_baseline
+
         baseline = getattr(self.map_data, "shared_state", {}).get("gfs_baseline")
 
         # 1. ESTABLISH THE DATUM (Only runs once per map refresh)
         if not baseline:
             logger.debug(f"Section {self.section} setting up baseline")
-            now = datetime.now(timezone.utc)
-
-            gfs_base = "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod"
-            for day_offset in range(3):
-                target_date = now - timedelta(days=day_offset)
-                date_str = target_date.strftime("%Y%m%d")
-                date_str_Y_M_D = target_date.strftime("%Y-%m-%d")
-
-                for run in ["18", "12", "06", "00"]:
-                    # We ping the .idx file because it is incredibly lightweight
-                    url = f"{gfs_base}/gfs.{date_str}/{run}/atmos/gfs.t{run}z.pgrb2.0p25.f000.idx"
-                    logger.debug(f"Trying url={url}")
-                    try:
-                        response = requests.head(url, timeout=5)
-                        if response.status_code == 200:
-                            run_timestamp = target_date.replace(
-                                hour=int(run), minute=0, second=0, microsecond=0
-                            )
-                            baseline = {
-                                "date_str": date_str,
-                                "date_str_Y_M_D": date_str_Y_M_D,
-                                "run": run,
-                                "timestamp": run_timestamp,
-                            }
-                            logger.debug(f"Success: run timestamp={run_timestamp}")
-                            # Save globally for all other layers
-                            self.map_data.shared_state["gfs_baseline"] = baseline
-                            logger.debug(f"GFS Baseline Synced: {date_str} {run}Z")
-                            break
-                    except requests.RequestException:
-                        continue
-                if baseline:
-                    break
-
+            baseline = resolve_gfs_baseline()
             if not baseline:
                 raise RuntimeError("Failed to sync GFS baseline from NOMADS.")
+            self.map_data.shared_state["gfs_baseline"] = baseline
+            logger.debug(
+                f"GFS Baseline Synced: {baseline['date_str']} {baseline['run']}Z"
+            )
 
         # 2. CALCULATE THE DYNAMIC OFFSET (Runs for every layer)
         now = datetime.now(timezone.utc)
@@ -1081,238 +1053,3 @@ class Updater:
             f"Section {self.section} get_rtofs_state: fhour {self.forecast_hour_str}; "
             f"date {self.run_date_str}; run {self.run_id}"
         )
-
-    def get_gfs_ranges(
-        self, grib_url: str, grib_targets: list[str]
-    ) -> list[Any] | None:
-
-        if not grib_targets:
-            return None
-
-        """Finds the byte ranges for both CAPE and CIN in the GFS index."""
-        r = requests.get(grib_url + ".idx", timeout=30)
-        r.raise_for_status()
-        lines = r.text.strip().split("\n")
-
-        ranges = []
-        for target in grib_targets:
-            for i, line in enumerate(lines):
-                if target in line:
-                    start_byte = int(line.split(":")[1])
-                    end_byte = (
-                        int(lines[i + 1].split(":")[1]) - 1
-                        if i + 1 < len(lines)
-                        else -1
-                    )
-                    ranges.append((start_byte, end_byte))
-                    break
-
-        if not ranges:
-            raise RuntimeError(f"Could not find {grib_targets} in the GFS index.")
-
-        return ranges
-
-    def download_raw_data(
-        self,
-        remote_url: str,
-        output_path: str,
-        ranges: list[tuple[int, int]] = None,
-        timeout: int = 120,
-    ):
-        """
-        1) If ranges is left unspecified:
-        If no 'ranges' are provided we just do a vanilla download, so this
-        method is apt for standard non-GFS datasets.
-
-        2) If ranges is specified:
-        Download data from GFS datasets some of which allow you to specify
-        byte range(s) so the whole dataset doesn't get downloaded. The ranges
-        are a list of (start, end) integer tuples from which we construct
-        the 'Range' header. If more than one range is provided in the 'ranges'
-        list, we will do multiple downloads, one for each Range, and build
-        a single file from them.
-        """
-        # Cater for GFS dataset which has an associated index file
-        idx_path = f"{output_path}.idx"
-        if os.path.exists(idx_path):
-            try:
-                os.remove(idx_path)
-                logger.debug("Cleared stale index file.")
-            except OSError:
-                pass
-        try:
-            # Open in 'wb' mode to overwrite any old data, then we'll append the chunks
-            os.makedirs(os.path.dirname(output_path), exist_ok=True)
-            if ranges:
-                # Range headers are to be provided, one or more
-                with open(output_path, "wb") as f:
-                    for start, end in ranges:
-                        if end < 0:
-                            headers = {"Range": f"bytes={start}-"}
-                        else:
-                            headers = {"Range": f"bytes={start}-{end}"}
-                        r = requests.get(
-                            remote_url, headers=headers, timeout=120, stream=True
-                        )
-                        r.raise_for_status()
-                        for chunk in r.iter_content(chunk_size=1024 * 1024):
-                            f.write(chunk)
-            else:
-                # No range headers
-                r = requests.get(remote_url, timeout=timeout, stream=True)
-                r.raise_for_status()
-                with open(output_path, "wb") as f:
-                    for chunk in r.iter_content(chunk_size=1024 * 1024):
-                        f.write(chunk)
-        except requests.RequestException as e:
-            logger.error(
-                f"Download of raw data for {self.section} url={remote_url} failed: {e}"
-            )
-            return False
-
-        return True
-
-    def remote_data_update(
-        self, remote_url, cache_file_path, grib_targets: list[str] = None
-    ) -> bool:
-        """
-        Check remote url for newer data, and checks existence of local cache file.
-        If remote is newer, or local cache file is missing we download it.
-        We return two boolean statuses: cache is present, cache_was_updated.
-        The grib_targets parameter is specific to GFS remote data and allows
-        headers to be specified to download particular layer of the dataset. If
-        unspecified, the download is just generic, ie. the whole file.
-        """
-        # First ascertain cache status
-        cache_exists = os.path.exists(cache_file_path)
-
-        # Next, query the remote url
-        cache_needs_update = not cache_exists
-        cache_was_updated = False
-        try:
-            response = requests.head(remote_url, timeout=10)
-            if response.status_code == 200:
-                remote_mtime_str = response.headers.get("Last-Modified")
-                if remote_mtime_str:
-                    remote_mtime = datetime.strptime(
-                        remote_mtime_str, "%a, %d %b %Y %H:%M:%S %Z"
-                    ).replace(tzinfo=timezone.utc)
-                    if cache_exists:
-                        local_mtime = datetime.fromtimestamp(
-                            os.path.getmtime(cache_file_path), tz=timezone.utc
-                        )
-                        if remote_mtime > local_mtime:
-                            # cache exists and is out of date
-                            cache_needs_update = True
-                            logger.debug(
-                                f"Cache file {cache_file_path} is up to date for {self.section}"
-                            )
-
-                # try to download new cache file
-                if cache_needs_update:
-                    logger.info(
-                        f"Downloading fresh {self.section} data from {remote_url}"
-                    )
-                    cache_was_updated = self.download_raw_data(
-                        remote_url=remote_url,
-                        output_path=cache_file_path,
-                        ranges=self.get_gfs_ranges(remote_url, grib_targets)
-                        if grib_targets
-                        else None
-                        if grib_targets
-                        else None,
-                    )
-        except requests.RequestException:
-            pass
-
-        # Return a composite status reflecting cache file availability derived
-        # from the presence (or otherwise) of the cache itself and whether it
-        # was updated plus two other updater statuses: whether the final output
-        # path is present and whether World Map configuration has changed.
-        cache_exists = os.path.exists(cache_file_path)
-        return cache_exists and (
-            cache_was_updated
-            or not os.path.exists(self.output_path)
-            or self.config.has_changed
-        )
-
-    def get_regional_image(self, input_path: str = None) -> Image.Image | None:
-        """Returns an image object which is cropped to the active region"""
-        # Default to replacing updater's output image
-        if not input_path:
-            input_path = self.get_output_path()
-
-        try:
-            with Image.open(input_path) as img:
-                region_bbox = self.map_region_bbox
-
-                # do nothing if no region
-                if not region_bbox:
-                    return img
-
-                src_w, src_h = img.size
-                lon_min, lat_min, lon_max, lat_max = region_bbox
-
-                def get_px(lon, lat):
-                    """Converts lat/lon to pixel coordinates on the global source map."""
-                    # Normalize -180...180 to 0...1 (180 becomes 1.0, not 0)
-                    x_pct = (lon + 180) / 360
-                    # Clamp to prevent edge-case pixel overflows
-                    x = max(0, min(src_w - 1, int(x_pct * src_w)))
-
-                    # Latitude 90 (North) is Y=0, -90 (South) is Y=src_h
-                    y_pct = (90 - lat) / 180
-                    y = max(0, min(src_h - 1, int(y_pct * src_h)))
-                    return x, y
-
-                if lon_max > 180:
-                    logger.debug(
-                        f"Cropping image {input_path} with date line wrap for {self.map_region_identifier}"
-                    )
-                    # TILE A: The "Western" part (e.g., 112 to 180)
-                    ax1, ay1 = get_px(lon_min, lat_max)
-                    ax2, ay2 = get_px(180, lat_min)
-                    # PIL.crop uses (left, top, right, bottom)
-                    tile_a = img.crop((ax1, ay1, ax2, ay2))
-
-                    # TILE B: The "Eastern" part (e.g., -180 to -178.9)
-                    bx1, by1 = get_px(-180, lat_max)
-                    bx2, by2 = get_px(lon_max - 360, lat_min)
-                    tile_b = img.crop((bx1, by1, bx2, by2))
-
-                    # Calculate the seam point proportionally
-                    w_a = int(
-                        ((180 - lon_min) / (lon_max - lon_min)) * self.target_width
-                    )
-                    w_b = self.target_width - w_a
-
-                    regional_image = Image.new(
-                        "RGB", (self.target_width, self.target_height)
-                    )
-                    regional_image.paste(
-                        tile_a.resize(
-                            (w_a, self.target_height), Image.Resampling.LANCZOS
-                        ),
-                        (0, 0),
-                    )
-                    regional_image.paste(
-                        tile_b.resize(
-                            (w_b, self.target_height), Image.Resampling.LANCZOS
-                        ),
-                        (w_a, 0),
-                    )
-                else:
-                    # Standard linear crop
-                    x1, y1 = get_px(lon_min, lat_max)
-                    x2, y2 = get_px(lon_max, lat_min)
-                    regional_image = img.crop((x1, y1, x2, y2)).resize(
-                        (self.target_width, self.target_height),
-                        Image.Resampling.LANCZOS,
-                    )
-
-                return regional_image
-                # regional_image.save(new_image_path, "JPEG", quality=90)
-        except Exception as e:
-            logger.error(f"Failed to crop to regional image: {e}")
-
-        return None
