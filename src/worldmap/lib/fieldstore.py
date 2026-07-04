@@ -22,13 +22,13 @@ logger = logging.getLogger(__name__)
 class FieldStore:
     """Manage field storage across catalog (DB) and files."""
 
-    def __init__(self, db, workdir: str = "."):
+    def __init__(self, field_catalog_adapter, workdir: str = "."):
         """
         Args:
-            db: Database instance (handles catalog rows)
+            field_catalog_adapter: FieldCatalogAdapter instance (handles catalog rows)
             workdir: Root directory for field storage (e.g., /data/worldmap)
         """
-        self.db = db
+        self.field_catalog_adapter = field_catalog_adapter
         self.workdir = Path(workdir)
         self.fields_dir = self.workdir / "data" / "fields"
         self.fields_dir.mkdir(parents=True, exist_ok=True)
@@ -100,7 +100,7 @@ class FieldStore:
         # Upsert the catalog row (metadata only)
         try:
             rel_path = path.relative_to(self.workdir)
-            self.db.upsert_field_catalog(
+            self.field_catalog_adapter.upsert_field_catalog(
                 run_date=run_date,
                 run_id=run_id,
                 fhour=fhour,
@@ -130,7 +130,9 @@ class FieldStore:
 
         # Check catalog first (fast, indexed)
         try:
-            catalog_row = self.db.get_field_catalog(run_date, run_id, fhour, product)
+            catalog_row = self.field_catalog_adapter.get_field_catalog(
+                run_date, run_id, fhour, product
+            )
             if not catalog_row:
                 return None
         except Exception as e:
@@ -174,7 +176,9 @@ class FieldStore:
     ) -> bool:
         """Check if a field exists in the catalog (fast, no file I/O)."""
         try:
-            return self.db.field_catalog_exists(run_date, run_id, int(fhour), product)
+            return self.field_catalog_adapter.field_catalog_exists(
+                run_date, run_id, int(fhour), product
+            )
         except Exception as e:
             logger.debug(f"Error checking field existence: {e}")
             return False
@@ -189,7 +193,9 @@ class FieldStore:
         valid_time, avoiding a full .npz read.
         """
         try:
-            return self.db.get_field_catalog(run_date, run_id, int(fhour), product)
+            return self.field_catalog_adapter.get_field_catalog(
+                run_date, run_id, int(fhour), product
+            )
         except Exception as e:
             logger.debug(f"Error fetching field meta: {e}")
             return None
@@ -203,7 +209,7 @@ class FieldStore:
 
         # Delete from catalog
         try:
-            self.db.delete_field_catalog(run_date, run_id, fhour, product)
+            self.field_catalog_adapter.delete_field_catalog(run_date, run_id, fhour, product)
         except Exception as e:
             logger.warning(f"Error deleting from catalog: {e}")
 
@@ -226,7 +232,7 @@ class FieldStore:
         orphaned per-hour render files (files whose layer+hour no longer has any
         catalog backing after a run advanced).
         """
-        return self.db.get_live_product_hours()
+        return self.field_catalog_adapter.get_live_product_hours()
 
     def reconcile(self):
         """Find and fix catalog/file divergence.
@@ -239,7 +245,7 @@ class FieldStore:
 
         # Scan catalog for missing files
         try:
-            orphan_rows = self.db.get_orphan_field_rows(self.workdir)
+            orphan_rows = self.field_catalog_adapter.get_orphan_field_rows(self.workdir)
             for row in orphan_rows:
                 run_date, run_id, fhour, product = (
                     row["run_date"],
@@ -251,7 +257,7 @@ class FieldStore:
                     f"Removing orphan catalog row: {run_date}/{run_id}/f{fhour:03d}/{product} "
                     f"(file missing)"
                 )
-                self.db.delete_field_catalog(run_date, run_id, fhour, product)
+                self.field_catalog_adapter.delete_field_catalog(run_date, run_id, fhour, product)
         except Exception as e:
             logger.error(f"Error scanning for orphan rows: {e}")
 
@@ -268,7 +274,9 @@ class FieldStore:
         is None the old behaviour (prune everything not matching) is retained.
         """
         try:
-            rows = self.db.get_field_rows_except(run_date, run_id, products=products)
+            rows = self.field_catalog_adapter.get_field_rows_except(
+                run_date, run_id, products=products
+            )
         except Exception as e:
             logger.debug(f"prune_except_run: catalog query failed: {e}")
             return
@@ -289,7 +297,7 @@ class FieldStore:
                 except OSError as e:
                     logger.debug(f"prune_except_run: unlink {fpath} failed: {e}")
             try:
-                self.db.delete_field_catalog(d, r, fh, p)
+                self.field_catalog_adapter.delete_field_catalog(d, r, fh, p)
                 removed += 1
             except Exception as e:
                 logger.debug(f"prune_except_run: row delete failed: {e}")
@@ -305,7 +313,7 @@ class FieldStore:
         Returns the number of fields removed. Used by the housekeeper.
         """
         try:
-            rows = self.db.get_expired_field_rows(expiry_hours)
+            rows = self.field_catalog_adapter.get_expired_field_rows(expiry_hours)
         except Exception as e:
             logger.debug(f"prune_expired: catalog query failed: {e}")
             return 0
@@ -322,7 +330,7 @@ class FieldStore:
                 except OSError as e:
                     logger.debug(f"prune_expired: unlink {fpath} failed: {e}")
             try:
-                self.db.delete_field_catalog(d, r, fh, p)
+                self.field_catalog_adapter.delete_field_catalog(d, r, fh, p)
                 removed += 1
             except Exception as e:
                 logger.debug(f"prune_expired: row delete failed: {e}")
@@ -343,53 +351,52 @@ class FieldStore:
 # Module-level singleton factory
 #
 # Tasks/collector/housekeeper call get_store(workdir) to obtain a shared
-# FieldStore. The store owns its own Database handle, matching the existing
-# pattern where components construct Database() as needed. The instance is
+# FieldStore. The store owns its own FieldCatalogAdapter, matching the existing
+# pattern where components construct their adapters as needed. The instance is
 # cached per process so repeated calls are cheap.
 # ---------------------------------------------------------------------------
 
 _store_instance = None
 
 
-def get_store(workdir: str = ".", db=None):
+def get_store(workdir: str = ".", field_catalog_adapter=None):
     """Return a process-wide FieldStore, creating it on first use.
 
     Args:
         workdir: Root directory for field storage (e.g. the common.workdir).
-        db: Optional Database instance to reuse. If omitted, one is created.
+        field_catalog_adapter: Optional FieldCatalogAdapter to reuse. If omitted, one is
+            created.
 
-    The first call fixes the workdir/db for the process. Subsequent calls
+    The first call fixes the workdir/adapter for the process. Subsequent calls
     return the same instance and ignore their arguments.
     """
     global _store_instance
     if _store_instance is None:
-        if db is None:
-            from worldmap.lib.db import Database
+        if field_catalog_adapter is None:
+            from worldmap.db.field_catalog_adapter import FieldCatalogAdapter
 
-            db = Database()
-        _store_instance = FieldStore(db, workdir)
+            field_catalog_adapter = FieldCatalogAdapter()
+        _store_instance = FieldStore(field_catalog_adapter, workdir)
     return _store_instance
 
 
 def make_store(workdir: str = ".") -> "FieldStore":
-    """Create a NEW, independent FieldStore with its OWN Database connection — NOT the
+    """Create a NEW, independent FieldStore with its OWN FieldCatalogAdapter — NOT the
     process-wide singleton returned by get_store().
 
-    Each concurrently-running updater owns one of these. A single psycopg2 connection is
-    not safe to share across threads, so the async layer_builder fan-out gives every
-    updater its own store/connection rather than the shared singleton.
+    Each concurrently-running updater owns one of these.
     """
-    from worldmap.lib.db import Database
+    from worldmap.db.field_catalog_adapter import FieldCatalogAdapter
 
-    return FieldStore(Database(), workdir)
+    return FieldStore(FieldCatalogAdapter(), workdir)
 
 
-def init_fieldstore(db, workdir: str = ".") -> FieldStore:
+def init_fieldstore(field_catalog_adapter, workdir: str = ".") -> FieldStore:
     """Explicitly (re)initialise the global fieldstore instance.
 
-    Useful at process startup when you already hold a Database handle and want
+    Useful at process startup when you already hold a FieldCatalogAdapter and want
     the store bound to it. Overwrites any previously created singleton.
     """
     global _store_instance
-    _store_instance = FieldStore(db, workdir)
+    _store_instance = FieldStore(field_catalog_adapter, workdir)
     return _store_instance

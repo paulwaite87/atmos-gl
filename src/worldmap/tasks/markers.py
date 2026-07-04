@@ -20,6 +20,7 @@ from datetime import datetime, timezone
 import numpy as np
 
 from worldmap.lib.config import WorldMapConfig
+from worldmap.lib.db import Database
 from worldmap.collectors.markers_sync import load_marker_rows
 from .common import Updater, MapData
 
@@ -32,6 +33,9 @@ class MarkerUpdater(Updater):
         # layer); driven by its weather_popup flag and runs_per_day.
         super().__init__(config, "Markers", map_data)
         self.input_path = self.settings.get("infile", "markers/markers.geojson")
+        # Own Database handle: FieldStore only holds a FieldCatalogAdapter now, and
+        # update_marker_weather() is a still-unmigrated Database (markers) method.
+        self.db = Database()
 
     # ---- field sampling -----------------------------------------------------
     @staticmethod
@@ -74,7 +78,9 @@ class MarkerUpdater(Updater):
         """
         try:
             store = self._store
-            avail = store.db.get_latest_run_hours(products=["temperature", "wind"])
+            avail = store.field_catalog_adapter.get_latest_run_hours(
+                products=["temperature", "wind"]
+            )
             logger.debug(f"_resolve_run_hour returned: {avail}")
         except Exception as e:
             logger.warning(f"Markers: catalog lookup failed: {e}")
@@ -96,8 +102,6 @@ class MarkerUpdater(Updater):
 
     # ---- main ---------------------------------------------------------------
     def run(self):
-        db = self._store.db
-
         resolved = self._resolve_run_hour()
         if not resolved:
             logger.warning(
@@ -173,7 +177,7 @@ class MarkerUpdater(Updater):
             )
 
         if updates:
-            db.update_marker_weather(updates)
+            self.db.update_marker_weather(updates)
         logger.info(
             f"Markers: weather updated for {len(updates)}/{len(places)} place markers "
             f"(f{fhour:03d})."

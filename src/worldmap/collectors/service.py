@@ -34,6 +34,7 @@ from worldmap.lib.db import Database
 from worldmap.lib.logging import setup_logging, set_loglevel
 from worldmap.lib import fieldstore
 from worldmap.db.process_status_adapter import ProcessStatusAdapter
+from worldmap.db.field_catalog_adapter import FieldCatalogAdapter
 from worldmap.collectors import collect_event_feeds, collect_file_caches
 from worldmap.collectors.field_base import CycleContext, drain_backfill
 from worldmap.collectors.gfs_atmos import GfsAtmosCollector
@@ -73,15 +74,18 @@ class CollectorService:
         self.config = WorldMapConfig(config_path)
         self.db = Database()
         self.process_status_adapter = ProcessStatusAdapter()
+        self.field_catalog_adapter = FieldCatalogAdapter()
         self.refresh_settings()
 
-        # Bind the fieldstore to this process's workdir + db handle (bulk field arrays
-        # live under {workdir}/fields; the db keeps only the catalog rows). The field
-        # collectors are constructed fresh each cycle (see _collect_fields), so nothing
-        # else needs to be bound here.
+        # Bind the fieldstore to this process's workdir + catalog adapter (bulk field
+        # arrays live under {workdir}/fields; the adapter keeps only the catalog rows).
+        # The field collectors are constructed fresh each cycle (see _collect_fields), so
+        # nothing else needs to be bound here.
         workdir = self.config.get_setting("common", "workdir", ".")
         self.workdir = workdir
-        self.store = fieldstore.get_store(workdir, db=self.db)
+        self.store = fieldstore.get_store(
+            workdir, field_catalog_adapter=self.field_catalog_adapter
+        )
 
         # One last_runs dict per synchronous collector family; each collector's section is
         # the key, mutated in place so per-collector cadence counts down across cycles.
@@ -248,6 +252,7 @@ class CollectorService:
                             self.db,
                             self.store,
                             _FIELD_COLLECTOR_CLASSES,
+                            self.field_catalog_adapter,
                         )
                     except Exception as e:
                         logger.error(f"backfill drain failed: {e}")
