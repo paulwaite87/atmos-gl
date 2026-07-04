@@ -21,6 +21,8 @@ services:
     depends_on:
       worldmap_db:
         condition: service_healthy
+      worldmap_db_migrate:
+        condition: service_completed_successfully
     volumes:
       - ./data:/opt/project/data
       - ./config:/opt/project/config
@@ -46,6 +48,8 @@ services:
     depends_on:
       worldmap_db:
         condition: service_healthy
+      worldmap_db_migrate:
+        condition: service_completed_successfully
     volumes:
       - ./data:/opt/project/data
       - ./config:/opt/project/config
@@ -95,6 +99,8 @@ services:
     depends_on:
       worldmap_db:
         condition: service_healthy
+      worldmap_db_migrate:
+        condition: service_completed_successfully
     volumes:
       - ./data:/opt/project/data
       - ./config:/opt/project/config
@@ -122,7 +128,7 @@ services:
       - wmap
 
   worldmap_db:
-    image: ghcr.io/paulwaite87/worldmap-ng-db:latest
+    image: postgis/postgis:15-3.3
     # The database STILL needs the user directive because it uses a pre-built image,
     # not your custom Dockerfile
     user: "${UID:-1000}:${GID:-1000}"
@@ -162,6 +168,24 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+    networks:
+      - wmap
+
+  worldmap_db_migrate:
+    image: ghcr.io/paulwaite87/worldmap-ng:latest
+    command: alembic upgrade head
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/opt/project/src
+      - PGHOST=worldmap_db
+      - PGPORT=5432
+      - PGDATABASE=worldmap
+      - PGUSER=wmap
+      - PGPASSWORD=wmap
+    depends_on:
+      worldmap_db:
+        condition: service_healthy
     networks:
       - wmap
 

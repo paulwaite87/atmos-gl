@@ -35,6 +35,8 @@ services:
     <<: *app-dev
   map_api:
     <<: *app-dev
+  worldmap_db_migrate:
+    <<: *app-dev
 
   # Dev: serve the UI from the working tree (live edits) via stock nginx.
   map_ui:
@@ -42,9 +44,3 @@ services:
     volumes:
       - ./ui:/usr/share/nginx/html:ro
       - ./config/nginx.conf:/etc/nginx/nginx.conf:ro
-
-  # Dev: stock postgis with init SQL mounted from the tree.
-  worldmap_db:
-    image: postgis/postgis:15-3.3
-    volumes:
-      - ./config/database:/docker-entrypoint-initdb.d

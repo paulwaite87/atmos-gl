@@ -50,6 +50,8 @@ RUN uv sync --frozen --no-install-project --no-dev
 COPY src/ ./src/
 COPY ui/images/ ./images/
 COPY markers/ ./markers/
+COPY alembic.ini ./
+COPY alembic/ ./alembic/
 
 # 6. Final Sync & Script Installation
 RUN uv sync --frozen --no-dev --editable \
