@@ -50,7 +50,7 @@ from .satellites import SatellitesCollector
 from .markers_sync import MarkersSyncCollector
 from worldmap.collectors.sst import SstCollector
 from worldmap.collectors.clouds import CloudsCollector
-from worldmap.lib.process_status_repo import ProcessStatusRepo
+from worldmap.db.process_status_adapter import ProcessStatusAdapter
 
 logger = logging.getLogger(__name__)
 
@@ -88,13 +88,13 @@ def _drive(collectors, config, db, last_runs: dict) -> None:
     period counts down correctly between checks. One collector failing is logged and
     skipped; it never aborts the others.
 
-    Also records process_status for the Data Status UI (process_status_repo.record_process_run): a
+    Also records process_status for the Data Status UI (process_status_adapter.record_process_run): a
     successful check OR collect both count as "success" (last_updated advances) — an
     unchanged-but-verified remote is not staleness, it's the collector doing its job. A
     not-yet-due collector (is_stale() False) records nothing; it wasn't checked at all.
     """
     now = time.monotonic()
-    process_status_repo = ProcessStatusRepo()
+    process_status_adapter = ProcessStatusAdapter()
     for CollectorCls in collectors:
         key = CollectorCls.section
         try:
@@ -108,17 +108,17 @@ def _drive(collectors, config, db, last_runs: dict) -> None:
                 continue
             if not feed.has_new_data():
                 last_runs[key] = now
-                process_status_repo.record_process_run(key, "collector", success=True)
+                process_status_adapter.record_process_run(key, "collector", success=True)
                 continue
             logger.info(f"{key}: collecting...")
             feed.collect()
             last_runs[key] = now
-            process_status_repo.record_process_run(key, "collector", success=True)
+            process_status_adapter.record_process_run(key, "collector", success=True)
         except Exception as exc:
             logger.error(
                 f"collector {CollectorCls.__name__} failed: {exc}", exc_info=True
             )
-            process_status_repo.record_process_run(
+            process_status_adapter.record_process_run(
                 key, "collector", success=False, error=str(exc)
             )
 

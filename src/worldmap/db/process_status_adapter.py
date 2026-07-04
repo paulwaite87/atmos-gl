@@ -3,8 +3,8 @@ from datetime import datetime, timezone
 from sqlalchemy import case, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-from worldmap.lib.db_engine import Session
-from worldmap.lib.db_models import ProcessStatus
+from worldmap.db.engine import Session
+from worldmap.db.models import ProcessStatus
 
 
 def _row_to_dict(row: ProcessStatus) -> dict:
@@ -17,7 +17,7 @@ def _row_to_dict(row: ProcessStatus) -> dict:
     }
 
 
-class ProcessStatusRepo:
+class ProcessStatusAdapter:
     """Real adapter for process_status, backed by SQLAlchemy.
 
     On success, last_updated advances to now() and last_error clears; on failure,
@@ -60,8 +60,8 @@ class ProcessStatusRepo:
             return {row.name: _row_to_dict(row) for row in rows}
 
 
-class FakeProcessStatusRepo:
-    """In-memory fake for process_status, matching ProcessStatusRepo's method contracts."""
+class FakeProcessStatusAdapter:
+    """In-memory fake for process_status, matching ProcessStatusAdapter's method contracts."""
 
     def __init__(self):
         self._rows: dict[str, dict] = {}

@@ -102,7 +102,7 @@ class LightningCollector(AsyncCollectorBase):
         # moment this task starts, not leave a blank "never" until the first full scan
         # (region list * grid) completes. Percent decays from here if the first scan
         # itself hangs, so this can't mask a real problem.
-        self.process_status_repo.record_process_run(self.section, "collector", success=True)
+        self.process_status_adapter.record_process_run(self.section, "collector", success=True)
 
         while True:
             self.refresh_settings()
@@ -128,10 +128,10 @@ class LightningCollector(AsyncCollectorBase):
                     if pruned:
                         logger.debug(f"LightningCollector: pruned {pruned} expired strikes.")
                     logger.info("LightningCollector: scan complete.")
-                    self.process_status_repo.record_process_run(self.section, "collector", success=True)
+                    self.process_status_adapter.record_process_run(self.section, "collector", success=True)
                 except Exception as exc:
                     logger.error(f"LightningCollector: scan error: {exc}")
-                    self.process_status_repo.record_process_run(
+                    self.process_status_adapter.record_process_run(
                         self.section, "collector", success=False, error=str(exc)
                     )
             else:

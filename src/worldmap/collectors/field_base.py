@@ -129,7 +129,7 @@ class FieldCollectorBase(CollectorBase):
         shouldn't itself hit rate limits). last_updated/detail still come from
         process_status (written by CollectorService._collect_fields()), same as the
         CollectorBase default."""
-        row = self.process_status_repo.get_process_status(self.status_name)
+        row = self.process_status_adapter.get_process_status(self.status_name)
         last_updated = row["last_updated"] if row else None
         last_error = row["last_error"] if row else None
 
