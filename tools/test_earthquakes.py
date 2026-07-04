@@ -6,12 +6,12 @@ from datetime import datetime, timedelta, timezone
 
 # Ensure we can import the worldmap module
 sys.path.append(os.getcwd())
-from worldmap.lib.db import Database
+from worldmap.db.quake_adapter import QuakeAdapter
 
 
 def generate_test_quakes():
     print("🌋 Generating test earthquakes...")
-    db = Database()
+    quake_adapter = QuakeAdapter()
     now = datetime.now(timezone.utc)
 
     # Define test cases relative to current time
@@ -34,7 +34,7 @@ def generate_test_quakes():
         quake_id = f"usgs-test-{uuid.uuid4().hex[:8]}"
         timestamp = now - timedelta(hours=quake["hours_ago"])
 
-        db.update_quake(
+        quake_adapter.update_quake(
             quake_id=quake_id,
             mag=quake["mag"],
             depth=quake["depth"],
