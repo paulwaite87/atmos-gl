@@ -5,12 +5,12 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 sys.path.append(os.getcwd())
-from worldmap.lib.db import Database
+from worldmap.db.lightning_adapter import LightningAdapter
 
 
 def generate_test_strikes():
     print("⚡ Generating test lightning strikes...")
-    db = Database()
+    lightning_adapter = LightningAdapter()
     now = datetime.now(timezone.utc)
 
     # Define test cases relative to current time
@@ -27,7 +27,7 @@ def generate_test_strikes():
         strike_id = f"test-strike-{uuid.uuid4().hex[:8]}"
         timestamp = now - timedelta(minutes=strike["minutes_ago"])
 
-        db.update_lightning_strike(
+        lightning_adapter.update_lightning_strike(
             strike_id=strike_id,
             lat=strike["lat"],
             lon=strike["lon"],
