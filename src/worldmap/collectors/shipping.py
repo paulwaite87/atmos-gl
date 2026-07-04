@@ -134,7 +134,7 @@ class ShippingCollector(AsyncCollectorBase):
         # this task starts, not leave a blank "never" until the first full rotation
         # completes. Percent naturally decays from here if nothing else follows within
         # heartbeat_period_s, so this can't paper over a real hang.
-        self.db.record_process_run(self.section, "collector", success=True)
+        self.process_status_repo.record_process_run(self.section, "collector", success=True)
 
         while True:
             self.refresh_settings()
@@ -162,7 +162,7 @@ class ShippingCollector(AsyncCollectorBase):
                         )
                         # Per-slice heartbeat (not just once at the end of the full
                         # rotation) - see heartbeat_period_s's docstring for why.
-                        self.db.record_process_run(self.section, "collector", success=True)
+                        self.process_status_repo.record_process_run(self.section, "collector", success=True)
 
                     end_total = self.db.get_current_ship_total()
                     logger.info(
@@ -171,7 +171,7 @@ class ShippingCollector(AsyncCollectorBase):
                     )
                 except Exception as exc:
                     logger.error(f"ShippingCollector: loop error: {exc}")
-                    self.db.record_process_run(
+                    self.process_status_repo.record_process_run(
                         self.section, "collector", success=False, error=str(exc)
                     )
                     await asyncio.sleep(30)

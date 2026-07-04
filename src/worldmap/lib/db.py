@@ -30,27 +30,6 @@ class Database:
         except Exception as e:
             logger.error(f"Postgres Connection Failed: {e}")
             raise
-        self._ensure_process_status_table()
-
-    def _ensure_process_status_table(self):
-        """Idempotent runtime creation of process_status, so an already-initialised DB
-        volume (docker-entrypoint-initdb.d only runs on a fresh volume) still gets this
-        table without a manual migration. Cheap: runs once per process (Database is
-        constructed once per service), not once per collector cycle."""
-        sql = """
-            CREATE TABLE IF NOT EXISTS process_status (
-                name         TEXT PRIMARY KEY,
-                kind         TEXT NOT NULL,
-                last_updated TIMESTAMPTZ,
-                last_error   TEXT,
-                updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
-            );
-        """
-        try:
-            with self.conn.cursor() as cur:
-                cur.execute(sql)
-        except Exception as e:
-            logger.error(f"Error ensuring process_status table: {e}")
 
     def update_ship_static_data(self, mmsi, metadata, body, ais_tier="A"):
         """Processes ShipStaticData and UPSERTs into the ships table."""
@@ -1213,57 +1192,3 @@ class Database:
         except Exception as e:
             logger.error(f"Error building markers GeoJSON: {e}")
             return '{"type":"FeatureCollection","features":[]}'
-
-    # ---- process_status (collector/layer run tracking, for the Data Status UI) ----
-    def record_process_run(self, name, kind, success, error=None):
-        """Record one run attempt for a collector or layer task, keyed by `name` (the
-        collector's `section` / the layer's TASK_CLASSES key). `kind` is 'collector' or
-        'layer'. On success, last_updated advances to now() and last_error clears; on
-        failure, last_updated is left untouched (still reflects the last GOOD run) and
-        last_error records what went wrong. Called from the orchestration layer
-        (collectors/__init__.py::_drive(), CollectorService._collect_fields(), the async
-        collectors' own run() loops, and LayerBuilder), never from data_status()/
-        layer_status() themselves — those are read-only."""
-        sql = """
-            INSERT INTO process_status (name, kind, last_updated, last_error, updated_at)
-            VALUES (%(name)s, %(kind)s,
-                    CASE WHEN %(success)s THEN now() ELSE NULL END,
-                    %(error)s, now())
-            ON CONFLICT (name) DO UPDATE SET
-                kind = EXCLUDED.kind,
-                last_updated = CASE WHEN %(success)s THEN now()
-                                     ELSE process_status.last_updated END,
-                last_error = CASE WHEN %(success)s THEN NULL ELSE %(error)s END,
-                updated_at = now();
-        """
-        try:
-            with self.conn.cursor() as cur:
-                cur.execute(
-                    sql,
-                    {"name": name, "kind": kind, "success": bool(success), "error": error},
-                )
-        except Exception as e:
-            logger.error(f"Error recording process_status for {name!r}: {e}")
-
-    def get_process_status(self, name):
-        """Single process_status row as a dict, or None if it's never run."""
-        sql = "SELECT * FROM process_status WHERE name = %s;"
-        try:
-            with self.conn.cursor() as cur:
-                cur.execute(sql, (name,))
-                return cur.fetchone()
-        except Exception as e:
-            logger.error(f"Error reading process_status for {name!r}: {e}")
-            return None
-
-    def get_all_process_status(self):
-        """All process_status rows, keyed by name, for the Data Status API endpoint (one
-        query instead of one per collector/task)."""
-        sql = "SELECT * FROM process_status;"
-        try:
-            with self.conn.cursor() as cur:
-                cur.execute(sql)
-                return {row["name"]: row for row in cur.fetchall()}
-        except Exception as e:
-            logger.error(f"Error reading process_status: {e}")
-            return {}

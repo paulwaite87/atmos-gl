@@ -11,8 +11,8 @@ from concurrent.futures.process import BrokenProcessPool
 
 # Library imports
 from worldmap.lib.config import WorldMapConfig
-from worldmap.lib.db import Database
 from worldmap.lib.logging import setup_logging, set_loglevel
+from worldmap.lib.process_status_repo import ProcessStatusRepo
 
 
 # Task imports
@@ -105,10 +105,11 @@ class LayerBuilder:
         self.config_path = config_path
         self.config = WorldMapConfig(config_path)
         self.map_data = MapData(self.config)
-        # Own Database(), used ONLY to record process_status for the Data Status UI after
-        # each cycle (see _handle_results). Rendering itself happens in worker processes
-        # with their own fieldstore/db connections; this one never touches render data.
-        self.db = Database()
+        # Own ProcessStatusRepo, used ONLY to record process_status for the Data Status UI
+        # after each cycle (see _handle_results). Rendering itself happens in worker
+        # processes with their own fieldstore/db connections; this one never touches
+        # render data.
+        self.process_status_repo = ProcessStatusRepo()
 
         # Ensure this folder exists
         data_dir = os.path.join(
@@ -191,21 +192,21 @@ class LayerBuilder:
         for section, r in zip(sections, results):
             if isinstance(r, BrokenProcessPool):
                 broken = True
-                self.db.record_process_run(
+                self.process_status_repo.record_process_run(
                     section, "layer", success=False, error="render pool broke"
                 )
             elif isinstance(r, Exception):
                 logger.error(f"Render dispatch error: {r!r}")
-                self.db.record_process_run(
+                self.process_status_repo.record_process_run(
                     section, "layer", success=False, error=repr(r)
                 )
             elif r and r[1]:
                 logger.error(f"Task '{r[0]}' failed in worker: {r[1]}")
-                self.db.record_process_run(
+                self.process_status_repo.record_process_run(
                     section, "layer", success=False, error=r[1]
                 )
             else:
-                self.db.record_process_run(section, "layer", success=True)
+                self.process_status_repo.record_process_run(section, "layer", success=True)
         if broken:
             logger.error("Render worker died (BrokenProcessPool); recreating pool")
         return broken
