@@ -14,21 +14,19 @@ from worldmap.db.field_catalog_adapter import FieldCatalogAdapter
 from worldmap.lib import fieldstore
 from worldmap.routes.config import load_config
 
-from worldmap.collectors import COLLECTORS, CACHE_COLLECTORS
-from worldmap.collectors.gfs_atmos import GfsAtmosCollector
-from worldmap.collectors.gfs_waves import GfsWavesCollector
-from worldmap.collectors.rtofs_currents import RtofsCurrentsCollector
-from worldmap.collectors.shipping import ShippingCollector
-from worldmap.collectors.lightning import LightningCollector
+from worldmap.collectors import (
+    COLLECTORS,
+    CACHE_COLLECTORS,
+    FIELD_COLLECTOR_CLASSES,
+    EMBEDDABLE_COLLECTORS,
+    resolve_embeddable,
+)
 
 from worldmap.layer_builder import TASK_CLASSES
 from worldmap.tasks.common import MapData
 
 logger = logging.getLogger("worldmap.routes.status")
 router = APIRouter(prefix="/api", tags=["Data Status"])
-
-_FIELD_COLLECTOR_CLASSES = (GfsAtmosCollector, GfsWavesCollector, RtofsCurrentsCollector)
-_ASYNC_COLLECTOR_CLASSES = (ShippingCollector, LightningCollector)
 
 
 def _serialize(status: dict) -> dict:
@@ -55,7 +53,7 @@ def get_data_status():
             except Exception as e:
                 logger.error(f"data_status failed for {CollectorCls.__name__}: {e}")
 
-        for CollectorCls in _FIELD_COLLECTOR_CLASSES:
+        for CollectorCls in FIELD_COLLECTOR_CLASSES:
             try:
                 collectors.append(
                     _serialize(CollectorCls(config, store).data_status())
@@ -63,7 +61,10 @@ def get_data_status():
             except Exception as e:
                 logger.error(f"data_status failed for {CollectorCls.__name__}: {e}")
 
-        for CollectorCls in _ASYNC_COLLECTOR_CLASSES:
+        for name in EMBEDDABLE_COLLECTORS:
+            CollectorCls = resolve_embeddable(name)
+            if CollectorCls is None:
+                continue
             try:
                 collectors.append(
                     _serialize(CollectorCls(config.config_path).data_status())

@@ -23,21 +23,26 @@ Synchronous file caches  (CACHE_COLLECTORS)  — write an image/netCDF under {wo
   products, so they live as file caches rather than fieldstore rows. The layer updaters
   render from the cache; this package only keeps the cache fresh.
 
-Async collectors  (AsyncCollectorBase)       — persistent coroutines
+Field collectors  (FIELD_COLLECTOR_CLASSES)  — fieldstore-backed, per-forecast-hour
+--------------------------------------------------------------------------
+  gfs atmos/waves, rtofs currents (FieldCollectorBase subclasses, collectors/gfs_atmos.py,
+  gfs_waves.py, rtofs_currents.py). Driven per-cycle by CollectorService, sharing one
+  CycleContext baseline probe. Canonical list, imported by both service.py and
+  routes/status.py so a new field collector can't drift between the two.
+
+Async collectors  (EMBEDDABLE_COLLECTORS)    — persistent coroutines
 --------------------------------------------------------------------------
   shipping   — AIS WebSocket stream   (ShippingCollector, collectors/shipping.py)
   lightning  — OpenWeather REST        (LightningCollector, collectors/lightning.py)
 
   Run in-process as supervised asyncio tasks (or as standalone Docker services). They
   keep their own `enabled` kill-switch since they're API-key gated and user-specific.
+  Resolved lazily (resolve_embeddable) so a missing optional dependency for one can't
+  break import of this module.
 
 Collection is UNCONDITIONAL of any layer `enabled` flag: `enabled` is a FRONTEND
 visibility control, and the data must already be present so a layer renders the moment a
 user toggles it on. (The async pair is the deliberate exception: key-gated + enabled.)
-
-The heavy GFS/RTOFS *field* collectors still live in worldmap.data_collector for now;
-folding them in as FieldCollectorBase subclasses (with per-cycle baseline context) is the
-next slice of this refactor.
 """
 
 import time
@@ -50,6 +55,9 @@ from .satellites import SatellitesCollector
 from .markers_sync import MarkersSyncCollector
 from worldmap.collectors.sst import SstCollector
 from worldmap.collectors.clouds import CloudsCollector
+from worldmap.collectors.gfs_atmos import GfsAtmosCollector
+from worldmap.collectors.gfs_waves import GfsWavesCollector
+from worldmap.collectors.rtofs_currents import RtofsCurrentsCollector
 from worldmap.db.process_status_adapter import ProcessStatusAdapter
 
 logger = logging.getLogger(__name__)
@@ -70,6 +78,31 @@ CACHE_COLLECTORS = (
     SstCollector,
     CloudsCollector,
 )
+
+# Field collectors (fieldstore-backed, FieldCollectorBase), driven per-cycle by
+# CollectorService._collect_fields()/drain_backfill(). Canonical list — both
+# collectors/service.py and routes/status.py import this so a new field collector can't
+# run in one place while silently missing from the other (previously two hand-copied
+# tuples that could drift).
+FIELD_COLLECTOR_CLASSES = (GfsAtmosCollector, GfsWavesCollector, RtofsCurrentsCollector)
+
+# Async collectors (AsyncCollectorBase persistent coroutines) that can run in-process,
+# keyed by config-section name. Resolved lazily via resolve_embeddable() (importlib) so a
+# missing optional dependency for one collector can't break import of this module.
+EMBEDDABLE_COLLECTORS = {
+    "shipping_collector": ("worldmap.collectors.shipping", "ShippingCollector"),
+    "lightning_collector": ("worldmap.collectors.lightning", "LightningCollector"),
+}
+
+
+def resolve_embeddable(name):
+    spec = EMBEDDABLE_COLLECTORS.get(name)
+    if spec is None:
+        return None
+    import importlib
+
+    module_name, cls_name = spec
+    return getattr(importlib.import_module(module_name), cls_name)
 
 
 def _drive(collectors, config, last_runs: dict) -> None:

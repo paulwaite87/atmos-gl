@@ -34,37 +34,16 @@ from worldmap.lib.logging import setup_logging, set_loglevel
 from worldmap.lib import fieldstore
 from worldmap.db.process_status_adapter import ProcessStatusAdapter
 from worldmap.db.field_catalog_adapter import FieldCatalogAdapter
-from worldmap.collectors import collect_event_feeds, collect_file_caches
+from worldmap.collectors import (
+    collect_event_feeds,
+    collect_file_caches,
+    FIELD_COLLECTOR_CLASSES,
+    EMBEDDABLE_COLLECTORS,
+    resolve_embeddable,
+)
 from worldmap.collectors.field_base import CycleContext, drain_backfill
-from worldmap.collectors.gfs_atmos import GfsAtmosCollector
-from worldmap.collectors.gfs_waves import GfsWavesCollector
-from worldmap.collectors.rtofs_currents import RtofsCurrentsCollector
-
-# The field collectors driven each cycle. Order doesn't matter for correctness —
-# GfsAtmosCollector and GfsWavesCollector share their CycleContext("gfs") baseline
-# regardless of which of the two runs first.
-_FIELD_COLLECTOR_CLASSES = [GfsAtmosCollector, GfsWavesCollector, RtofsCurrentsCollector]
 
 logger = logging.getLogger("worldmap.collector_service")
-
-# Async collectors that can run IN-PROCESS instead of as their own Docker service. Keyed
-# by config-section name; resolved lazily (importlib) so a missing optional dependency for
-# one collector can't break service startup. Selected via config:
-# data_collector.embedded_collectors = ["shipping_collector", "lightning_collector"].
-_EMBEDDABLE_COLLECTORS = {
-    "shipping_collector": ("worldmap.collectors.shipping", "ShippingCollector"),
-    "lightning_collector": ("worldmap.collectors.lightning", "LightningCollector"),
-}
-
-
-def _resolve_embeddable(name):
-    spec = _EMBEDDABLE_COLLECTORS.get(name)
-    if spec is None:
-        return None
-    import importlib
-
-    module_name, cls_name = spec
-    return getattr(importlib.import_module(module_name), cls_name)
 
 
 class CollectorService:
@@ -139,7 +118,7 @@ class CollectorService:
         process_status via status_name (NOT section - all three share section
         "data_collector", so status_name is the only unique key), for the Data Status UI."""
         ctx = CycleContext()
-        for CollectorCls in _FIELD_COLLECTOR_CLASSES:
+        for CollectorCls in FIELD_COLLECTOR_CLASSES:
             try:
                 CollectorCls(self.config, self.store).collect(ctx)
                 self.process_status_adapter.record_process_run(
@@ -194,11 +173,11 @@ class CollectorService:
         embedded-but-disabled collector simply idles.
         """
         names = (self.config.get_section("data_collector") or {}).get(
-            "embedded_collectors", list(_EMBEDDABLE_COLLECTORS)
+            "embedded_collectors", list(EMBEDDABLE_COLLECTORS)
         )
         tasks = []
         for name in names:
-            cls = _resolve_embeddable(name)
+            cls = resolve_embeddable(name)
             if cls is None:
                 logger.warning(f"Unknown embedded collector '{name}'; skipping.")
                 continue
@@ -247,7 +226,7 @@ class CollectorService:
                             drain_backfill,
                             self.config,
                             self.store,
-                            _FIELD_COLLECTOR_CLASSES,
+                            FIELD_COLLECTOR_CLASSES,
                             self.field_catalog_adapter,
                         )
                     except Exception as e:
