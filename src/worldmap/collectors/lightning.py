@@ -16,6 +16,7 @@ import aiohttp
 from datetime import datetime, timedelta, timezone
 
 from .base import AsyncCollectorBase
+from worldmap.db.lightning_adapter import LightningAdapter
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +26,10 @@ class LightningCollector(AsyncCollectorBase):
     # The scan loop sleeps a fixed 600s between passes (see run()); no setting exists for
     # the scan itself, so this is a generous fixed allowance rather than a computed value.
     heartbeat_period_s = 900.0
+
+    def __init__(self, config_path: str):
+        super().__init__(config_path)
+        self.lightning_adapter = LightningAdapter()
 
     def refresh_settings(self) -> None:
         super().refresh_settings()
@@ -71,7 +76,7 @@ class LightningCollector(AsyncCollectorBase):
                     data = await resp.json()
                     strikes = data.get("lightnings", [])
                     for s in strikes:
-                        self.db.update_lightning_strike(
+                        self.lightning_adapter.update_lightning_strike(
                             strike_id=s["id"],
                             lat=s["lat"],
                             lon=s["lon"],
@@ -124,7 +129,7 @@ class LightningCollector(AsyncCollectorBase):
                             await self.scan_region(session, label, bbox, start_iso, end_iso)
 
                     expiry_hours = self.settings.get("expiry_hours", 2)
-                    pruned = self.db.prune_lightning(expiry_hours=expiry_hours)
+                    pruned = self.lightning_adapter.prune_lightning(expiry_hours=expiry_hours)
                     if pruned:
                         logger.debug(f"LightningCollector: pruned {pruned} expired strikes.")
                     logger.info("LightningCollector: scan complete.")
