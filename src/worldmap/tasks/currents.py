@@ -3,7 +3,6 @@ import os
 import logging
 
 import numpy as np
-import matplotlib as mpl
 import matplotlib.colors as mcolors
 
 from worldmap.lib.config import WorldMapConfig
@@ -57,41 +56,23 @@ class CurrentsUpdater(Updater):
     def save_currents_key(self, output_path):
         """Standalone current-speed colourbar (_key.png). Regenerated each cycle so
         palette/range/font config changes take effect (no existence guard)."""
-        from matplotlib.figure import Figure
-        from matplotlib.backends.backend_agg import FigureCanvasAgg
-        from matplotlib.ticker import FormatStrFormatter
-
-        base, ext = os.path.splitext(output_path)
-        key_path = f"{base}_key{ext}"
-        key_fontsize = self.settings.get("key_fontsize", 10)
-
         cmap = mcolors.LinearSegmentedColormap.from_list(
             "current_speed", self.PALETTES[self._palette()], N=256
         )
         norm = mcolors.Normalize(vmin=0.0, vmax=self.VMAX_CURRENT)
         ticks = np.linspace(0.0, self.VMAX_CURRENT, 4)
 
-        fig = Figure(figsize=(4, 0.3))
-        FigureCanvasAgg(fig)
-        ax = fig.subplots()
-        cbar = fig.colorbar(
-            mpl.cm.ScalarMappable(norm=norm, cmap=_opaque_cmap(cmap)),
-            cax=ax,
-            orientation="horizontal",
-            ticks=ticks,
-        )
-        cbar.ax.xaxis.set_major_formatter(FormatStrFormatter("%.1f"))
-        cbar.ax.set_title(
+        self.save_key_image(
+            output_path,
+            _opaque_cmap(cmap),
+            norm,
+            ticks,
             "Current Speed (m/s)",
-            color="white",
-            fontsize=key_fontsize,
-            pad=2,
+            key_fontsize=self.settings.get("key_fontsize", 10),
+            labelsize=8,
+            tick_format="%.1f",
             weight="bold",
         )
-        cbar.ax.tick_params(colors="white", labelsize=8)
-        fig.savefig(key_path, transparent=True, bbox_inches="tight")
-        fig.clear()
-        logger.debug(f"Saved Currents key to: {key_path}")
 
     def _land_mask_for(self, lat, lon, shape):
         """Boolean land mask (True over land) on the current data grid, cut from true

@@ -22,44 +22,6 @@ class StormwatchUpdater(Updater):
         self.per_hour_outputs = [".png", "_data.png"]
         self.status_product = "stormwatch"
 
-    def save_stormwatch_key(self, output_path):
-        """Generates a stormwatch (CAPE) key image."""
-        from matplotlib.figure import Figure
-        from matplotlib.backends.backend_agg import FigureCanvasAgg
-        import matplotlib as mpl
-
-        base, ext = os.path.splitext(output_path)
-        key_path = f"{base}_key{ext}"
-        # Hour-independent, but regenerated each render cycle so palette / range /
-        # font config changes are reflected without manual file deletion.
-
-        fig = Figure(figsize=(4, 0.3))
-        FigureCanvasAgg(fig)
-        ax = fig.subplots()
-        key_ticks = [0, 1000, 2000, 3000, 4000, 5000]
-
-        cmap = mpl.cm.get_cmap("YlOrRd")
-        norm = mpl.colors.Normalize(vmin=self.VMIN_CAPE, vmax=self.VMAX_CAPE)
-
-        cbar = fig.colorbar(
-            mpl.cm.ScalarMappable(norm=norm, cmap=cmap),
-            cax=ax,
-            orientation="horizontal",
-            ticks=key_ticks,
-        )
-
-        cbar.ax.set_title(
-            "CAPE (J/kg)",
-            color="white",
-            fontsize=self.settings.get("key_fontsize", 8),
-            pad=2,
-        )
-        cbar.ax.tick_params(colors="white", labelsize=6)
-
-        fig.savefig(key_path, transparent=True, bbox_inches="tight")
-        fig.clear()
-        logger.debug(f"Saved stormwatch key to: {key_path}")
-
     def plot(self, field0):
         """Render the static stormwatch PNG (frame 0, CAPE) + global N-frame texture."""
 
@@ -100,7 +62,14 @@ class StormwatchUpdater(Updater):
         plot.save_figure(output_path_for_hour)
         # Key (colourbar) is hour-independent — write it once at the BASE name
         # (stormwatch_key.png) that the frontend requests, not per-hour.
-        self.save_stormwatch_key(self.output_path)
+        self.save_key_image(
+            self.output_path,
+            cmap,
+            norm,
+            [0, 1000, 2000, 3000, 4000, 5000],
+            "CAPE (J/kg)",
+            key_fontsize=self.settings.get("key_fontsize", 8),
+        )
 
         plt_close = getattr(plot, "close", None)
         if callable(plt_close):

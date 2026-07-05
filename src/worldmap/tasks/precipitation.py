@@ -65,48 +65,26 @@ class PrecipitationUpdater(Updater):
         }
 
     def save_precipitation_key(self, output_path):
-        """Generates a standalone key image using a standardized naming strategy."""
-        from matplotlib.figure import Figure
-        from matplotlib.backends.backend_agg import FigureCanvasAgg
-        import matplotlib as mpl
-
-        # Standardize naming: take base name, add _key, append extension
-        base, ext = os.path.splitext(output_path)
-        key_path = f"{base}_key{ext}"
-        # Hour-independent, but regenerated each render cycle so palette / range /
-        # font config changes are reflected without manual file deletion.
-
-        fig = Figure(figsize=(4, 0.3))
-        FigureCanvasAgg(fig)
-        ax = fig.subplots()
-        key_ticks = [0.1, 1.0, 5.0, 15.0, 50.0, 100.0]
-
+        """Standalone key image. Uses a solid-colour ListedColormap over a coarser
+        tick set than the map render's alpha-blended contourf cmap — alpha would look
+        odd in a legend, and the render's finer BoundaryNorm levels are more detail
+        than a legend needs."""
         # Honour the configured palette (matches the map render + the GPU layer),
         # falling back to 'standard' if an unknown palette is set.
         palette_name = self.settings.get("palette", "standard")
         base_colors = self.PALETTES.get(palette_name, self.PALETTES["standard"])
-        cmap = mpl.colors.ListedColormap(base_colors)
-        norm = mpl.colors.BoundaryNorm(key_ticks, cmap.N)
+        key_ticks = [0.1, 1.0, 5.0, 15.0, 50.0, 100.0]
+        cmap = mcolors.ListedColormap(base_colors)
+        norm = mcolors.BoundaryNorm(key_ticks, cmap.N)
 
-        cbar = fig.colorbar(
-            mpl.cm.ScalarMappable(norm=norm, cmap=cmap),
-            cax=ax,
-            orientation="horizontal",
-            ticks=key_ticks,
-        )
-
-        cbar.ax.set_title(
+        self.save_key_image(
+            output_path,
+            cmap,
+            norm,
+            key_ticks,
             "Precipitation (mm/hr)",
-            color="white",
-            fontsize=self.settings.get("key_fontsize", 8),
-            pad=2,
+            key_fontsize=self.settings.get("key_fontsize", 8),
         )
-        cbar.ax.tick_params(colors="white", labelsize=6)
-
-        # 2. Save key separately
-        fig.savefig(key_path, transparent=True, bbox_inches="tight")
-        fig.clear()
-        logger.debug(f"Saved precipitation key to: {key_path}")
 
     def plot(self, field0):
         """Static region render (frame 0) + colourbar key + global N-frame texture.

@@ -3,6 +3,7 @@ import os
 import sys
 import json
 import logging
+import matplotlib as mpl
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 import cartopy.crs as ccrs
@@ -747,6 +748,55 @@ class Updater:
         mesh_lats, mesh_lons = np.meshgrid(new_lats, new_lons, indexing="ij")
         field_smooth = fn((mesh_lats, mesh_lons))
         return new_lats, new_lons, field_smooth
+
+    def save_key_image(
+        self,
+        output_path,
+        cmap,
+        norm,
+        ticks,
+        title,
+        *,
+        key_fontsize=8,
+        labelsize=6,
+        tick_format=None,
+        weight=None,
+        decorate=None,
+    ):
+        """Render a standalone horizontal colourbar key PNG at `<base>_key<ext>`.
+
+        Shared scaffold absorbed from the near-identical save_*_key methods every
+        legend-bearing layer (ozone/temperature/stormwatch/precipitation/currents/sst/
+        waves) built independently. Callers supply their own cmap/norm (often reused
+        from their contourf() call) plus the layer-specific ticks and title.
+        `decorate`, if given, is called with the built colourbar before its title/
+        ticks are styled, for callers that annotate the bar itself (e.g. waves'
+        below-threshold shading).
+        """
+        base, ext = os.path.splitext(output_path)
+        key_path = f"{base}_key{ext}"
+
+        fig = Figure(figsize=(4, 0.3))
+        FigureCanvasAgg(fig)
+        ax = fig.subplots()
+        cbar = fig.colorbar(
+            mpl.cm.ScalarMappable(norm=norm, cmap=cmap),
+            cax=ax,
+            orientation="horizontal",
+            ticks=ticks,
+        )
+        if tick_format is not None:
+            from matplotlib.ticker import FormatStrFormatter
+
+            cbar.ax.xaxis.set_major_formatter(FormatStrFormatter(tick_format))
+        if decorate is not None:
+            decorate(cbar)
+        cbar.ax.set_title(title, color="white", fontsize=key_fontsize, pad=2, weight=weight)
+        cbar.ax.tick_params(colors="white", labelsize=labelsize)
+
+        fig.savefig(key_path, transparent=True, bbox_inches="tight")
+        fig.clear()
+        logger.debug(f"{self.section}: saved key to {key_path}")
 
     def should_plot_for_hour(self, product_name: str, fhour: int | str = None) -> bool:
         """Check if a per-hour output needs updating.

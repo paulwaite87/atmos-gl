@@ -40,42 +40,28 @@ class WavesUpdater(Updater):
 
     def save_waves_key(self, output_path, cmap, norm, threshold=0.0):
         """Generates a standalone Wave Height key image (separate _key.png)."""
-        from matplotlib.figure import Figure
-        from matplotlib.backends.backend_agg import FigureCanvasAgg
-        import matplotlib as mpl
-
-        base, ext = os.path.splitext(output_path)
-        key_path = f"{base}_key{ext}"
-        key_fontsize = self.settings.get("key_fontsize", 10)
-
-        fig = Figure(figsize=(4, 0.3))
-        FigureCanvasAgg(fig)
-        ax = fig.subplots()
-        cbar = fig.colorbar(
-            mpl.cm.ScalarMappable(norm=norm, cmap=_opaque_cmap(cmap)),
-            cax=ax,
-            orientation="horizontal",
-            ticks=[0, 2, 4, 6, 8],
-        )
         title = "Wave Height (m)"
         if threshold > 0.0:
+            title = f"Wave Height (m) \u2265 {threshold:g}"
+
+        def _mark_threshold(cbar):
             # Mark the transparent (below-threshold) zone on the key so the ramp's
             # visible start matches what's actually rendered on the map.
-            cbar.ax.axvspan(norm.vmin, threshold, color="black", alpha=0.55)
-            cbar.ax.axvline(threshold, color="white", linewidth=1.2)
-            title = f"Wave Height (m) \u2265 {threshold:g}"
-        cbar.ax.set_title(
-            title,
-            color="white",
-            fontsize=key_fontsize,
-            pad=2,
-            weight="bold",
-        )
-        cbar.ax.tick_params(colors="white", labelsize=8)
+            if threshold > 0.0:
+                cbar.ax.axvspan(norm.vmin, threshold, color="black", alpha=0.55)
+                cbar.ax.axvline(threshold, color="white", linewidth=1.2)
 
-        fig.savefig(key_path, transparent=True, bbox_inches="tight")
-        fig.clear()
-        logger.debug(f"Saved Waves key to: {key_path}")
+        self.save_key_image(
+            output_path,
+            _opaque_cmap(cmap),
+            norm,
+            [0, 2, 4, 6, 8],
+            title,
+            key_fontsize=self.settings.get("key_fontsize", 10),
+            labelsize=8,
+            weight="bold",
+            decorate=_mark_threshold,
+        )
 
     def _coastline_mask(
         self, mesh_lon, mesh_lat, lon_min, lat_min, lon_max, lat_max, res

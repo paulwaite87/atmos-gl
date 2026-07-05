@@ -22,44 +22,6 @@ class TemperatureUpdater(Updater):
         self.per_hour_outputs = [".png", "_data.png"]
         self.status_product = "temperature"
 
-    def save_temperature_key(self, output_path):
-        """Generates a temperature key image."""
-        from matplotlib.figure import Figure
-        from matplotlib.backends.backend_agg import FigureCanvasAgg
-        import matplotlib as mpl
-
-        base, ext = os.path.splitext(output_path)
-        key_path = f"{base}_key{ext}"
-        # Hour-independent, but regenerated each render cycle so palette / range /
-        # font config changes are reflected without manual file deletion.
-
-        fig = Figure(figsize=(4, 0.3))
-        FigureCanvasAgg(fig)
-        ax = fig.subplots()
-        key_ticks = [-40, -20, 0, 10, 20, 30, 40, 50]
-
-        cmap = mpl.cm.get_cmap("RdYlBu_r")
-        norm = mpl.colors.Normalize(vmin=self.VMIN_TEMP, vmax=self.VMAX_TEMP)
-
-        cbar = fig.colorbar(
-            mpl.cm.ScalarMappable(norm=norm, cmap=cmap),
-            cax=ax,
-            orientation="horizontal",
-            ticks=key_ticks,
-        )
-
-        cbar.ax.set_title(
-            "Temperature (°C)",
-            color="white",
-            fontsize=self.settings.get("key_fontsize", 8),
-            pad=2,
-        )
-        cbar.ax.tick_params(colors="white", labelsize=6)
-
-        fig.savefig(key_path, transparent=True, bbox_inches="tight")
-        fig.clear()
-        logger.debug(f"Saved temperature key to: {key_path}")
-
     def plot(self, field0):
         """Render the static temperature PNG (this hour) + global data texture.
 
@@ -108,7 +70,14 @@ class TemperatureUpdater(Updater):
         plot.save_figure(output_path_for_hour)
         # Key (colourbar) is hour-independent — write it once at the BASE name
         # (temperature_key.png) that the frontend requests, not per-hour.
-        self.save_temperature_key(self.output_path)
+        self.save_key_image(
+            self.output_path,
+            cmap,
+            norm,
+            [-40, -20, 0, 10, 20, 30, 40, 50],
+            "Temperature (°C)",
+            key_fontsize=self.settings.get("key_fontsize", 8),
+        )
 
         plt_close = getattr(plot, "close", None)
         if callable(plt_close):
