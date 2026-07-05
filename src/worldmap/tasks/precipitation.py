@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 class PrecipitationUpdater(Updater):
     def __init__(self, config: WorldMapConfig, map_data: MapData):
         super().__init__(config, "Precipitation", map_data)
-        self.level_of_detail = self.settings.get("level_of_detail", 1)
+        self.level_of_detail = int(self.settings.get("level_of_detail", 1))
         self.lod_desc = None
 
         # Top of the precip scale (mm/hr). Must match the frontend shader's VMAX.
@@ -125,51 +125,15 @@ class PrecipitationUpdater(Updater):
         # --- Static region render (frame 0) ---
         lats = field0["lat"]
         lons = field0["lon"]
-        prate = field0["values"]
+        prate = field0["values"].copy()
+        prate[prate < min_rate] = 0.0
 
-        # Define BBox with a small buffer for smooth edges
-        lon_min, lat_min, lon_max, lat_max = self.map_region_bbox
-        buf = 1.0
-
-        # Clip to region
-        lon_idx = (lons >= lon_min - buf) & (lons <= lon_max + buf)
-        lat_idx = (lats >= lat_min - buf) & (lats <= lat_max + buf)
-        prate_clip = prate[np.ix_(lat_idx, lon_idx)]
-        lons_clip = lons[lon_idx]
-        lats_clip = lats[lat_idx]
-
-        prate_clip = prate_clip.copy()
-        prate_clip[prate_clip < min_rate] = 0.0
-
-        # 2. DYNAMIC RESAMPLING (Level of Detail Logic)
-        if self.level_of_detail == 3:
-            step = 0.05  # High resolution (very smooth)
-            filter_sigma = 1.2
-            self.lod_desc = "high"
-        elif self.level_of_detail == 2:
-            step = 0.125  # Medium resolution
-            filter_sigma = 0.8
-            self.lod_desc = "medium"
-        else:
-            step = 0.25  # Low resolution (Native GFS grid size)
-            filter_sigma = 0.0  # No smoothing
-            self.lod_desc = "low"
-
-        new_lats = np.arange(lats_clip.min(), lats_clip.max() + step, step)
-        new_lons = np.arange(lons_clip.min(), lons_clip.max() + step, step)
-
-        # Handle latitude ordering for Interpolator (must be strictly increasing)
-        if lats_clip[0] > lats_clip[-1]:
-            lats_inc, prate_inc = lats_clip[::-1], prate_clip[::-1, :]
-        else:
-            lats_inc, prate_inc = lats_clip, prate_clip
-
-        fn = RegularGridInterpolator(
-            (lats_inc, lons_clip), prate_inc, bounds_error=False, fill_value=0
+        # Regional clipping + LOD interpolation (fill_value=0: gaps read as "no rain").
+        # Level-of-detail also drives the post-interpolation smoothing strength below.
+        new_lats, new_lons, prate_smooth = self.regrid_for_lod(
+            prate, lats, lons, self.map_region_bbox, fill_value=0
         )
-
-        mesh_lats, mesh_lons = np.meshgrid(new_lats, new_lons, indexing="ij")
-        prate_smooth = fn((mesh_lats, mesh_lons))
+        filter_sigma = {"high": 1.2, "medium": 0.8}.get(self.lod_desc, 0.0)
 
         # Setup Plotting
         plot = Plot(self.map_data.region)

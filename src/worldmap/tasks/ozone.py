@@ -1,11 +1,8 @@
 #!/usr/bin/env python3
 import os
 import logging
-import numpy as np
 import matplotlib.colors as mcolors
 import cartopy.crs as ccrs
-
-from scipy.interpolate import RegularGridInterpolator
 
 from worldmap.lib.config import WorldMapConfig
 from .common import Updater, MapData, Plot, encode_frames
@@ -18,7 +15,7 @@ logger = logging.getLogger(__name__)
 class OzoneUpdater(Updater):
     def __init__(self, config: WorldMapConfig, map_data: MapData):
         super().__init__(config, "Ozone", map_data)
-        self.level_of_detail = self.settings.get("level_of_detail", 1)
+        self.level_of_detail = int(self.settings.get("level_of_detail", 1))
         self.lod_desc = None
         # Ozone units vary; these are typical for TOZNE (Dobson Units)
         self.VMIN_OZONE = 200.0
@@ -75,39 +72,10 @@ class OzoneUpdater(Updater):
         lons = field0["lon"]
         ozone = field0["values"]
 
-        # Regional clipping
-        lon_min, lat_min, lon_max, lat_max = self.map_region_bbox
-        buf = 1.0
-        lon_idx = (lons >= lon_min - buf) & (lons <= lon_max + buf)
-        lat_idx = (lats >= lat_min - buf) & (lats <= lat_max + buf)
-        ozone_clip = ozone[np.ix_(lat_idx, lon_idx)]
-        lons_clip = lons[lon_idx]
-        lats_clip = lats[lat_idx]
-
-        # LOD interpolation
-        if self.level_of_detail == 3:
-            step = 0.05
-            self.lod_desc = "high"
-        elif self.level_of_detail == 2:
-            step = 0.125
-            self.lod_desc = "medium"
-        else:
-            step = 0.25
-            self.lod_desc = "low"
-
-        new_lats = np.arange(lats_clip.min(), lats_clip.max() + step, step)
-        new_lons = np.arange(lons_clip.min(), lons_clip.max() + step, step)
-
-        if lats_clip[0] > lats_clip[-1]:
-            lats_inc, ozone_inc = lats_clip[::-1], ozone_clip[::-1, :]
-        else:
-            lats_inc, ozone_inc = lats_clip, ozone_clip
-
-        fn = RegularGridInterpolator(
-            (lats_inc, lons_clip), ozone_inc, bounds_error=False, fill_value=np.nan
+        # Regional clipping + LOD interpolation
+        new_lats, new_lons, ozone_smooth = self.regrid_for_lod(
+            ozone, lats, lons, self.map_region_bbox
         )
-        mesh_lats, mesh_lons = np.meshgrid(new_lats, new_lons, indexing="ij")
-        ozone_smooth = fn((mesh_lats, mesh_lons))
 
         plot = Plot(self.map_data.region)
         plot.get_figure()
