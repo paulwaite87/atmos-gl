@@ -6,6 +6,7 @@ import os
 import signal
 import asyncio
 import multiprocessing
+from functools import partial
 from concurrent.futures import ProcessPoolExecutor
 from concurrent.futures.process import BrokenProcessPool
 
@@ -24,9 +25,7 @@ from worldmap.tasks.precipitation import PrecipitationUpdater
 from worldmap.tasks.sst import SSTUpdater
 from worldmap.tasks.currents import CurrentsUpdater
 from worldmap.tasks.waves import WavesUpdater
-from worldmap.tasks.temperature import TemperatureUpdater
-from worldmap.tasks.ozone import OzoneUpdater
-from worldmap.tasks.stormwatch import StormwatchUpdater
+from worldmap.tasks.scalar_field import ScalarFieldUpdater, SPECS
 from worldmap.tasks.markers import MarkerUpdater
 
 logger = logging.getLogger("worldmap.layer_builder")
@@ -49,9 +48,9 @@ TASK_CLASSES = {
     "sst": SSTUpdater,
     "currents": CurrentsUpdater,
     "waves": WavesUpdater,
-    "temperature": TemperatureUpdater,
-    "ozone": OzoneUpdater,
-    "stormwatch": StormwatchUpdater,
+    "temperature": partial(ScalarFieldUpdater, spec=SPECS["temperature"]),
+    "ozone": partial(ScalarFieldUpdater, spec=SPECS["ozone"]),
+    "stormwatch": partial(ScalarFieldUpdater, spec=SPECS["stormwatch"]),
     "markers": MarkerUpdater,
 }
 
