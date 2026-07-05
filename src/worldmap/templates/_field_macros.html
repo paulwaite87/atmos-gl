@@ -21,22 +21,69 @@
       </div>
       <input type="range" class="form-range dynamic-input" id="{{ dom_id }}"
              min="{{ spec.min }}" max="{{ spec.max }}" step="{{ spec.step }}" value="{{ clamped }}"
-             oninput="updateSliderBadge('badge-{{ dom_id }}', this.value, {{ 'null' if spec.decimals is none else spec.decimals }}, '{{ spec.suffix }}')">
+             oninput="updateSliderBadge('badge-{{ dom_id }}', this.value, {{ 'null' if spec.decimals is none else spec.decimals }}, '{{ spec.prefix }}', '{{ spec.suffix }}')">
     </div>
   {% elif spec and spec.kind == "select" %}
     <div class="col-md-6">
       <label class="form-label small text-white-50 fw-bold mb-1">{{ label }}</label>
       <select class="form-select bg-dark text-light border-secondary dynamic-input" id="{{ dom_id }}">
         {% for opt_value, opt_label in spec.options %}
-          <option value="{{ opt_value }}" {% if value == opt_value %}selected{% endif %}>{{ opt_label }}</option>
+          <option value="{{ opt_value }}" {% if opt_value|string == value|string %}selected{% endif %}>{{ opt_label }}</option>
         {% endfor %}
       </select>
     </div>
-  {% else %}
-    <div class="col-md-6">
+  {% elif spec and spec.kind == "multiselect" %}
+    {% set active = (value if value is iterable and value is not string else [])|map("string")|list %}
+    <div class="col-12">
       <label class="form-label small text-white-50 fw-bold mb-1">{{ label }}</label>
+      <select class="form-select bg-dark text-light border-secondary dynamic-input array-select" id="{{ dom_id }}" multiple style="height: 220px;">
+        {% for opt_value, opt_label in spec.options %}
+          <option value="{{ opt_value }}" {% if opt_value|string in active %}selected{% endif %}>{{ opt_label }}</option>
+        {% endfor %}
+      </select>
+      <div class="text-white-50" style="font-size: 11px; margin-top: 4px;">💡 Hold Ctrl (or Cmd ⌘) to select multiple timelines.</div>
+    </div>
+  {% elif spec and spec.kind == "color" %}
+    {% set hex_value, color_label = initial_color_render(value) %}
+    <div class="col-md-6">
+      <div class="d-flex justify-content-between align-items-center mb-1">
+        <label class="form-label small text-white-50 fw-bold mb-0">{{ label }}</label>
+        <span class="badge border border-secondary text-light fw-bold color-label-badge" id="badge-{{ dom_id }}">{{ color_label }}</span>
+      </div>
+      <div class="input-group">
+        <input type="color" class="form-control form-control-color bg-dark border-secondary w-100 dynamic-input {{ 'structured-color-name-picker' if spec.named else '' }}"
+               id="{{ dom_id }}" value="{{ hex_value }}" style="max-width: 100%; height: 38px;"
+               oninput="const mappedName = findNearestNamedColor(this.value); document.getElementById('badge-{{ dom_id }}').innerText = mappedName;">
+      </div>
+    </div>
+  {% else %}
+    {% set full_width = is_long_or_url_field(option, value) %}
+    {% set read_only = is_api_key_field(option) %}
+    <div class="{{ 'col-12' if full_width else 'col-md-6' }}">
+      <label class="form-label small text-white-50 fw-bold mb-1">{{ label }}{% if read_only %} 🔒 <span class="text-warning fw-normal">(Managed in Environment)</span>{% endif %}</label>
       <input type="{{ 'number' if value is number else 'text' }}" step="any"
-             class="form-control bg-dark text-light border-secondary dynamic-input" id="{{ dom_id }}" value="{{ value }}">
+             class="form-control {{ 'bg-secondary text-muted' if read_only else 'bg-dark text-light' }} border-secondary dynamic-input"
+             id="{{ dom_id }}" value="{{ value }}" {% if read_only %}readonly{% endif %}>
     </div>
   {% endif %}
+{% endmacro %}
+
+{% macro render_tab_group(sections, config_data) %}
+  {% for section in sections %}
+    {% set section_data = config_data.get(section) %}
+    {% if section_data is not none %}
+      <div class="section-block" id="wrapper-section-{{ section }}">
+        <div id="fields-section-{{ section }}">
+          <h5 class="text-info border-bottom border-secondary pb-2 mb-3">{{ "Global Settings" if section == "common" else "[" ~ section ~ "] Properties" }}</h5>
+          <div class="row g-3">
+            {% for option, value in section_data.items() %}
+              {% if not ((option == "enabled" and section != "housekeeper") or option.startswith("RULE__")) %}
+                {{ render_field(section, option, value, field_specs.get((section, option)), field_label(section, option)) }}
+              {% endif %}
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+    {% endif %}
+  {% endfor %}
 {% endmacro %}

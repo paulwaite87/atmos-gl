@@ -19,6 +19,9 @@ from worldmap.routes.field_specs import (
     field_label,
     format_slider_badge,
     clamp_slider_value,
+    initial_color_render,
+    is_long_or_url_field,
+    is_api_key_field,
     validate_against_specs,
 )
 
@@ -88,6 +91,12 @@ def test_validate_against_specs_rejects_unknown_select_option():
     assert len(errors) == 1
 
 
+def test_validate_against_specs_accepts_int_value_against_string_select_options():
+    """vei_min is stored/posted as an int (4) but SelectSpec options are declared as
+    strings ("4") -- regression guard: a legitimate value must not be rejected."""
+    assert validate_against_specs({"volcanoes": {"vei_min": 4}}) == []
+
+
 def test_validate_against_specs_ignores_fields_without_a_spec():
     """Fields with no FIELD_SPECS entry stay permissive, matching legacy behaviour --
     both for genuinely generic fields and for tabs not yet migrated."""
@@ -96,6 +105,131 @@ def test_validate_against_specs_ignores_fields_without_a_spec():
 
 def test_validate_against_specs_ignores_missing_sections():
     assert validate_against_specs({"quakes": {"min_mag": 4.5}}) == []
+
+
+# --- Events / Misc / Shipping batch: prefix badges, shared shapes, new kinds ---
+
+
+def test_field_label_generic_override_beats_section_specific_fallback():
+    """"outfile" is checked before any (section, option) override or the generic
+    spaced-capitalised fallback, matching the legacy JS's unconditional first check."""
+    assert field_label("quakes", "outfile") == "Output file"
+    assert field_label("volcanoes", "outfile") == "Output file"
+
+
+def test_field_label_section_specific_override_for_quakes_min_mag():
+    assert field_label("quakes", "min_mag") == "Minimum magnitude"
+
+
+def test_format_slider_badge_applies_prefix():
+    spec = FIELD_SPECS[("quakes", "min_mag")]
+    assert format_slider_badge(spec, 4.5) == "M 4.5"
+
+
+def test_shared_slider_shape_reused_across_sections():
+    """icon_zoom/runs_per_day are the same widget shape everywhere they appear --
+    registered once and shared, not re-declared per section."""
+    assert FIELD_SPECS[("quakes", "icon_zoom")] is FIELD_SPECS[("shipping", "icon_zoom")]
+    assert (
+        FIELD_SPECS[("quakes", "runs_per_day")]
+        is FIELD_SPECS[("markers", "runs_per_day")]
+    )
+
+
+def test_initial_color_render_resolves_named_color_to_hex():
+    assert initial_color_render("Violet") == ("#ee82ee", "Violet")
+
+
+def test_initial_color_render_passes_through_raw_hex():
+    assert initial_color_render("#070b18") == ("#070b18", "#070b18")
+
+
+def test_initial_color_render_defaults_empty_value_to_white():
+    assert initial_color_render("") == ("#ffffff", "White")
+
+
+def test_is_long_or_url_field_flags_url_named_options():
+    assert is_long_or_url_field("url", "short") is True
+
+
+def test_is_long_or_url_field_flags_long_values_regardless_of_name():
+    assert is_long_or_url_field("outfile", "x" * 40) is True
+
+
+def test_is_long_or_url_field_false_for_short_non_url_values():
+    assert is_long_or_url_field("outfile", "data/quakes.json") is False
+
+
+def test_is_api_key_field_matches_injected_secret_fields():
+    assert is_api_key_field("api_key") is True
+    assert is_api_key_field("min_mag") is False
+
+
+def test_validate_against_specs_accepts_valid_multiselect_subset():
+    assert validate_against_specs({"volcanoes": {"erupt_date_codes": ["D1", "D2"]}}) == []
+
+
+def test_validate_against_specs_rejects_multiselect_with_unknown_option():
+    errors = validate_against_specs({"volcanoes": {"erupt_date_codes": ["D1", "nope"]}})
+    assert len(errors) == 1
+
+
+def test_validate_against_specs_rejects_non_list_multiselect_value():
+    errors = validate_against_specs({"volcanoes": {"erupt_date_codes": "D1"}})
+    assert len(errors) == 1
+
+
+# --- GET /config: Events / Misc / Shipping tabs render correctly ---
+
+
+def test_config_page_renders_prefixed_slider_badge():
+    resp = client.get("/config")
+    assert 'id="badge-quakes__min_mag"' in resp.text
+
+
+def test_config_page_selects_correct_option_despite_stored_int_vs_string_options():
+    """vei_min is stored as an int (4) in config.json but SelectSpec options are
+    strings ("4") -- regression guard for the type-mismatch bug this exposed."""
+    resp = client.get("/config")
+    html = resp.text
+    idx = html.index('id="volcanoes__vei_min"')
+    select_html = html[idx : idx + 800]
+    assert '<option value="4" selected>' in select_html
+
+
+def test_config_page_renders_multiselect_with_correct_options_checked():
+    resp = client.get("/config")
+    html = resp.text
+    assert 'id="volcanoes__erupt_date_codes"' in html
+    assert 'array-select' in html
+    idx = html.index('id="volcanoes__erupt_date_codes"')
+    select_html = html[idx : idx + 1500]
+    assert '<option value="D1" selected>' in select_html
+
+
+def test_config_page_renders_color_picker_with_resolved_hex():
+    resp = client.get("/config")
+    html = resp.text
+    assert 'id="volcanoes__marker_color"' in html
+    assert 'value="#ee82ee"' in html  # Violet
+
+
+def test_config_page_renders_unstructured_color_for_terminator():
+    """terminator.shade_color saves as raw hex, not a named colour -- must not carry
+    the structured-color-name-picker class."""
+    resp = client.get("/config")
+    html = resp.text
+    idx = html.index('id="terminator__shade_color"')
+    input_html = html[max(0, idx - 300) : idx + 50]
+    assert "structured-color-name-picker" not in input_html
+
+
+def test_config_page_full_widths_a_url_field():
+    resp = client.get("/config")
+    html = resp.text
+    idx = html.index('id="quakes__url"')
+    preceding = html[max(0, idx - 400) : idx]
+    assert "col-12" in preceding
 
 
 # --- GET /config: renders the schema-driven Global tab ---
