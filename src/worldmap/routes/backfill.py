@@ -15,7 +15,7 @@ from datetime import date
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from worldmap.lib.db import Database
+from worldmap.db.field_catalog_adapter import FieldCatalogAdapter
 
 logger = logging.getLogger("worldmap.routes.backfill")
 
@@ -68,8 +68,8 @@ async def request_backfill(req: BackfillRequest):
         raise HTTPException(status_code=400, detail="date is not a valid calendar date")
 
     try:
-        db = Database()
-        db.enqueue_backfill(iso_date, req.run, int(req.hour), product)
+        field_catalog_adapter = FieldCatalogAdapter()
+        field_catalog_adapter.enqueue_backfill(iso_date, req.run, int(req.hour), product)
     except Exception as e:
         logger.error(f"request_backfill failed: {e}")
         raise HTTPException(status_code=500, detail="could not enqueue request")

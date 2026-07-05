@@ -11,6 +11,7 @@ import logging
 from fastapi import APIRouter, HTTPException
 
 from worldmap.lib.db import Database
+from worldmap.db.field_catalog_adapter import FieldCatalogAdapter
 from worldmap.lib import fieldstore
 from worldmap.routes.config import load_config
 
@@ -47,7 +48,7 @@ def get_data_status():
         config = load_config()
         db = Database()
         workdir = config.get_setting("common", "workdir", ".")
-        store = fieldstore.get_store(workdir, db=db)
+        store = fieldstore.get_store(workdir, field_catalog_adapter=FieldCatalogAdapter())
 
         collectors = []
         for CollectorCls in (*COLLECTORS, *CACHE_COLLECTORS):

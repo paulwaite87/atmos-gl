@@ -134,7 +134,11 @@ class FieldCollectorBase(CollectorBase):
         last_error = row["last_error"] if row else None
 
         products = list(self.products.keys())
-        avail = self.store.db.get_latest_run_hours(products=products) if products else None
+        avail = (
+            self.store.field_catalog_adapter.get_latest_run_hours(products=products)
+            if products
+            else None
+        )
         percent = 0.0
         detail = last_error
         if avail and avail.get("hours"):
@@ -183,7 +187,7 @@ class FieldCollectorBase(CollectorBase):
         )
 
 
-def drain_backfill(config, db, store, collector_classes) -> None:
+def drain_backfill(config, db, store, collector_classes, field_catalog_adapter) -> None:
     """Service demand-driven backfill requests flagged by the frontend (404s).
 
     Claims pending rows (claim_backfill_requests uses SELECT ... FOR UPDATE SKIP LOCKED),
@@ -191,7 +195,7 @@ def drain_backfill(config, db, store, collector_classes) -> None:
     dict, fetches it, and marks the row done or failed. The render task then gap-fills on
     its next pass.
     """
-    claimed = db.claim_backfill_requests(limit=20)
+    claimed = field_catalog_adapter.claim_backfill_requests(limit=20)
     if not claimed:
         return
     for req in claimed:
@@ -205,7 +209,7 @@ def drain_backfill(config, db, store, collector_classes) -> None:
 
         # Already present (raced with the normal collect_once() cycle)?
         if store.field_exists(d_str, run, fhour, product):
-            db.mark_backfill(d_str, run, fhour, product, "done")
+            field_catalog_adapter.mark_backfill(d_str, run, fhour, product, "done")
             continue
 
         collector_cls = next(
@@ -213,7 +217,7 @@ def drain_backfill(config, db, store, collector_classes) -> None:
         )
         if collector_cls is None:
             logger.info(f"backfill: unknown product {product}; marking failed")
-            db.mark_backfill(d_str, run, fhour, product, "failed")
+            field_catalog_adapter.mark_backfill(d_str, run, fhour, product, "failed")
             continue
 
         collector = collector_cls(config, db, store)
@@ -221,12 +225,14 @@ def drain_backfill(config, db, store, collector_classes) -> None:
             logger.warning(
                 f"backfill: no '{collector.datasource_key}' datasource configured"
             )
-            db.mark_backfill(d_str, run, fhour, product, "failed")
+            field_catalog_adapter.mark_backfill(d_str, run, fhour, product, "failed")
             continue
 
         try:
             ok = collector.backfill_hour(d_str, run, fhour, product)
-            db.mark_backfill(d_str, run, fhour, product, "done" if ok else "failed")
+            field_catalog_adapter.mark_backfill(
+                d_str, run, fhour, product, "done" if ok else "failed"
+            )
             logger.info(
                 f"backfill {product} {d_str} {run}Z f{fhour:03d}: "
                 f"{'fetched' if ok else 'upstream missing -> failed'}"
@@ -234,4 +240,4 @@ def drain_backfill(config, db, store, collector_classes) -> None:
         except Exception as e:
             # Transient error: leave as failed (a later re-request resets to requested).
             logger.debug(f"backfill {product} f{fhour:03d} error: {e}")
-            db.mark_backfill(d_str, run, fhour, product, "failed")
+            field_catalog_adapter.mark_backfill(d_str, run, fhour, product, "failed")

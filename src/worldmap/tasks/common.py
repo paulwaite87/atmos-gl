@@ -890,7 +890,7 @@ class Updater:
         """
         try:
             store = self._store
-            avail = store.db.get_latest_run_hours(products=list(products))
+            avail = store.field_catalog_adapter.get_latest_run_hours(products=list(products))
         except Exception as e:
             logger.warning(f"{self.section}: catalog run lookup failed: {e}")
             return None

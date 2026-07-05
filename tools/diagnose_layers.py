@@ -12,7 +12,6 @@ Run inside the container (same env as layer_builder), e.g.:
 """
 
 import os
-import sys
 import argparse
 import glob
 
@@ -24,13 +23,14 @@ def main():
     args = ap.parse_args()
 
     from worldmap.lib.config import WorldMapConfig
-    from worldmap.lib.db import Database
+    from worldmap.db.engine import Session
+    from worldmap.db.models import FieldCatalog
+    from sqlalchemy import func, select
 
     config = WorldMapConfig(args.config)
     config.load()
     workdir = config.get_setting("common", "workdir", ".")
     data_dir = os.path.join(workdir, "data")
-    db = Database()
     products = [p.strip() for p in args.products.split(",")]
 
     print(f"workdir   = {workdir}")
@@ -40,23 +40,28 @@ def main():
     # 1. Catalog contents
     print("\n[1] field_catalog rows per product:")
     try:
-        with db.conn.cursor() as cur:
-            cur.execute("""
-                SELECT product, gfs_date, gfs_run, COUNT(*) AS n,
-                       MIN(fhour) AS fmin, MAX(fhour) AS fmax, MAX(updated_at) AS latest
-                FROM field_catalog
-                GROUP BY product, gfs_date, gfs_run
-                ORDER BY product, gfs_date DESC, gfs_run DESC
-            """)
-            rows = cur.fetchall()
+        stmt = (
+            select(
+                FieldCatalog.product,
+                FieldCatalog.run_date,
+                FieldCatalog.run_id,
+                func.count().label("n"),
+                func.min(FieldCatalog.fhour).label("fmin"),
+                func.max(FieldCatalog.fhour).label("fmax"),
+                func.max(FieldCatalog.updated_at).label("latest"),
+            )
+            .group_by(FieldCatalog.product, FieldCatalog.run_date, FieldCatalog.run_id)
+            .order_by(
+                FieldCatalog.product, FieldCatalog.run_date.desc(), FieldCatalog.run_id.desc()
+            )
+        )
+        with Session() as session:
+            rows = session.execute(stmt).all()
         if not rows:
             print("    (catalog EMPTY — collector hasn't stored anything)")
         for r in rows:
-            d = dict(r) if hasattr(r, "keys") else {
-                "product": r[0], "gfs_date": r[1], "gfs_run": r[2],
-                "n": r[3], "fmin": r[4], "fmax": r[5], "latest": r[6]}
-            print(f"    {d['product']:13} {d['gfs_date']} {d['gfs_run']}Z  "
-                  f"hours f{d['fmin']:03d}..f{d['fmax']:03d} ({d['n']} rows)  latest={d['latest']}")
+            print(f"    {r.product:13} {r.run_date} {r.run_id}Z  "
+                  f"hours f{r.fmin:03d}..f{r.fmax:03d} ({r.n} rows)  latest={r.latest}")
     except Exception as e:
         print(f"    catalog query FAILED: {e}")
 

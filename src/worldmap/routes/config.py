@@ -2,6 +2,7 @@
 import os
 from fastapi import APIRouter, HTTPException
 from worldmap.lib.db import Database
+from worldmap.db.field_catalog_adapter import FieldCatalogAdapter
 from worldmap.lib.config import WorldMapConfig
 from datetime import datetime, timezone, timedelta, date
 
@@ -96,7 +97,7 @@ def get_forecast_state():
       }
     """
     try:
-        db = Database()
+        field_catalog_adapter = FieldCatalogAdapter()
 
         def z(dt):
             return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -107,10 +108,10 @@ def get_forecast_state():
             not make the timeline vanish). Intersects hours over the data-present products
             within that source's own freshest run, so model cycles never mix. Returns None
             if the source has no data yet."""
-            present = db.products_with_data(products)
+            present = field_catalog_adapter.products_with_data(products)
             if not present:
                 return None
-            summary = db.get_latest_run_hours(products=present)
+            summary = field_catalog_adapter.get_latest_run_hours(products=present)
             if not summary or not summary.get("hours"):
                 return None
             epoch = _run_epoch_utc(summary["run_date"], summary["run_id"])
