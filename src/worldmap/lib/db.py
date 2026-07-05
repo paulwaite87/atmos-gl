@@ -59,52 +59,6 @@ class Database:
         if hasattr(self, "conn"):
             self.conn.close()
 
-    def update_volcano(self, v_id, name, lat, lon, vei, significant, date_code):
-        sql = """
-            INSERT INTO volcanoes (id, name, lat, lon, vei, significant, erupt_date_code, geom)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, ST_SetSRID(ST_MakePoint(%s, %s), 4326))
-            ON CONFLICT (id) DO UPDATE SET
-                vei = EXCLUDED.vei,
-                significant = EXCLUDED.significant,
-                erupt_date_code = EXCLUDED.erupt_date_code;
-        """
-        with self.conn.cursor() as cur:
-            cur.execute(
-                sql, (v_id, name, lat, lon, vei, significant, date_code, lon, lat)
-            )
-
-    def get_volcanoes_as_geojson(self, vei_min, significant, date_codes):
-        sql = """
-            SELECT jsonb_build_object(
-                'type', 'FeatureCollection',
-                'features', COALESCE(
-                    jsonb_agg(
-                        jsonb_build_object(
-                            'type', 'Feature',
-                            'geometry', ST_AsGeoJSON(geom)::jsonb,
-                            'properties', jsonb_build_object(
-                                'name', name,
-                                'vei', vei,
-                                'code', erupt_date_code
-                            )
-                        )
-                    ), '[]'::jsonb
-                )
-            )::text AS geojson -- Added explicit alias
-            FROM volcanoes
-            WHERE vei >= %s
-              AND (%s = FALSE OR significant = TRUE)
-              AND erupt_date_code = ANY(%s);
-        """
-        with self.conn.cursor() as cur:
-            cur.execute(sql, (vei_min, significant, date_codes))
-            result = cur.fetchone()
-
-            # Unpack by dictionary key to comply with RealDictCursor
-            if result and "geojson" in result:
-                return result["geojson"]
-            return '{"type":"FeatureCollection","features":[]}'
-
     def update_storm(self, sid, name, cone_vertices, track_points):
         """
         Updates the master storm record and completely refreshes its track history/forecast.

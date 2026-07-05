@@ -14,12 +14,17 @@ import logging
 import urllib.request
 
 from worldmap.collectors.base import CollectorBase
+from worldmap.db.volcano_adapter import VolcanoAdapter
 
 logger = logging.getLogger(__name__)
 
 
 class VolcanoesCollector(CollectorBase):
     section = "volcanoes"
+
+    def __init__(self, config, db):
+        super().__init__(config, db)
+        self.volcano_adapter = VolcanoAdapter()
 
     def base_url(self):
         return self.settings.get("url", "").rstrip("/")
@@ -67,7 +72,7 @@ class VolcanoesCollector(CollectorBase):
         count = 0
         for r in records:
             v_id = r.get("id", r.get("name"))
-            self.db.update_volcano(
+            self.volcano_adapter.update_volcano(
                 v_id,
                 r.get("name"),
                 r.get("latitude"),
