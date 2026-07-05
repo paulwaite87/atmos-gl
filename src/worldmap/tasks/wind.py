@@ -6,7 +6,6 @@ import logging
 import numpy as np
 import matplotlib.colors as mcolors
 import cartopy.crs as ccrs
-from scipy.interpolate import RegularGridInterpolator
 
 from worldmap.lib.config import WorldMapConfig
 from .common import Updater, MapData, Plot, encode_uv
@@ -34,7 +33,8 @@ class WindUpdater(Updater):
     def __init__(self, config: WorldMapConfig, map_data: MapData):
         super().__init__(config, "Wind", map_data)
         self.VMAX_WIND = 40.0          # m/s encoding range for the velocity texture
-        self.level_of_detail = self.settings.get("level_of_detail", 1)
+        self.level_of_detail = int(self.settings.get("level_of_detail", 1))
+        self.lod_desc = None
         # Heatmap speed scale — computed from actual data in run() (global max across all
         # hours, rounded up to the nearest 10 km/h). Initialised to a safe default so
         # plot() can be called standalone without a prior run().
@@ -59,32 +59,9 @@ class WindUpdater(Updater):
         speed = np.hypot(u, v)
 
         # --- regional windspeed heatmap (mirrors TemperatureUpdater.plot) ---
-        lon_min, lat_min, lon_max, lat_max = self.map_region_bbox
-        buf = 1.0
-        lon_idx = (lons >= lon_min - buf) & (lons <= lon_max + buf)
-        lat_idx = (lats >= lat_min - buf) & (lats <= lat_max + buf)
-        spd_clip = speed[np.ix_(lat_idx, lon_idx)]
-        lons_clip = lons[lon_idx]
-        lats_clip = lats[lat_idx]
-
-        if self.level_of_detail == 3:
-            step = 0.05
-        elif self.level_of_detail == 2:
-            step = 0.125
-        else:
-            step = 0.25
-        new_lats = np.arange(lats_clip.min(), lats_clip.max() + step, step)
-        new_lons = np.arange(lons_clip.min(), lons_clip.max() + step, step)
-
-        if lats_clip[0] > lats_clip[-1]:
-            lats_inc, spd_inc = lats_clip[::-1], spd_clip[::-1, :]
-        else:
-            lats_inc, spd_inc = lats_clip, spd_clip
-        fn = RegularGridInterpolator(
-            (lats_inc, lons_clip), spd_inc, bounds_error=False, fill_value=np.nan
+        new_lats, new_lons, spd_smooth = self.regrid_for_lod(
+            speed, lats, lons, self.map_region_bbox
         )
-        mesh_lats, mesh_lons = np.meshgrid(new_lats, new_lons, indexing="ij")
-        spd_smooth = fn((mesh_lats, mesh_lons))
 
         plot = Plot(self.map_data.region)
         plot.get_figure()

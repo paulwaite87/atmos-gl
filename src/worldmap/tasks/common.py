@@ -8,6 +8,7 @@ from matplotlib.backends.backend_agg import FigureCanvasAgg
 import cartopy.crs as ccrs
 import cartopy.mpl.geoaxes as geoaxes
 import numpy as np
+from scipy.interpolate import RegularGridInterpolator
 from PIL import Image
 from typing import cast
 from datetime import datetime, timezone
@@ -30,6 +31,16 @@ MERCATOR_LAT_LIMIT = 85.0511  # NOTE: just *inside* GOOGLE's 85.0511288 max
 # next_update without layer_builder importing tasks.common creating a cycle the other way.
 # layer_builder.py imports this rather than defining its own copy.
 LAYER_CYCLE_SECONDS = 15
+
+# Upper bound on points in a regrid_for_lod() output grid (~32MB per float64 array at
+# the cap). regrid_for_lod's LOD step sizes are tuned to stay comfortably under this at
+# world-view scale (the dominant case: the frontend always projects onto a globe), but
+# an earlier tuning (0.05/0.125/0.25 degrees, sized for a regional view) applied
+# unscaled to a world-view bbox (360x180 degrees) ballooned "high" to ~26M points per
+# array and reliably OOM-killed the render worker under concurrent load. This budget is
+# a backstop for that failure mode, not the primary mechanism — regrid_for_lod scales
+# its step up (coarser) only if the clipped region is large enough to exceed it anyway.
+_MAX_LOD_GRID_POINTS = 4_000_000
 
 
 def encode_frames(frames, output_path, vmin, vmax, transform=None, bits=16):
@@ -672,6 +683,70 @@ class Updater:
                 f"get_db_field_at_hour({product_name}, f{fhour:03d}) failed: {e}"
             )
             return None
+
+    def regrid_for_lod(self, field, lats, lons, bbox, fill_value=np.nan):
+        """Clip `field` (lat x lon 2D array) to `bbox` (lon_min, lat_min, lon_max,
+        lat_max) with a 1-degree buffer, then resample onto a level-of-detail grid via
+        RegularGridInterpolator. Step size is driven by self.level_of_detail (3=high/
+        0.15°, 2=medium/0.20°, else low/0.25°); also sets self.lod_desc to the matching
+        "high"/"medium"/"low" string as a side effect (some layers log it).
+
+        These step sizes are tuned for a WORLD-VIEW bbox, the dominant case here (the
+        frontend always projects onto a MapLibre globe; regional bboxes are supported
+        but secondary) — "high" lands at ~73% of _MAX_LOD_GRID_POINTS at world scale,
+        so normal operation has headroom and doesn't routinely hit the cap below.
+        The cap itself still scales the step up (coarser) as a backstop if the clipped
+        region is large enough to exceed the budget regardless — see that constant's
+        docstring. lod_desc still reflects the CONFIGURED level; only the effective
+        step size is adjusted.
+
+        Returns (new_lats, new_lons, field_smooth) — the LOD grid axes and the
+        resampled field, ready to hand to contourf.
+        """
+        lon_min, lat_min, lon_max, lat_max = bbox
+        buf = 1.0
+        lon_idx = (lons >= lon_min - buf) & (lons <= lon_max + buf)
+        lat_idx = (lats >= lat_min - buf) & (lats <= lat_max + buf)
+        field_clip = field[np.ix_(lat_idx, lon_idx)]
+        lons_clip = lons[lon_idx]
+        lats_clip = lats[lat_idx]
+
+        if self.level_of_detail == 3:
+            step = 0.15
+            self.lod_desc = "high"
+        elif self.level_of_detail == 2:
+            step = 0.20
+            self.lod_desc = "medium"
+        else:
+            step = 0.25
+            self.lod_desc = "low"
+
+        lat_span = lats_clip.max() - lats_clip.min()
+        lon_span = lons_clip.max() - lons_clip.min()
+        estimated_points = (lat_span / step + 1) * (lon_span / step + 1)
+        if estimated_points > _MAX_LOD_GRID_POINTS:
+            scale = (estimated_points / _MAX_LOD_GRID_POINTS) ** 0.5
+            logger.debug(
+                f"{self.section}: LOD grid ({int(estimated_points):,} pts) exceeds "
+                f"budget ({_MAX_LOD_GRID_POINTS:,}); scaling step {step:.3f}° -> "
+                f"{step * scale:.3f}°"
+            )
+            step *= scale
+
+        new_lats = np.arange(lats_clip.min(), lats_clip.max() + step, step)
+        new_lons = np.arange(lons_clip.min(), lons_clip.max() + step, step)
+
+        if lats_clip[0] > lats_clip[-1]:
+            lats_inc, field_inc = lats_clip[::-1], field_clip[::-1, :]
+        else:
+            lats_inc, field_inc = lats_clip, field_clip
+
+        fn = RegularGridInterpolator(
+            (lats_inc, lons_clip), field_inc, bounds_error=False, fill_value=fill_value
+        )
+        mesh_lats, mesh_lons = np.meshgrid(new_lats, new_lons, indexing="ij")
+        field_smooth = fn((mesh_lats, mesh_lons))
+        return new_lats, new_lons, field_smooth
 
     def should_plot_for_hour(self, product_name: str, fhour: int | str = None) -> bool:
         """Check if a per-hour output needs updating.
