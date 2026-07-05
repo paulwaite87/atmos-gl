@@ -17,6 +17,7 @@ from pathlib import Path
 from worldmap.lib.config import WorldMapConfig
 from worldmap.lib.db import Database
 from worldmap.lib import fieldstore
+from worldmap.db.process_status_adapter import ProcessStatusAdapter
 from worldmap.collectors.base import _freshness_percent, _estimate_next_update
 
 logger = logging.getLogger(__name__)
@@ -522,6 +523,7 @@ class Updater:
         # async fan-out in layer_builder can run updaters concurrently without sharing a
         # psycopg2 connection across threads.
         self._store = fieldstore.make_store(self.workdir)
+        self.process_status_adapter = ProcessStatusAdapter()
         self.outfile = self.settings.get("outfile", "")
         self.output_path = None
         self.enabled = self.settings.get("enabled", False)
@@ -770,7 +772,7 @@ class Updater:
         real, unconditional schedule rather than reporting "disabled" for a layer that is
         in fact still being rendered in the background.
         """
-        row = self._store.db.get_process_status(self.section)
+        row = self.process_status_adapter.get_process_status(self.section)
         last_updated = row["last_updated"] if row else None
         last_error = row["last_error"] if row else None
         detail = last_error
@@ -952,7 +954,7 @@ class Updater:
                     # take a long time to catch up on a cold start, and the Data Status
                     # UI's percent bar already reflects per-hour progress live; last_updated
                     # should too instead of sitting on "never" for the whole cycle.
-                    self._store.db.record_process_run(self.section, "layer", success=True)
+                    self.process_status_adapter.record_process_run(self.section, "layer", success=True)
                 except Exception as e:
                     logger.warning(f"{self.section}: plot f{int(fh):03d} failed: {e}")
         finally:

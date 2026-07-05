@@ -83,8 +83,11 @@ class CollectorBase:
     _etag_cache: dict[str, str] = {}
 
     def __init__(self, config, db):
+        from worldmap.db.process_status_adapter import ProcessStatusAdapter
+
         self.config = config
         self.db = db
+        self.process_status_adapter = ProcessStatusAdapter()
         self.settings = config.get_section(self.section) or {}
 
     # ------------------------------------------------------------------
@@ -161,7 +164,7 @@ class CollectorBase:
         of it (see collectors/__init__.py). next_update must reflect that real, unconditional
         schedule rather than reporting "disabled" for a source that is in fact still being
         collected in the background."""
-        row = self.db.get_process_status(self.section)
+        row = self.process_status_adapter.get_process_status(self.section)
         last_updated = row["last_updated"] if row else None
         last_error = row["last_error"] if row else None
         return {
@@ -240,10 +243,12 @@ class AsyncCollectorBase:
     def __init__(self, config_path: str):
         from worldmap.lib.config import WorldMapConfig
         from worldmap.lib.db import Database
+        from worldmap.db.process_status_adapter import ProcessStatusAdapter
 
         self.config_path = config_path
         self.config = WorldMapConfig(config_path)
         self.db = Database()
+        self.process_status_adapter = ProcessStatusAdapter()
         self.settings: dict = {}
         self.refresh_settings()
 
@@ -267,7 +272,7 @@ class AsyncCollectorBase:
         heartbeat_period_s in place of period_s (these have no is_stale cadence — they
         self-schedule inside run() and record a heartbeat at their own natural
         checkpoint, e.g. once per rotation/scan)."""
-        row = self.db.get_process_status(self.section)
+        row = self.process_status_adapter.get_process_status(self.section)
         last_updated = row["last_updated"] if row else None
         last_error = row["last_error"] if row else None
         return {

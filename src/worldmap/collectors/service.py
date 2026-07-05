@@ -33,6 +33,7 @@ from worldmap.lib.config import WorldMapConfig
 from worldmap.lib.db import Database
 from worldmap.lib.logging import setup_logging, set_loglevel
 from worldmap.lib import fieldstore
+from worldmap.db.process_status_adapter import ProcessStatusAdapter
 from worldmap.collectors import collect_event_feeds, collect_file_caches
 from worldmap.collectors.field_base import CycleContext, drain_backfill
 from worldmap.collectors.gfs_atmos import GfsAtmosCollector
@@ -71,6 +72,7 @@ class CollectorService:
         self.config_path = config_path
         self.config = WorldMapConfig(config_path)
         self.db = Database()
+        self.process_status_adapter = ProcessStatusAdapter()
         self.refresh_settings()
 
         # Bind the fieldstore to this process's workdir + db handle (bulk field arrays
@@ -138,7 +140,7 @@ class CollectorService:
         for CollectorCls in _FIELD_COLLECTOR_CLASSES:
             try:
                 CollectorCls(self.config, self.db, self.store).collect(ctx)
-                self.db.record_process_run(
+                self.process_status_adapter.record_process_run(
                     CollectorCls.status_name, "collector", success=True
                 )
             except Exception as e:
@@ -146,7 +148,7 @@ class CollectorService:
                     f"field collector {CollectorCls.__name__} failed: {e}",
                     exc_info=True,
                 )
-                self.db.record_process_run(
+                self.process_status_adapter.record_process_run(
                     CollectorCls.status_name, "collector", success=False, error=str(e)
                 )
 
