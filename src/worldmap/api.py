@@ -13,7 +13,6 @@ from worldmap.routes import (
     shipping,
     config,
     terminator,
-    render,
     tiles,
     backfill,
     markers,
@@ -48,7 +47,6 @@ app.include_router(quakes.router)
 app.include_router(lightning.router)
 app.include_router(shipping.router)
 app.include_router(config.router)
-app.include_router(render.router)
 app.include_router(tiles.router)
 app.include_router(markers.router)
 app.include_router(backfill.router)
