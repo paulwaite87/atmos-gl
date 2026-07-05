@@ -20,7 +20,7 @@ from datetime import datetime, timezone
 import numpy as np
 
 from worldmap.lib.config import WorldMapConfig
-from worldmap.lib.db import Database
+from worldmap.db.marker_adapter import MarkerAdapter
 from worldmap.collectors.markers_sync import load_marker_rows
 from .common import Updater, MapData
 
@@ -33,9 +33,7 @@ class MarkerUpdater(Updater):
         # layer); driven by its weather_popup flag and runs_per_day.
         super().__init__(config, "Markers", map_data)
         self.input_path = self.settings.get("infile", "markers/markers.geojson")
-        # Own Database handle: FieldStore only holds a FieldCatalogAdapter now, and
-        # update_marker_weather() is a still-unmigrated Database (markers) method.
-        self.db = Database()
+        self.marker_adapter = MarkerAdapter()
 
     # ---- field sampling -----------------------------------------------------
     @staticmethod
@@ -177,7 +175,7 @@ class MarkerUpdater(Updater):
             )
 
         if updates:
-            self.db.update_marker_weather(updates)
+            self.marker_adapter.update_marker_weather(updates)
         logger.info(
             f"Markers: weather updated for {len(updates)}/{len(places)} place markers "
             f"(f{fhour:03d})."

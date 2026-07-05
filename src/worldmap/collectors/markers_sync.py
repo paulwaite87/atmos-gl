@@ -21,6 +21,7 @@ import json
 import logging
 
 from .base import CollectorBase
+from worldmap.db.marker_adapter import MarkerAdapter
 
 logger = logging.getLogger(__name__)
 
@@ -76,7 +77,7 @@ def load_marker_rows(geojson_path=None):
         return None
 
 
-def import_markers(db, geojson_path=None):
+def import_markers(marker_adapter, geojson_path=None):
     """Upsert all markers from the geojson and delete any rows no longer present.
     Returns {"upserted": n, "deleted": n}. If the file yields no rows (missing/empty/
     unreadable), the delete is SKIPPED so a bad read can't wipe the table."""
@@ -94,8 +95,8 @@ def import_markers(db, geojson_path=None):
         )
         return {"upserted": 0, "deleted": 0}
 
-    db.upsert_markers(rows)
-    deleted = db.delete_markers_not_in([r["id"] for r in rows])
+    marker_adapter.upsert_markers(rows)
+    deleted = marker_adapter.delete_markers_not_in([r["id"] for r in rows])
     logger.info(
         f"Markers sync: upserted {len(rows)}, deleted {deleted} "
         f"(from {os.path.basename(path)})"
@@ -113,6 +114,10 @@ class MarkersSyncCollector(CollectorBase):
     """
 
     section = "markers"
+
+    def __init__(self, config, db):
+        super().__init__(config, db)
+        self.marker_adapter = MarkerAdapter()
 
     def _geojson_path(self):
         return self.settings.get("infile") or default_geojson_path()
@@ -132,7 +137,7 @@ class MarkersSyncCollector(CollectorBase):
 
     def collect(self) -> None:
         path = self._geojson_path()
-        result = import_markers(self.db, geojson_path=path)
+        result = import_markers(self.marker_adapter, geojson_path=path)
         if result.get("upserted", 0) > 0:
             try:
                 self._etag_cache[path] = str(os.path.getmtime(path))
@@ -142,9 +147,7 @@ class MarkersSyncCollector(CollectorBase):
 
 def main():
     logging.basicConfig(level=logging.INFO)
-    from worldmap.lib.db import Database
-
-    import_markers(Database())
+    import_markers(MarkerAdapter())
 
 
 if __name__ == "__main__":
