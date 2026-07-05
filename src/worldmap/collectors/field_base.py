@@ -76,8 +76,8 @@ class FieldCollectorBase(CollectorBase):
     baseline_key: str = ""  # override in every subclass
     products: dict = {}  # override: {product_name: unpacker} this collector owns
 
-    def __init__(self, config, db, store):
-        super().__init__(config, db)
+    def __init__(self, config, store):
+        super().__init__(config)
         self.store = store
 
     @property
@@ -187,7 +187,7 @@ class FieldCollectorBase(CollectorBase):
         )
 
 
-def drain_backfill(config, db, store, collector_classes, field_catalog_adapter) -> None:
+def drain_backfill(config, store, collector_classes, field_catalog_adapter) -> None:
     """Service demand-driven backfill requests flagged by the frontend (404s).
 
     Claims pending rows (claim_backfill_requests uses SELECT ... FOR UPDATE SKIP LOCKED),
@@ -220,7 +220,7 @@ def drain_backfill(config, db, store, collector_classes, field_catalog_adapter) 
             field_catalog_adapter.mark_backfill(d_str, run, fhour, product, "failed")
             continue
 
-        collector = collector_cls(config, db, store)
+        collector = collector_cls(config, store)
         if not collector.base_url():
             logger.warning(
                 f"backfill: no '{collector.datasource_key}' datasource configured"

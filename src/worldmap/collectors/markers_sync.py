@@ -115,8 +115,8 @@ class MarkersSyncCollector(CollectorBase):
 
     section = "markers"
 
-    def __init__(self, config, db):
-        super().__init__(config, db)
+    def __init__(self, config):
+        super().__init__(config)
         self.marker_adapter = MarkerAdapter()
 
     def _geojson_path(self):

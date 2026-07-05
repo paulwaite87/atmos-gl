@@ -72,7 +72,7 @@ CACHE_COLLECTORS = (
 )
 
 
-def _drive(collectors, config, db, last_runs: dict) -> None:
+def _drive(collectors, config, last_runs: dict) -> None:
     """Run each collector in `collectors`, subject to per-collector scheduling.
 
     The single loop shared by every synchronous collector family. Per collector:
@@ -98,7 +98,7 @@ def _drive(collectors, config, db, last_runs: dict) -> None:
     for CollectorCls in collectors:
         key = CollectorCls.section
         try:
-            feed = CollectorCls(config, db)
+            feed = CollectorCls(config)
             if not feed.is_stale(last_runs.get(key)):
                 logger.debug(
                     f"{key}: not yet due "
@@ -123,18 +123,18 @@ def _drive(collectors, config, db, last_runs: dict) -> None:
             )
 
 
-def collect_event_feeds(config, db, last_runs: dict) -> None:
+def collect_event_feeds(config, last_runs: dict) -> None:
     """Drive the DB-writing event feeds (quakes, storms, volcanoes, satellites, markers).
 
     Collection is UNCONDITIONAL of the layer's `enabled` flag; see module docstring.
     """
-    _drive(COLLECTORS, config, db, last_runs)
+    _drive(COLLECTORS, config, last_runs)
 
 
-def collect_file_caches(config, db, last_runs: dict) -> None:
+def collect_file_caches(config, last_runs: dict) -> None:
     """Drive the file-cache collectors (sst, clouds).
 
     Same scheduling contract as collect_event_feeds; separate last_runs dict so the two
     families schedule independently. Collection is UNCONDITIONAL of `enabled`.
     """
-    _drive(CACHE_COLLECTORS, config, db, last_runs)
+    _drive(CACHE_COLLECTORS, config, last_runs)

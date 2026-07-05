@@ -82,11 +82,10 @@ class CollectorBase:
     # Shared across all collector subclasses (keyed by URL, so no collision).
     _etag_cache: dict[str, str] = {}
 
-    def __init__(self, config, db):
+    def __init__(self, config):
         from worldmap.db.process_status_adapter import ProcessStatusAdapter
 
         self.config = config
-        self.db = db
         self.process_status_adapter = ProcessStatusAdapter()
         self.settings = config.get_section(self.section) or {}
 
@@ -242,12 +241,10 @@ class AsyncCollectorBase:
 
     def __init__(self, config_path: str):
         from worldmap.lib.config import WorldMapConfig
-        from worldmap.lib.db import Database
         from worldmap.db.process_status_adapter import ProcessStatusAdapter
 
         self.config_path = config_path
         self.config = WorldMapConfig(config_path)
-        self.db = Database()
         self.process_status_adapter = ProcessStatusAdapter()
         self.settings: dict = {}
         self.refresh_settings()

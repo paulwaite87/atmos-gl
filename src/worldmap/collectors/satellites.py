@@ -25,8 +25,8 @@ logger = logging.getLogger(__name__)
 class SatellitesCollector(CollectorBase):
     section = "satellites_collector"
 
-    def __init__(self, config, db):
-        super().__init__(config, db)
+    def __init__(self, config):
+        super().__init__(config)
         self.satellite_adapter = SatelliteAdapter()
 
     @property

@@ -22,8 +22,8 @@ logger = logging.getLogger(__name__)
 class VolcanoesCollector(CollectorBase):
     section = "volcanoes"
 
-    def __init__(self, config, db):
-        super().__init__(config, db)
+    def __init__(self, config):
+        super().__init__(config)
         self.volcano_adapter = VolcanoAdapter()
 
     def base_url(self):

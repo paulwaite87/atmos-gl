@@ -30,7 +30,6 @@ import asyncio
 import logging
 
 from worldmap.lib.config import WorldMapConfig
-from worldmap.lib.db import Database
 from worldmap.lib.logging import setup_logging, set_loglevel
 from worldmap.lib import fieldstore
 from worldmap.db.process_status_adapter import ProcessStatusAdapter
@@ -72,7 +71,6 @@ class CollectorService:
     def __init__(self, config_path: str):
         self.config_path = config_path
         self.config = WorldMapConfig(config_path)
-        self.db = Database()
         self.process_status_adapter = ProcessStatusAdapter()
         self.field_catalog_adapter = FieldCatalogAdapter()
         self.refresh_settings()
@@ -121,11 +119,11 @@ class CollectorService:
         about them is actually slow."""
         # File-cache collectors: sst (OISST netCDF), clouds (GIBS image). Each self-gates
         # on its own cadence (is_stale) and freshness (remote_is_newer / expiry_hours).
-        collect_file_caches(self.config, self.db, self._cache_last_runs)
+        collect_file_caches(self.config, self._cache_last_runs)
 
         # Event feeds: quakes, storms, volcanoes, satellites, markers. Each runs at its
         # own schedule via is_stale(); has_new_data() skips unchanged remotes (HEAD/ETag).
-        collect_event_feeds(self.config, self.db, self._event_last_runs)
+        collect_event_feeds(self.config, self._event_last_runs)
 
         # Heavy field datasources (gfs atmos+waves, rtofs currents): fieldstore-backed,
         # baseline-resolved, per-hour skip-if-present.
@@ -143,7 +141,7 @@ class CollectorService:
         ctx = CycleContext()
         for CollectorCls in _FIELD_COLLECTOR_CLASSES:
             try:
-                CollectorCls(self.config, self.db, self.store).collect(ctx)
+                CollectorCls(self.config, self.store).collect(ctx)
                 self.process_status_adapter.record_process_run(
                     CollectorCls.status_name, "collector", success=True
                 )
@@ -162,12 +160,11 @@ class CollectorService:
     async def _supervise_collector(self, collector_cls):
         """Run one embedded async collector in-process, restarting it on crash.
 
-        Each embedded collector constructs its OWN Database() (psycopg2 connections aren't
-        shareable across threads, and these collectors offload their DB writes via
-        asyncio.to_thread), and keeps its own `enabled` kill-switch — checked inside its
-        run() loop — so it can still be paused independently (e.g. to back off a rate
-        limit) without touching the service. A crash is logged and the collector is
-        restarted after a short delay rather than taking the whole process down.
+        Each embedded collector constructs its own adapters and keeps its own `enabled`
+        kill-switch — checked inside its run() loop — so it can still be paused
+        independently (e.g. to back off a rate limit) without touching the service. A
+        crash is logged and the collector is restarted after a short delay rather than
+        taking the whole process down.
         """
         name = collector_cls.__name__
         while True:
@@ -249,7 +246,6 @@ class CollectorService:
                         await asyncio.to_thread(
                             drain_backfill,
                             self.config,
-                            self.db,
                             self.store,
                             _FIELD_COLLECTOR_CLASSES,
                             self.field_catalog_adapter,
