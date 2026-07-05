@@ -69,7 +69,7 @@ def load_marker_rows(geojson_path=None):
         return None
 
 
-def import_markers(db, geojson_path=None):
+def import_markers(marker_adapter, geojson_path=None):
     """Upsert all markers from the geojson and delete any rows no longer present.
     Returns {"upserted": n, "deleted": n}. If the file yields no rows (missing/empty/
     unreadable), the delete is SKIPPED so a bad read can't wipe the table."""
@@ -87,8 +87,8 @@ def import_markers(db, geojson_path=None):
         )
         return {"upserted": 0, "deleted": 0}
 
-    db.upsert_markers(rows)
-    deleted = db.delete_markers_not_in([r["id"] for r in rows])
+    marker_adapter.upsert_markers(rows)
+    deleted = marker_adapter.delete_markers_not_in([r["id"] for r in rows])
     logger.info(
         f"Markers importer: upserted {len(rows)}, deleted {deleted} "
         f"(from {os.path.basename(path)})"
@@ -98,6 +98,6 @@ def import_markers(db, geojson_path=None):
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
-    from worldmap.lib.db import Database
+    from worldmap.db.marker_adapter import MarkerAdapter
 
-    import_markers(Database())
+    import_markers(MarkerAdapter())
