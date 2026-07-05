@@ -10,6 +10,7 @@ authors = [
 # Core dependencies for the WorldMap system
 dependencies = [
     "aiohttp>=3.13.5",
+    "alembic>=1.18.5",
     "beautifulsoup4==4.14.3",
     "cartopy==0.25.0",
     "cfgrib==0.9.15.1",
@@ -20,6 +21,7 @@ dependencies = [
     "eccodes-python==0.9.9",
     "fastapi>=0.136.1",
     "fsspec>=2026.3.0",
+    "geoalchemy2>=0.20.0",
     "h5netcdf>=1.8.1",
     "h5py>=3.16.0",
     "idna==3.11",
@@ -41,6 +43,7 @@ dependencies = [
     "six==1.17.0",
     "skyfield>=1.54",
     "soupsieve==2.8.3",
+    "sqlalchemy>=2.0.51",
     "typing-extensions==4.15.0",
     "urllib3==2.6.3",
     "uvicorn>=0.47.0",

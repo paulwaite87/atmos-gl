@@ -52,12 +52,3 @@ jobs:
           file: ./Dockerfile.ui
           push: true
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-ui:latest
-
-      # Build and Push Database
-      - name: Build and push DB image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./Dockerfile.db
-          push: true
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-db:latest
