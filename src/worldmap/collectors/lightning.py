@@ -17,6 +17,7 @@ from datetime import datetime, timedelta, timezone
 
 from .base import AsyncCollectorBase
 from worldmap.db.lightning_adapter import LightningAdapter
+from worldmap.db.region_adapter import RegionAdapter
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +31,7 @@ class LightningCollector(AsyncCollectorBase):
     def __init__(self, config_path: str):
         super().__init__(config_path)
         self.lightning_adapter = LightningAdapter()
+        self.region_adapter = RegionAdapter()
 
     def refresh_settings(self) -> None:
         super().refresh_settings()
@@ -119,7 +121,9 @@ class LightningCollector(AsyncCollectorBase):
                 end_iso = now.strftime("%Y-%m-%dT%H:%M:%SZ")
 
                 try:
-                    regions = self.db.get_priority_region_list(self.primary_region_label)
+                    regions = self.region_adapter.get_priority_region_list(
+                        self.primary_region_label
+                    )
                     async with aiohttp.ClientSession() as session:
                         for reg in regions:
                             label = reg["label"]

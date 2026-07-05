@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 import os
 from fastapi import APIRouter, HTTPException
-from worldmap.lib.db import Database
 from worldmap.db.field_catalog_adapter import FieldCatalogAdapter
+from worldmap.db.region_adapter import RegionAdapter
 from worldmap.lib.config import WorldMapConfig
 from datetime import datetime, timezone, timedelta, date
 
@@ -165,8 +165,8 @@ def get_regions():
         worldmap_config = load_config()
         current_region = worldmap_config.get_setting("common", "region", "Whole World")
 
-        db = Database()
-        regions = db.get_priority_region_list(current_region)
+        region_adapter = RegionAdapter()
+        regions = region_adapter.get_priority_region_list(current_region)
         return {"status": "success", "data": regions}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
