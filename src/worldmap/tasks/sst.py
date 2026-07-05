@@ -20,36 +20,6 @@ class SSTUpdater(Updater):
         super().__init__(config, "sst", map_data)
         self.mode = self.settings.get("mode", "absolute").strip().lower()
 
-    def save_sst_key(self, output_path, cmap, norm, ticks, title_text, tick_format):
-        """Generates a standalone SST key image (separate _key.png)."""
-        from matplotlib.figure import Figure
-        from matplotlib.backends.backend_agg import FigureCanvasAgg
-        from matplotlib.ticker import FormatStrFormatter
-        import matplotlib as mpl
-
-        base, ext = os.path.splitext(output_path)
-        key_path = f"{base}_key{ext}"
-        key_fontsize = self.settings.get("key_fontsize", 10)
-
-        fig = Figure(figsize=(4, 0.3))
-        FigureCanvasAgg(fig)
-        ax = fig.subplots()
-        cbar = fig.colorbar(
-            mpl.cm.ScalarMappable(norm=norm, cmap=cmap),
-            cax=ax,
-            orientation="horizontal",
-            ticks=ticks,
-        )
-        cbar.ax.xaxis.set_major_formatter(FormatStrFormatter(tick_format))
-        cbar.ax.set_title(
-            title_text, color="white", fontsize=key_fontsize, pad=2, weight="bold"
-        )
-        cbar.ax.tick_params(colors="white", labelsize=8)
-
-        fig.savefig(key_path, transparent=True, bbox_inches="tight")
-        fig.clear()
-        logger.debug(f"Saved SST key to: {key_path}")
-
     def plot(self):
         alpha = float(self.settings.get("alpha", 40) / 100)
         bbox = self.map_region_bbox
@@ -139,8 +109,16 @@ class SSTUpdater(Updater):
 
         plot.save_figure(self.output_path)
         calculated_ticks = np.linspace(vmin, vmax, 5)
-        self.save_sst_key(
-            self.output_path, cmap, norm, calculated_ticks, title_text, tick_format
+        self.save_key_image(
+            self.output_path,
+            cmap,
+            norm,
+            calculated_ticks,
+            title_text,
+            key_fontsize=self.settings.get("key_fontsize", 10),
+            labelsize=8,
+            tick_format=tick_format,
+            weight="bold",
         )
 
         plt_close = getattr(plot, "close", None)

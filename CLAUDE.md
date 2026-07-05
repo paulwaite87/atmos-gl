@@ -20,6 +20,16 @@ Key backend responsibilities:
 
 ---
 
+## What Not To Look At
+
+Any files matching .gitignore entries should never be read, modified or otherwise manipulated in any way.
+
+## Secrets
+
+All API keys, or other secrets should never be committed to remote CVS.
+
+---
+
 ## Think Before Coding
 
 **Don't assume. Don't hide confusion. Surface tradeoffs.**
@@ -44,7 +54,7 @@ Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, sim
 
 ## Surgical Changes
 
-**Touch only what you must. Clean up only your own mess.**
+**Touch only what you must. Clean up only your own mess by default, but ask if other messes should be as well.**
 
 When editing existing code:
 - Don't "improve" adjacent code, comments, or formatting.

@@ -23,44 +23,6 @@ class OzoneUpdater(Updater):
         self.per_hour_outputs = [".png", "_data.png"]
         self.status_product = "ozone"
 
-    def save_ozone_key(self, output_path):
-        """Generates an ozone key image."""
-        from matplotlib.figure import Figure
-        from matplotlib.backends.backend_agg import FigureCanvasAgg
-        import matplotlib as mpl
-
-        base, ext = os.path.splitext(output_path)
-        key_path = f"{base}_key{ext}"
-        # Hour-independent, but regenerated each render cycle so palette / range /
-        # font config changes are reflected without manual file deletion.
-
-        fig = Figure(figsize=(4, 0.3))
-        FigureCanvasAgg(fig)
-        ax = fig.subplots()
-        key_ticks = [200, 250, 300, 350, 400, 450]
-
-        cmap = mpl.cm.get_cmap("viridis")
-        norm = mpl.colors.Normalize(vmin=self.VMIN_OZONE, vmax=self.VMAX_OZONE)
-
-        cbar = fig.colorbar(
-            mpl.cm.ScalarMappable(norm=norm, cmap=cmap),
-            cax=ax,
-            orientation="horizontal",
-            ticks=key_ticks,
-        )
-
-        cbar.ax.set_title(
-            "Ozone (DU)",
-            color="white",
-            fontsize=self.settings.get("key_fontsize", 8),
-            pad=2,
-        )
-        cbar.ax.tick_params(colors="white", labelsize=6)
-
-        fig.savefig(key_path, transparent=True, bbox_inches="tight")
-        fig.clear()
-        logger.debug(f"Saved ozone key to: {key_path}")
-
     def plot(self, field0):
         """Render the static ozone PNG (frame 0) + global N-frame texture.
 
@@ -100,7 +62,14 @@ class OzoneUpdater(Updater):
         plot.save_figure(output_path_for_hour)
         # Key (colourbar) is hour-independent — write it once at the BASE name
         # (ozone_key.png) that the frontend requests, not per-hour.
-        self.save_ozone_key(self.output_path)
+        self.save_key_image(
+            self.output_path,
+            cmap,
+            norm,
+            [200, 250, 300, 350, 400, 450],
+            "Ozone (DU)",
+            key_fontsize=self.settings.get("key_fontsize", 8),
+        )
 
         plt_close = getattr(plot, "close", None)
         if callable(plt_close):
