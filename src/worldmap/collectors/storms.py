@@ -16,12 +16,17 @@ import requests
 from bs4 import BeautifulSoup
 
 from worldmap.collectors.base import CollectorBase
+from worldmap.db.storm_adapter import StormAdapter
 
 logger = logging.getLogger(__name__)
 
 
 class StormsCollector(CollectorBase):
     section = "storms"
+
+    def __init__(self, config, db):
+        super().__init__(config, db)
+        self.storm_adapter = StormAdapter()
 
     def has_new_data(self) -> bool:
         """HEAD both ATCF directory URLs; skip if neither has changed."""
@@ -201,7 +206,7 @@ class StormsCollector(CollectorBase):
         nhc_btk = nhc_fst.replace("fst", "btk")
         expiry_days = self.settings.get("expiry_days", 4)
 
-        self.db.prune_expired_storms(expiry_days)
+        self.storm_adapter.prune_expired_storms(expiry_days)
 
         b_decks = []
         for url in [jtwc, nhc_btk]:
@@ -257,7 +262,7 @@ class StormsCollector(CollectorBase):
             cone_input = current_pt + fcst_pts if fcst_pts else []
             cone_vertices = self._build_cone_polygons(cone_input) if cone_input else []
 
-            self.db.update_storm(
+            self.storm_adapter.update_storm(
                 sid=sid,
                 name=storm["name"],
                 cone_vertices=cone_vertices,

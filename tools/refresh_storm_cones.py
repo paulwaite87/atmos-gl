@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 import logging
 
+from sqlalchemy import func, select
+
 # Import your core modules based on the project structure
-from worldmap.lib.db import Database
+from worldmap.db.engine import Session
+from worldmap.db.models import Storm, StormTrack
 from worldmap.lib.config import WorldMapConfig
 from worldmap.tasks.common import MapData
 from worldmap.tasks.storms import StormUpdater
@@ -29,15 +32,13 @@ def refresh_all_cones():
     logger.info("Initializing dependencies...")
 
     # 1. Core Initialization
-    db = Database()
     config = WorldMapConfig(config_path="/opt/project/config/worldmap.json")
     updater = StormUpdater(config, MapData(config))
 
     try:
         # 2. Get all Storm IDs
-        with db.conn.cursor() as cur:
-            cur.execute("SELECT sid FROM storms")
-            storms = cur.fetchall()
+        with Session() as session:
+            storms = session.execute(select(Storm.sid)).all()
 
         if not storms:
             logger.info("No active storms found in the database.")
@@ -45,31 +46,27 @@ def refresh_all_cones():
 
         logger.info(f"Found {len(storms)} storms. Rebuilding cones...")
 
-        for storm in storms:
-            # Handle RealDictCursor output
-            sid = storm['sid'] if isinstance(storm, dict) else storm[0]
-
-            with db.conn.cursor() as cur:
-                # 3. Fetch forecast points AND the current point for this storm
-                cur.execute("""
-                    SELECT lat, lon, COALESCE(tau, 0) as tau 
-                    FROM storm_track 
-                    WHERE sid = %s AND record_type IN ('CURRENT', 'FORECAST') 
-                    ORDER BY COALESCE(tau, 0) ASC
-                """, (sid,))
-                track_data = cur.fetchall()
+        for (sid,) in storms:
+            # 3. Fetch forecast points AND the current point for this storm
+            with Session() as session:
+                track_data = session.execute(
+                    select(StormTrack.lat, StormTrack.lon, StormTrack.tau)
+                    .where(
+                        StormTrack.sid == sid,
+                        StormTrack.record_type.in_(["CURRENT", "FORECAST"]),
+                    )
+                    .order_by(StormTrack.tau)
+                ).all()
 
             if len(track_data) < 2:
                 logger.debug(f"Skipping {sid}: Not enough forecast points to build a cone.")
                 continue
 
             # 4. Format for the StormUpdater calculator
-            forecast_points = []
-            for r in track_data:
-                lat = float(r['lat']) if isinstance(r, dict) else float(r[0])
-                lon = float(r['lon']) if isinstance(r, dict) else float(r[1])
-                tau = int(r['tau']) if isinstance(r, dict) else int(r[2])
-                forecast_points.append({"LAT": lat, "LON": lon, "TAU": tau})
+            forecast_points = [
+                {"LAT": float(lat), "LON": float(lon), "TAU": int(tau or 0)}
+                for lat, lon, tau in track_data
+            ]
 
             # 5. Calculate Geometry using your official class logic
             vertices = updater._build_cone_polygons(forecast_points)
@@ -78,12 +75,13 @@ def refresh_all_cones():
                 wkt = build_wkt_polygon(vertices)
 
                 # 6. Update Database
-                with db.conn.cursor() as cur:
-                    cur.execute("""
-                        UPDATE storms 
-                        SET cone_geom = ST_SetSRID(ST_GeomFromText(%s), 4326) 
-                        WHERE sid = %s
-                    """, (wkt, sid))
+                with Session() as session:
+                    session.execute(
+                        Storm.__table__.update()
+                        .where(Storm.sid == sid)
+                        .values(cone_geom=func.ST_SetSRID(func.ST_GeomFromText(wkt), 4326))
+                    )
+                    session.commit()
 
                 logger.info(f"✅ Successfully recalculated and updated cone for {sid}")
 
