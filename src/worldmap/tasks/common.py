@@ -16,6 +16,7 @@ from pathlib import Path
 # Internal library import
 from worldmap.lib.config import WorldMapConfig
 from worldmap.lib.db import Database
+from worldmap.db.region_adapter import RegionAdapter
 from worldmap.lib import fieldstore
 from worldmap.db.process_status_adapter import ProcessStatusAdapter
 from worldmap.collectors.base import _freshness_percent, _estimate_next_update
@@ -437,8 +438,8 @@ class MapRegion:
 
         else:
             # Database lookup
-            db = Database()
-            bbox_row = db.get_region_definition(str(region))
+            region_adapter = RegionAdapter()
+            bbox_row = region_adapter.get_region_definition(str(region))
             if bbox_row:
                 bbox = [val for _, val in bbox_row.items()]
                 bbox_prefix = f"{bbox_prefix}_{region}"
