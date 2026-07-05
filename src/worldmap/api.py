@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -33,7 +34,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Keep the static asset pipeline mounted at root
+# Keep the static asset pipeline mounted at root. Docker's bind mount
+# (./data:/opt/project/data) auto-creates this directory at container start, but a bare
+# `uv run pytest`/uvicorn invocation (e.g. CI) has no such mount -- StaticFiles requires
+# the directory to exist at import time, so ensure it does rather than crash on import.
+os.makedirs("data", exist_ok=True)
 app.mount("/data", StaticFiles(directory="data"), name="data")
 
 # -------------------------------------------------------------
