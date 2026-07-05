@@ -17,12 +17,17 @@ import logging
 import requests
 
 from .base import CollectorBase
+from worldmap.db.satellite_adapter import SatelliteAdapter
 
 logger = logging.getLogger(__name__)
 
 
 class SatellitesCollector(CollectorBase):
     section = "satellites_collector"
+
+    def __init__(self, config, db):
+        super().__init__(config, db)
+        self.satellite_adapter = SatelliteAdapter()
 
     @property
     def period_s(self) -> float:
@@ -71,7 +76,7 @@ class SatellitesCollector(CollectorBase):
                     norad = int(rec["NORAD_CAT_ID"])
                     name = rec.get("OBJECT_NAME", str(norad))
                     # Store the full OMM dict verbatim — omm.initialize() needs it all.
-                    self.db.update_satellite(norad, name, rec, rec.get("EPOCH"))
+                    self.satellite_adapter.update_satellite(norad, name, rec, rec.get("EPOCH"))
                     stored += 1
                 except Exception as exc:
                     logger.debug(f"Satellites: skipping malformed record: {exc}")

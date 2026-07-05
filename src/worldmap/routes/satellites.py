@@ -8,7 +8,7 @@ from sgp4.api import Satrec
 from sgp4 import omm as omm_mod
 from skyfield.api import EarthSatellite, load
 
-from worldmap.lib.db import Database
+from worldmap.db.satellite_adapter import SatelliteAdapter
 from worldmap.lib.config import WorldMapConfig
 
 router = APIRouter(prefix="/api", tags=["Satellites"])
@@ -93,7 +93,7 @@ def satellites_geojson():
     step = max(10, int(s.get("step_seconds", 30)))
     user_color = (s.get("color") or "").strip()
 
-    rows = Database().get_satellites_by_names(names)
+    rows = SatelliteAdapter().get_satellites_by_names(names)
     if not rows:
         return Response(
             '{"type":"FeatureCollection","features":[]}', media_type="application/json"

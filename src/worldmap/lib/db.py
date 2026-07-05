@@ -59,31 +59,6 @@ class Database:
         if hasattr(self, "conn"):
             self.conn.close()
 
-    def update_satellite(self, norad_id, name, omm, epoch_iso):
-        from psycopg2.extras import Json
-
-        sql = """
-            INSERT INTO satellites (norad_id, name, omm, epoch, updated_at)
-            VALUES (%s, %s, %s, %s, NOW())
-            ON CONFLICT (norad_id) DO UPDATE SET
-                name = EXCLUDED.name,
-                omm = EXCLUDED.omm,
-                epoch = EXCLUDED.epoch, 
-                updated_at = NOW();
-        """
-        with self.conn.cursor() as cur:
-            cur.execute(sql, (norad_id, name, Json(omm), epoch_iso))
-
-    def get_satellites_by_names(self, names):
-        if not names:
-            return []
-        sql = "SELECT norad_id, name, omm, epoch FROM satellites WHERE name = ANY(%s);"
-        with self.conn.cursor() as cur:
-            cur.execute(sql, (list(names),))
-            return (
-                cur.fetchall()
-            )  # RealDictCursor returns omm already decoded to a dict
-
     def get_priority_region_list(self, primary_region_label):
         """
         Returns all regions from the database, ordered so the primary_region_label
