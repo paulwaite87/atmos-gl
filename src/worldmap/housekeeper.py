@@ -18,6 +18,7 @@ import argparse
 from worldmap.lib.config import WorldMapConfig
 from worldmap.lib.logging import setup_logging, set_loglevel
 from worldmap.lib import fieldstore
+from worldmap.db.ship_adapter import ShipAdapter
 
 logger = logging.getLogger("worldmap.housekeeper")
 
@@ -122,6 +123,25 @@ class Housekeeper:
                 )
         except Exception as e:
             logger.warning(f"Housekeeper: fieldstore prune failed: {e}")
+
+    def prune_vessel_tracks(self, expiry_days: float):
+        """Prune ship_position rows older than expiry_days (0/missing -> keep forever).
+
+        update_ship_position_data writes one row per AIS position update with nothing
+        else capping table growth, unlike the file-based caches this class already
+        prunes.
+        """
+        if not expiry_days or expiry_days <= 0:
+            return
+        try:
+            deleted = ShipAdapter().prune_vessel_tracks(expiry_days)
+            if deleted:
+                logger.info(
+                    f"Housekeeper pruned {deleted} vessel position record(s) "
+                    f"older than {expiry_days:g}d."
+                )
+        except Exception as e:
+            logger.warning(f"Housekeeper: vessel track prune failed: {e}")
 
     def prune_orphaned_hour_outputs(self):
         """Delete per-hour render outputs whose (layer, hour) no longer has any
@@ -281,6 +301,12 @@ class Housekeeper:
                     # After the catalog is reconciled/pruned, drop rendered per-hour
                     # outputs (all layers) whose (layer, hour) no longer has a field.
                     self.prune_orphaned_hour_outputs()
+                    vessel_expiry_d = float(
+                        self.config.get_setting(
+                            "shipping_collector", "vessel_track_expiry_days", 0
+                        )
+                    )
+                    self.prune_vessel_tracks(vessel_expiry_d)
                     last_run = now
             else:
                 logger.debug("Housekeeper disabled; skipping.")
