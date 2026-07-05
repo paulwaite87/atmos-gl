@@ -59,63 +59,6 @@ class Database:
         if hasattr(self, "conn"):
             self.conn.close()
 
-    def update_quake(self, quake_id, mag, depth, place, time_iso, lat, lon):
-        """UPSERTs an earthquake into the database."""
-        sql = """
-            INSERT INTO earthquakes (id, mag, depth, place, eq_time, lat, lon, geom)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, ST_SetSRID(ST_MakePoint(%s, %s), 4326))
-            ON CONFLICT (id) DO UPDATE SET
-                mag = EXCLUDED.mag,
-                depth = EXCLUDED.depth,
-                place = EXCLUDED.place,
-                eq_time = EXCLUDED.eq_time;
-        """
-        try:
-            with self.conn.cursor() as cur:
-                cur.execute(
-                    sql, (quake_id, mag, depth, place, time_iso, lat, lon, lon, lat)
-                )
-        except Exception as e:
-            logger.error(f"Error saving earthquake {quake_id}: {e}")
-
-    def get_quakes_as_geojson(self, min_mag=3.5, expiry_hours=12, recent_hours=3):
-        """Returns earthquakes as GeoJSON, filtering by age and magnitude."""
-        sql = """
-            SELECT jsonb_build_object(
-                'type', 'FeatureCollection',
-                'features', COALESCE(
-                    jsonb_agg(
-                        jsonb_build_object(
-                            'type',       'Feature',
-                            'geometry',   ST_AsGeoJSON(geom)::jsonb,
-                            'properties', jsonb_build_object(
-                                'id', id,
-                                'mag', mag,
-                                'depth', depth,
-                                'place', place,
-                                'age_minutes', EXTRACT(EPOCH FROM (NOW() - eq_time)) / 60.0,
-                                'is_recent', (EXTRACT(EPOCH FROM (NOW() - eq_time)) / 3600.0) <= %s
-                            )
-                        )
-                    ),
-                    '[]'::jsonb
-                )
-            )::text AS geojson
-            FROM earthquakes
-            WHERE eq_time >= NOW() - (INTERVAL '1 hour' * %s)
-              AND mag >= %s;
-        """
-        try:
-            with self.conn.cursor() as cur:
-                cur.execute(sql, (recent_hours, expiry_hours, min_mag))
-                result = cur.fetchone()
-                if result and "geojson" in result:
-                    return result["geojson"]
-                return '{"type":"FeatureCollection","features":[]}'
-        except Exception as e:
-            logger.error(f"Error building quake GeoJSON: {e}")
-            return '{"type":"FeatureCollection","features":[]}'
-
     def update_volcano(self, v_id, name, lat, lon, vei, significant, date_code):
         sql = """
             INSERT INTO volcanoes (id, name, lat, lon, vei, significant, erupt_date_code, geom)

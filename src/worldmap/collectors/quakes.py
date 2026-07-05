@@ -15,12 +15,17 @@ import requests
 import pandas as pd
 
 from worldmap.collectors.base import CollectorBase
+from worldmap.db.quake_adapter import QuakeAdapter
 
 logger = logging.getLogger(__name__)
 
 
 class QuakeCollector(CollectorBase):
     section = "quakes"
+
+    def __init__(self, config, db):
+        super().__init__(config, db)
+        self.quake_adapter = QuakeAdapter()
 
     def has_new_data(self) -> bool:
         url = self.settings.get("url", "")
@@ -55,7 +60,7 @@ class QuakeCollector(CollectorBase):
 
             count = 0
             for _, row in filtered.iterrows():
-                self.db.update_quake(
+                self.quake_adapter.update_quake(
                     str(row["id"]),
                     float(row["mag"]),
                     float(row["depth"]),
