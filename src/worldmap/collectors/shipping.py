@@ -16,6 +16,7 @@ import asyncio
 import websockets
 
 from .base import AsyncCollectorBase
+from worldmap.db.ship_adapter import ShipAdapter
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +37,10 @@ SLICE_DENSITY_MAP = {
 
 class ShippingCollector(AsyncCollectorBase):
     section = "shipping_collector"
+
+    def __init__(self, config_path: str):
+        super().__init__(config_path)
+        self.ship_adapter = ShipAdapter()
 
     @property
     def heartbeat_period_s(self) -> float:
@@ -98,7 +103,7 @@ class ShippingCollector(AsyncCollectorBase):
                         if m_type == "ShipStaticData":
                             body = msg.get("Message", {}).get("ShipStaticData", {})
                             await asyncio.to_thread(
-                                self.db.update_ship_static_data, mmsi, meta, body, "A"
+                                self.ship_adapter.update_ship_static_data, mmsi, meta, body, "A"
                             )
                             static_count += 1
                         elif m_type in (
@@ -109,7 +114,7 @@ class ShippingCollector(AsyncCollectorBase):
                             tier = "A" if m_type == "PositionReport" else "B"
                             body = msg.get("Message", {}).get(m_type, {})
                             await asyncio.to_thread(
-                                self.db.update_ship_position_data, mmsi, meta, body, tier
+                                self.ship_adapter.update_ship_position_data, mmsi, meta, body, tier
                             )
                             pos_count += 1
 
@@ -146,7 +151,7 @@ class ShippingCollector(AsyncCollectorBase):
                 slice_width = 36.0
 
                 logger.info("ShippingCollector: starting weighted global rotation.")
-                start_total = self.db.get_current_ship_total()
+                start_total = self.ship_adapter.get_current_ship_total()
 
                 try:
                     start_offset = random.randrange(num_chunks)
@@ -164,7 +169,7 @@ class ShippingCollector(AsyncCollectorBase):
                         # rotation) - see heartbeat_period_s's docstring for why.
                         self.process_status_adapter.record_process_run(self.section, "collector", success=True)
 
-                    end_total = self.db.get_current_ship_total()
+                    end_total = self.ship_adapter.get_current_ship_total()
                     logger.info(
                         f"ShippingCollector: rotation complete. "
                         f"Added {end_total - start_total} vessels."

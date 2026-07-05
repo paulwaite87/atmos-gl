@@ -2,8 +2,6 @@ import os
 import psycopg2
 from psycopg2.extras import RealDictCursor, execute_batch
 import logging
-from datetime import datetime
-from .shipping import get_vessel_class_from_type
 
 logger = logging.getLogger(__name__)
 
@@ -31,144 +29,6 @@ class Database:
             logger.error(f"Postgres Connection Failed: {e}")
             raise
 
-    def update_ship_static_data(self, mmsi, metadata, body, ais_tier="A"):
-        """Processes ShipStaticData and UPSERTs into the ships table."""
-        name = metadata.get("ShipName", "Unknown").strip()
-        destination = body.get("Destination", "").strip()
-        v_type = body.get("Type", 0)
-        v_class = get_vessel_class_from_type(v_type)
-        imo = body.get("ImoNumber", 0)
-        callsign = body.get("CallSign", "").strip()
-        draught = float(body.get("MaximumStaticDraught", 0.0))
-
-        # Handle Dimension Math (AIS gives offsets A, B, C, D)
-        dim = body.get("Dimension", {})
-        length = int(dim.get("A", 0)) + int(dim.get("B", 0))
-        beam = int(dim.get("C", 0)) + int(dim.get("D", 0))
-
-        sql = """
-              INSERT INTO ships (mmsi, name, destination, vessel_type, vessel_class, imo, callsign, draught, prev_draught, length, beam, ais_tier)
-              VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 0.0, %s, %s, %s) ON CONFLICT (mmsi) DO \
-              UPDATE SET
-                  prev_draught = CASE \
-                  WHEN ships.draught != EXCLUDED.draught AND EXCLUDED.draught > 0 \
-                  THEN ships.draught \
-                  ELSE ships.prev_draught
-              END \
-              ,
-                name = EXCLUDED.name,
-                destination = EXCLUDED.destination,
-                vessel_type = EXCLUDED.vessel_type,
-                vessel_class = EXCLUDED.vessel_class,
-                imo = EXCLUDED.imo,
-                callsign = EXCLUDED.callsign,
-                draught = EXCLUDED.draught,
-                length = EXCLUDED.length,
-                beam = EXCLUDED.beam,
-                ais_tier = EXCLUDED.ais_tier; \
-              """
-        with self.conn.cursor() as cur:
-            cur.execute(
-                sql,
-                (
-                    str(mmsi),
-                    name,
-                    destination,
-                    v_type,
-                    v_class,
-                    imo,
-                    callsign,
-                    draught,
-                    length,
-                    beam,
-                    ais_tier,
-                ),
-            )
-
-    def update_ship_position_data(self, mmsi, metadata, body, ais_tier="A"):
-        vessel_type = body.get("Type", 0)
-        lat = body.get("Latitude", metadata.get("Latitude"))
-        lon = body.get("Longitude", metadata.get("Longitude"))
-        nav_status = body.get("NavigationalStatus", 0)
-        cog = body.get("Cog", 0.0)
-        sog = body.get("Sog", 0.0)
-        name = metadata.get("ShipName", "Unknown").strip()
-
-        raw_time_str = metadata.get("time_utc", "")
-        if raw_time_str:
-            timestamp = raw_time_str.replace(" UTC", "")
-            main_part, tz_part = timestamp.split(' +')
-            cleaned_timestamp = f"{main_part[:26]} +{tz_part}"
-            msg_datetime = datetime.strptime(cleaned_timestamp, "%Y-%m-%d %H:%M:%S.%f %z")
-        else:
-            msg_datetime = datetime.now()  # Fallback just in case
-
-        # Single atomic UPSERT to keep the parent record alive and accurate
-        sql_upsert_ship = """
-        INSERT INTO ships (mmsi, name, vessel_type, ais_tier, lat, lon, geom, nav_status, cog, sog, last_position_update)
-        VALUES (
-            %s, %s, %s, %s, %s, %s, 
-            ST_SetSRID(ST_MakePoint(%s, %s), 4326), 
-            %s, %s, %s, %s
-        )
-        ON CONFLICT (mmsi) DO UPDATE 
-        SET
-            -- Only overwrite name if incoming isn't blank, 'Unknown', or empty
-            name = CASE 
-                WHEN EXCLUDED.name IS NOT NULL AND EXCLUDED.name NOT IN ('', 'Unknown') 
-                THEN EXCLUDED.name 
-                ELSE ships.name 
-            END,
-            -- Keep existing vessel_type if it already has a non-zero classification
-            vessel_type = CASE 
-                WHEN ships.vessel_type <> 0 THEN ships.vessel_type 
-                ELSE EXCLUDED.vessel_type 
-            END,
-            ais_tier = EXCLUDED.ais_tier,
-            lat = EXCLUDED.lat,
-            lon = EXCLUDED.lon,
-            geom = EXCLUDED.geom,
-            nav_status = EXCLUDED.nav_status,
-            cog = EXCLUDED.cog,
-            sog = EXCLUDED.sog,
-            last_position_update = EXCLUDED.last_position_update;
-        """
-
-        # Insert historical track (Safe from FK errors due to the UPSERT above)
-        sql_history = """
-        INSERT INTO ship_position (mmsi, lat, lon, geom, sog, cog, nav_status, acquired_at)
-        VALUES (%s, %s, %s, ST_SetSRID(ST_MakePoint(%s, %s), 4326), %s, %s, %s, %s);
-        """
-
-        try:
-            with self.conn.cursor() as cur:
-                # Upsert live parent vessel info
-                cur.execute(
-                    sql_upsert_ship,
-                    (
-                        str(mmsi),
-                        name,
-                        vessel_type,
-                        ais_tier,
-                        lat,
-                        lon,
-                        lon,
-                        lat,
-                        nav_status,
-                        cog,
-                        sog,
-                        msg_datetime
-                    ),
-                )
-
-                # Record positional history point
-                cur.execute(
-                    sql_history, (str(mmsi), lat, lon, lon, lat, sog, cog, nav_status, msg_datetime)
-                )
-
-        except Exception as e:
-            logger.error(f"Database error updating position for {mmsi}: {e}")
-
     def get_region_definition(self, label):
         """Fetches the bounding box for a specific region label."""
         sql = """
@@ -182,60 +42,6 @@ class Database:
         with self.conn.cursor() as cur:
             cur.execute(sql, (label,))
             return cur.fetchone()
-
-    def get_current_ship_total(self):
-        """Returns the total number of ships currently in the database."""
-        sql = "SELECT COUNT(*) as total FROM ships;"
-        with self.conn.cursor() as cur:
-            cur.execute(sql)
-            result = cur.fetchone()
-            return result["total"] if result else 0
-
-    def get_fleet_as_geojson(self):
-        sql = """
-            SELECT jsonb_build_object(
-                'type', 'FeatureCollection',
-                'features', COALESCE(
-                    jsonb_agg(
-                        jsonb_build_object(
-                            'type',       'Feature',
-                            'geometry',   ST_AsGeoJSON(geom)::jsonb,
-                            'properties', jsonb_build_object(
-                                'mmsi', mmsi,
-                                'name', name,
-                                'heading', COALESCE(cog, 0.0),
-                                'speed', COALESCE(sog, 0.0),
-                                'length', COALESCE(length, 0),
-                                'beam', COALESCE(beam, 0),
-                                'vessel_type', COALESCE(vessel_type, 0),
-                                'destination', COALESCE(destination, 'Unknown'),
-                                'vessel_class', COALESCE(vessel_class, 'Unknown'),
-                                'imo', COALESCE(imo, 0),
-                                'callsign', COALESCE(callsign, 'N/A'),
-                                'draught', COALESCE(draught, 0.0),
-                                'last_position_update', to_jsonb(last_position_update)
-                            )
-                        )
-                    ),
-                    '[]'::jsonb
-                )
-            )::text AS geojson
-            FROM ships
-            WHERE geom IS NOT NULL;
-        """
-        try:
-            with self.conn.cursor() as cur:
-                cur.execute(sql)
-                result = cur.fetchone()
-
-                # Unpack explicitly by the alias key
-                if result and "geojson" in result:
-                    return result["geojson"]
-                return '{"type":"FeatureCollection","features":[]}'
-
-        except Exception as e:
-            logger.error(f"Error building native fleet GeoJSON layer: {e}")
-            return '{"type":"FeatureCollection","features":[]}'
 
     def is_in_region(self, lat, lon, region_label):
         """Quick boolean check if a point is inside a specific region."""
@@ -252,50 +58,6 @@ class Database:
     def __del__(self):
         if hasattr(self, "conn"):
             self.conn.close()
-
-    def get_ship_track(self, mmsi, limit=100):
-        """
-        Retrieves historical positions for a specific ship, newest first.
-        Includes a protective check to return an empty track if MMSI is missing.
-        """
-        if not mmsi:
-            return []
-
-        sql = """
-            SELECT lat, lon FROM ship_position 
-            WHERE mmsi = %s 
-            ORDER BY acquired_at DESC 
-            LIMIT %s;
-        """
-        try:
-            with self.conn.cursor() as cur:
-                cur.execute(sql, (str(mmsi), limit))
-                # Returns an empty list [] if no rows are found
-                return cur.fetchall() or []
-        except Exception as e:
-            logger.error(f"Error fetching track for MMSI {mmsi}: {e}")
-            return []
-
-    def prune_vessel_tracks(self, expiry_days):
-        """Removes position history older than the specified number of days."""
-        if not expiry_days or expiry_days <= 0:
-            return 0
-
-        sql = """
-              DELETE \
-              FROM ship_position
-              WHERE acquired_at < NOW() - INTERVAL '%s days'; \
-              """
-        try:
-            with self.conn.cursor() as cur:
-                cur.execute(sql, (expiry_days,))
-                deleted_rows = cur.rowcount
-                if deleted_rows > 0:
-                    logger.info(f"Pruned {deleted_rows} old position records.")
-                return deleted_rows
-        except Exception as e:
-            logger.error(f"Error pruning vessel tracks: {e}")
-            return 0
 
     def update_lightning_strike(self, strike_id, lat, lon, quality, timestamp_iso):
         """UPSERTs a lightning strike into the database with spatial geometry."""
