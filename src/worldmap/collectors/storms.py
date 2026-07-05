@@ -24,8 +24,8 @@ logger = logging.getLogger(__name__)
 class StormsCollector(CollectorBase):
     section = "storms"
 
-    def __init__(self, config, db):
-        super().__init__(config, db)
+    def __init__(self, config):
+        super().__init__(config)
         self.storm_adapter = StormAdapter()
 
     def has_new_data(self) -> bool:

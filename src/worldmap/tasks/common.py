@@ -15,7 +15,6 @@ from pathlib import Path
 
 # Internal library import
 from worldmap.lib.config import WorldMapConfig
-from worldmap.lib.db import Database
 from worldmap.db.region_adapter import RegionAdapter
 from worldmap.lib import fieldstore
 from worldmap.db.process_status_adapter import ProcessStatusAdapter
@@ -463,7 +462,6 @@ class MapData:
         self.config = config
         self.region = None
         self.shared_state = {}
-        self.db = Database()
         self.refresh()
 
     def refresh(self):

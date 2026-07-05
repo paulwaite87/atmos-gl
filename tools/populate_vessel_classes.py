@@ -5,7 +5,10 @@ import os
 # Add the current directory to sys.path so we can import the worldmap module
 sys.path.append(os.getcwd())
 
-from worldmap.lib.db import Database
+from sqlalchemy import select
+
+from worldmap.db.engine import Session
+from worldmap.db.models import Ship
 from worldmap.lib.shipping import get_vessel_class_from_type
 
 
@@ -13,30 +16,29 @@ def main():
     print("Starting vessel_class population script...")
 
     try:
-        db = Database()
-        # Using a cursor directly to iterate over existing records
-        with db.conn.cursor() as cur:
-            # Fetch all ships that have a vessel_type
-            cur.execute("SELECT mmsi, vessel_type FROM ships WHERE vessel_type IS NOT NULL")
-            ships = cur.fetchall()
+        with Session() as session:
+            ships = session.execute(
+                select(Ship.mmsi, Ship.vessel_type).where(Ship.vessel_type.isnot(None))
+            ).all()
 
             print(f"Found {len(ships)} ships to update.")
 
             count = 0
-            for ship in ships:
-                mmsi = ship['mmsi']
-                v_type = ship['vessel_type']
-
+            for mmsi, v_type in ships:
                 # Use your existing logic to get the class
                 new_class = get_vessel_class_from_type(v_type)
 
-                # Perform the update
-                update_sql = "UPDATE ships SET vessel_class = %s WHERE mmsi = %s"
-                cur.execute(update_sql, (new_class, mmsi))
+                session.execute(
+                    Ship.__table__.update()
+                    .where(Ship.mmsi == mmsi)
+                    .values(vessel_class=new_class)
+                )
 
                 count += 1
                 if count % 100 == 0:
                     print(f"Processed {count} ships...")
+
+            session.commit()
 
         print(f"Successfully updated {count} records. Migration complete.")
 

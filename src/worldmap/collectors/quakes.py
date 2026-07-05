@@ -23,8 +23,8 @@ logger = logging.getLogger(__name__)
 class QuakeCollector(CollectorBase):
     section = "quakes"
 
-    def __init__(self, config, db):
-        super().__init__(config, db)
+    def __init__(self, config):
+        super().__init__(config)
         self.quake_adapter = QuakeAdapter()
 
     def has_new_data(self) -> bool:

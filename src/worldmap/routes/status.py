@@ -10,7 +10,6 @@ import logging
 
 from fastapi import APIRouter, HTTPException
 
-from worldmap.lib.db import Database
 from worldmap.db.field_catalog_adapter import FieldCatalogAdapter
 from worldmap.lib import fieldstore
 from worldmap.routes.config import load_config
@@ -46,21 +45,20 @@ def _serialize(status: dict) -> dict:
 def get_data_status():
     try:
         config = load_config()
-        db = Database()
         workdir = config.get_setting("common", "workdir", ".")
         store = fieldstore.get_store(workdir, field_catalog_adapter=FieldCatalogAdapter())
 
         collectors = []
         for CollectorCls in (*COLLECTORS, *CACHE_COLLECTORS):
             try:
-                collectors.append(_serialize(CollectorCls(config, db).data_status()))
+                collectors.append(_serialize(CollectorCls(config).data_status()))
             except Exception as e:
                 logger.error(f"data_status failed for {CollectorCls.__name__}: {e}")
 
         for CollectorCls in _FIELD_COLLECTOR_CLASSES:
             try:
                 collectors.append(
-                    _serialize(CollectorCls(config, db, store).data_status())
+                    _serialize(CollectorCls(config, store).data_status())
                 )
             except Exception as e:
                 logger.error(f"data_status failed for {CollectorCls.__name__}: {e}")
