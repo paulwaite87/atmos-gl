@@ -1,12 +1,32 @@
 #!/usr/bin/env python3
 import os
-from fastapi import APIRouter, HTTPException
+from pathlib import Path
+from fastapi import APIRouter, HTTPException, Request
+from fastapi.templating import Jinja2Templates
 from worldmap.db.field_catalog_adapter import FieldCatalogAdapter
 from worldmap.db.region_adapter import RegionAdapter
 from worldmap.lib.config import WorldMapConfig
+from worldmap.routes.field_specs import (
+    FIELD_SPECS,
+    field_label,
+    format_slider_badge,
+    clamp_slider_value,
+    validate_against_specs,
+)
 from datetime import datetime, timezone, timedelta, date
 
 router = APIRouter(prefix="/api", tags=["System Configuration"])
+
+# Serves the schema-driven config page directly (see the architecture review's "htmx
+# for the configuration UI" candidate) -- no /api prefix, since it returns HTML, not JSON.
+# The legacy static ui/config/index.html is retired in favour of this route.
+ui_router = APIRouter(tags=["Config UI"])
+
+templates = Jinja2Templates(directory=Path(__file__).resolve().parent.parent / "templates")
+templates.env.globals["field_specs"] = FIELD_SPECS
+templates.env.globals["field_label"] = field_label
+templates.env.globals["format_slider_badge"] = format_slider_badge
+templates.env.globals["clamp_slider_value"] = clamp_slider_value
 
 # Forecast SOURCES. Each source provides an independent hourly data set with its own
 # model run cadence; the frontend treats them uniformly ("give me source X's hours +
@@ -172,8 +192,10 @@ def get_regions():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/config")
-def get_config():
+def _build_config_data() -> dict:
+    """Load worldmap.json and layer in the frontend RULE__ directives (missing-API-key
+    warnings, the shipping stub). Shared by the JSON /api/config endpoint and the
+    server-rendered /config page so both see identical data."""
     worldmap_config = load_config()
     data = worldmap_config.config.copy()
 
@@ -199,11 +221,27 @@ def get_config():
         if not maptiler_key:
             data["common"]["RULE__missing_maptiler"] = True
 
-    return {"status": "success", "data": data}
+    return data
+
+
+@router.get("/config")
+def get_config():
+    return {"status": "success", "data": _build_config_data()}
+
+
+@ui_router.get("/config")
+def config_page(request: Request):
+    return templates.TemplateResponse(
+        request, "config.html", {"config_data": _build_config_data()}
+    )
 
 
 @router.post("/config")
 async def update_config(payload: dict):
+    errors = validate_against_specs(payload)
+    if errors:
+        raise HTTPException(status_code=422, detail=errors)
+
     worldmap_config = load_config()
 
     if "shipping_collector" in payload:

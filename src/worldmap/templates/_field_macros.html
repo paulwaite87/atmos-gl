@@ -1,0 +1,42 @@
+{# Schema-driven widget renderer, dispatched off spec.kind. Emitted markup and DOM
+   contract (id="{section}__{option}", class "dynamic-input") intentionally match the
+   legacy client-side renderer so the untouched saveActiveConfig() JS keeps collecting
+   these fields exactly as it does for JS-rendered tabs. #}
+
+{% macro render_field(section, option, value, spec, label) %}
+  {% set dom_id = section ~ "__" ~ option %}
+  {% if spec and spec.kind == "toggle" %}
+    <div class="col-md-6 d-flex align-items-center mt-4">
+      <div class="form-check form-switch">
+        <input class="form-check-input dynamic-input" type="checkbox" id="{{ dom_id }}" {% if value %}checked{% endif %}>
+        <label class="form-check-label fw-bold ms-2">{{ label }}</label>
+      </div>
+    </div>
+  {% elif spec and spec.kind == "slider" %}
+    {% set clamped = clamp_slider_value(spec, value) %}
+    <div class="col-md-6">
+      <div class="d-flex justify-content-between align-items-center mb-1">
+        <label class="form-label small text-white-50 fw-bold mb-0">{{ label }}</label>
+        <span class="badge bg-primary text-light fw-bold" id="badge-{{ dom_id }}">{{ format_slider_badge(spec, clamped) }}</span>
+      </div>
+      <input type="range" class="form-range dynamic-input" id="{{ dom_id }}"
+             min="{{ spec.min }}" max="{{ spec.max }}" step="{{ spec.step }}" value="{{ clamped }}"
+             oninput="updateSliderBadge('badge-{{ dom_id }}', this.value, {{ 'null' if spec.decimals is none else spec.decimals }}, '{{ spec.suffix }}')">
+    </div>
+  {% elif spec and spec.kind == "select" %}
+    <div class="col-md-6">
+      <label class="form-label small text-white-50 fw-bold mb-1">{{ label }}</label>
+      <select class="form-select bg-dark text-light border-secondary dynamic-input" id="{{ dom_id }}">
+        {% for opt_value, opt_label in spec.options %}
+          <option value="{{ opt_value }}" {% if value == opt_value %}selected{% endif %}>{{ opt_label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+  {% else %}
+    <div class="col-md-6">
+      <label class="form-label small text-white-50 fw-bold mb-1">{{ label }}</label>
+      <input type="{{ 'number' if value is number else 'text' }}" step="any"
+             class="form-control bg-dark text-light border-secondary dynamic-input" id="{{ dom_id }}" value="{{ value }}">
+    </div>
+  {% endif %}
+{% endmacro %}

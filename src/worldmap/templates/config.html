@@ -1,3 +1,4 @@
+{%- import "_field_macros.html" as field_macros -%}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -55,7 +56,27 @@
 
             <form id="configForm" class="d-none">
                 <div class="tab-content" id="configTabsContent">
-                    <div class="tab-pane fade show active" id="global-pane"><div id="container-global"></div></div>
+                    <div class="tab-pane fade show active" id="global-pane">
+                        <div id="container-global">
+                            {% for section in ["common", "map_builder", "animation"] %}
+                                {% set section_data = config_data.get(section) %}
+                                {% if section_data is not none %}
+                                    <div class="section-block" id="wrapper-section-{{ section }}">
+                                        <div id="fields-section-{{ section }}">
+                                            <h5 class="text-info border-bottom border-secondary pb-2 mb-3">{{ "Global Settings" if section == "common" else "[" ~ section ~ "] Properties" }}</h5>
+                                            <div class="row g-3">
+                                                {% for option, value in section_data.items() %}
+                                                    {% if not ((option == "enabled" and section != "housekeeper") or option.startswith("RULE__")) %}
+                                                        {{ field_macros.render_field(section, option, value, field_specs.get((section, option)), field_label(section, option)) }}
+                                                    {% endif %}
+                                                {% endfor %}
+                                            </div>
+                                        </div>
+                                    </div>
+                                {% endif %}
+                            {% endfor %}
+                        </div>
+                    </div>
 
                     <div class="tab-pane fade" id="show-pane">
                         <div class="grouping-box">
@@ -180,7 +201,9 @@
         let dynamicVesselClasses = {}
 
         const TAB_GROUPS = {
-            "global": ["common", "map_builder", "animation"],
+            // "global" is server-rendered (see field_macros.render_field in config.html) --
+            // it must stay out of this dispatch table so renderTabContainers doesn't also
+            // build duplicate fields into container-global.
             "atmospheric": ["clouds", "isobars", "wind", "precipitation", "lightning", "storms"],
             "climate": ["sst", "currents", "waves", "temperature", "ozone", "stormwatch"],
             "events": ["quakes", "volcanoes"],
@@ -197,6 +220,14 @@
             "yellow": "#ffff00", "orange": "#ffa500", "gold": "#ffd700",
             "purple": "#800080", "magenta": "#ff00ff", "violet": "#ee82ee"
         };
+
+        // Live badge reformatting for server-rendered (field_macros.render_field) sliders,
+        // mirroring format_slider_badge in routes/field_specs.py so dragging updates the
+        // badge the same way the server formatted it on initial render.
+        function updateSliderBadge(badgeId, rawValue, decimals, suffix) {
+            const text = (decimals === null) ? (rawValue + suffix) : (parseFloat(rawValue).toFixed(decimals) + suffix);
+            document.getElementById(badgeId).innerText = text;
+        }
 
         function findNearestNamedColor(hex) {
             hex = hex.toLowerCase();
