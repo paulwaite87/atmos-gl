@@ -4,26 +4,34 @@ import { scrubber } from './scrubber.js';
 import { flagBackfill, clearBackfillFlag } from './_backfill.js';
 
 /**
- * Generic u/v-field STREAK PARTICLE engine — a MapLibre v5 CUSTOM WEBGL LAYER
- * (sharp, globe-correct). Originally the wind engine; now shared by any layer with a
- * velocity (u/v) texture: wind, currents, and future flow layers. The consumer picks
- * behaviour via opts (sectionKey, hourDataUrl, colormap, landReset, vmax, ...).
+ * Generic u/v-field oriented-quad PARTICLE engine — a MapLibre v5 CUSTOM WEBGL LAYER
+ * (sharp, globe-correct), shared by any layer whose visible primitive is a STREAK
+ * (along-flow, speed-scaled, comet fade — wind) or a BAR (perpendicular crest, fixed
+ * length — waves). The consumer picks behaviour via opts (sectionKey, hourDataUrl,
+ * colormap, landReset, vmax, primitive, ...).
+ *
+ * NOT used by currents: ocean currents render as flowing STREAMLINE ribbon trails
+ * (a geometrically distinct technique — see _currentparticles_gl.js's own docstring),
+ * not an oriented quad. The two files share several opt names by convention (vmax,
+ * colormap, landReset, maxSpeedColor) because currents' engine was written to look
+ * similar to configure, not because it shares this engine's rendering code.
  *
  * Instead of advecting particles into an offscreen canvas that MapLibre stretches over
  * the globe (fuzzy on zoom), it draws each particle DIRECTLY into the map's GL context
  * every frame using MapLibre's `projectTile` projection — so particles are rasterised at
  * screen resolution and follow the globe exactly, staying crisp at any zoom.
  *
- * Each particle is drawn as a short STREAK ALONG the flow every frame — an oriented quad
- * whose length scales with speed and whose opacity fades from a bright leading edge to a
- * faint tail, implying motion. Sharp, zoom-scaling, no smear.
+ * Each particle is drawn as a short oriented quad every frame — a STREAK ALONG the flow
+ * (wind) whose length scales with speed and whose opacity fades from a bright leading
+ * edge to a faint tail, or a fixed-length BAR PERPENDICULAR to the flow (waves' swell
+ * crest look). Sharp, zoom-scaling, no smear.
  *
  * Animated path = the custom WebGL layer. Static path = the source PNG raster layer
  * (fallback when animation is off or WebGL is unavailable). Consumed via
- * createWindParticleGLLayer (mount/refresh/unmount driven by liveLayerSync).
+ * createParticleGLLayer (mount/refresh/unmount driven by liveLayerSync).
  *
- * Consumers: wind.js (via the _windparticles_gl.js re-export shim), currents.js.
- * land masking is opt-in per consumer through landReset (default 0.0 = ignore land).
+ * Consumers: wind.js, waves.js. land masking is opt-in per consumer through landReset
+ * (default 0.0 = ignore land).
  */
 
 const MERCATOR_CORNERS = [
@@ -550,11 +558,60 @@ void main(){
     fragColor = vec4(v_color.rgb, v_color.a * a);
 }`;
 
-export function createWindParticleGLController(map, opts) {
+// ---- config-to-uniform mapping functions ----------------------------------
+// Named and exported (rather than left as anonymous destructuring defaults) so they
+// can be unit tested directly: each does real clamping/defaulting/unit-conversion on a
+// plain config object, no GL or DOM needed. Consumers (wind.js, waves.js) override any
+// of these by passing their own function of the same (cfg) -> number shape.
+
+// particle_speed: 0-100 -> internal advection multiplier (wind's original scale).
+export function defaultSpeed(cfg) {
+    const p = Number(cfg.particle_speed);
+    return (isFinite(p) ? Math.min(100, Math.max(0, p)) : 50) / 1000;
+}
+
+// particle_alpha: 0-100 opacity.
+export function defaultAlpha(cfg) {
+    const v = Number(cfg.particle_alpha);
+    const c = isFinite(v) ? Math.min(100, Math.max(0, v)) : 90;
+    return c / 100;
+}
+
+// trail_fade (0-100 "trail length") -> streak base half-length in px (3..15).
+export function defaultStreakLen(cfg) {
+    const v = Number(cfg.trail_fade);
+    const c = isFinite(v) ? Math.min(100, Math.max(0, v)) : 80;
+    return 3 + (c / 100) * 12;
+}
+
+// particle_size: streak thickness in px (0.1-5).
+export function defaultThickness(cfg) {
+    const v = Number(cfg.particle_size);
+    return isFinite(v) ? Math.min(5, Math.max(0.1, v)) : 1.0;
+}
+
+export function defaultMaxSpeedColor(cfg) {
+    return Number(cfg.max_speed_color) > 0 ? Number(cfg.max_speed_color) : 30.0;
+}
+
+// Reset particles that wander onto land/no-data (alpha<0.5). Wind blows over land so
+// defaults OFF; ocean layers set it ON so streaks don't smear across continents.
+export function defaultLandReset(_cfg) {
+    return 0.0;
+}
+
+// lodCount is per-consumer (waves passes its own bar-density table); falls back to
+// this module's wind-tuned LOD_COUNT when the consumer doesn't override it.
+export function defaultParticleCount(cfg, lodCount) {
+    const explicit = parseInt(cfg.particle_count, 10);
+    return Math.max(256, explicit > 0 ? explicit : ((lodCount || LOD_COUNT)[lodOf(cfg)] || 65000));
+}
+
+export function createParticleGLController(map, opts) {
     const {
-        sectionKey,  // required: 'wind' | 'currents' | ...
+        sectionKey,  // required: 'wind' | 'waves' | ...
         // Visible primitive: 'streak' (along-flow, speed-scaled length, comet fade —
-        // wind/currents) or 'bar' (perpendicular crest, fixed length, flat alpha — waves).
+        // wind) or 'bar' (perpendicular crest, fixed length, flat alpha — waves).
         primitive = 'streak',
         initialConfig,
         coordinates = MERCATOR_CORNERS,
@@ -563,14 +620,14 @@ export function createWindParticleGLController(map, opts) {
         lodCount = null,
         staticUrl = (cfg) => `${window.MAP_UI}/${cfg.outfile}`,
         dataUrl = (cfg) => `${window.MAP_UI}/${cfg.outfile.replace(/\.png$/, '_data.png')}`,
-        // When true (wind/currents): drive the velocity field from the shared timeline,
+        // When true (wind): drive the velocity field from the shared timeline,
         // reloading per forecast hour. When false (waves): the field is a single static
         // _data.png — skip the timeline subscription entirely and (re)load only on
         // mount/refresh, matching the original standalone wave engine's behaviour.
         useTimeline = true,
         // Optional resolver (snap) => {date,run,hour} for the backfill key, for layers
-        // whose run/hour differ from the GFS timeline (currents -> RTOFS). Default null
-        // = derive from the GFS run (runEpochUtc) + timeline hour.
+        // whose run/hour differ from the GFS timeline. Default null = derive from the
+        // GFS run (runEpochUtc) + timeline hour.
         backfillKey = null,
         // Per-hour velocity texture, driven by the shared timeline.
         hourDataUrl = (cfg, hour, bust) => {
@@ -579,30 +636,16 @@ export function createWindParticleGLController(map, opts) {
             return `${window.MAP_UI}/${base}_f${f}_data.png?t=${bust}`;
         },
         staticFallback = true,                            // barbs PNG when not animated / no WebGL
-        particleCount = (cfg) => {
-            const explicit = parseInt(cfg.particle_count, 10);
-            return Math.max(256, explicit > 0 ? explicit : ((lodCount || LOD_COUNT)[lodOf(cfg)] || 65000));
-        },
-        // particle_speed: 0-100 -> internal advection multiplier (wind's original scale).
-        speed = (cfg) => { const p = Number(cfg.particle_speed);
-                           return (isFinite(p) ? Math.min(100, Math.max(0, p)) : 50) / 1000; },
+        particleCount = (cfg) => defaultParticleCount(cfg, lodCount),
+        speed = defaultSpeed,
         // Advection-step multiplier to compensate for layers whose velocity magnitudes
         // differ from wind's m/s range. The per-frame step is proportional to the raw
-        // velocity, so a slow field (ocean currents ~0-2.5 m/s vs wind ~0-40 m/s) barely
-        // moves and renders as static specks ("sparklies"). Ocean layers pass a larger
-        // speedScale to restore visible flow. Default 1 keeps wind unchanged.
+        // velocity, so a slow field barely moves and renders as static specks
+        // ("sparklies"). Default 1 keeps wind unchanged.
         speedScale = 1.0,
-        // particle_alpha: 0-100 opacity.
-        alpha = (cfg) => { const v = Number(cfg.particle_alpha);
-                           const c = isFinite(v) ? Math.min(100, Math.max(0, v)) : 90;
-                           return c / 100; },
-        // trail_fade (0-100 "trail length") -> streak base half-length in px (3..15).
-        streakLen = (cfg) => { const v = Number(cfg.trail_fade);
-                               const c = isFinite(v) ? Math.min(100, Math.max(0, v)) : 80;
-                               return 3 + (c / 100) * 12; },
-        // particle_size: streak thickness in px (0.1-5).
-        thickness = (cfg) => { const v = Number(cfg.particle_size);
-                               return isFinite(v) ? Math.min(5, Math.max(0.1, v)) : 1.0; },
+        alpha = defaultAlpha,
+        streakLen = defaultStreakLen,
+        thickness = defaultThickness,
         lenSpeedScale = 1.5,                              // fast wind streaks up to 2.5x longer
         // Age lifecycle (windy.com look): each frame a particle's normalized age advances
         // by ageStep / lifetimeFactor; at age>=1 it respawns. particle_lifetime is frames-
@@ -658,12 +701,9 @@ export function createWindParticleGLController(map, opts) {
         // speed_zoom_ref: zoom at which speed is unchanged (factor = 1).
         speedZoomComp = (cfg) => { const v = Number(cfg.speed_zoom_comp); return (isFinite(v) && v >= 0) ? v : 1.0; },
         speedZoomRef = (cfg) => { const v = Number(cfg.speed_zoom_ref); return isFinite(v) ? v : 2.0; },
-        maxSpeedColor = (cfg) => (Number(cfg.max_speed_color) > 0 ? Number(cfg.max_speed_color) : 30.0),
+        maxSpeedColor = defaultMaxSpeedColor,
         useViewDensity = true,
-        // Reset particles that wander onto land/no-data (alpha<0.5). Wind blows over
-        // land so defaults OFF; ocean layers (currents) set it ON so streaks don't
-        // smear across continents.
-        landReset = (cfg) => 0.0,
+        landReset = defaultLandReset,
         eps = 0.0015,
         onMount = () => {}, onRefresh = () => {}, onUnmount = () => {},
     } = opts;
@@ -1500,11 +1540,12 @@ export function createWindParticleGLController(map, opts) {
     };
 }
 
-// Backwards-compatible wrapper (wind): build the controller and drive it from the shared
-// liveLayerSync — same shape as the old createParticleWindLayer, so wind.js only swaps
-// the import.
-export function createWindParticleGLLayer(map, opts) {
-    const c = createWindParticleGLController(map, opts);
+// Convenience wrapper for single-layer consumers (wind): builds the controller and
+// drives it from the shared liveLayerSync. waves.js composes createParticleGLController
+// with its own liveLayerSync call directly instead (it combines particles with a
+// separate heat-tile fill layer), so this wrapper is wind-only today.
+export function createParticleGLLayer(map, opts) {
+    const c = createParticleGLController(map, opts);
     // Return the teardown so the host can clean up before a basemap style swap. The
     // controller's unmount (invoked by the teardown) unsubscribes its timeline handler
     // and removes the layer (freeing GL resources in onRemove).
