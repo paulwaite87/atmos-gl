@@ -10,7 +10,6 @@ import cartopy.crs as ccrs
 import cartopy.mpl.geoaxes as geoaxes
 import numpy as np
 from scipy.interpolate import RegularGridInterpolator
-from PIL import Image
 from typing import cast
 from datetime import datetime, timezone
 from pathlib import Path
