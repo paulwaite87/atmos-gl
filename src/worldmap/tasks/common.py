@@ -10,7 +10,6 @@ import cartopy.crs as ccrs
 import cartopy.mpl.geoaxes as geoaxes
 import numpy as np
 from scipy.interpolate import RegularGridInterpolator
-from PIL import Image
 from typing import cast
 from datetime import datetime, timezone
 from pathlib import Path
@@ -48,99 +47,6 @@ LAYER_CYCLE_SECONDS = 15
 # a backstop for that failure mode, not the primary mechanism — regrid_for_lod scales
 # its step up (coarser) only if the clipped region is large enough to exceed it anyway.
 _MAX_LOD_GRID_POINTS = 4_000_000
-
-
-def encode_frames(frames, output_path, vmin, vmax, transform=None, bits=16):
-    """
-    Stack N scalar fields vertically into a single RGBA PNG, for upload as a
-    WebGL2 2D-array texture (one array layer per frame, frame 0 on top).
-
-    bits=16 (default): R = high byte, G = low byte of a 16-bit normalised value
-      (65535 levels), B=0, A = mask. Decode on the GPU: norm = (R*256 + G)/65535.
-      65535 levels eliminates the visible value-stepping that 8-bit (256 levels)
-      causes — most obvious on thin contour lines (isobars), but it also removes
-      faint banding in colour ramps. This is the default for all raster layers.
-    bits=8: R = normalised value (0..1 -> 0..255), G=B=0, A = mask. Legacy/compact.
-
-    transform:
-      None    -> linear normalisation (m - vmin) / (vmax - vmin)
-      'sqrt'  -> sqrt of the linear norm; gives the low end far more precision
-                 (e.g. precipitation). Combines with 16-bit for even finer low end.
-    Decode on the GPU as: value = norm (then square it for 'sqrt' layers).
-    """
-    span = float(vmax - vmin)
-    slabs = []
-    shape0 = None
-    for m in frames:
-        m = np.asarray(m, dtype=np.float32)
-        if shape0 is None:
-            shape0 = m.shape
-        elif m.shape != shape0:
-            raise ValueError(f"Frame shape mismatch: {m.shape} vs {shape0}")
-        norm = np.clip((m - vmin) / span, 0.0, 1.0)
-        if transform == "sqrt":
-            norm = np.sqrt(norm)
-        norm = np.nan_to_num(norm, nan=0.0)  # NaN -> 0 (masked out via alpha)
-        a = np.where(np.isnan(m), 0, 255).astype(np.uint8)
-        if bits == 16:
-            q = np.clip(np.round(norm * 65535.0), 0, 65535).astype(np.uint32)
-            hi = (q >> 8).astype(np.uint8)  # R = high byte
-            lo = (q & 0xFF).astype(np.uint8)  # G = low byte
-            z = np.zeros_like(hi)
-            slabs.append(np.dstack((hi, lo, z, a)))
-        else:
-            r = (norm * 255.0).astype(np.uint8)
-            z = np.zeros_like(r)
-            slabs.append(np.dstack((r, z, z, a)))
-    filmstrip = np.vstack(slabs)  # (N*H, W, 4)
-    Image.fromarray(filmstrip, mode="RGBA").save(output_path, format="PNG")
-    logger.debug(
-        f"Saved {len(frames)}-frame data texture ({bits}-bit) to {output_path} {filmstrip.shape}"
-    )
-    return True
-
-
-def encode_uv(u, v, output_path, vmax, lat=None):
-    """
-    Encode a global vector field (U=east, V=north, in m/s) into a single RGBA PNG
-    for a GPU particle layer:  R = (U + vmax) / (2*vmax),  G = (V + vmax) / (2*vmax),
-    B = 0,  A = 255 (0 where NaN).  Row 0 = north, lon -180..180.
-    Decode on the GPU as:  component = channel * (2*vmax) - vmax.
-    vmax clips extremes; pick it a little above the strongest winds you care about.
-
-    The particle shader's toMerc() maps the top texture row to +90 lat and treats G as
-    the true northward component, so the texture MUST be north-at-top. cfgrib does not
-    guarantee a row order (it can hand back latitude ascending = south-first depending on
-    the GRIB), and unpack/_standardize_lon only normalises longitude. If south-first rows
-    reach here, the field is encoded vertically mirrored: every particle samples the wrong
-    hemisphere AND the (un-negated) V is inconsistent with the flipped geometry, which turns
-    rotation into divergence — highs render as radial outflow instead of circulating.
-    Passing `lat` lets this self-orient: if lat is ascending we flip the rows to north-first
-    so the output is correct regardless of what cfgrib produced. lat and u/v are guaranteed
-    consistent here (they come from the same fieldstore .npz).
-    """
-    u = np.asarray(u, dtype=np.float32)
-    v = np.asarray(v, dtype=np.float32)
-    if u.shape != v.shape:
-        raise ValueError(f"U/V shape mismatch: {u.shape} vs {v.shape}")
-    # Guarantee north-at-top. If latitude runs south->north (ascending), flip the rows.
-    if lat is not None:
-        lat = np.asarray(lat)
-        if lat.ndim == 1 and lat.size >= 2 and float(lat[0]) < float(lat[-1]):
-            u = u[::-1]
-            v = v[::-1]
-    span = 2.0 * float(vmax)
-    mask = np.isnan(u) | np.isnan(v)
-    ru = np.clip((np.nan_to_num(u) + vmax) / span, 0.0, 1.0)
-    rv = np.clip((np.nan_to_num(v) + vmax) / span, 0.0, 1.0)
-    r = (ru * 255.0).astype(np.uint8)
-    g = (rv * 255.0).astype(np.uint8)
-    z = np.zeros_like(r)
-    a = np.where(mask, 0, 255).astype(np.uint8)
-    img = np.dstack((r, g, z, a))
-    Image.fromarray(img, mode="RGBA").save(output_path, format="PNG")
-    logger.debug(f"Saved wind vector texture to {output_path} {img.shape}")
-    return True
 
 
 # Cache the unioned Natural Earth land geometry per (resolution, rounded bbox) so we
@@ -202,45 +108,6 @@ def coastline_land_mask(mesh_lon, mesh_lat, lon_min, lat_min, lon_max, lat_max, 
         return None
 
 
-def smooth_flow_direction(u, v, radius):
-    """Direction-coherence smoothing for the particle ADVECTION field.
-
-    Coarse 0.25 deg GFS renders a shear (two flows meeting at an angle) as an abrupt
-    1-cell direction flip. When the frontend interpolates the raw Cartesian U/V across
-    that seam, the opposing components partially CANCEL, so the interpolated vector has a
-    collapsed magnitude right at the boundary — a low-speed 'dead zone'. Particles entering
-    it decelerate and dwell (piling into bright lines) or stall, so the two regions read as
-    independent blocks with a hard seam instead of one flow curving into the other.
-
-    This rewrites each cell as  SPEED * smoothed-unit-DIRECTION:
-      - SPEED (the per-cell magnitude) is kept EXACTLY, so the wind-speed colours / fine
-        detail are unchanged (colour depends only on magnitude).
-      - DIRECTION is averaged as unit vectors over a ~`radius`-cell Gaussian neighbourhood
-        (unit-vector form takes the shortest rotation and has no 360-degree wrap problem),
-        turning the 1-cell flip into a gradual, coherent multi-cell turn.
-    The seam no longer collapses in magnitude, so particles ride a smooth curve through it
-    at sustained speed — the windy.com look — without removing the calm/age recycling that
-    keeps genuinely dead zones from clumping.
-
-    radius is in grid cells (~0.25 deg each); 0 disables. Longitude wraps, latitude clamps.
-    """
-    if radius is None or radius <= 0:
-        return u, v
-    from scipy.ndimage import gaussian_filter
-    u = np.asarray(u, dtype=np.float64)
-    v = np.asarray(v, dtype=np.float64)
-    spd = np.hypot(u, v)
-    eps = 1e-6
-    ux = np.nan_to_num(u / (spd + eps))
-    uy = np.nan_to_num(v / (spd + eps))
-    # Smooth the unit-direction field. axis 0 = latitude (clamp at the poles), axis 1 =
-    # longitude (wrap around the globe so the dateline has no seam).
-    sux = gaussian_filter(ux, radius, mode=["nearest", "wrap"])
-    suy = gaussian_filter(uy, radius, mode=["nearest", "wrap"])
-    norm = np.hypot(sux, suy) + eps
-    return spd * sux / norm, spd * suy / norm
-
-
 def _opaque_cmap(cmap, n=256):
     """Return an opaque copy of a colormap (alpha forced to 1.0)."""
     import numpy as np
@@ -262,56 +129,6 @@ def stringify_bbox(bbox):
 
     labels = ["w", "s", "e", "n"]
     return "_".join(f"{labels[i]}{abs(bbox[i]):.1f}" for i in range(4))
-
-
-def adjust_bbox_for_aspect_ratio(bbox, target_ratio=2.0):
-    """
-    Ensures the bbox matches the target aspect ratio and stays <= 180.0 longitude.
-    Shifts the entire window west if the expansion hits the Date Line.
-    """
-    lon_min, lat_min, lon_max, lat_max = bbox
-    delta_lon = lon_max - lon_min
-    delta_lat = lat_max - lat_min
-
-    if delta_lat == 0:
-        return bbox
-
-    current_ratio = delta_lon / delta_lat
-
-    if current_ratio < target_ratio:
-        target_lon_span = delta_lat * target_ratio
-        padding = (target_lon_span - delta_lon) / 2
-        lon_min -= padding
-        lon_max += padding
-    elif current_ratio > target_ratio:
-        target_lat_span = delta_lon / target_ratio
-        padding = (target_lat_span - delta_lat) / 2
-        lat_min -= padding
-        lat_max += padding
-
-    # Latitude Safety Cap
-    if lat_max > 90:
-        shift = lat_max - 90
-        lat_max = 90
-        lat_min -= shift
-    if lat_min < -90:
-        shift = -90 - lat_min
-        lat_min = -90
-        lat_max += shift
-
-    # Longitude Safety Cap (The 180-degree Shift)
-    # If the box goes past 180, we slide the whole window west.
-    if lon_max > 180.0:
-        shift = lon_max - 180.0
-        lon_max = 180.0
-        lon_min -= shift
-
-    if lon_min < -180.0:
-        shift = -180.0 - lon_min
-        lon_min = -180.0
-        lon_max += shift
-
-    return [lon_min, lat_min, lon_max, lat_max]
 
 
 def get_bbox_center(bbox):
@@ -336,67 +153,6 @@ def get_bbox_center(bbox):
         center_lon += 360
 
     return center_lon, center_lat
-
-
-def encode_data_texture(matrix_t0, matrix_t1, output_path, vmin, vmax):
-    """
-    Encodes two timesteps of scalar data (e.g., pressure) into the Red and Green
-    channels of a PNG image for WebGL shader interpolation.
-
-    Args:
-        matrix_t0: 2D numpy array of data at Hour 0.
-        matrix_t1: 2D numpy array of data at Hour 6 (or next step).
-        output_path: Destination filepath (e.g., 'data/isobars_data.png').
-        vmin: Minimum expected physical value (maps to pixel value 0).
-        vmax: Maximum expected physical value (maps to pixel value 255).
-    """
-    # 1. Ensure matrices are float arrays and dimensions match
-    matrix_t0 = np.asarray(matrix_t0, dtype=np.float32)
-    matrix_t1 = np.asarray(matrix_t1, dtype=np.float32)
-
-    if matrix_t0.shape != matrix_t1.shape:
-        raise ValueError(
-            f"Matrix shape mismatch: {matrix_t0.shape} vs {matrix_t1.shape}"
-        )
-
-    height, width = matrix_t0.shape
-
-    # 2. Normalize data mathematically to a 0.0 - 1.0 range
-    # Example: If vmin=950 and vmax=1050, a pressure of 1000 becomes 0.5.
-    norm_t0 = (matrix_t0 - vmin) / (vmax - vmin)
-    norm_t1 = (matrix_t1 - vmin) / (vmax - vmin)
-
-    # 3. Clip out-of-bounds values to strictly stay within 0.0 and 1.0
-    # This prevents extreme weather anomalies from overflowing the 8-bit integer
-    norm_t0 = np.clip(norm_t0, 0.0, 1.0)
-    norm_t1 = np.clip(norm_t1, 0.0, 1.0)
-
-    # 4. Scale to 0 - 255 and convert to 8-bit unsigned integers (pixels)
-    r_channel = (norm_t0 * 255.0).astype(np.uint8)
-    g_channel = (norm_t1 * 255.0).astype(np.uint8)
-
-    # 5. Create Blue and Alpha channels
-    # Blue is unused for now (set to 0)
-    b_channel = np.zeros((height, width), dtype=np.uint8)
-    # Alpha defaults to 255 (fully visible)
-    a_channel = np.full((height, width), 255, dtype=np.uint8)
-
-    # 6. Handle Missing Data (NaNs)
-    # If the interpolator produced NaNs (e.g., off the edge of the map),
-    # we set the Alpha channel to 0 so the WebGL shader knows to ignore it.
-    nan_mask = np.isnan(matrix_t0) | np.isnan(matrix_t1)
-    a_channel[nan_mask] = 0
-
-    # 7. Stack channels into a single (Height, Width, 4) RGBA array
-    rgba_array = np.dstack((r_channel, g_channel, b_channel, a_channel))
-
-    # 8. Generate and save the PNG losslessly
-    # We must use PNG because JPEG compression alters pixel colors,
-    # which would corrupt our physical data.
-    img = Image.fromarray(rgba_array, mode="RGBA")
-    img.save(output_path, format="PNG")
-
-    return True
 
 
 class MapRegion:
@@ -804,73 +560,6 @@ class Updater:
         fig.clear()
         logger.debug(f"{self.section}: saved key to {key_path}")
 
-    def should_plot_for_hour(self, product_name: str, fhour: int | str = None) -> bool:
-        """Check if a per-hour output needs updating.
-
-        Returns True if:
-          - The output file doesn't exist, OR
-          - The field's valid_time is newer than the output file's mtime
-
-        Returns False if the file is already fresh. This prevents re-plotting
-        when data hasn't changed. Uses the catalog metadata only (no array load).
-        """
-        if fhour is None:
-            fhour = int(self.forecast_hour_str)
-        else:
-            fhour = int(fhour)
-
-        output_path = self.get_output_path_for_hour(fhour)
-        base, ext = os.path.splitext(output_path)
-
-        # A complete render produces every suffix in self.per_hour_outputs. If ANY is
-        # missing, re-plot to fill the gap (this is what makes "delete a _data.png to
-        # force regeneration" work even when the static .png is still present).
-        required_paths = []
-        for suffix in self.per_hour_outputs or [".png"]:
-            # ".png" -> the static per-hour file; "_data.png"/"_labels.geojson" -> base+suffix.
-            required_paths.append(output_path if suffix == ext else f"{base}{suffix}")
-        missing = [p for p in required_paths if not os.path.exists(p)]
-        if missing:
-            return True
-
-        # All outputs exist — check freshness against when the data was written.
-        # Use the static PNG's mtime as the reference (oldest-equivalent; all outputs
-        # are written together in one plot() call).
-        try:
-            fs = self._store
-            meta = fs.get_field_meta(
-                self.run_date_str, self.run_id, fhour, product_name
-            )
-
-            if not meta or meta.get("updated_at") is None:
-                # No data catalogued, don't plot (data isn't ready yet)
-                return False
-
-            # Get file's mtime and compare to when the DATA ROW was last written.
-            # NOTE: use updated_at (when the field was stored), NOT valid_time (the
-            # forecast's validity time, which is usually in the future and would make
-            # every hour look "newer" than its PNG, forcing a re-plot every cycle).
-            file_mtime = min(os.path.getmtime(p) for p in required_paths)
-            file_dt = datetime.fromtimestamp(file_mtime, tz=timezone.utc)
-
-            field_updated = meta.get("updated_at")
-            if field_updated is None:
-                return False
-
-            # Ensure both are tz-aware for comparison
-            if field_updated.tzinfo is None:
-                field_updated = field_updated.replace(tzinfo=timezone.utc)
-
-            # Plot if data is newer (with a 1-second tolerance for clock skew)
-            return (field_updated - file_dt).total_seconds() > 1
-
-        except Exception as e:
-            logger.debug(
-                f"should_plot_for_hour({product_name}, f{fhour:03d}) check failed: {e}"
-            )
-            # On error, be conservative — don't plot (file is probably fine)
-            return False
-
     def layer_status(self) -> dict:
         """Read-only snapshot for the Config UI's Data Status tab — the layer-task
         counterpart to CollectorBase.data_status(). Never writes; LayerBuilder records
@@ -880,7 +569,10 @@ class Updater:
           * set (multi-hour: isobars, wind, ...) — percent is the fraction of the
             forecast hours ALREADY IN THE CATALOG for status_product that are fully
             rendered (should_plot_for_hour false, i.e. every per_hour_outputs suffix
-            present and fresh). Deliberately bounded by what the underlying collector
+            present and fresh). should_plot_for_hour lives on MultiHourRenderMixin, not
+            Updater itself — safe to call here because only subclasses that set
+            status_product take this branch, and they always mix in that class too.
+            Deliberately bounded by what the underlying collector
             has fetched so far, not the theoretical full forecast window — a layer being
             "100%" of what it currently has to work with is correct, not a defect, when
             the collector itself is still catching up (that's the COLLECTOR's data_status
@@ -947,6 +639,116 @@ class Updater:
             detail=detail,
         )
 
+    def latest_store_run(self, products):
+        """Resolve the freshest run actually present in the fieldstore catalog for the
+        given products, returning (run_date, run_id, hours) or None.
+
+        Field-reading layers should resolve their run from the CATALOG, not from the
+        cached GFS/RTOFS baseline. The baseline tracks what NOMADS has *published*, which
+        can run ahead of what the collector has *ingested* — and, because the baseline is
+        cached per process, it can also drift behind once it goes stale. Reading the
+        catalog renders exactly what is on disk. Scope by `products` so independent model
+        cycles (GFS 00/06/12/18 vs RTOFS "00") resolve to their own run.
+        """
+        try:
+            store = self._store
+            avail = store.field_catalog_adapter.get_latest_run_hours(products=list(products))
+        except Exception as e:
+            logger.warning(f"{self.section}: catalog run lookup failed: {e}")
+            return None
+        if not avail or not avail.get("hours"):
+            return None
+        return avail["run_date"], avail["run_id"], avail["hours"]
+
+    def _resolve_forecast_state(self, *, baseline_key: str, resolve_fn, label: str):
+        """Shared baseline-cache-or-fetch + forecast-hour math backing get_gfs_state()/
+        get_rtofs_state() (~75% identical before this extraction, differing only in
+        which baseline they cache/resolve and their log labels). The first updater to
+        need `baseline_key` this cycle resolves it (a network sync via `resolve_fn`);
+        every other updater this cycle reads the cached result from
+        map_data.shared_state. Sets forecast_hour_str/run_date_str/run_date_str_Y_M_D/
+        run_id on self either way."""
+        baseline = getattr(self.map_data, "shared_state", {}).get(baseline_key)
+
+        # ESTABLISH THE DATUM (only runs once per map refresh)
+        if not baseline:
+            logger.debug(f"Section {self.section} setting up {label} baseline")
+            baseline = resolve_fn()
+            if not baseline:
+                raise RuntimeError(f"Failed to sync {label} baseline from NOMADS.")
+            self.map_data.shared_state[baseline_key] = baseline
+            logger.debug(
+                f"{label} Baseline Synced: {baseline['date_str']} {baseline['run']}Z"
+            )
+
+        # CALCULATE THE DYNAMIC OFFSET (runs for every layer)
+        now = datetime.now(timezone.utc)
+        user_offset_hours = self.forecast_hour
+        hours_since_run = int(
+            round((now - baseline["timestamp"]).total_seconds() / 3600.0)
+        )
+        true_f_hour = max(0, hours_since_run + user_offset_hours)
+
+        # Store properties on the instance for easy access in __init__ / plot methods
+        self.forecast_hour_str = f"{true_f_hour:03d}"
+        self.run_date_str = baseline["date_str"]
+        self.run_date_str_Y_M_D = baseline["date_str_Y_M_D"]
+        self.run_id = baseline["run"]
+        logger.debug(
+            f"Section {self.section} get_{label.lower()}_state: forecast hour "
+            f"{self.forecast_hour_str}; date_str {self.run_date_str}; run {self.run_id}"
+        )
+
+    def get_gfs_state(self):
+        """
+        Lazy evaluation: The first updater to call this method performs a quick network
+        sync to establish the GFS datum. All subsequent updaters read from memory.
+        Sets forecast_hour_str/run_date_str/run_id on self.
+        """
+        from worldmap.lib.gfs import resolve_gfs_baseline
+
+        self._resolve_forecast_state(
+            baseline_key="gfs_baseline", resolve_fn=resolve_gfs_baseline, label="GFS"
+        )
+
+    def get_rtofs_state(self):
+        """RTOFS (ocean) analogue of get_gfs_state, for currents and future ocean
+        layers. Resolves the daily RTOFS run (its own cycle, cached separately in
+        shared_state) and sets the SAME instance attributes get_gfs_state does
+        (run_date_str / run_id / forecast_hour_str), so render_all_hours and the
+        fieldstore reads work unchanged — they simply operate on the RTOFS run.
+
+        RTOFS is one 00Z cycle/day; 'now' is hours-since-analysis, and a per-layer
+        forecast_hour offset steps forward, identical in spirit to the GFS path.
+        """
+        from worldmap.lib.rtofs import resolve_rtofs_baseline
+
+        self._resolve_forecast_state(
+            baseline_key="rtofs_baseline", resolve_fn=resolve_rtofs_baseline, label="RTOFS"
+        )
+
+
+class MultiHourRenderMixin:
+    """Per-forecast-hour render-caching machinery, mixed into Updater subclasses that
+    render one output per forecast hour (isobars, wind, precipitation, currents, waves,
+    and the scalar-field trio via ScalarFieldUpdater) rather than once per cycle.
+
+    Single-shot layers (sst, clouds, markers) never mix this in — they render once per
+    cycle, not per forecast hour, so should_plot_for_hour's per-hour freshness check and
+    render_all_hours' gap-filling loop don't apply to them (architecture review
+    candidate "slim Updater" — these 4 methods used to sit on Updater itself, inherited
+    by every layer including ones that could never call them).
+
+    Assumes it's mixed into an Updater subclass: uses self.output_path, self._store,
+    self.per_hour_outputs, self.forecast_hour_str, self.process_status_adapter,
+    self.section, self.latest_store_run() and self.get_db_field_at_hour() (the last two
+    stay on Updater itself, since markers.py — a single-shot layer — also calls
+    get_db_field_at_hour directly, to sample weather at a specific hour rather than to
+    render one). Updater.layer_status()'s multi-hour branch also calls
+    should_plot_for_hour, but only when self.status_product is set — which only
+    multi-hour subclasses do, and they always pair it with this mixin.
+    """
+
     def get_output_path_for_hour(self, fhour: int | str = None) -> str:
         """Return a per-hour output path for caching renders.
 
@@ -1004,26 +806,72 @@ class Updater:
             except Exception as e:
                 logger.warning(f"{self.section}: failed to publish {src} -> {dst}: {e}")
 
-    def latest_store_run(self, products):
-        """Resolve the freshest run actually present in the fieldstore catalog for the
-        given products, returning (run_date, run_id, hours) or None.
+    def should_plot_for_hour(self, product_name: str, fhour: int | str = None) -> bool:
+        """Check if a per-hour output needs updating.
 
-        Field-reading layers should resolve their run from the CATALOG, not from the
-        cached GFS/RTOFS baseline. The baseline tracks what NOMADS has *published*, which
-        can run ahead of what the collector has *ingested* — and, because the baseline is
-        cached per process, it can also drift behind once it goes stale. Reading the
-        catalog renders exactly what is on disk. Scope by `products` so independent model
-        cycles (GFS 00/06/12/18 vs RTOFS "00") resolve to their own run.
+        Returns True if:
+          - The output file doesn't exist, OR
+          - The field's valid_time is newer than the output file's mtime
+
+        Returns False if the file is already fresh. This prevents re-plotting
+        when data hasn't changed. Uses the catalog metadata only (no array load).
         """
+        if fhour is None:
+            fhour = int(self.forecast_hour_str)
+        else:
+            fhour = int(fhour)
+
+        output_path = self.get_output_path_for_hour(fhour)
+        base, ext = os.path.splitext(output_path)
+
+        # A complete render produces every suffix in self.per_hour_outputs. If ANY is
+        # missing, re-plot to fill the gap (this is what makes "delete a _data.png to
+        # force regeneration" work even when the static .png is still present).
+        required_paths = []
+        for suffix in self.per_hour_outputs or [".png"]:
+            # ".png" -> the static per-hour file; "_data.png"/"_labels.geojson" -> base+suffix.
+            required_paths.append(output_path if suffix == ext else f"{base}{suffix}")
+        missing = [p for p in required_paths if not os.path.exists(p)]
+        if missing:
+            return True
+
+        # All outputs exist — check freshness against when the data was written.
+        # Use the static PNG's mtime as the reference (oldest-equivalent; all outputs
+        # are written together in one plot() call).
         try:
-            store = self._store
-            avail = store.field_catalog_adapter.get_latest_run_hours(products=list(products))
+            fs = self._store
+            meta = fs.get_field_meta(
+                self.run_date_str, self.run_id, fhour, product_name
+            )
+
+            if not meta or meta.get("updated_at") is None:
+                # No data catalogued, don't plot (data isn't ready yet)
+                return False
+
+            # Get file's mtime and compare to when the DATA ROW was last written.
+            # NOTE: use updated_at (when the field was stored), NOT valid_time (the
+            # forecast's validity time, which is usually in the future and would make
+            # every hour look "newer" than its PNG, forcing a re-plot every cycle).
+            file_mtime = min(os.path.getmtime(p) for p in required_paths)
+            file_dt = datetime.fromtimestamp(file_mtime, tz=timezone.utc)
+
+            field_updated = meta.get("updated_at")
+            if field_updated is None:
+                return False
+
+            # Ensure both are tz-aware for comparison
+            if field_updated.tzinfo is None:
+                field_updated = field_updated.replace(tzinfo=timezone.utc)
+
+            # Plot if data is newer (with a 1-second tolerance for clock skew)
+            return (field_updated - file_dt).total_seconds() > 1
+
         except Exception as e:
-            logger.warning(f"{self.section}: catalog run lookup failed: {e}")
-            return None
-        if not avail or not avail.get("hours"):
-            return None
-        return avail["run_date"], avail["run_id"], avail["hours"]
+            logger.debug(
+                f"should_plot_for_hour({product_name}, f{fhour:03d}) check failed: {e}"
+            )
+            # On error, be conservative — don't plot (file is probably fine)
+            return False
 
     def render_all_hours(self, product_name, plot_fn, field_ready):
         """Gap-filling per-hour render loop.
@@ -1101,84 +949,3 @@ class Updater:
         # Keep the stable base-name static current (for forecast_stepping=off / fallback).
         self.publish_current_hour()
         return plotted
-
-    def get_gfs_state(self):
-        """
-        Lazy evaluation: The first updater to call this method performs a quick network
-        sync to establish the GFS datum. All subsequent updaters read from memory.
-        Returns a dictionary with the synchronized date, run, and true forecast hour.
-        """
-        from worldmap.lib.gfs import resolve_gfs_baseline
-
-        baseline = getattr(self.map_data, "shared_state", {}).get("gfs_baseline")
-
-        # 1. ESTABLISH THE DATUM (Only runs once per map refresh)
-        if not baseline:
-            logger.debug(f"Section {self.section} setting up baseline")
-            baseline = resolve_gfs_baseline()
-            if not baseline:
-                raise RuntimeError("Failed to sync GFS baseline from NOMADS.")
-            self.map_data.shared_state["gfs_baseline"] = baseline
-            logger.debug(
-                f"GFS Baseline Synced: {baseline['date_str']} {baseline['run']}Z"
-            )
-
-        # 2. CALCULATE THE DYNAMIC OFFSET (Runs for every layer)
-        now = datetime.now(timezone.utc)
-        user_offset_hours = self.forecast_hour
-
-        # Calculate how old this model run is
-        hours_since_run = int(
-            round((now - baseline["timestamp"]).total_seconds() / 3600.0)
-        )
-
-        # Compute true internal forecast hour
-        true_f_hour = max(0, hours_since_run + user_offset_hours)
-        f_hour_str = f"{true_f_hour:03d}"
-
-        # Store properties on the instance for easy access in __init__ / plot methods
-        self.forecast_hour_str = f_hour_str
-        self.run_date_str = baseline["date_str"]
-        self.run_date_str_Y_M_D = baseline["date_str_Y_M_D"]
-        self.run_id = baseline["run"]
-        logger.debug(
-            f"Section {self.section} get_gfs_state: forecast hour {f_hour_str}; date_str {self.run_date_str}; run {self.run_id}"
-        )
-
-    def get_rtofs_state(self):
-        """RTOFS (ocean) analogue of get_gfs_state, for currents and future ocean
-        layers. Resolves the daily RTOFS run (its own cycle, cached separately in
-        shared_state) and sets the SAME instance attributes get_gfs_state does
-        (run_date_str / run_id / forecast_hour_str), so render_all_hours and the
-        fieldstore reads work unchanged — they simply operate on the RTOFS run.
-
-        RTOFS is one 00Z cycle/day; 'now' is hours-since-analysis, and a per-layer
-        forecast_hour offset steps forward, identical in spirit to the GFS path.
-        """
-        from worldmap.lib.rtofs import resolve_rtofs_baseline
-
-        baseline = getattr(self.map_data, "shared_state", {}).get("rtofs_baseline")
-        if not baseline:
-            baseline = resolve_rtofs_baseline()
-            if not baseline:
-                raise RuntimeError("Failed to sync RTOFS baseline from NOMADS.")
-            self.map_data.shared_state["rtofs_baseline"] = baseline
-            logger.debug(
-                f"RTOFS Baseline Synced: {baseline['date_str']} {baseline['run']}Z"
-            )
-
-        now = datetime.now(timezone.utc)
-        user_offset_hours = self.forecast_hour
-        hours_since_run = int(
-            round((now - baseline["timestamp"]).total_seconds() / 3600.0)
-        )
-        true_f_hour = max(0, hours_since_run + user_offset_hours)
-
-        self.forecast_hour_str = f"{true_f_hour:03d}"
-        self.run_date_str = baseline["date_str"]
-        self.run_date_str_Y_M_D = baseline["date_str_Y_M_D"]
-        self.run_id = baseline["run"]
-        logger.debug(
-            f"Section {self.section} get_rtofs_state: fhour {self.forecast_hour_str}; "
-            f"date {self.run_date_str}; run {self.run_id}"
-        )

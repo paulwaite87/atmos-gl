@@ -9,14 +9,15 @@ import cartopy.crs as ccrs
 
 # Internal imports
 from worldmap.lib.config import WorldMapConfig
-from .common import Updater, MapData, Plot, encode_frames
+from worldmap.lib.texture import encode_frames
+from .common import Updater, MapData, Plot, MultiHourRenderMixin
 
 logging.getLogger("gribapi.bindings").setLevel(logging.ERROR)
 
 logger = logging.getLogger(__name__)
 
 
-class IsobarUpdater(Updater):
+class IsobarUpdater(Updater, MultiHourRenderMixin):
     def __init__(self, config: WorldMapConfig, map_data: MapData):
         super().__init__(config, "Isobars", map_data)
         # Physical bounds for the shader encoding (must match the frontend).

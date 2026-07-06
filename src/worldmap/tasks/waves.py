@@ -6,7 +6,8 @@ import numpy as np
 
 # Internal imports
 from worldmap.lib.config import WorldMapConfig
-from .common import Updater, MapData, _opaque_cmap, encode_uv
+from worldmap.lib.texture import encode_uv
+from .common import Updater, MapData, _opaque_cmap, MultiHourRenderMixin
 from worldmap.tiles import raster_tiles as rt
 
 warnings.filterwarnings("ignore")
@@ -24,7 +25,7 @@ PALETTES = rt.WAVES_PALETTES
 
 
 
-class WavesUpdater(Updater):
+class WavesUpdater(Updater, MultiHourRenderMixin):
     def __init__(self, config: WorldMapConfig, map_data: MapData):
         super().__init__(config, "Waves", map_data)
 

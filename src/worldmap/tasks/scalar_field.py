@@ -18,7 +18,8 @@ import matplotlib.colors as mcolors
 import cartopy.crs as ccrs
 
 from worldmap.lib.config import WorldMapConfig
-from .common import Updater, MapData, Plot, encode_frames
+from worldmap.lib.texture import encode_frames
+from .common import Updater, MapData, Plot, MultiHourRenderMixin
 
 logging.getLogger("cfgrib").setLevel(logging.ERROR)
 
@@ -74,7 +75,7 @@ SPECS = {
 }
 
 
-class ScalarFieldUpdater(Updater):
+class ScalarFieldUpdater(Updater, MultiHourRenderMixin):
     def __init__(self, config: WorldMapConfig, map_data: MapData, spec: ScalarFieldSpec):
         super().__init__(config, spec.product, map_data)
         self.spec = spec

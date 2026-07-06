@@ -8,7 +8,8 @@ import matplotlib.colors as mcolors
 import cartopy.crs as ccrs
 
 from worldmap.lib.config import WorldMapConfig
-from .common import Updater, MapData, Plot, encode_uv
+from worldmap.lib.texture import encode_uv
+from .common import Updater, MapData, Plot, MultiHourRenderMixin
 
 logging.getLogger("cfgrib").setLevel(logging.ERROR)
 
@@ -29,7 +30,7 @@ WIND_PALETTE = [
 WIND_CMAP = mcolors.LinearSegmentedColormap.from_list("windy_wind", WIND_PALETTE)
 
 
-class WindUpdater(Updater):
+class WindUpdater(Updater, MultiHourRenderMixin):
     def __init__(self, config: WorldMapConfig, map_data: MapData):
         super().__init__(config, "Wind", map_data)
         self.VMAX_WIND = 40.0          # m/s encoding range for the velocity texture
