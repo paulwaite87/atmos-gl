@@ -44,15 +44,22 @@ def test_field_collector_base_data_status_coverage_percent():
         "last_updated": now,
         "last_error": None,
     }
-    run_ts = now - timedelta(hours=1)
+    # run_id is only ever whole-hour precision (real GFS run_ids are "00"/"06"/"12"/"18"),
+    # so fhour_0 = round((now - run_ts) / 3600) depends on where `now` falls within its own
+    # hour. Compute fhour_0 the same way data_status() does, rather than assuming a fixed
+    # value -- a hardcoded assumption here made this test flaky depending on the wall-clock
+    # minute at run time.
+    run_ts = (now - timedelta(hours=3)).replace(minute=0, second=0, microsecond=0)
     run_date = run_ts.strftime("%Y-%m-%d")
     run_id = run_ts.strftime("%H")
-    # fhour_0 ~= 1 (now is ~1h after the run), expected window [1, 1+cache_hours=5) -> 4 hours.
-    # Only 2 of those 4 expected hours are actually present in the catalog.
+    fhour_0 = max(0, round((now - run_ts).total_seconds() / 3600.0))
+    fhour_end = fhour_0 + 4  # cache_hours
+    # 2 of the 4 expected hours [fhour_0, fhour_end) are present; 2 more outside it aren't.
+    hours = [fhour_0, fhour_0 + 1, fhour_end + 10, fhour_end + 11]
     c.store.field_catalog_adapter.get_latest_run_hours.return_value = {
         "run_date": run_date,
         "run_id": run_id,
-        "hours": [1, 2, 10, 11],
+        "hours": hours,
     }
 
     result = c.data_status()
