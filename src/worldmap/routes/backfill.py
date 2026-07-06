@@ -12,7 +12,7 @@ import re
 import logging
 from datetime import date
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field
 
 from worldmap.db.field_catalog_adapter import FieldCatalogAdapter
@@ -20,6 +20,10 @@ from worldmap.db.field_catalog_adapter import FieldCatalogAdapter
 logger = logging.getLogger("worldmap.routes.backfill")
 
 router = APIRouter(prefix="/api", tags=["Backfill"])
+
+
+def get_field_catalog_adapter() -> FieldCatalogAdapter:
+    return FieldCatalogAdapter()
 
 # Only products the pipeline actually knows how to fetch may be enqueued, so a bad or
 # malicious client can't fill the queue with junk. Keep in sync with the collector's
@@ -47,7 +51,10 @@ class BackfillRequest(BaseModel):
 
 
 @router.post("/request_backfill")
-async def request_backfill(req: BackfillRequest):
+async def request_backfill(
+    req: BackfillRequest,
+    field_catalog_adapter: FieldCatalogAdapter = Depends(get_field_catalog_adapter),
+):
     """Enqueue a missing-field request. Idempotent and fast — returns as soon as the
     row is recorded; the collector does the actual work asynchronously."""
     product = req.product.strip().lower()
@@ -68,7 +75,6 @@ async def request_backfill(req: BackfillRequest):
         raise HTTPException(status_code=400, detail="date is not a valid calendar date")
 
     try:
-        field_catalog_adapter = FieldCatalogAdapter()
         field_catalog_adapter.enqueue_backfill(iso_date, req.run, int(req.hour), product)
     except Exception as e:
         logger.error(f"request_backfill failed: {e}")

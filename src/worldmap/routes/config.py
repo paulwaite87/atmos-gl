@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import os
 from pathlib import Path
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Depends
 from fastapi.templating import Jinja2Templates
 from worldmap.db.field_catalog_adapter import FieldCatalogAdapter
 from worldmap.db.region_adapter import RegionAdapter
@@ -106,8 +106,18 @@ def load_config():
     return config
 
 
+def get_field_catalog_adapter() -> FieldCatalogAdapter:
+    return FieldCatalogAdapter()
+
+
+def get_region_adapter() -> RegionAdapter:
+    return RegionAdapter()
+
+
 @router.get("/forecast_state")
-def get_forecast_state():
+def get_forecast_state(
+    field_catalog_adapter: FieldCatalogAdapter = Depends(get_field_catalog_adapter),
+):
     """Run epoch + available forecast hours for the scrubber.
 
     Returns:
@@ -125,8 +135,6 @@ def get_forecast_state():
       }
     """
     try:
-        field_catalog_adapter = FieldCatalogAdapter()
-
         def z(dt):
             return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -188,12 +196,11 @@ def get_forecast_state():
 
 
 @router.get("/regions")
-def get_regions():
+def get_regions(region_adapter: RegionAdapter = Depends(get_region_adapter)):
     try:
         worldmap_config = load_config()
         current_region = worldmap_config.get_setting("common", "region", "Whole World")
 
-        region_adapter = RegionAdapter()
         regions = region_adapter.get_priority_region_list(current_region)
         return {"status": "success", "data": regions}
     except Exception as e:
