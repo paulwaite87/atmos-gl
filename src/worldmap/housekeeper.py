@@ -18,6 +18,7 @@ import argparse
 from worldmap.lib.config import WorldMapConfig
 from worldmap.lib.logging import setup_logging, set_loglevel
 from worldmap.lib import fieldstore
+from worldmap.lib.scheduling import interval_elapsed
 from worldmap.db.ship_adapter import ShipAdapter
 
 logger = logging.getLogger("worldmap.housekeeper")
@@ -290,7 +291,7 @@ class Housekeeper:
             if self.settings.get("enabled", False):
                 now = time.time()
                 interval = self._interval_seconds()
-                if last_run is None or (now - last_run) >= interval:
+                if interval_elapsed(last_run, now, interval):
                     logger.info("Housekeeper run started.")
                     self.sweep()
                     self.prune_image_files()
