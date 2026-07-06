@@ -27,45 +27,16 @@ already does for collect().
 
 import time
 import logging
-from datetime import datetime, timedelta, timezone
+
+from worldmap.lib.data_status import (
+    freshness_percent,
+    estimate_next_update,
+    period_s_from_runs_per_day,
+    read_process_status,
+    build_status,
+)
 
 logger = logging.getLogger(__name__)
-
-
-def _freshness_percent(last_updated, period_s: float) -> float:
-    """Shared decay formula for single-shot/continuous collectors: 100% right after a
-    successful run/check, decaying linearly to 0% by the time we're a full extra
-    period_s overdue past the expected next run. Deliberately not a flat binary — a
-    collector that's overdue (crashed, backend down, etc.) should visibly decay on the
-    Data Status bar rather than sit at a permanent 100%."""
-    if last_updated is None:
-        return 0.0
-    if last_updated.tzinfo is None:
-        last_updated = last_updated.replace(tzinfo=timezone.utc)
-    now = datetime.now(timezone.utc)
-    overdue = (now - last_updated).total_seconds() - period_s
-    if overdue <= 0:
-        return 100.0
-    return max(0.0, 100.0 * (1 - overdue / period_s))
-
-
-def _estimate_next_update(last_updated, period_s: float, enabled: bool):
-    """next_update for the Data Status UI. Three cases:
-      * disabled     -> None (it won't run again until re-enabled; showing a guessed time
-                         here would be actively misleading, not just imprecise)
-      * never run yet (last_updated is None) but enabled -> now + period_s, an estimate
-        (we don't know exactly when this cycle started, only that it's due within one
-        period) rather than leaving the UI with nothing at all for a collector that just
-        hasn't completed its first cycle
-      * has run before -> last_updated + period_s, the precise scheduled next run
-    """
-    if not enabled:
-        return None
-    if last_updated is None:
-        return datetime.now(timezone.utc) + timedelta(seconds=period_s)
-    if last_updated.tzinfo is None:
-        last_updated = last_updated.replace(tzinfo=timezone.utc)
-    return last_updated + timedelta(seconds=period_s)
 
 
 class CollectorBase:
@@ -107,8 +78,7 @@ class CollectorBase:
     @property
     def period_s(self) -> float:
         """Seconds between runs, derived from the runs_per_day config key."""
-        rpd = float(self.settings.get("runs_per_day", 1))
-        return 86400.0 / max(rpd, 0.01)
+        return period_s_from_runs_per_day(self.settings.get("runs_per_day", 1))
 
     def is_stale(self, last_run: float | None) -> bool:
         """True when enough monotonic time has passed to warrant another check.
@@ -163,18 +133,18 @@ class CollectorBase:
         of it (see collectors/__init__.py). next_update must reflect that real, unconditional
         schedule rather than reporting "disabled" for a source that is in fact still being
         collected in the background."""
-        row = self.process_status_adapter.get_process_status(self.section)
-        last_updated = row["last_updated"] if row else None
-        last_error = row["last_error"] if row else None
-        return {
-            "name": self.section,
-            "kind": "collector",
-            "percent": round(_freshness_percent(last_updated, self.period_s), 1),
-            "last_updated": last_updated,
-            "next_update": _estimate_next_update(last_updated, self.period_s, True),
-            "enabled": self.enabled,
-            "detail": last_error,
-        }
+        last_updated, last_error = read_process_status(
+            self.process_status_adapter, self.section
+        )
+        return build_status(
+            name=self.section,
+            kind="collector",
+            percent=freshness_percent(last_updated, self.period_s),
+            last_updated=last_updated,
+            next_update=estimate_next_update(last_updated, self.period_s, True),
+            enabled=self.enabled,
+            detail=last_error,
+        )
 
     # ------------------------------------------------------------------
     # Shared HEAD helper
@@ -269,20 +239,20 @@ class AsyncCollectorBase:
         heartbeat_period_s in place of period_s (these have no is_stale cadence — they
         self-schedule inside run() and record a heartbeat at their own natural
         checkpoint, e.g. once per rotation/scan)."""
-        row = self.process_status_adapter.get_process_status(self.section)
-        last_updated = row["last_updated"] if row else None
-        last_error = row["last_error"] if row else None
-        return {
-            "name": self.section,
-            "kind": "collector",
-            "percent": round(_freshness_percent(last_updated, self.heartbeat_period_s), 1),
-            "last_updated": last_updated,
-            "next_update": _estimate_next_update(
+        last_updated, last_error = read_process_status(
+            self.process_status_adapter, self.section
+        )
+        return build_status(
+            name=self.section,
+            kind="collector",
+            percent=freshness_percent(last_updated, self.heartbeat_period_s),
+            last_updated=last_updated,
+            next_update=estimate_next_update(
                 last_updated, self.heartbeat_period_s, self.enabled
             ),
-            "enabled": self.enabled,
-            "detail": last_error,
-        }
+            enabled=self.enabled,
+            detail=last_error,
+        )
 
     @classmethod
     def main(cls) -> None:

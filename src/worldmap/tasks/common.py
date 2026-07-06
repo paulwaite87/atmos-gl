@@ -20,7 +20,13 @@ from worldmap.lib.config import WorldMapConfig
 from worldmap.db.region_adapter import RegionAdapter
 from worldmap.lib import fieldstore
 from worldmap.db.process_status_adapter import ProcessStatusAdapter
-from worldmap.collectors.base import _freshness_percent, _estimate_next_update
+from worldmap.lib.data_status import (
+    freshness_percent,
+    estimate_next_update,
+    period_s_from_runs_per_day,
+    read_process_status,
+    build_status,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -887,7 +893,7 @@ class Updater:
             formula CollectorBase.data_status() uses, keyed by this task's own section
             and runs_per_day cadence. next_update falls back to an estimate (now +
             period_s) when this task hasn't completed a cycle yet, same as
-            CollectorBase.data_status() — see _estimate_next_update.
+            CollectorBase.data_status() — see lib/data_status.py's estimate_next_update.
 
         self.enabled here is the layer's frontend-visibility flag, not a render
         kill-switch — LayerBuilder.start_scheduler() dispatches every TASK_CLASSES entry
@@ -896,9 +902,9 @@ class Updater:
         real, unconditional schedule rather than reporting "disabled" for a layer that is
         in fact still being rendered in the background.
         """
-        row = self.process_status_adapter.get_process_status(self.section)
-        last_updated = row["last_updated"] if row else None
-        last_error = row["last_error"] if row else None
+        last_updated, last_error = read_process_status(
+            self.process_status_adapter, self.section
+        )
         detail = last_error
         next_update = None
 
@@ -925,24 +931,21 @@ class Updater:
                         detail = f"{run_date} {run_id}Z: {rendered}/{total} hour(s) rendered"
                 finally:
                     self.run_date_str, self.run_id, self.forecast_hour_str = saved_run
-            next_update = _estimate_next_update(
-                last_updated, LAYER_CYCLE_SECONDS, True
-            )
+            next_update = estimate_next_update(last_updated, LAYER_CYCLE_SECONDS, True)
         else:
-            rpd = float(self.settings.get("runs_per_day", 1))
-            period_s = 86400.0 / max(rpd, 0.01)
-            percent = _freshness_percent(last_updated, period_s)
-            next_update = _estimate_next_update(last_updated, period_s, True)
+            period_s = period_s_from_runs_per_day(self.settings.get("runs_per_day", 1))
+            percent = freshness_percent(last_updated, period_s)
+            next_update = estimate_next_update(last_updated, period_s, True)
 
-        return {
-            "name": self.section,
-            "kind": "layer",
-            "percent": round(percent, 1),
-            "last_updated": last_updated,
-            "enabled": self.enabled,
-            "next_update": next_update,
-            "detail": detail,
-        }
+        return build_status(
+            name=self.section,
+            kind="layer",
+            percent=percent,
+            last_updated=last_updated,
+            enabled=self.enabled,
+            next_update=next_update,
+            detail=detail,
+        )
 
     def get_output_path_for_hour(self, fhour: int | str = None) -> str:
         """Return a per-hour output path for caching renders.
