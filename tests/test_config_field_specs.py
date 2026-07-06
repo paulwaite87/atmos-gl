@@ -404,3 +404,84 @@ def test_config_page_renders_unspecced_boolean_as_toggle_not_number_fallback():
 def test_config_page_renders_prefixed_gamma_slider():
     resp = client.get("/config")
     assert 'id="badge-clouds__gamma"' in resp.text
+
+
+# --- Background batch: final tab, shared log_level, datasources accordion,
+# the fallback-section-X regression fix, and the dead legacy JS deletion ---
+
+
+def test_shared_log_level_reused_across_common_and_collector_sections():
+    assert FIELD_SPECS[("common", "log_level")] is FIELD_SPECS[("data_collector", "log_level")]
+    assert (
+        FIELD_SPECS[("shipping_collector", "log_level")]
+        is FIELD_SPECS[("lightning_collector", "log_level")]
+    )
+
+
+def test_format_slider_badge_combines_prefix_and_pluralized_suffix():
+    spec = FIELD_SPECS[("housekeeper", "days_between_runs")]
+    assert format_slider_badge(spec, 1) == "every 1 day"
+    assert format_slider_badge(spec, 5) == "every 5 days"
+
+
+def test_housekeeper_enabled_has_an_explicit_spec():
+    """Unlike every other section, housekeeper.enabled is NOT skipped by
+    render_tab_group's generic 'enabled' filter -- it's a real, visible field."""
+    assert FIELD_SPECS[("housekeeper", "enabled")].kind == "toggle"
+
+
+def test_config_page_renders_housekeeper_enabled_as_a_visible_toggle():
+    resp = client.get("/config")
+    html = resp.text
+    idx = html.index('id="housekeeper__enabled"')
+    input_html = html[max(0, idx - 50) : idx + 50]
+    assert 'type="checkbox"' in input_html
+
+
+def test_config_page_renders_datasources_accordion_with_existing_entries():
+    """data_collector.datasources deliberately has no FIELD_SPECS entry -- it's
+    rendered by its own dedicated macro (render_datasources_accordion), mirroring
+    the legacy buildDatasourcesHTML() JS function server-side."""
+    resp = client.get("/config")
+    html = resp.text
+    assert 'id="datasources-accordion-data_collector"' in html
+    idx = html.index('id="datasources-accordion-data_collector"')
+    accordion_html = html[idx : idx + 3500]
+    assert ">gfs<" in accordion_html
+    assert ">currents<" in accordion_html
+    assert "addDatasource('data_collector')" in html[idx : idx + 4500]
+
+
+def test_config_page_renders_fallback_section_for_gated_layers():
+    """Regression guard: render_tab_group previously never emitted the
+    fallback-section-X div toggleSectionVisibility() depends on, so toggling a
+    layer off in the Show tab silently stopped hiding its settings fields."""
+    resp = client.get("/config")
+    html = resp.text
+    assert 'id="fallback-section-quakes"' in html
+    assert "Layer Display Off" in html
+
+
+def test_config_page_omits_fallback_section_for_exempt_sections():
+    resp = client.get("/config")
+    html = resp.text
+    assert 'id="fallback-section-common"' not in html
+    assert 'id="fallback-section-housekeeper"' not in html
+
+
+def test_config_page_has_no_remaining_legacy_dispatch_code():
+    """TAB_GROUPS/renderTabContainers became fully dead once every tab migrated --
+    this guards against either being silently reintroduced."""
+    resp = client.get("/config")
+    html = resp.text
+    assert "TAB_GROUPS" not in html
+    assert "renderTabContainers" not in html
+
+
+def test_config_page_still_has_the_interactive_datasource_functions():
+    """These stay -- they handle add/remove/rename after initial load, unrelated
+    to the deleted TAB_GROUPS-driven dispatch."""
+    resp = client.get("/config")
+    html = resp.text
+    for fn in ("addDatasource", "updateDatasourceName", "updateDatasourceUrl", "deleteDatasource"):
+        assert f"function {fn}" in html
