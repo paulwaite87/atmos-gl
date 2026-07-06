@@ -30,7 +30,8 @@ list", not a new branch here.
 import logging
 from datetime import datetime, timedelta, timezone
 
-from .base import CollectorBase, _estimate_next_update
+from .base import CollectorBase
+from worldmap.lib.data_status import estimate_next_update, read_process_status, build_status
 
 logger = logging.getLogger(__name__)
 
@@ -129,9 +130,9 @@ class FieldCollectorBase(CollectorBase):
         shouldn't itself hit rate limits). last_updated/detail still come from
         process_status (written by CollectorService._collect_fields()), same as the
         CollectorBase default."""
-        row = self.process_status_adapter.get_process_status(self.status_name)
-        last_updated = row["last_updated"] if row else None
-        last_error = row["last_error"] if row else None
+        last_updated, last_error = read_process_status(
+            self.process_status_adapter, self.status_name
+        )
 
         products = list(self.products.keys())
         avail = (
@@ -161,15 +162,15 @@ class FieldCollectorBase(CollectorBase):
                 detail = f"{run_date_str} {run_id}Z: {present}/{expected_total} hour(s)"
 
         period_s = self._service_period_s()
-        return {
-            "name": self.status_name,
-            "kind": "collector",
-            "percent": round(percent, 1),
-            "last_updated": last_updated,
-            "next_update": _estimate_next_update(last_updated, period_s, self.enabled),
-            "enabled": self.enabled,
-            "detail": detail,
-        }
+        return build_status(
+            name=self.status_name,
+            kind="collector",
+            percent=percent,
+            last_updated=last_updated,
+            next_update=estimate_next_update(last_updated, period_s, self.enabled),
+            enabled=self.enabled,
+            detail=detail,
+        )
 
     @staticmethod
     def _valid_time(run_date: str, run_id: str, fhour) -> datetime:
