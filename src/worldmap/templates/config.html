@@ -146,8 +146,8 @@
                         </div>
                     </div>
 
-                    <div class="tab-pane fade" id="atmospheric-pane"><div id="container-atmospheric"></div></div>
-                    <div class="tab-pane fade" id="climate-pane"><div id="container-climate"></div></div>
+                    <div class="tab-pane fade" id="atmospheric-pane"><div id="container-atmospheric">{{ field_macros.render_tab_group(["clouds", "isobars", "wind", "precipitation", "lightning", "storms"], config_data) }}</div></div>
+                    <div class="tab-pane fade" id="climate-pane"><div id="container-climate">{{ field_macros.render_tab_group(["sst", "currents", "waves", "temperature", "ozone", "stormwatch"], config_data) }}</div></div>
                     <div class="tab-pane fade" id="events-pane"><div id="container-events">{{ field_macros.render_tab_group(["quakes", "volcanoes"], config_data) }}</div></div>
                     <div class="tab-pane fade" id="misc-pane"><div id="container-misc">{{ field_macros.render_tab_group(["satellites", "terminator", "markers"], config_data) }}</div></div>
                     <div class="tab-pane fade" id="shipping-pane"><div id="container-shipping">{{ field_macros.render_tab_group(["shipping"], config_data) }}</div></div>
@@ -185,12 +185,10 @@
         let dynamicVesselClasses = {}
 
         const TAB_GROUPS = {
-            // "global", "events", "misc" and "shipping" are server-rendered (see
-            // field_macros.render_tab_group in config.html) -- they must stay out of this
-            // dispatch table so renderTabContainers doesn't also build duplicate fields
-            // into their already-populated containers.
-            "atmospheric": ["clouds", "isobars", "wind", "precipitation", "lightning", "storms"],
-            "climate": ["sst", "currents", "waves", "temperature", "ozone", "stormwatch"],
+            // "global", "events", "misc", "shipping", "atmospheric" and "climate" are
+            // server-rendered (see field_macros.render_tab_group in config.html) -- they
+            // must stay out of this dispatch table so renderTabContainers doesn't also
+            // build duplicate fields into their already-populated containers.
             "background": ["shipping_collector", "lightning_collector", "satellites_collector", "data_collector", "housekeeper"]
         };
 
@@ -206,9 +204,17 @@
         // Live badge reformatting for server-rendered (field_macros.render_field) sliders,
         // mirroring format_slider_badge in routes/field_specs.py so dragging updates the
         // badge the same way the server formatted it on initial render.
-        function updateSliderBadge(badgeId, rawValue, decimals, prefix, suffix) {
-            const formatted = (decimals === null) ? rawValue : parseFloat(rawValue).toFixed(decimals);
-            document.getElementById(badgeId).innerText = prefix + formatted + suffix;
+        function updateSliderBadge(badgeId, rawValue, decimals, prefix, suffix, zeroLabel, pluralize) {
+            const numeric = parseFloat(rawValue);
+            let text;
+            if (zeroLabel !== null && numeric === 0) {
+                text = zeroLabel;
+            } else {
+                const formatted = (decimals === null) ? rawValue : numeric.toFixed(decimals);
+                const finalSuffix = (pluralize && numeric !== 1) ? suffix + 's' : suffix;
+                text = prefix + formatted + finalSuffix;
+            }
+            document.getElementById(badgeId).innerText = text;
         }
 
         function findNearestNamedColor(hex) {
