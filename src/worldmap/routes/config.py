@@ -11,6 +11,7 @@ from worldmap.routes.field_specs import (
     field_label,
     format_slider_badge,
     clamp_slider_value,
+    to_display_value,
     initial_color_render,
     is_long_or_url_field,
     is_api_key_field,
@@ -30,6 +31,7 @@ templates.env.globals["field_specs"] = FIELD_SPECS
 templates.env.globals["field_label"] = field_label
 templates.env.globals["format_slider_badge"] = format_slider_badge
 templates.env.globals["clamp_slider_value"] = clamp_slider_value
+templates.env.globals["to_display_value"] = to_display_value
 templates.env.globals["initial_color_render"] = initial_color_render
 templates.env.globals["is_long_or_url_field"] = is_long_or_url_field
 templates.env.globals["is_api_key_field"] = is_api_key_field

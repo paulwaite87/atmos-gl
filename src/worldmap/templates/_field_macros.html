@@ -5,7 +5,11 @@
 
 {% macro render_field(section, option, value, spec, label) %}
   {% set dom_id = section ~ "__" ~ option %}
-  {% if spec and spec.kind == "toggle" %}
+  {% if value is sameas true or value is sameas false %}
+    {# Any boolean renders as a toggle regardless of whether it has a FIELD_SPECS
+       entry -- matches the legacy JS's first, unconditional dispatch check
+       (typeof value === "boolean"), so an unspecced boolean never falls through
+       to the number/text fallback below. #}
     <div class="col-md-6 d-flex align-items-center mt-4">
       <div class="form-check form-switch">
         <input class="form-check-input dynamic-input" type="checkbox" id="{{ dom_id }}" {% if value %}checked{% endif %}>
@@ -13,15 +17,16 @@
       </div>
     </div>
   {% elif spec and spec.kind == "slider" %}
-    {% set clamped = clamp_slider_value(spec, value) %}
+    {% set display_value = to_display_value(spec, value) %}
+    {% set clamped = clamp_slider_value(spec, display_value) %}
     <div class="col-md-6">
       <div class="d-flex justify-content-between align-items-center mb-1">
         <label class="form-label small text-white-50 fw-bold mb-0">{{ label }}</label>
         <span class="badge bg-primary text-light fw-bold" id="badge-{{ dom_id }}">{{ format_slider_badge(spec, clamped) }}</span>
       </div>
-      <input type="range" class="form-range dynamic-input" id="{{ dom_id }}"
+      <input type="range" class="form-range dynamic-input {{ spec.extra_class }}" id="{{ dom_id }}"
              min="{{ spec.min }}" max="{{ spec.max }}" step="{{ spec.step }}" value="{{ clamped }}"
-             oninput="updateSliderBadge('badge-{{ dom_id }}', this.value, {{ 'null' if spec.decimals is none else spec.decimals }}, '{{ spec.prefix }}', '{{ spec.suffix }}')">
+             oninput="updateSliderBadge('badge-{{ dom_id }}', this.value, {{ 'null' if spec.decimals is none else spec.decimals }}, '{{ spec.prefix }}', '{{ spec.suffix }}', {{ 'null' if spec.zero_label is none else spec.zero_label|tojson }}, {{ 'true' if spec.pluralize else 'false' }})">
     </div>
   {% elif spec and spec.kind == "select" %}
     <div class="col-md-6">

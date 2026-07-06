@@ -19,6 +19,7 @@ from worldmap.routes.field_specs import (
     field_label,
     format_slider_badge,
     clamp_slider_value,
+    to_display_value,
     initial_color_render,
     is_long_or_url_field,
     is_api_key_field,
@@ -291,3 +292,115 @@ def test_update_config_accepts_valid_payload(tmp_path):
 
     assert resp.status_code == 200
     assert json.loads(tmp_config.read_text())["common"]["auto_rotate_speed"] == 0.5
+
+
+# --- Atmospheric / Climate batch: whole-step int display, sentinel badges,
+# byte<->percent transform, unspecced-boolean fallback, section-conditional selects ---
+
+
+def test_clamp_slider_value_returns_int_for_whole_step_sliders():
+    """Regression guard: clamp_slider_value used to always float()-coerce, so a
+    whole-step slider's badge showed "12.0px" instead of "12px" for any value that
+    wasn't exactly at a boundary (the earlier scalar-field-style bug this batch's
+    live verification caught)."""
+    spec = SliderSpec(min=6, max=24, step=1)
+    result = clamp_slider_value(spec, 12)
+    assert result == 12
+    assert isinstance(result, int)
+
+
+def test_clamp_slider_value_keeps_float_for_fractional_step_sliders():
+    spec = SliderSpec(min=0, max=5, step=0.25)
+    result = clamp_slider_value(spec, 0.5)
+    assert result == 0.5
+    assert isinstance(result, float)
+
+
+def test_format_slider_badge_whole_step_has_no_decimal_point():
+    spec = SliderSpec(min=0, max=5000, step=100, suffix="J/Kg")
+    assert format_slider_badge(spec, clamp_slider_value(spec, 1200)) == "1200J/Kg"
+
+
+def test_format_slider_badge_zero_label_overrides_normal_formatting():
+    spec = SliderSpec(min=0, max=5, step=0.25, suffix=" m", zero_label="off")
+    assert format_slider_badge(spec, 0) == "off"
+    assert format_slider_badge(spec, 0.5) == "0.5 m"
+
+
+def test_format_slider_badge_pluralizes_suffix_based_on_count():
+    spec = FIELD_SPECS[("clouds", "cache_expiry_days")]
+    assert format_slider_badge(spec, 0) == "keep forever"
+    assert format_slider_badge(spec, 1) == "1 day"
+    assert format_slider_badge(spec, 5) == "5 days"
+
+
+def test_to_display_value_converts_byte_to_percent_for_clouds_threshold():
+    spec = FIELD_SPECS[("clouds", "threshold")]
+    assert to_display_value(spec, 168) == 66  # round((168/255)*100)
+
+
+def test_to_display_value_is_a_noop_for_ordinary_sliders():
+    spec = FIELD_SPECS[("quakes", "min_mag")]
+    assert to_display_value(spec, 4.5) == 4.5
+
+
+def test_validate_against_specs_uses_raw_max_for_byte_to_percent_field():
+    """clouds.threshold is posted in raw byte space (0-255), not the displayed
+    slider's 0-100 percent space -- validation must check against the byte range."""
+    assert validate_against_specs({"clouds": {"threshold": 255}}) == []
+    errors = validate_against_specs({"clouds": {"threshold": 256}})
+    assert len(errors) == 1
+    assert "255" in errors[0]  # bound reported is the raw max, not 100
+
+
+def test_shared_constants_reused_across_many_sections():
+    """_ALPHA, _LEVEL_OF_DETAIL etc. are declared once and referenced under every
+    field that needs them -- not redeclared per section."""
+    assert FIELD_SPECS[("isobars", "alpha")] is FIELD_SPECS[("wind", "alpha")]
+    assert FIELD_SPECS[("isobars", "alpha")] is FIELD_SPECS[("sst", "alpha")]
+    assert (
+        FIELD_SPECS[("isobars", "level_of_detail")]
+        is FIELD_SPECS[("stormwatch", "level_of_detail")]
+    )
+    assert FIELD_SPECS[("sst", "mode")] is FIELD_SPECS[("temperature", "mode")]
+    assert (
+        FIELD_SPECS[("wind", "particle_speed")]
+        is FIELD_SPECS[("animation", "stepping_rate")]
+    )
+
+
+def test_section_conditional_palette_options_differ_per_section():
+    """palette is one legacy branch keyed on section -- each section's option list
+    must stay independent, not accidentally share one shared constant."""
+    sst_values = {v for v, _ in FIELD_SPECS[("sst", "palette")].options}
+    ozone_values = {v for v, _ in FIELD_SPECS[("ozone", "palette")].options}
+    assert sst_values == {"thermal", "vivid", "deep", "ocean"}
+    assert ozone_values == {"critical", "plasma", "viridis", "inferno", "turbo"}
+    assert sst_values.isdisjoint(ozone_values)
+
+
+# --- GET /config: Atmospheric / Climate tabs render correctly ---
+
+
+def test_config_page_renders_byte_to_percent_slider_with_extra_class():
+    resp = client.get("/config")
+    html = resp.text
+    idx = html.index('id="clouds__threshold"')
+    input_html = html[max(0, idx - 100) : idx + 200]
+    assert 'max="100"' in input_html  # displayed range, not the raw 0-255
+    assert "cloud-threshold-slider" in input_html
+
+
+def test_config_page_renders_unspecced_boolean_as_toggle_not_number_fallback():
+    """ozone.stormwatch has no FIELD_SPECS entry distinct from other booleans --
+    still must render as a checkbox, not a broken type=number input with value=True."""
+    resp = client.get("/config")
+    html = resp.text
+    idx = html.index('id="ozone__stormwatch"')
+    input_html = html[max(0, idx - 50) : idx + 50]
+    assert 'type="checkbox"' in input_html
+
+
+def test_config_page_renders_prefixed_gamma_slider():
+    resp = client.get("/config")
+    assert 'id="badge-clouds__gamma"' in resp.text
