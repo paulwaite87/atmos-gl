@@ -32,6 +32,7 @@ import logging
 from worldmap.lib.config import WorldMapConfig
 from worldmap.lib.logging import setup_logging, set_loglevel
 from worldmap.lib import fieldstore
+from worldmap.lib.scheduling import interval_elapsed
 from worldmap.db.process_status_adapter import ProcessStatusAdapter
 from worldmap.db.field_catalog_adapter import FieldCatalogAdapter
 from worldmap.collectors import (
@@ -208,7 +209,7 @@ class CollectorService:
                 enabled = self.settings.get("enabled", False)
                 now = asyncio.get_event_loop().time()
 
-                if enabled and (last_full is None or (now - last_full) >= full_period):
+                if enabled and interval_elapsed(last_full, now, full_period):
                     logger.info("CollectorService: refreshing datasets")
                     try:
                         await asyncio.to_thread(self.collect_once)
