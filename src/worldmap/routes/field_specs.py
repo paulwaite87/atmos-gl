@@ -135,6 +135,14 @@ _MODE_OPTIONS = SelectSpec([
     ("anomaly", "Anomaly"),
 ])
 
+_LOG_LEVEL = SelectSpec([
+    ("DEBUG", "DEBUG"),
+    ("INFO", "INFO"),
+    ("WARNING", "WARNING"),
+    ("ERROR", "ERROR"),
+    ("CRITICAL", "CRITICAL"),
+])
+
 _VEI_OPTIONS = SelectSpec([
     ("0", "0 - Non-explosive"),
     ("1", "1 - Small"),
@@ -212,13 +220,7 @@ FIELD_SPECS = {
     ("common", "starting_longitude"): SliderSpec(
         min=-180.0, max=180.0, step=1.0, decimals=1, suffix=" deg"
     ),
-    ("common", "log_level"): SelectSpec([
-        ("DEBUG", "DEBUG"),
-        ("INFO", "INFO"),
-        ("WARNING", "WARNING"),
-        ("ERROR", "ERROR"),
-        ("CRITICAL", "CRITICAL"),
-    ]),
+    ("common", "log_level"): _LOG_LEVEL,
     ("animation", "forecast_stepping"): ToggleSpec(),
     ("animation", "stepping_rate"): _PARTICLE_SPEED_LIKE,
     # --- Events (quakes, volcanoes) ---
@@ -380,6 +382,24 @@ FIELD_SPECS = {
     ("stormwatch", "key_fontsize"): _FONTSIZE,
     ("stormwatch", "runs_per_day"): _RUNS_PER_DAY,
     ("stormwatch", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
+    # --- Background (shipping_collector, lightning_collector, satellites_collector,
+    # data_collector, housekeeper) ---
+    ("shipping_collector", "log_level"): _LOG_LEVEL,
+    ("lightning_collector", "expiry_hours"): _HOURS,
+    ("lightning_collector", "log_level"): _LOG_LEVEL,
+    ("satellites_collector", "update_hours"): _HOURS,
+    ("satellites_collector", "log_level"): _LOG_LEVEL,
+    # data_collector.datasources is deliberately NOT here -- see
+    # render_datasources_accordion in _field_macros.html.
+    ("data_collector", "update_minutes"): _MINUTES,
+    ("data_collector", "cache_hours"): _HOURS,
+    ("data_collector", "log_level"): _LOG_LEVEL,
+    ("housekeeper", "enabled"): ToggleSpec(),
+    ("housekeeper", "days_between_runs"): SliderSpec(
+        min=1, max=14, step=1, prefix="every ", suffix=" day", pluralize=True
+    ),
+    ("housekeeper", "field_expiry_hours"): _HOURS,
+    ("housekeeper", "dry_run"): ToggleSpec(),
 }
 
 # Option-name-only label overrides, checked BEFORE the (section, option) overrides
