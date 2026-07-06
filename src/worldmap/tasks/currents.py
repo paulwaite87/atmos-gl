@@ -6,12 +6,13 @@ import numpy as np
 import matplotlib.colors as mcolors
 
 from worldmap.lib.config import WorldMapConfig
-from .common import Updater, MapData, encode_uv, _opaque_cmap, coastline_land_mask
+from worldmap.lib.texture import encode_uv
+from .common import Updater, MapData, _opaque_cmap, coastline_land_mask, MultiHourRenderMixin
 
 logger = logging.getLogger(__name__)
 
 
-class CurrentsUpdater(Updater):
+class CurrentsUpdater(Updater, MultiHourRenderMixin):
     """Ocean surface currents from RTOFS (via the fieldstore).
 
     Rebuilt for the GPU pipeline: the data_collector downloads RTOFS, regrids the

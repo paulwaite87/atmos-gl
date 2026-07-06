@@ -11,7 +11,8 @@ from scipy.interpolate import RegularGridInterpolator
 
 # Internal imports
 from worldmap.lib.config import WorldMapConfig
-from .common import Updater, MapData, Plot, encode_frames
+from worldmap.lib.texture import encode_frames
+from .common import Updater, MapData, Plot, MultiHourRenderMixin
 
 # Silence warnings
 warnings.filterwarnings("ignore", message=".*missingValue.*")
@@ -20,7 +21,7 @@ logging.getLogger("cfgrib").setLevel(logging.ERROR)
 logger = logging.getLogger(__name__)
 
 
-class PrecipitationUpdater(Updater):
+class PrecipitationUpdater(Updater, MultiHourRenderMixin):
     def __init__(self, config: WorldMapConfig, map_data: MapData):
         super().__init__(config, "Precipitation", map_data)
         self.level_of_detail = int(self.settings.get("level_of_detail", 1))
