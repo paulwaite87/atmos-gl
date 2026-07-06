@@ -1,16 +1,16 @@
 import { liveLayerSync } from './_refresh.js';
-import { createStreakParticleGLController } from './_streakparticles_gl.js';
+import { createParticleGLController } from './_particles_gl.js';
 
 /**
  * Waves layer = Web-Mercator heat tiles (significant wave height) + an animated swell
  * field drawn as short bars perpendicular to the wave direction (the windy.com look).
  *
  * The heat tiles are pre-rendered + published by the backend and fetched as {z}/{x}/{y}
- * (see routes/tiles.py). The animation is a separate GPU particle layer that advects
- * particles along a global swell-velocity texture (data/waves_data.png) and draws each
- * as an oriented bar. The bars are a MapLibre CUSTOM WEBGL LAYER (see _waveparticles.js):
- * they're drawn directly with the map's projection each frame, so they're sharp and
- * scale naturally on the globe instead of being a fixed image stretched over the sphere.
+ * (see routes/tiles.py). The animation is the shared oriented-quad particle engine
+ * (_particles_gl.js, primitive: 'bar') advecting particles along a global swell-velocity
+ * texture (data/waves_data.png). The bars are a MapLibre CUSTOM WEBGL LAYER: they're
+ * drawn directly with the map's projection each frame, so they're sharp and scale
+ * naturally on the globe instead of being a fixed image stretched over the sphere.
  * The bars sit ABOVE the heat tiles. Both are driven by one liveLayerSync.
  */
 
@@ -99,13 +99,26 @@ export function loadLayer(map, config) {
     };
 
     // Animated swell bars (GPU custom layer). Driven from this module's liveLayerSync.
-    // Uses the shared streak engine with primitive:'bar' (crest perpendicular to flow,
+    // Uses the shared particle engine with primitive:'bar' (crest perpendicular to flow,
     // fixed length). Forecast-stepped like wind: the engine subscribes to the shared
     // timeline and loads per-hour swell fields (waves_f{NNN}_data.png) via the default
-    // hourDataUrl. The old standalone _waveparticles.js is retired.
-    const bars = createStreakParticleGLController(map, {
+    // hourDataUrl.
+    // KNOWN ISSUE (observed in live verification, not yet fixed): bars render across a
+    // thin strip at the immediate coastline edge, not deep inland -- looks like the
+    // coastline masking isn't quite matched to the GFS-Wave grid's actual no-data
+    // boundary near shore. landReset isn't set below (defaults to 0.0, same as wind,
+    // i.e. no land-masking at all) -- currents sets landReset:1.0 and doesn't have this
+    // problem, so that's the likely starting point for a fix, but needs its own
+    // investigation rather than a blind copy (wave no-data cells near coastlines may
+    // behave differently than open-ocean currents no-data cells).
+    const bars = createParticleGLController(map, {
         sectionKey: 'waves',
         primitive: 'bar',                   // perpendicular crest bars (windy.com swell look)
+        // The engine's default renderMode ('trails') draws fade-accumulation POINTS and
+        // ignores `primitive` entirely -- only 'streaks' mode dispatches through
+        // buildDrawShaders(primitive), which is what actually draws bars. Force it, or
+        // waves silently renders as near-invisible points instead of crest bars.
+        renderMode: () => 'streaks',
         initialConfig: config,
         // Particle density per level_of_detail (1/2/3). Bars read denser than wind
         // streaks, so these are much lower than wind's defaults. Tune to taste.
