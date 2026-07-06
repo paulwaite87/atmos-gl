@@ -1,15 +1,20 @@
-from fastapi import APIRouter, Response, Query
+from fastapi import APIRouter, Response, Query, Depends
 from worldmap.db.volcano_adapter import VolcanoAdapter
 
 router = APIRouter(prefix="/api", tags=["Geology"])
 
 
+def get_volcano_adapter() -> VolcanoAdapter:
+    return VolcanoAdapter()
+
+
 @router.get("/volcanoes/geojson")
 async def get_volcanoes(
-    vei_min: int = Query(0), significant: bool = Query(False), codes: str = Query(...)
+    vei_min: int = Query(0),
+    significant: bool = Query(False),
+    codes: str = Query(...),
+    volcano_adapter: VolcanoAdapter = Depends(get_volcano_adapter),
 ):
-    volcano_adapter = VolcanoAdapter()
-
     # 1. Force it into a Python list (e.g. "D1,D2" -> ['D1', 'D2'])
     # We strip whitespace just in case the URL has spaces like "D1, D2"
     codes_list = [c.strip() for c in codes.split(",")]

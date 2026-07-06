@@ -3,7 +3,7 @@ import os
 import json
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Response
+from fastapi import APIRouter, Response, Depends
 from sgp4.api import Satrec
 from sgp4 import omm as omm_mod
 from skyfield.api import EarthSatellite, load
@@ -36,6 +36,10 @@ def _load_cfg():
     cfg = WorldMapConfig(path)
     cfg.load()
     return cfg
+
+
+def get_satellite_adapter() -> SatelliteAdapter:
+    return SatelliteAdapter()
 
 
 def _split_dateline(coords):
@@ -80,7 +84,7 @@ def _point(pt, row, color, alt_km):
 
 
 @router.get("/satellites/geojson")
-def satellites_geojson():
+def satellites_geojson(satellite_adapter: SatelliteAdapter = Depends(get_satellite_adapter)):
     s = _load_cfg().get_section("satellites")
 
     names = list(s.get("sat_names", []) or [])
@@ -93,7 +97,7 @@ def satellites_geojson():
     step = max(10, int(s.get("step_seconds", 30)))
     user_color = (s.get("color") or "").strip()
 
-    rows = SatelliteAdapter().get_satellites_by_names(names)
+    rows = satellite_adapter.get_satellites_by_names(names)
     if not rows:
         return Response(
             '{"type":"FeatureCollection","features":[]}', media_type="application/json"
