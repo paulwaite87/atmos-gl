@@ -45,12 +45,7 @@ class SatellitesCollector(CollectorBase):
     def has_new_data(self) -> bool:
         """HEAD the stations-group URL as a proxy for the whole dataset."""
         url = f"{self._base_url()}/gp.php?GROUP=stations&FORMAT=json"
-        result = self._head_changed(url)
-        if result is None:
-            return True
-        if not result:
-            logger.debug("Satellites: remote unchanged; skipping collect.")
-        return result
+        return self._head_changed_or_default(url, "Satellites")
 
     def _fetch_group(self, group: str) -> list:
         url = f"{self._base_url()}/gp.php?GROUP={group}&FORMAT=json"

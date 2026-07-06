@@ -185,6 +185,24 @@ class CollectorBase:
         cls._etag_cache[url] = marker
         return True  # new or changed marker → proceed
 
+    @classmethod
+    def _head_changed_or_default(cls, url: str, label: str) -> bool:
+        """The single-URL has_new_data() wrapper hand-duplicated across quakes.py,
+        volcanoes.py, and satellites.py: a failed HEAD probe (_head_changed returns
+        None) defaults to True (collect anyway, safe fallback), and an unchanged
+        remote logs a debug line using `label` before returning False.
+
+        storms.py is NOT a caller of this: it HEADs two ATCF mirror URLs and logs one
+        combined "unchanged" message after checking both, not one message per URL, so
+        it keeps its own loop rather than being forced through this per-URL shape.
+        """
+        result = cls._head_changed(url)
+        if result is None:
+            return True
+        if not result:
+            logger.debug(f"{label}: remote unchanged; skipping collect.")
+        return result
+
 
 class AsyncCollectorBase:
     """Base for long-running async collectors (shipping, lightning).

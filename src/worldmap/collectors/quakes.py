@@ -31,12 +31,7 @@ class QuakeCollector(CollectorBase):
         url = self.settings.get("url", "")
         if not url:
             return True
-        result = self._head_changed(url)
-        if result is None:
-            return True   # HEAD failed → collect anyway (safe fallback)
-        if not result:
-            logger.debug("Quakes: remote unchanged; skipping collect.")
-        return result
+        return self._head_changed_or_default(url, "Quakes")
 
     def collect(self) -> None:
         """Fetch USGS quake CSV and upsert into the database."""

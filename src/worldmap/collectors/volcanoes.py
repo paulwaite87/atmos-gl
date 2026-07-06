@@ -33,12 +33,7 @@ class VolcanoesCollector(CollectorBase):
         url = self.base_url()
         if not url:
             return True
-        result = self._head_changed(url)
-        if result is None:
-            return True   # HEAD failed or not supported → collect anyway
-        if not result:
-            logger.debug("Volcanoes: remote unchanged; skipping collect.")
-        return result
+        return self._head_changed_or_default(url, "Volcanoes")
 
     def _fetch_all(self, base_url, page_size=200):
         """Fetch all records from the NOAA HazEL API with pagination."""
