@@ -314,12 +314,16 @@ def _regrid_curvilinear(lat2d, lon2d, fields, step, lat_min, lat_max, k=4, power
 def waves_data_unpack(path):
     """GFS-Wave global 0p25 GRIB -> swell vector field (u, v) per forecast hour.
 
-    Mirrors the original static-snapshot math: magnitude is significant wave height
-    (swh), direction is primary wave direction (dirpw, or mwd as a fallback name). The
-    vector points the way the swell travels: u = swh*sin(dir) east, v = swh*cos(dir)
-    north. Bad / land / missing cells become NaN so encode_uv flags them transparent
-    (alpha 0) and the particle layer respawns there. GFS native grid is row0=north,
-    matching encode_uv, so no vertical flip is needed (unlike the south-first RTOFS).
+    Magnitude is significant wave height (swh); direction is primary wave direction
+    (dirpw, or mwd as a fallback name). dirpw/mwd is the WMO "FROM" convention (the
+    same convention as wind direction: the angle swell is arriving FROM, not heading
+    TOWARD) -- computing sin/cos directly from it gives a vector pointing back the way
+    the swell came from, 180 degrees opposite of its actual travel direction. Negate to
+    get the vector pointing where the swell is HEADING, matching wind/currents' u/v
+    convention (verified against windy.com's reference rendering). Bad / land / missing
+    cells become NaN so encode_uv flags them transparent (alpha 0) and the particle
+    layer respawns there. GFS native grid is row0=north, matching encode_uv, so no
+    vertical flip is needed (unlike the south-first RTOFS).
     """
     ds = xr.open_dataset(
         path,
@@ -336,8 +340,8 @@ def waves_data_unpack(path):
     bad = ~np.isfinite(swh) | (swh < 0.0) | (swh > 60.0) | ~np.isfinite(mwd)
     rad = np.radians(np.nan_to_num(mwd))
     mag = np.where(bad, np.nan, swh)
-    u = mag * np.sin(rad)  # east component (m); NaN where bad -> alpha 0
-    v = mag * np.cos(rad)  # north component (m)
+    u = -mag * np.sin(rad)  # east component (m); NaN where bad -> alpha 0
+    v = -mag * np.cos(rad)  # north component (m)
 
     out = _blank()
     out.update(lat=lats, lon=lons, u=u, v=v, values=mag)

@@ -26,6 +26,9 @@ dist/
 build/
 *.egg-info/
 
+# --- Node (JS test tooling only; ui/ itself has no build step) ---
+node_modules/
+
 # --- Docker ---
 docker-compose.override.yml
 

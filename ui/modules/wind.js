@@ -1,4 +1,4 @@
-import { createWindParticleGLLayer } from './_windparticles_gl.js';
+import { createParticleGLLayer } from './_particles_gl.js';
 import { createFillLayer } from './_webglfill.js';
 
 const VMAX_WIND = 40.0;   // m/s velocity-texture encoding range (must match backend)
@@ -174,7 +174,7 @@ export async function loadLayer(map, config, fullConfig = {}) {
     const colorCfg = config.particle_color != null ? config.particle_color
         : (config.vector_color != null ? config.vector_color : '#ffffff');
     const particleColor = parseColor(colorCfg);
-    const teardownParticles = createWindParticleGLLayer(map, {
+    const teardownParticles = createParticleGLLayer(map, {
         sectionKey: 'wind',
         initialConfig: config,
         vmax: VMAX_WIND,

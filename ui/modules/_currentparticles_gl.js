@@ -25,11 +25,17 @@ import { flagBackfill } from './_backfill.js';
  * reset-bridge "meteor" class of artifact structurally impossible: a reset just relocates
  * the head and the tail re-integrates from the new spot next frame — no history to bridge.
  *
- * Isolated module — wind (_windparticles_gl.js) and waves are untouched.
+ * Isolated module — wind and waves (_particles_gl.js, an oriented-quad streak/bar
+ * engine) are untouched. This is a deliberate, permanent split, not a stale fork: this
+ * file's streamline-ribbon technique is geometrically distinct from an oriented quad and
+ * isn't reproducible by _particles_gl.js's primitive modes, so currents keeps its own
+ * implementation rather than migrating onto the shared engine.
  *
- * createCurrentParticleGLLayer(map, opts) — opts mirror the wind layer where useful:
- *   sectionKey, initialConfig, vmax, colormap, hourDataUrl, maxSpeedColor, landReset,
- *   plus tunables (particle_count, particle_speed=drift, trail_length=tail arc, etc.).
+ * createCurrentParticleGLLayer(map, opts) — opts mirror the wind/waves layer's NAMES
+ * where useful (sectionKey, initialConfig, vmax, colormap, hourDataUrl, maxSpeedColor,
+ * landReset), for consistency configuring similar-sounding concepts — not because the
+ * rendering code is shared. Plus tunables unique to this technique (particle_count,
+ * particle_speed=drift, trail_length=tail arc, etc.).
  */
 
 const STREAM_STEPS = 40;        // streamline integration segments (tail = STREAM_STEPS+1 points)
@@ -44,7 +50,17 @@ vec2 packPos(float x){ float e = floor(clamp(x,0.0,1.0)*65535.0 + 0.5);
 float unpackPos(vec2 c){ return (c.x*255.0*256.0 + c.y*255.0)/65535.0; }
 vec2 decodePos(vec4 c){ return vec2(unpackPos(c.rg), unpackPos(c.ba)); }
 vec4 encodePos(vec2 p){ return vec4(packPos(p.x), packPos(p.y)); }
-float rand(vec2 co){ return fract(sin(dot(co, vec2(12.9898,78.233))) * 43758.5453); }`;
+float rand(vec2 co){
+    // Dave Hoskins hash (https://www.shadertoy.com/view/4djSRW), copied from
+    // _particles_gl.js. The classic fract(sin(dot(co, vec2(12.9898,78.233)))*43758.5)
+    // hash has STRONG diagonal correlation (~0.43) — particles respawning with nearby
+    // seeds got diagonally-correlated random positions, printing the RNG's structure as
+    // dead-straight diagonal lines onto the particle field (the "streaming artifact").
+    // This integer-style hash has ~0 correlation, so respawns are genuinely uniform.
+    vec3 p3 = fract(vec3(co.xyx) * 0.1031);
+    p3 += dot(p3, p3.yzx + 33.33);
+    return fract((p3.x + p3.y) * p3.z);
+}`;
 
 const QUAD_VS = `#version 300 es
 in vec2 a_pos; out vec2 v_uv;
