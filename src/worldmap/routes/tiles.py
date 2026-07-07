@@ -14,7 +14,7 @@ the frontend tile cache.
 import os
 import logging
 
-from fastapi import APIRouter, HTTPException, Response
+from fastapi import APIRouter, HTTPException, Response, Depends
 
 from worldmap.lib.config import WorldMapConfig
 from worldmap.tiles import raster_tiles as rt
@@ -25,7 +25,7 @@ router = APIRouter(prefix="/api/tiles", tags=["Raster Tiles"])
 MINZOOM = 0
 
 
-def _load_config():
+def get_config() -> WorldMapConfig:
     path = os.getenv("CONFIG_PATH", "./config/worldmap.json")
     if not os.path.exists(path):
         raise HTTPException(status_code=404, detail="Configuration unavailable.")
@@ -42,9 +42,8 @@ def _spec(layer: str):
 
 
 @router.get("/{layer}/meta")
-def layer_meta(layer: str):
+def layer_meta(layer: str, config: WorldMapConfig = Depends(get_config)):
     spec = _spec(layer)
-    config = _load_config()
     info = rt.published_info(spec, config)
     return {
         "status": "success",
@@ -61,7 +60,9 @@ def layer_meta(layer: str):
 
 
 @router.get("/{layer}/{z}/{x}/{y}.png")
-def layer_tile(layer: str, z: int, x: int, y: int):
+def layer_tile(
+    layer: str, z: int, x: int, y: int, config: WorldMapConfig = Depends(get_config)
+):
     spec = _spec(layer)
     if z < 0 or z > rt.ONDEMAND_MAXZOOM:
         raise HTTPException(status_code=404, detail="zoom out of range")
@@ -69,7 +70,6 @@ def layer_tile(layer: str, z: int, x: int, y: int):
     if not (0 <= x < n and 0 <= y < n):
         raise HTTPException(status_code=404, detail="tile out of range")
 
-    config = _load_config()
     try:
         png = rt.serve_tile(spec, config, z, x, y)
     except Exception as exc:  # noqa: BLE001
