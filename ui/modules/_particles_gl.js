@@ -81,8 +81,17 @@ float rand(vec2 co){
 //     raise (2-3) only if a sharp shear still tears. B-spline is APPROXIMATING (no
 //     overshoot), so it's safe at shear — unlike Catmull-Rom which preserves more detail
 //     but can ring.
-//   - LONGITUDE WRAP via fract(); latitude clamp. Wind has no no-data mask, so the centre
-//     tap alone gives coverage.
+//   - LONGITUDE WRAP via fract(); latitude clamp. The centre tap alone gives coverage
+//     (is the QUERY POINT itself over valid data), independent of the kernel below.
+//   - MASKED taps: a no-data (alpha=0) neighbour inside the kernel's ~1.5-texel radius
+//     is EXCLUDED from the weighted sum and the weights renormalised over the valid
+//     taps only, rather than blending in that texel's raw RGB regardless of validity.
+//     Without this, encode_uv's NaN encoding (nan_to_num -> 0 velocity, see lib/texture.py)
+//     pulls the smoothed sample toward zero near any real no-data boundary (coastlines
+//     for ocean-only layers) -- e.g. ~17% velocity underestimation one texel from shore
+//     in testing (tests/gl-shaders/particles_land_reset.test.js's sibling coverage).
+//     Wind rarely borders true no-data so this was previously unnoticed there; waves'
+//     land boundary makes it visible.
 // Returns vec3(vx, vy, coverage).
 const WSAMPLE = `
 uniform float u_smoothPx;
@@ -106,6 +115,7 @@ vec3 sampleWindSmooth(sampler2D tex, vec2 p, float vmax){
     vec4 wy = bsplineW(f.y);
     vec4 c0 = texture(tex, vec2(fract(p.x + 1.0), clamp(p.y, 0.0, 1.0)));  // centre = coverage
     vec2 sumv = vec2(0.0);
+    float wsum = 0.0;
     for (int j = 0; j < 4; j++){
         for (int i = 0; i < 4; i++){
             vec2 cpos = base + vec2(float(i) - 1.0, float(j) - 1.0);
@@ -113,11 +123,15 @@ vec3 sampleWindSmooth(sampler2D tex, vec2 p, float vmax){
             uv.x = fract(uv.x + 1.0);          // wrap longitude (seamless dateline)
             uv.y = clamp(uv.y, 0.0, 1.0);      // clamp latitude (poles)
             vec4 t = texture(tex, uv);
-            sumv += (t.rg * (2.0*vmax) - vmax) * (wx[i] * wy[j]);  // B-spline weights sum to 1
+            float w = wx[i] * wy[j];
+            float valid = step(0.5, t.a);      // exclude no-data (land) taps from the blend
+            sumv += (t.rg * (2.0*vmax) - vmax) * (w * valid);
+            wsum += w * valid;
         }
     }
     if (c0.a < 0.5) return vec3(0.0, 0.0, 0.0);
-    return vec3(sumv, 1.0);
+    if (wsum < 0.01) return vec3(0.0, 0.0, 0.0);  // no valid neighbours at all -> no-data
+    return vec3(sumv / wsum, 1.0);
 }`;
 
 // Advection in equirectangular [0,1] space. Wind propagates ALONG the encoded velocity
