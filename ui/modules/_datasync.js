@@ -4,12 +4,20 @@
  * mount(section): async — fetch data, register icons, add source+layer(s), bind handlers.
  * refresh(section): async — re-fetch and setData only (no re-adding layers/handlers).
  * unmount(): remove handlers, layers, source, popups, stop any animation.
+ *
+ * The poll loop, enabled/disabled dispatch, busy-lock, and teardown are owned by the
+ * shared reconcileLoop (_reconcile.js, architecture review candidate "unify the two
+ * reconcile engines"); this module supplies only what's specific to GeoJSON layers --
+ * the mount-then-recheck-then-maybe-back-out sequence and the signature/cadence
+ * refresh policy.
  */
+import { reconcileLoop } from './_reconcile.js';
+
 export function liveDataSync(map, {
     sectionKey, initialConfig, mount, refresh, unmount,
     syncMs = 20000, refreshMs = 60000,
 }) {
-    let mounted = false, busy = false, lastRefresh = 0, lastSig = '';
+    let lastRefresh = 0, lastSig = '';
 
     const fetchSection = async () => {
         try {
@@ -21,54 +29,31 @@ export function liveDataSync(map, {
         }
     };
 
-    const reconcile = async () => {
-        if (busy) return;                              // serialize async mount/refresh
-        const { ok, section } = await fetchSection();
-        if (!ok) return;                               // network blip: leave as-is
-        const enabled = !!(section && section.enabled);
+    const onEnable = async (section) => {
+        await mount(section);
+        const recheck = await fetchSection();  // disabled during the async mount?
+        if (recheck.ok && !(recheck.section && recheck.section.enabled)) {
+            unmount();                         // yes — back it out immediately
+            return false;
+        }
+        lastRefresh = Date.now(); lastSig = JSON.stringify(section);
+        console.log(`[${sectionKey}] enabled — layer mounted.`);
+        return true;
+    };
 
-        busy = true;
-        try {
-            if (enabled && !mounted) {
-                await mount(section);
-                const recheck = await fetchSection();  // disabled during the async mount?
-                if (recheck.ok && !(recheck.section && recheck.section.enabled)) {
-                    unmount();                         // yes — back it out immediately
-                    return;
-                }
-                mounted = true; lastRefresh = Date.now(); lastSig = JSON.stringify(section);
-                console.log(`[${sectionKey}] enabled — layer mounted.`);
-            } else if (!enabled && mounted) {
-                unmount(); mounted = false;
-                console.log(`[${sectionKey}] disabled — layer removed.`);
-            } else if (enabled && mounted) {
-                const sig = JSON.stringify(section);
-                if (sig !== lastSig) {                     // settings changed -> apply now
-                    await refresh(section); lastSig = sig; lastRefresh = Date.now();
-                } else if (Date.now() - lastRefresh >= refreshMs) {
-                    await refresh(section); lastRefresh = Date.now();   // slow cadence (fresh data)
-                }
-            }
-        } finally {
-            busy = false;
+    const onDisable = () => {
+        unmount();
+        console.log(`[${sectionKey}] disabled — layer removed.`);
+    };
+
+    const onTick = async (section) => {
+        const sig = JSON.stringify(section);
+        if (sig !== lastSig) {                     // settings changed -> apply now
+            await refresh(section); lastSig = sig; lastRefresh = Date.now();
+        } else if (Date.now() - lastRefresh >= refreshMs) {
+            await refresh(section); lastRefresh = Date.now();   // slow cadence (fresh data)
         }
     };
 
-    if (initialConfig && initialConfig.enabled) {      // fast first paint from snapshot
-        busy = true;
-        Promise.resolve(mount(initialConfig))
-            .then(() => { mounted = true; lastRefresh = Date.now(); lastSig = JSON.stringify(initialConfig); })
-            .catch(err => console.error(`[${sectionKey}] initial mount failed`, err))
-            .finally(() => { busy = false; });
-    }
-    const intervalId = setInterval(reconcile, syncMs);
-
-    // Teardown: stop the reconcile interval and unmount (which map.off()s handlers,
-    // removes popups, and removes the layer + source). Returned so the host can clean
-    // up this layer before a basemap style swap (setStyle wipes layers/sources) without
-    // leaking the interval or the mouse handlers.
-    return () => {
-        clearInterval(intervalId);
-        if (mounted) { try { unmount(); } catch (e) { console.warn(`[${sectionKey}] unmount failed`, e); } mounted = false; }
-    };
+    return reconcileLoop(map, { sectionKey, initialConfig, syncMs, onEnable, onDisable, onTick });
 }

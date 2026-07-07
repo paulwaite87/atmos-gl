@@ -8,13 +8,15 @@
  * folded into the change signature, so editing a shared section live-updates
  * every layer that watches it. initialGlobals seeds the snapshot mount.
  *
- * viewportRender (optional): when supplied, the layer renders the CURRENT map
- * bounds on demand instead of showing one static world image. liveLayerSync then
- * drives `viewportRender(cfg)` on mount, on a debounced `moveend` (pan/zoom), on a
- * settings change, and on the slow cadence (to pick up fresh data). The static
- * image-existence/Last-Modified chase is skipped in this mode. Layers without
- * viewportRender behave exactly as before.
+ * The poll loop, enabled/disabled dispatch, busy-lock, and teardown are owned by the
+ * shared reconcileLoop (_reconcile.js, architecture review candidate "unify the two
+ * reconcile engines"); this module supplies only what's specific to raster layers --
+ * the image-existence chase and regen-detection sequence. (A prior viewportRender
+ * mode -- on-demand re-render of the current map bounds -- was dropped in that same
+ * pass: zero live callers ever supplied it.)
  */
+import { reconcileLoop } from './_reconcile.js';
+
 export function liveLayerSync(map, {
     sectionKey, initialConfig, mount, refresh, unmount, imageUrl,
     onMissing = null,        // optional: called with cfg when the probe HEAD 404s, so the
@@ -22,10 +24,7 @@ export function liveLayerSync(map, {
     syncMs = 20000, refreshMs = 300000,
     globalKeys = [], initialGlobals = {},
     regenWaitMs = 120000,
-    viewportRender = null,
-    viewportDebounceMs = 250,
 }) {
-    let mounted = false;
     let imageReady = false;
     let lastRefresh = 0;
     let lastSig = '';                                 // JSON of last-seen section + globals
@@ -33,44 +32,20 @@ export function liveLayerSync(map, {
     let regenDeadline = 0;
     let baselineMtime = 0;
 
-    // viewport-render state
-    let currentSection = initialConfig;
-    let moveTimer = null;
-    let moveHandler = null;
-
+    // The shared reconcileLoop's initial dispatch only knows this layer's OWN
+    // section (it has no concept of globalKeys), so `data` won't carry the other
+    // global sections yet on that first call — fall back to initialGlobals there.
+    // Every later, poll-driven call passes the full fetched config blob, so real
+    // (possibly-changed) values take over from the second call onward.
     const pickGlobals = (data) => {
         const g = {};
-        for (const k of globalKeys) g[k] = data ? data[k] : undefined;
+        for (const k of globalKeys) {
+            const v = data ? data[k] : undefined;
+            g[k] = v !== undefined ? v : initialGlobals[k];
+        }
         return g;
     };
     const sigOf = (section, globals) => JSON.stringify([section, globals]);
-
-    // Debounce pan/zoom: only re-render once the view has settled.
-    const scheduleViewport = () => {
-        if (!viewportRender) return;
-        if (moveTimer) clearTimeout(moveTimer);
-        moveTimer = setTimeout(() => {
-            if (mounted && currentSection) viewportRender(currentSection);
-        }, viewportDebounceMs);
-    };
-
-    const doMount = (cfg, globals) => {
-        mount(cfg, globals); mounted = true; imageReady = false;
-        lastRefresh = Date.now(); lastSig = sigOf(cfg, globals);
-        awaitingRegen = false; currentSection = cfg;
-        if (viewportRender) {
-            moveHandler = () => scheduleViewport();
-            map.on('moveend', moveHandler);
-            viewportRender(cfg);                      // render the current view immediately
-        }
-    };
-    const doUnmount = () => {
-        if (moveHandler) { map.off('moveend', moveHandler); moveHandler = null; }
-        if (moveTimer) { clearTimeout(moveTimer); moveTimer = null; }
-        unmount(); mounted = false; imageReady = false; awaitingRegen = false;
-    };
-
-    if (initialConfig && initialConfig.enabled) doMount(initialConfig, initialGlobals);
 
     // Append a cache-busting probe param with the correct separator: imageUrl already
     // carries a "?t=..." for some layers (e.g. currents), so a bare "?probe=" produced a
@@ -109,92 +84,67 @@ export function liveLayerSync(map, {
         } catch { return false; }
     };
 
-    const tick = async () => {
-        let data;
-        try {
-            const res = await fetch(`${window.WM_API}/config?t=${Date.now()}`);
-            data = (await res.json()).data || {};
-        } catch (err) {
-            console.warn(`[${sectionKey}] config check failed; leaving layer as-is`, err);
-            return;
-        }
-        const section = data[sectionKey];
+    const onEnable = async (section, data) => {
         const globals = pickGlobals(data);
-        const enabled = !!(section && section.enabled);
-        if (section) currentSection = section;
+        mount(section, globals);
+        imageReady = false;
+        lastRefresh = Date.now(); lastSig = sigOf(section, globals);
+        awaitingRegen = false;
+        console.log(`[${sectionKey}] enabled — mounting; awaiting image.`);
+        return true;                                       // readiness handled next tick
+    };
 
-        if (enabled && !mounted) {
-            doMount(section, globals);
-            console.log(`[${sectionKey}] enabled — mounting; awaiting image.`);
-            return;                                       // readiness handled next tick
-        }
-        if (!enabled && mounted) {
-            doUnmount();
-            console.log(`[${sectionKey}] disabled — layer removed.`);
-            return;
-        }
-        if (enabled && mounted) {
-            if (viewportRender) {
-                // Viewport mode: re-render the current bounds on a settings change, and
-                // on the slow cadence so fresh data is picked up. Pan/zoom is handled by
-                // the debounced moveend listener attached at mount.
-                const sig = sigOf(section, globals);
-                if (sig !== lastSig) {
-                    lastSig = sig; lastRefresh = Date.now();
-                    viewportRender(section);
-                } else if (Date.now() - lastRefresh >= refreshMs) {
-                    lastRefresh = Date.now();
-                    viewportRender(section);
-                }
-                return;
+    const onDisable = () => {
+        unmount();
+        imageReady = false; awaitingRegen = false;
+        console.log(`[${sectionKey}] disabled — layer removed.`);
+    };
+
+    const onTick = async (section, data) => {
+        const globals = pickGlobals(data);
+        if (!imageReady) {
+            const exists = await imageExists(section);
+            if (exists) {
+                refresh(section, globals);
+                imageReady = true;
+                lastRefresh = Date.now();
+                lastSig = sigOf(section, globals);
+                console.log(`[${sectionKey}] image ready — layer shown.`);
             }
-            if (!imageReady) {
-                const exists = await imageExists(section);
-                if (!mounted) return;          // disabled while the probe was in flight
-                if (exists) {
+        } else {
+            const sig = sigOf(section, globals);
+            if (sig !== lastSig) {                    // settings changed
+                refresh(section, globals);            // apply frontend-side change now
+                lastSig = sig;
+                lastRefresh = Date.now();
+                awaitingRegen = true;
+                regenDeadline = Date.now() + regenWaitMs;
+                baselineMtime = await imageMtime(section);
+            } else if (awaitingRegen) {
+                const m = await imageMtime(section);
+                if (m && m > baselineMtime) {         // backend produced a fresh render
                     refresh(section, globals);
-                    imageReady = true;
+                    awaitingRegen = false;
                     lastRefresh = Date.now();
-                    lastSig = sigOf(section, globals);
-                    console.log(`[${sectionKey}] image ready — layer shown.`);
-                }
-            } else {
-                const sig = sigOf(section, globals);
-                if (sig !== lastSig) {                    // settings changed
-                    refresh(section, globals);            // apply frontend-side change now
-                    lastSig = sig;
+                    console.log(`[${sectionKey}] backend re-render detected — applied.`);
+                } else if (m === 0) {
+                    refresh(section, globals);
                     lastRefresh = Date.now();
-                    awaitingRegen = true;
-                    regenDeadline = Date.now() + regenWaitMs;
-                    baselineMtime = await imageMtime(section);
-                } else if (awaitingRegen) {
-                    const m = await imageMtime(section);
-                    if (m && m > baselineMtime) {         // backend produced a fresh render
-                        refresh(section, globals);
-                        awaitingRegen = false;
-                        lastRefresh = Date.now();
-                        console.log(`[${sectionKey}] backend re-render detected — applied.`);
-                    } else if (m === 0) {
-                        refresh(section, globals);
-                        lastRefresh = Date.now();
-                    }
-                    if (Date.now() >= regenDeadline) awaitingRegen = false;
-                } else if (Date.now() - lastRefresh >= refreshMs) {
-                    refresh(section, globals);            // unchanged config: slow cadence
-                    lastRefresh = Date.now();             // (picks up regenerated PNGs)
                 }
+                if (Date.now() >= regenDeadline) awaitingRegen = false;
+            } else if (Date.now() - lastRefresh >= refreshMs) {
+                refresh(section, globals);            // unchanged config: slow cadence
+                lastRefresh = Date.now();             // (picks up regenerated PNGs)
             }
         }
     };
 
-    const intervalId = setInterval(tick, syncMs);
-
-    // Teardown: stop the sync interval and fully unmount (removes the layer, its
-    // moveend handler, and any pending viewport timer). Returned so the host can clean
-    // up every layer before a basemap style swap (setStyle wipes all layers/sources),
-    // then re-mount — without leaking intervals/handlers/subscriptions on each swap.
-    return () => {
-        clearInterval(intervalId);
-        if (mounted) doUnmount();
-    };
+    return reconcileLoop(map, {
+        sectionKey,
+        initialConfig,
+        syncMs,
+        onEnable,
+        onDisable,
+        onTick,
+    });
 }
