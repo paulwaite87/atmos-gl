@@ -14,7 +14,7 @@ The scheduling contract used by collect_event_feeds():
 ETag/Last-Modified state is stored in a class-level dict keyed by URL so it persists
 across the per-cycle instance recreation inside collect_event_feeds(), without needing
 to thread state through the caller. The dict is process-scoped, which is correct: the
-DataCollector is a single long-running process.
+data_collector service (CollectorService) runs as a single long-running process.
 
 data_status() (on both CollectorBase and AsyncCollectorBase below) is read-only: it
 reports the process_status row written by the orchestration layer (collectors/__init__.py
