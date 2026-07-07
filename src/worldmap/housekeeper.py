@@ -10,7 +10,9 @@ list. The owning layer is parsed straight from the prefix, and that layer's
 """
 
 import os
+import re
 import sys
+import glob
 import time
 import logging
 import argparse
@@ -25,6 +27,30 @@ logger = logging.getLogger("worldmap.housekeeper")
 
 CACHE_MARKER = "_cache_"
 HEARTBEAT_SECONDS = 3600  # wake hourly; actual work cadence is days_between_runs
+
+# '{layer}_f{NNN}{suffix}' where suffix is .png, _data.png, _labels.geojson, etc.
+PER_HOUR_PATTERN = re.compile(r"^(?P<layer>[A-Za-z0-9]+)_f(?P<hour>\d{3})(?P<suffix>[._].+)?$")
+
+
+def _parse_hour_output_name(name: str) -> tuple[str, int] | None:
+    """Parse a per-hour render output's filename into (layer, fhour), or None if it
+    doesn't match the per-hour naming convention at all."""
+    m = PER_HOUR_PATTERN.match(name)
+    if not m:
+        return None
+    return m.group("layer"), int(m.group("hour"))
+
+
+def _is_orphaned(layer: str, fhour: int, known_products: set, live: set) -> bool:
+    """A per-hour output is orphaned iff its layer is a managed catalog product (so an
+    unrelated file from an unmanaged source is never touched) AND its (layer, fhour)
+    is absent from the catalog's full set of live (product, fhour) pairs. Matching
+    across every run (not just the latest) means a file backed by any live row is
+    kept -- safe during run transitions.
+    """
+    if layer not in known_products:
+        return False
+    return (layer, fhour) not in live
 
 
 class Housekeeper:
@@ -155,17 +181,12 @@ class Housekeeper:
         outputs linger on disk. The data_collector's prune handles the .npz/catalog
         side; this is the matching cleanup for the rendered outputs, for ALL layers.
 
-        An output is orphaned iff its (layer, fhour) is absent from the catalog's full
-        set of live (product, fhour) pairs. Matching across every run (not just the
-        latest) means a file backed by any live row is kept — safe during run
-        transitions. Base outputs ('currents.png', 'currents_key.png') have no
-        '_f{NNN}' segment and are never matched, so they are safe by construction.
-        Only layers that actually appear in the catalog are considered, so unrelated
-        per-hour-looking files can't be touched by a product we don't manage.
+        The orphan decision itself (_parse_hour_output_name + _is_orphaned, both
+        module-level and pure) is the testable surface; this method is the thin I/O
+        shell around it — glob the data dir, ask the predicate, delete or dry-run log.
+        Base outputs ('currents.png', 'currents_key.png') have no '_f{NNN}' segment
+        and are never matched, so they are safe by construction.
         """
-        import re
-        import glob
-
         data_dir = self._data_dir()
         if not os.path.isdir(data_dir):
             return
@@ -188,23 +209,16 @@ class Housekeeper:
             return
 
         dry_run = bool(self.settings.get("dry_run", False))
-        # '{layer}_f{NNN}{suffix}' where suffix is .png, _data.png, _labels.geojson, etc.
-        pat = re.compile(
-            r"^(?P<layer>[A-Za-z0-9]+)_f(?P<hour>\d{3})(?P<suffix>[._].+)?$"
-        )
 
         deleted = 0
         for filepath in glob.glob(os.path.join(data_dir, "*_f[0-9][0-9][0-9]*")):
             name = os.path.basename(filepath)
-            m = pat.match(name)
-            if not m:
+            parsed = _parse_hour_output_name(name)
+            if parsed is None:
                 continue
-            layer = m.group("layer")
-            if layer not in known_products:
-                continue  # not a managed forecast product -> leave it alone
-            fhour = int(m.group("hour"))
-            if (layer, fhour) in live:
-                continue  # still backed by a live field -> keep
+            layer, fhour = parsed
+            if not _is_orphaned(layer, fhour, known_products, live):
+                continue
             # Orphaned: a per-hour output for a managed layer with no catalog backing.
             try:
                 if dry_run:
