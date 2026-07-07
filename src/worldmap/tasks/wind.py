@@ -9,7 +9,7 @@ import cartopy.crs as ccrs
 
 from worldmap.lib.config import WorldMapConfig
 from worldmap.lib.texture import encode_uv
-from .common import Updater, MapData, Plot, MultiHourRenderMixin
+from .common import Updater, MapData, Plot, MultiHourRenderMixin, ForecastState
 
 logging.getLogger("cfgrib").setLevel(logging.ERROR)
 
@@ -46,7 +46,7 @@ class WindUpdater(Updater, MultiHourRenderMixin):
         self.per_hour_outputs = [".png", "_data.png"]
         self.status_product = "wind"
 
-    def plot(self, field0):
+    def plot(self, field0, state: ForecastState):
         """Render the per-hour windspeed heatmap (.png) + velocity texture (_data.png).
 
         The particle shader decodes _data.png's rg as (u, v) via `rg * (2*vmax) - vmax`;
@@ -79,7 +79,7 @@ class WindUpdater(Updater, MultiHourRenderMixin):
             zorder=2,
         )
 
-        out_for_hour = self.get_output_path_for_hour(self.forecast_hour_str)
+        out_for_hour = self.get_output_path_for_hour(state.fhour)
         plot.save_figure(out_for_hour)
         plt_close = getattr(plot, "close", None)
         if callable(plt_close):
@@ -89,10 +89,13 @@ class WindUpdater(Updater, MultiHourRenderMixin):
         base, _ = os.path.splitext(out_for_hour)
         encode_uv(u, v, f"{base}_data.png", self.VMAX_WIND, lat=field0.get("lat"))
         logger.info(
-            f"Finished Wind f{int(self.forecast_hour_str):03d} (heatmap .png + R=U,G=V texture)."
+            f"Finished Wind f{state.fhour:03d} (heatmap .png + R=U,G=V texture)."
         )
 
     def run(self):
+        # Warms the shared per-cycle GFS baseline cache (map_data.shared_state) for
+        # other updaters this cycle; render_all_hours resolves its own state from the
+        # catalog below, so the return value here is unused.
         self.get_gfs_state()
 
         # --- pre-scan: find global max wind speed across all available hours ----------
@@ -103,13 +106,14 @@ class WindUpdater(Updater, MultiHourRenderMixin):
         # subsequent render_all_hours agree on exactly the same run + hours.
         resolved = self.latest_store_run(["wind"])
         if resolved:
-            self.run_date_str, self.run_id, hours = resolved
+            run_date, run_id, hours = resolved
         else:
-            hours = []
+            run_date, run_id, hours = None, None, []
 
         max_speed_ms = 0.0
         for fh in (hours or []):
-            field = self.get_db_field_at_hour("wind", fh)
+            state = ForecastState.at_hour(run_date, run_id, fh)
+            field = self.get_db_field_at_hour(state, "wind")
             if field and field.get("u") is not None and field.get("v") is not None:
                 peak = float(np.hypot(field["u"], field["v"]).max())
                 if peak > max_speed_ms:

@@ -19,7 +19,7 @@ import cartopy.crs as ccrs
 
 from worldmap.lib.config import WorldMapConfig
 from worldmap.lib.texture import encode_frames
-from .common import Updater, MapData, Plot, MultiHourRenderMixin
+from .common import Updater, MapData, Plot, MultiHourRenderMixin, ForecastState
 
 logging.getLogger("cfgrib").setLevel(logging.ERROR)
 
@@ -84,7 +84,7 @@ class ScalarFieldUpdater(Updater, MultiHourRenderMixin):
         self.per_hour_outputs = [".png", "_data.png"]
         self.status_product = spec.product
 
-    def plot(self, field0):
+    def plot(self, field0, state: ForecastState):
         """Render the static PNG (this hour) + global data texture for one scalar field.
 
         Consumes the per-hour field passed by render_all_hours (which fetches the
@@ -128,7 +128,7 @@ class ScalarFieldUpdater(Updater, MultiHourRenderMixin):
         )
 
         # Per-hour output path
-        output_path_for_hour = self.get_output_path_for_hour(self.forecast_hour_str)
+        output_path_for_hour = self.get_output_path_for_hour(state.fhour)
         plot.save_figure(output_path_for_hour)
         # Key (colourbar) is hour-independent — write it once at the BASE name
         # (<product>_key.png) that the frontend requests, not per-hour.
@@ -151,9 +151,12 @@ class ScalarFieldUpdater(Updater, MultiHourRenderMixin):
         encode_frames(
             [field0["values"]], f"{base}_data.png", self.spec.vmin, self.spec.vmax
         )
-        logger.info(f"Finished {self.section} texture f{int(self.forecast_hour_str):03d}.")
+        logger.info(f"Finished {self.section} texture f{state.fhour:03d}.")
 
     def run(self):
+        # Warms the shared per-cycle GFS baseline cache (map_data.shared_state) for
+        # other updaters this cycle; render_all_hours resolves its own state from the
+        # catalog below, so the return value here is unused.
         self.get_gfs_state()
         # Render EVERY available forecast hour (gap-filling), so the scrubber has
         # a PNG for each hour. should_plot_for_hour skips hours already fresh.

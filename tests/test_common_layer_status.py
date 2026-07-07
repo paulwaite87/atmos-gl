@@ -32,7 +32,7 @@ def test_layer_status_multi_hour_coverage_percent():
     }
     u.latest_store_run = MagicMock(return_value=("2026-06-13", "18", [0, 1, 2, 3]))
     # Only hours 0 and 1 are already fully rendered (should_plot_for_hour False).
-    u.should_plot_for_hour = MagicMock(side_effect=lambda product, fh: fh not in (0, 1))
+    u.should_plot_for_hour = MagicMock(side_effect=lambda state, product: state.fhour not in (0, 1))
 
     result = u.layer_status()
 

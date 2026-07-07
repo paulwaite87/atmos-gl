@@ -23,3 +23,15 @@ shape.
 Getting this backwards silently points every particle/vector layer 180° from its true
 direction — a real bug (`waves_data_unpack`) lived exactly here before being fixed and
 pinned by `tests/test_lib_unpack.py`.
+
+## Backend render tasks
+
+| Term | Definition | Aliases to avoid |
+| ---- | ---------- | ---------------- |
+| **ForecastState** | The (run_date, run_id, forecast_hour) triple a render call operates on (`tasks/common.py`), passed explicitly everywhere — never cached as mutable instance state. Built via `Updater.get_gfs_state()`/`get_rtofs_state()` (the shared per-cycle baseline) or `ForecastState.at_hour(run_date, run_id, fhour)` (a specific catalog hour). | run state, forecast context |
+
+Every `Updater`/`MultiHourRenderMixin` method that needs to know "which run, which
+hour" takes a `ForecastState` parameter rather than reading `self`. Before this, the
+four raw attributes it replaced (`run_date_str`/`run_id`/`forecast_hour_str`) were
+mutated directly on `self`, forcing `hasattr` guards and two separate save/restore
+`try`/`finally` dances to avoid callers clobbering each other's state.

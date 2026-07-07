@@ -7,7 +7,7 @@ import numpy as np
 # Internal imports
 from worldmap.lib.config import WorldMapConfig
 from worldmap.lib.texture import encode_uv
-from .common import Updater, MapData, _opaque_cmap, MultiHourRenderMixin
+from .common import Updater, MapData, _opaque_cmap, MultiHourRenderMixin, ForecastState
 from worldmap.tiles import raster_tiles as rt
 
 warnings.filterwarnings("ignore")
@@ -78,7 +78,7 @@ class WavesUpdater(Updater, MultiHourRenderMixin):
             mesh_lon, mesh_lat, lon_min, lat_min, lon_max, lat_max, res
         )
 
-    def plot_swell(self, field0):
+    def plot_swell(self, field0, state: ForecastState):
         """Write the per-hour swell velocity texture (R=U east, G=V north) from a
         fieldstore field. The collector already derived u/v from swh + wave direction
         (see waves_data_unpack), so here we just encode the per-hour field — this is the
@@ -88,11 +88,11 @@ class WavesUpdater(Updater, MultiHourRenderMixin):
         static base texture from the tile GRIB; kept for the forecast_stepping=off path)."""
         u = field0["u"]
         v = field0["v"]
-        out_for_hour = self.get_output_path_for_hour(self.forecast_hour_str)
+        out_for_hour = self.get_output_path_for_hour(state.fhour)
         base, _ = os.path.splitext(out_for_hour)
         encode_uv(u, v, f"{base}_data.png", VMAX_WAVES)
         logger.info(
-            f"Waves: wrote swell velocity texture f{int(self.forecast_hour_str):03d}."
+            f"Waves: wrote swell velocity texture f{state.fhour:03d}."
         )
 
     def _write_velocity_texture(self, field0):
@@ -130,7 +130,9 @@ class WavesUpdater(Updater, MultiHourRenderMixin):
         self.save_waves_key(self.output_path, cmap, norm, threshold=threshold)
 
     def run(self):
-        # Get the GFS state for this updater
+        # Warms the shared per-cycle GFS baseline cache (map_data.shared_state) for
+        # other updaters this cycle; both sections below resolve their own state from
+        # the catalog, so the return value here is unused.
         self.get_gfs_state()
 
         # 1) Per-hour swell velocity textures for the animated bars, from the fieldstore.
@@ -156,9 +158,10 @@ class WavesUpdater(Updater, MultiHourRenderMixin):
                 "skipping tile build."
             )
             return
-        self.run_date_str, self.run_id, hours = resolved
+        run_date, run_id, hours = resolved
         now_fh = hours[0]
-        field0 = self.get_db_field_at_hour("waves", now_fh)
+        state = ForecastState.at_hour(run_date, run_id, now_fh)
+        field0 = self.get_db_field_at_hour(state, "waves")
         if not field0 or field0.get("u") is None or field0.get("v") is None:
             logger.warning(
                 "Waves: now-hour field missing u/v in the fieldstore; skipping tile build."
@@ -175,7 +178,7 @@ class WavesUpdater(Updater, MultiHourRenderMixin):
         # rt.current_version. Unrelated settings never change the version, so they never
         # trigger a (re)build.
         if rt.current_version(
-            spec, self.config, self.run_date_str, self.run_id, now_fh
+            spec, self.config, state.run_date_str, state.run_id, now_fh
         ) == rt.published_version(spec, self.config):
             return
 
@@ -186,7 +189,7 @@ class WavesUpdater(Updater, MultiHourRenderMixin):
         logger.info("Waves: data or tile settings changed — publishing dataset...")
         self._write_velocity_texture(field0)
         version, field, meta = rt.publish_dataset(
-            spec, self.config, field0, self.run_date_str, self.run_id, now_fh
+            spec, self.config, field0, state.run_date_str, state.run_id, now_fh
         )
         logger.info(f"Waves: version {version} published; warming base pyramid...")
         rt.warm_pyramid(spec, self.config, version, field, meta)

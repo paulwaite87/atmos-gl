@@ -7,7 +7,7 @@ import matplotlib.colors as mcolors
 
 from worldmap.lib.config import WorldMapConfig
 from worldmap.lib.texture import encode_uv
-from .common import Updater, MapData, _opaque_cmap, coastline_land_mask, MultiHourRenderMixin
+from .common import Updater, MapData, _opaque_cmap, coastline_land_mask, MultiHourRenderMixin, ForecastState
 
 logger = logging.getLogger(__name__)
 
@@ -96,7 +96,7 @@ class CurrentsUpdater(Updater, MultiHourRenderMixin):
             )
         return land
 
-    def plot(self, field0):
+    def plot(self, field0, state: ForecastState):
         """Write the per-hour current velocity texture (R=U east, G=V north).
 
         Before encoding we (1) drop water slower than current_speed_minimum (m/s) and
@@ -126,7 +126,7 @@ class CurrentsUpdater(Updater, MultiHourRenderMixin):
             u[land] = np.nan
             v[land] = np.nan
 
-        out_for_hour = self.get_output_path_for_hour(self.forecast_hour_str)
+        out_for_hour = self.get_output_path_for_hour(state.fhour)
         base, _ = os.path.splitext(out_for_hour)
         encode_uv(u, v, f"{base}_data.png", self.VMAX_CURRENT, lat=field0.get("lat"))
 
@@ -134,11 +134,13 @@ class CurrentsUpdater(Updater, MultiHourRenderMixin):
         self.save_currents_key(self.output_path)
         logger.info(
             f"Finished Currents velocity texture "
-            f"f{int(self.forecast_hour_str):03d} (R=U, G=V)."
+            f"f{state.fhour:03d} (R=U, G=V)."
         )
 
     def run(self):
-        # Resolve the RTOFS run (NOT GFS) and render every available hour's texture.
+        # Resolve the RTOFS run (NOT GFS). Warms the shared per-cycle baseline cache
+        # (map_data.shared_state); render_all_hours resolves its own state from the
+        # catalog below, so the return value here is unused.
         self.get_rtofs_state()
         self.render_all_hours(
             "currents",
