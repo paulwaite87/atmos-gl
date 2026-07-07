@@ -1,0 +1,208 @@
+// Smoke tests for liveLayerSync's raster-specific behavior on top of the shared
+// reconcileLoop (architecture review candidate "unify the two reconcile engines").
+// Confirms the image-existence chase and regen-detection sequence survived the
+// extraction unchanged, driving the REAL reconcileLoop end-to-end (not mocked).
+import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest';
+import { liveLayerSync } from './_refresh.js';
+
+const SECTION_KEY = 'sst';
+
+function mockFetch({ section, imageStatus = 200, lastModified = null }) {
+    globalThis.fetch = vi.fn(async (url, opts) => {
+        if (opts && opts.method === 'HEAD') {
+            if (imageStatus !== 200) {
+                return { ok: false, status: imageStatus, headers: { get: () => null } };
+            }
+            return {
+                ok: true, status: 200,
+                headers: { get: (h) => (h === 'Last-Modified' ? lastModified : null) },
+            };
+        }
+        return { json: async () => ({ data: { [SECTION_KEY]: section } }) };
+    });
+}
+
+beforeEach(() => {
+    vi.useFakeTimers();
+    globalThis.window = { WM_API: 'http://test' };
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+});
+
+afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+});
+
+describe('image-existence chase', () => {
+    test('does not refresh until the probed image exists', async () => {
+        mockFetch({ section: { enabled: true }, imageStatus: 404 });
+        const refresh = vi.fn();
+
+        liveLayerSync({}, {
+            sectionKey: SECTION_KEY, initialConfig: null,
+            mount: vi.fn(), refresh, unmount: vi.fn(),
+            imageUrl: () => 'http://test/sst.png',
+            syncMs: 1000,
+        });
+        await vi.advanceTimersByTimeAsync(1000);  // enable transition (mount)
+        await vi.advanceTimersByTimeAsync(1000);  // image-chase tick: still 404
+
+        expect(refresh).not.toHaveBeenCalled();
+    });
+
+    test('refreshes once the image appears', async () => {
+        const section = { enabled: true };
+        mockFetch({ section, imageStatus: 404 });
+        const refresh = vi.fn();
+
+        liveLayerSync({}, {
+            sectionKey: SECTION_KEY, initialConfig: null,
+            mount: vi.fn(), refresh, unmount: vi.fn(),
+            imageUrl: () => 'http://test/sst.png',
+            syncMs: 1000,
+        });
+        await vi.advanceTimersByTimeAsync(1000);  // mount
+        await vi.advanceTimersByTimeAsync(1000);  // still missing
+
+        mockFetch({ section, imageStatus: 200 });
+        await vi.advanceTimersByTimeAsync(1000);  // now present
+
+        expect(refresh).toHaveBeenCalledTimes(1);
+    });
+
+    test('calls onMissing when the probe 404s', async () => {
+        mockFetch({ section: { enabled: true }, imageStatus: 404 });
+        const onMissing = vi.fn();
+
+        liveLayerSync({}, {
+            sectionKey: SECTION_KEY, initialConfig: null,
+            mount: vi.fn(), refresh: vi.fn(), unmount: vi.fn(),
+            imageUrl: () => 'http://test/sst.png', onMissing,
+            syncMs: 1000,
+        });
+        await vi.advanceTimersByTimeAsync(1000);  // mount
+        await vi.advanceTimersByTimeAsync(1000);  // 404 probe
+
+        expect(onMissing).toHaveBeenCalled();
+    });
+});
+
+describe('regen-detection', () => {
+    async function readySync({ section, refresh, refreshMs = 300000, regenWaitMs = 120000 }) {
+        mockFetch({ section, imageStatus: 200, lastModified: 'Mon, 01 Jun 2026 00:00:00 GMT' });
+        liveLayerSync({}, {
+            sectionKey: SECTION_KEY, initialConfig: null,
+            mount: vi.fn(), refresh, unmount: vi.fn(),
+            imageUrl: () => 'http://test/sst.png',
+            syncMs: 1000, refreshMs, regenWaitMs,
+        });
+        await vi.advanceTimersByTimeAsync(1000);  // mount
+        await vi.advanceTimersByTimeAsync(1000);  // image-ready tick
+        refresh.mockClear();
+    }
+
+    test('a settings change refreshes immediately and starts the regen chase', async () => {
+        const refresh = vi.fn();
+        const section = { enabled: true, palette: 'a' };
+        await readySync({ section, refresh });
+
+        mockFetch({
+            section: { enabled: true, palette: 'b' }, imageStatus: 200,
+            lastModified: 'Mon, 01 Jun 2026 00:00:00 GMT',
+        });
+        await vi.advanceTimersByTimeAsync(1000);
+
+        expect(refresh).toHaveBeenCalledTimes(1);
+        expect(refresh.mock.calls[0][0]).toEqual({ enabled: true, palette: 'b' });
+    });
+
+    test('applies a fresher backend render once its Last-Modified advances', async () => {
+        const refresh = vi.fn();
+        const section = { enabled: true, palette: 'a' };
+        await readySync({ section, refresh });
+
+        // Settings change (starts the regen chase, baseline mtime = 01 Jun).
+        mockFetch({
+            section: { enabled: true, palette: 'b' }, imageStatus: 200,
+            lastModified: 'Mon, 01 Jun 2026 00:00:00 GMT',
+        });
+        await vi.advanceTimersByTimeAsync(1000);
+        refresh.mockClear();
+
+        // Backend produces a newer render.
+        mockFetch({
+            section: { enabled: true, palette: 'b' }, imageStatus: 200,
+            lastModified: 'Tue, 02 Jun 2026 00:00:00 GMT',
+        });
+        await vi.advanceTimersByTimeAsync(1000);
+
+        expect(refresh).toHaveBeenCalledTimes(1);
+    });
+
+    test('gives up waiting after regenWaitMs, then resumes the slow cadence', async () => {
+        const refresh = vi.fn();
+        const section = { enabled: true, palette: 'a' };
+        await readySync({ section, refresh, regenWaitMs: 2000, refreshMs: 4000 });
+
+        mockFetch({
+            section: { enabled: true, palette: 'b' }, imageStatus: 200,
+            lastModified: 'Mon, 01 Jun 2026 00:00:00 GMT',
+        });
+        await vi.advanceTimersByTimeAsync(1000);  // starts the regen chase
+        refresh.mockClear();
+
+        // Still the SAME mtime (no fresher render ever arrives) for the rest of the
+        // regen window -- neither the "fresher render" nor the "m===0" branch fires,
+        // so refresh is NOT called while awaitingRegen. Once regenWaitMs elapses the
+        // deadline check clears awaitingRegen; once refreshMs elapses too, the plain
+        // slow-cadence branch takes over and refresh fires again.
+        await vi.advanceTimersByTimeAsync(1000);  // regen deadline passes (t=2000 since change)
+        expect(refresh).not.toHaveBeenCalled();
+
+        await vi.advanceTimersByTimeAsync(3000);  // now past refreshMs (t=4000+ since change)
+        expect(refresh).toHaveBeenCalled();
+    });
+});
+
+describe('slow-cadence fallback', () => {
+    test('refreshes on the slow cadence when nothing changed', async () => {
+        const refresh = vi.fn();
+        const section = { enabled: true };
+        mockFetch({ section, imageStatus: 200, lastModified: 'Mon, 01 Jun 2026 00:00:00 GMT' });
+
+        liveLayerSync({}, {
+            sectionKey: SECTION_KEY, initialConfig: null,
+            mount: vi.fn(), refresh, unmount: vi.fn(),
+            imageUrl: () => 'http://test/sst.png',
+            syncMs: 1000, refreshMs: 3000,
+        });
+        await vi.advanceTimersByTimeAsync(1000);  // mount
+        await vi.advanceTimersByTimeAsync(1000);  // image-ready
+        refresh.mockClear();
+
+        await vi.advanceTimersByTimeAsync(3000);  // past refreshMs, unchanged config
+
+        expect(refresh).toHaveBeenCalled();
+    });
+});
+
+describe('initialGlobals', () => {
+    test('seeds the initial mount when the shared loop cannot supply globals yet', async () => {
+        mockFetch({ section: { enabled: true }, imageStatus: 200 });
+        const mount = vi.fn();
+
+        liveLayerSync({}, {
+            sectionKey: SECTION_KEY, initialConfig: { enabled: true },
+            mount, refresh: vi.fn(), unmount: vi.fn(),
+            imageUrl: () => 'http://test/sst.png',
+            globalKeys: ['animation'],
+            initialGlobals: { animation: { fps: 5 } },
+            syncMs: 1000,
+        });
+        await vi.advanceTimersByTimeAsync(0);  // initial dispatch
+
+        expect(mount).toHaveBeenCalledTimes(1);
+        expect(mount.mock.calls[0][1]).toEqual({ animation: { fps: 5 } });
+    });
+});
