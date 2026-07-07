@@ -11,6 +11,7 @@ import cartopy.mpl.geoaxes as geoaxes
 import numpy as np
 from scipy.interpolate import RegularGridInterpolator
 from typing import cast
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -283,6 +284,31 @@ class Plot:
         self.fig.clear()
 
 
+@dataclass(frozen=True)
+class ForecastState:
+    """Which forecast run + hour a render call operates on (GFS or RTOFS; the same
+    shape either way). Passed explicitly wherever a render needs to know "when" -- see
+    CONTEXT.md's "ForecastState" entry. Two ways to build one:
+      * Updater.get_gfs_state()/get_rtofs_state() -- the shared per-cycle NOMADS/RTOFS
+        baseline plus a computed now-offset.
+      * ForecastState.at_hour(run_date, run_id, fhour) -- a specific catalog hour,
+        used when iterating every hour a run has data for (render_all_hours,
+        layer_status, and the few callers that resolve their own catalog run).
+    """
+
+    run_date_str: str
+    run_id: str
+    forecast_hour_str: str
+
+    @property
+    def fhour(self) -> int:
+        return int(self.forecast_hour_str)
+
+    @classmethod
+    def at_hour(cls, run_date_str, run_id, fhour) -> "ForecastState":
+        return cls(run_date_str, run_id, f"{int(fhour):03d}")
+
+
 class Updater:
     def __init__(self, config: WorldMapConfig, section: str, map_data: MapData):
         self.config = config
@@ -383,32 +409,6 @@ class Updater:
         if output_path and os.path.exists(output_path) and os.path.isfile(output_path):
             os.remove(output_path)
 
-    def get_db_field(self, product_name: str) -> dict | None:
-        """Fetch a pre-processed field set from the fieldstore (catalog + file).
-
-        Requires that get_gfs_state() has been called first (so run_date_str, run_id,
-        forecast_hour_str are set). Returns the field dict with keys:
-          lat, lon, values, values2, u, v, valid_time
-        or None if the field doesn't exist (collector hasn't run yet, or the product
-        failed to unpack).
-        """
-        if not hasattr(self, "run_date_str") or not hasattr(self, "run_id"):
-            logger.warning(f"{self.section}: get_db_field called before get_gfs_state")
-            return None
-        fhour = int(self.forecast_hour_str)
-        try:
-            fs = self._store
-            field = fs.get_field(self.run_date_str, self.run_id, fhour, product_name)
-            if field:
-                logger.debug(
-                    f"{self.section}: loaded {product_name} from fieldstore "
-                    f"({self.run_date_str}/{self.run_id}/f{fhour:03d})"
-                )
-            return field
-        except Exception as e:
-            logger.error(f"{self.section}: get_db_field({product_name}) failed: {e}")
-            return None
-
     def exit_if_disabled(self):
         if not self.enabled:
             logger.info(f"{self.section} task disabled; skipping")
@@ -422,28 +422,23 @@ class Updater:
                         pass
             sys.exit(0)
 
-    def get_db_field_at_hour(self, product_name: str, fhour: int) -> dict | None:
-        """Fetch a pre-processed field from the fieldstore for a specific forecast hour.
-        Used by animation frame loops and other multi-hour operations.
+    def get_db_field_at_hour(self, state: "ForecastState", product_name: str) -> dict | None:
+        """Fetch a pre-processed field from the fieldstore for a specific forecast run
+        + hour. Used by animation frame loops and other multi-hour operations.
         Args:
+            state: which run + forecast hour to read.
             product_name: The product name (e.g., "precipitation", "wind")
-            fhour: The forecast hour (e.g., 3, 6, 9, ...)
         Returns:
             Field dict {lat, lon, values, values2, u, v, valid_time} or None
         """
-        if not hasattr(self, "run_date_str") or not hasattr(self, "run_id"):
-            logger.debug(
-                f"get_db_field_at_hour({product_name}, f{fhour:03d}): GFS state not set"
-            )
-            return None
         try:
             fs = self._store
             return fs.get_field(
-                self.run_date_str, self.run_id, int(fhour), product_name
+                state.run_date_str, state.run_id, state.fhour, product_name
             )
         except Exception as e:
             logger.debug(
-                f"get_db_field_at_hour({product_name}, f{fhour:03d}) failed: {e}"
+                f"get_db_field_at_hour({product_name}, f{state.fhour:03d}) failed: {e}"
             )
             return None
 
@@ -605,24 +600,15 @@ class Updater:
             resolved = self.latest_store_run([self.status_product])
             if resolved:
                 run_date, run_id, hours = resolved
-                saved_run = (
-                    getattr(self, "run_date_str", None),
-                    getattr(self, "run_id", None),
-                    getattr(self, "forecast_hour_str", None),
-                )
-                self.run_date_str, self.run_id = run_date, run_id
-                try:
-                    total = len(hours)
-                    rendered = 0
-                    for fh in hours:
-                        self.forecast_hour_str = f"{int(fh):03d}"
-                        if not self.should_plot_for_hour(self.status_product, fh):
-                            rendered += 1
-                    percent = 100.0 * rendered / total if total else 0.0
-                    if not detail:
-                        detail = f"{run_date} {run_id}Z: {rendered}/{total} hour(s) rendered"
-                finally:
-                    self.run_date_str, self.run_id, self.forecast_hour_str = saved_run
+                total = len(hours)
+                rendered = 0
+                for fh in hours:
+                    state = ForecastState.at_hour(run_date, run_id, fh)
+                    if not self.should_plot_for_hour(state, self.status_product):
+                        rendered += 1
+                percent = 100.0 * rendered / total if total else 0.0
+                if not detail:
+                    detail = f"{run_date} {run_id}Z: {rendered}/{total} hour(s) rendered"
             next_update = estimate_next_update(last_updated, LAYER_CYCLE_SECONDS, True)
         else:
             period_s = period_s_from_runs_per_day(self.settings.get("runs_per_day", 1))
@@ -660,14 +646,16 @@ class Updater:
             return None
         return avail["run_date"], avail["run_id"], avail["hours"]
 
-    def _resolve_forecast_state(self, *, baseline_key: str, resolve_fn, label: str):
+    def _resolve_forecast_state(
+        self, *, baseline_key: str, resolve_fn, label: str
+    ) -> "ForecastState":
         """Shared baseline-cache-or-fetch + forecast-hour math backing get_gfs_state()/
         get_rtofs_state() (~75% identical before this extraction, differing only in
         which baseline they cache/resolve and their log labels). The first updater to
         need `baseline_key` this cycle resolves it (a network sync via `resolve_fn`);
         every other updater this cycle reads the cached result from
-        map_data.shared_state. Sets forecast_hour_str/run_date_str/run_date_str_Y_M_D/
-        run_id on self either way."""
+        map_data.shared_state. Returns the resolved ForecastState (does not mutate
+        self)."""
         baseline = getattr(self.map_data, "shared_state", {}).get(baseline_key)
 
         # ESTABLISH THE DATUM (only runs once per map refresh)
@@ -689,41 +677,37 @@ class Updater:
         )
         true_f_hour = max(0, hours_since_run + user_offset_hours)
 
-        # Store properties on the instance for easy access in __init__ / plot methods
-        self.forecast_hour_str = f"{true_f_hour:03d}"
-        self.run_date_str = baseline["date_str"]
-        self.run_date_str_Y_M_D = baseline["date_str_Y_M_D"]
-        self.run_id = baseline["run"]
+        state = ForecastState.at_hour(baseline["date_str"], baseline["run"], true_f_hour)
         logger.debug(
             f"Section {self.section} get_{label.lower()}_state: forecast hour "
-            f"{self.forecast_hour_str}; date_str {self.run_date_str}; run {self.run_id}"
+            f"{state.forecast_hour_str}; date_str {state.run_date_str}; run {state.run_id}"
         )
+        return state
 
-    def get_gfs_state(self):
+    def get_gfs_state(self) -> "ForecastState":
         """
         Lazy evaluation: The first updater to call this method performs a quick network
         sync to establish the GFS datum. All subsequent updaters read from memory.
-        Sets forecast_hour_str/run_date_str/run_id on self.
         """
         from worldmap.lib.gfs import resolve_gfs_baseline
 
-        self._resolve_forecast_state(
+        return self._resolve_forecast_state(
             baseline_key="gfs_baseline", resolve_fn=resolve_gfs_baseline, label="GFS"
         )
 
-    def get_rtofs_state(self):
+    def get_rtofs_state(self) -> "ForecastState":
         """RTOFS (ocean) analogue of get_gfs_state, for currents and future ocean
         layers. Resolves the daily RTOFS run (its own cycle, cached separately in
-        shared_state) and sets the SAME instance attributes get_gfs_state does
-        (run_date_str / run_id / forecast_hour_str), so render_all_hours and the
-        fieldstore reads work unchanged — they simply operate on the RTOFS run.
+        shared_state) and returns the SAME ForecastState shape get_gfs_state does, so
+        render_all_hours and the fieldstore reads work unchanged — they simply operate
+        on the RTOFS run.
 
         RTOFS is one 00Z cycle/day; 'now' is hours-since-analysis, and a per-layer
         forecast_hour offset steps forward, identical in spirit to the GFS path.
         """
         from worldmap.lib.rtofs import resolve_rtofs_baseline
 
-        self._resolve_forecast_state(
+        return self._resolve_forecast_state(
             baseline_key="rtofs_baseline", resolve_fn=resolve_rtofs_baseline, label="RTOFS"
         )
 
@@ -740,33 +724,32 @@ class MultiHourRenderMixin:
     by every layer including ones that could never call them).
 
     Assumes it's mixed into an Updater subclass: uses self.output_path, self._store,
-    self.per_hour_outputs, self.forecast_hour_str, self.process_status_adapter,
-    self.section, self.latest_store_run() and self.get_db_field_at_hour() (the last two
-    stay on Updater itself, since markers.py — a single-shot layer — also calls
+    self.per_hour_outputs, self.process_status_adapter, self.section,
+    self.latest_store_run() and self.get_db_field_at_hour() (the last two stay on
+    Updater itself, since markers.py — a single-shot layer — also calls
     get_db_field_at_hour directly, to sample weather at a specific hour rather than to
     render one). Updater.layer_status()'s multi-hour branch also calls
     should_plot_for_hour, but only when self.status_product is set — which only
-    multi-hour subclasses do, and they always pair it with this mixin.
+    multi-hour subclasses do, and they always pair it with this mixin. Which forecast
+    run + hour a call operates on is always passed explicitly as a ForecastState — see
+    that class's docstring and CONTEXT.md's "ForecastState" entry.
     """
 
-    def get_output_path_for_hour(self, fhour: int | str = None) -> str:
+    def get_output_path_for_hour(self, fhour: int | str) -> str:
         """Return a per-hour output path for caching renders.
 
-        If fhour is None, uses self.forecast_hour_str. The path is:
+        The path is:
           {base_path}_f{fhour:03d}.png
 
         Example: "/path/to/precipitation_f003.png"
         """
-        if fhour is None:
-            fhour = int(self.forecast_hour_str)
-        else:
-            fhour = int(fhour)
+        fhour = int(fhour)
 
         base, ext = os.path.splitext(self.output_path)
         return f"{base}_f{fhour:03d}{ext}"
 
-    def publish_current_hour(self, fhour: int | str = None):
-        """Publish the current forecast hour's render to the STABLE base filename.
+    def publish_current_hour(self, fhour: int | str):
+        """Publish the given forecast hour's render to the STABLE base filename.
 
         The backend caches per-hour ({base}_fNNN.png and {base}_fNNN_data.png), but the
         frontend fetches the run-agnostic base names ({base}.png and {base}_data.png) —
@@ -776,10 +759,7 @@ class MultiHourRenderMixin:
         Copies whichever of the two artifacts exist (static PNG and/or _data.png texture),
         using atomic replace so the frontend never reads a half-written file.
         """
-        if fhour is None:
-            fhour = int(self.forecast_hour_str)
-        else:
-            fhour = int(fhour)
+        fhour = int(fhour)
 
         base, ext = os.path.splitext(self.output_path)
         per_hour = f"{base}_f{fhour:03d}{ext}"
@@ -806,7 +786,7 @@ class MultiHourRenderMixin:
             except Exception as e:
                 logger.warning(f"{self.section}: failed to publish {src} -> {dst}: {e}")
 
-    def should_plot_for_hour(self, product_name: str, fhour: int | str = None) -> bool:
+    def should_plot_for_hour(self, state: "ForecastState", product_name: str) -> bool:
         """Check if a per-hour output needs updating.
 
         Returns True if:
@@ -816,12 +796,7 @@ class MultiHourRenderMixin:
         Returns False if the file is already fresh. This prevents re-plotting
         when data hasn't changed. Uses the catalog metadata only (no array load).
         """
-        if fhour is None:
-            fhour = int(self.forecast_hour_str)
-        else:
-            fhour = int(fhour)
-
-        output_path = self.get_output_path_for_hour(fhour)
+        output_path = self.get_output_path_for_hour(state.fhour)
         base, ext = os.path.splitext(output_path)
 
         # A complete render produces every suffix in self.per_hour_outputs. If ANY is
@@ -841,7 +816,7 @@ class MultiHourRenderMixin:
         try:
             fs = self._store
             meta = fs.get_field_meta(
-                self.run_date_str, self.run_id, fhour, product_name
+                state.run_date_str, state.run_id, state.fhour, product_name
             )
 
             if not meta or meta.get("updated_at") is None:
@@ -868,7 +843,7 @@ class MultiHourRenderMixin:
 
         except Exception as e:
             logger.debug(
-                f"should_plot_for_hour({product_name}, f{fhour:03d}) check failed: {e}"
+                f"should_plot_for_hour({product_name}, f{state.fhour:03d}) check failed: {e}"
             )
             # On error, be conservative — don't plot (file is probably fine)
             return False
@@ -885,56 +860,47 @@ class MultiHourRenderMixin:
 
         Args:
             product_name: catalog product key (e.g. "isobars").
-            plot_fn: callable(field) that renders + writes the per-hour outputs for
-                     the hour currently set in self.forecast_hour_str.
+            plot_fn: callable(field, state) that renders + writes the per-hour outputs
+                     for the given ForecastState.
             field_ready: callable(field) -> bool; whether the fetched field has the
                      data this layer needs (e.g. values is not None; u/v for wind).
 
         Returns the number of hours actually (re)plotted.
         """
-        # Resolve the run from the CATALOG (what's actually ingested), not from
-        # self.run_date_str/run_id (set from the cached baseline, which can be stale or
-        # ahead of the collector). We save the caller's run state and restore it in the
-        # finally below, so callers that still use the baseline run afterwards (e.g. the
-        # waves heat-tile GRIB download) are unaffected.
-        saved_run = (
-            getattr(self, "run_date_str", None),
-            getattr(self, "run_id", None),
-            getattr(self, "forecast_hour_str", None),
-        )
+        # Resolve the run from the CATALOG (what's actually ingested), not from a
+        # baseline-derived state (which can be stale or ahead of the collector). Each
+        # hour gets its own ForecastState, built fresh -- no instance state to save or
+        # restore, so callers that resolve their own baseline state beforehand (e.g.
+        # the waves heat-tile GRIB download) are unaffected by construction.
         resolved = self.latest_store_run([product_name])
         if not resolved:
             logger.info(
                 f"{self.section}: no hours in catalog yet (collector may not have run)."
             )
             return 0
-        self.run_date_str, self.run_id, hours = resolved
+        run_date, run_id, hours = resolved
 
         plotted = 0
-        try:
-            for fh in hours:
-                # Point the per-hour-aware helpers (get_output_path_for_hour, plot's
-                # save paths, should_plot_for_hour, publish) at THIS hour.
-                self.forecast_hour_str = f"{int(fh):03d}"
-                if not self.should_plot_for_hour(product_name, fh):
-                    continue
-                field = self.get_db_field_at_hour(product_name, fh)
-                if not field or not field_ready(field):
-                    continue
-                try:
-                    plot_fn(field)
-                    plotted += 1
-                    # Advance last_updated as each hour lands, not just once the whole
-                    # cycle (every TASK_CLASSES entry) finishes — a multi-hour layer can
-                    # take a long time to catch up on a cold start, and the Data Status
-                    # UI's percent bar already reflects per-hour progress live; last_updated
-                    # should too instead of sitting on "never" for the whole cycle.
-                    self.process_status_adapter.record_process_run(self.section, "layer", success=True)
-                except Exception as e:
-                    logger.warning(f"{self.section}: plot f{int(fh):03d} failed: {e}")
-        finally:
-            # Restore the caller's run state (run + current hour) regardless of outcome.
-            self.run_date_str, self.run_id, self.forecast_hour_str = saved_run
+        last_state = None
+        for fh in hours:
+            state = ForecastState.at_hour(run_date, run_id, fh)
+            last_state = state
+            if not self.should_plot_for_hour(state, product_name):
+                continue
+            field = self.get_db_field_at_hour(state, product_name)
+            if not field or not field_ready(field):
+                continue
+            try:
+                plot_fn(field, state)
+                plotted += 1
+                # Advance last_updated as each hour lands, not just once the whole
+                # cycle (every TASK_CLASSES entry) finishes — a multi-hour layer can
+                # take a long time to catch up on a cold start, and the Data Status
+                # UI's percent bar already reflects per-hour progress live; last_updated
+                # should too instead of sitting on "never" for the whole cycle.
+                self.process_status_adapter.record_process_run(self.section, "layer", success=True)
+            except Exception as e:
+                logger.warning(f"{self.section}: plot f{state.fhour:03d} failed: {e}")
 
         if plotted:
             logger.info(
@@ -947,5 +913,6 @@ class MultiHourRenderMixin:
             )
 
         # Keep the stable base-name static current (for forecast_stepping=off / fallback).
-        self.publish_current_hour()
+        if last_state is not None:
+            self.publish_current_hour(last_state.fhour)
         return plotted

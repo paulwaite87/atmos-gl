@@ -12,7 +12,7 @@ from scipy.interpolate import RegularGridInterpolator
 # Internal imports
 from worldmap.lib.config import WorldMapConfig
 from worldmap.lib.texture import encode_frames
-from .common import Updater, MapData, Plot, MultiHourRenderMixin
+from .common import Updater, MapData, Plot, MultiHourRenderMixin, ForecastState
 
 # Silence warnings
 warnings.filterwarnings("ignore", message=".*missingValue.*")
@@ -87,7 +87,7 @@ class PrecipitationUpdater(Updater, MultiHourRenderMixin):
             key_fontsize=self.settings.get("key_fontsize", 8),
         )
 
-    def plot(self, field0):
+    def plot(self, field0, state: ForecastState):
         """Static region render (frame 0) + colourbar key + global N-frame texture.
 
         Now consumes pre-processed fields from the DB instead of opening GRIBs.
@@ -143,7 +143,7 @@ class PrecipitationUpdater(Updater, MultiHourRenderMixin):
         )
 
         # Per-hour output path: precipitation_f003.png (for f003 forecast hour)
-        output_path_for_hour = self.get_output_path_for_hour(self.forecast_hour_str)
+        output_path_for_hour = self.get_output_path_for_hour(state.fhour)
         plot.save_figure(output_path_for_hour)
         # Key (colourbar) is hour-independent — write at the BASE name
         # (precipitation_key.png) that the frontend requests, not per-hour.
@@ -167,7 +167,7 @@ class PrecipitationUpdater(Updater, MultiHourRenderMixin):
         )
         logger.info(
             f"Finished Precipitation texture "
-            f"f{int(self.forecast_hour_str):03d} ({self.lod_desc} smoothing)."
+            f"f{state.fhour:03d} ({self.lod_desc} smoothing)."
         )
 
     def _smooth_global_field(self, lats, lons, values):
@@ -214,6 +214,9 @@ class PrecipitationUpdater(Updater, MultiHourRenderMixin):
         return arr
 
     def run(self):
+        # Warms the shared per-cycle GFS baseline cache (map_data.shared_state) for
+        # other updaters this cycle; render_all_hours resolves its own state from the
+        # catalog below, so the return value here is unused.
         self.get_gfs_state()
         # Render EVERY available forecast hour (gap-filling), so the scrubber has
         # a PNG for each hour. should_plot_for_hour skips hours already fresh.

@@ -35,13 +35,12 @@ def test_get_gfs_state_resolves_and_computes_offset():
         patch("worldmap.tasks.common.datetime") as mock_datetime,
     ):
         mock_datetime.now.return_value = FIXED_NOW
-        updater.get_gfs_state()
+        state = updater.get_gfs_state()
 
     mock_resolve.assert_called_once()
-    assert updater.forecast_hour_str == "003"  # 3h since run + 0h offset
-    assert updater.run_date_str == "20260101"
-    assert updater.run_date_str_Y_M_D == "2026-01-01"
-    assert updater.run_id == "00"
+    assert state.forecast_hour_str == "003"  # 3h since run + 0h offset
+    assert state.run_date_str == "20260101"
+    assert state.run_id == "00"
     assert updater.map_data.shared_state["gfs_baseline"] == baseline
 
 
@@ -60,10 +59,10 @@ def test_get_gfs_state_caches_baseline_across_calls():
     ):
         mock_datetime.now.return_value = FIXED_NOW
         updater.get_gfs_state()
-        updater.get_gfs_state()
+        state = updater.get_gfs_state()
 
     mock_resolve.assert_called_once()  # second call reads shared_state, doesn't re-probe
-    assert updater.forecast_hour_str == "003"  # 1h since run + 2h offset
+    assert state.forecast_hour_str == "003"  # 1h since run + 2h offset
 
 
 def test_get_gfs_state_raises_when_baseline_unresolvable():

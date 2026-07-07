@@ -9,7 +9,7 @@ itself and smoke-test the mixin still works when mixed into a bare instance.
 """
 import os
 
-from worldmap.tasks.common import Updater, MultiHourRenderMixin
+from worldmap.tasks.common import Updater, MultiHourRenderMixin, ForecastState
 
 
 def test_updater_itself_does_not_have_the_per_hour_methods():
@@ -47,18 +47,24 @@ class _MultiHourLayer(Updater, MultiHourRenderMixin):
     pass
 
 
-def make_bare_multi_hour_layer(output_path, forecast_hour_str="003", per_hour_outputs=None):
+def make_bare_multi_hour_layer(output_path, per_hour_outputs=None):
     u = _MultiHourLayer.__new__(_MultiHourLayer)
     u.section = "test"
     u.output_path = output_path
-    u.forecast_hour_str = forecast_hour_str
     u.per_hour_outputs = per_hour_outputs or [".png"]
     return u
 
 
-def test_get_output_path_for_hour_uses_forecast_hour_str_by_default(tmp_path):
+def test_get_output_path_for_hour_requires_an_explicit_hour(tmp_path):
+    """fhour has no self-fallback (architecture review candidate "ForecastState full
+    thread-through") -- every caller passes it explicitly now."""
     u = make_bare_multi_hour_layer(str(tmp_path / "isobars.png"))
-    assert u.get_output_path_for_hour() == str(tmp_path / "isobars_f003.png")
+    try:
+        u.get_output_path_for_hour()
+    except TypeError:
+        pass
+    else:
+        raise AssertionError("expected TypeError: fhour is a required argument")
 
 
 def test_get_output_path_for_hour_accepts_explicit_hour(tmp_path):
@@ -68,7 +74,8 @@ def test_get_output_path_for_hour_accepts_explicit_hour(tmp_path):
 
 def test_should_plot_for_hour_true_when_output_missing(tmp_path):
     u = make_bare_multi_hour_layer(str(tmp_path / "isobars.png"))
-    assert u.should_plot_for_hour("isobars", 3) is True
+    state = ForecastState.at_hour("2026-06-13", "18", 3)
+    assert u.should_plot_for_hour(state, "isobars") is True
 
 
 def test_publish_current_hour_copies_per_hour_output_to_base_name(tmp_path):
@@ -77,7 +84,7 @@ def test_publish_current_hour_copies_per_hour_output_to_base_name(tmp_path):
     per_hour_path = tmp_path / "isobars_f003.png"
     per_hour_path.write_bytes(b"fake-png-bytes")
 
-    u.publish_current_hour()
+    u.publish_current_hour(3)
 
     assert os.path.exists(base)
     assert (tmp_path / "isobars.png").read_bytes() == b"fake-png-bytes"

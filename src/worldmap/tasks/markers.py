@@ -22,7 +22,7 @@ import numpy as np
 from worldmap.lib.config import WorldMapConfig
 from worldmap.db.marker_adapter import MarkerAdapter
 from worldmap.collectors.markers_sync import load_marker_rows
-from .common import Updater, MapData
+from .common import Updater, MapData, ForecastState
 
 logger = logging.getLogger(__name__)
 
@@ -108,10 +108,7 @@ class MarkerUpdater(Updater):
             )
             return
         run_date, run_id, fhour = resolved
-        # Point the instance state at the resolved run so get_db_field_at_hour reads it.
-        self.run_date_str = run_date
-        self.run_id = run_id
-        self.forecast_hour_str = f"{fhour:03d}"
+        state = ForecastState.at_hour(run_date, run_id, fhour)
 
         # Only 'place' markers get weather; reuse the importer's ids so the UPDATE matches
         # exactly the rows it upserted.
@@ -126,9 +123,9 @@ class MarkerUpdater(Updater):
         lats_q = np.array([p["lat"] for p in places], dtype=np.float64)
         lons_q = np.array([p["lon"] for p in places], dtype=np.float64)
 
-        temp_f = self.get_db_field_at_hour("temperature", fhour)
-        wind_f = self.get_db_field_at_hour("wind", fhour)
-        rh_f = self.get_db_field_at_hour("humidity", fhour)
+        temp_f = self.get_db_field_at_hour(state, "temperature")
+        wind_f = self.get_db_field_at_hour(state, "wind")
+        rh_f = self.get_db_field_at_hour(state, "humidity")
         if temp_f is None and wind_f is None and rh_f is None:
             logger.warning(
                 f"Markers: fields vanished for {run_date} {run_id}Z f{fhour:03d} "
