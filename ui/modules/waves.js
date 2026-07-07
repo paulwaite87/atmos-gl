@@ -103,14 +103,6 @@ export function loadLayer(map, config) {
     // fixed length). Forecast-stepped like wind: the engine subscribes to the shared
     // timeline and loads per-hour swell fields (waves_f{NNN}_data.png) via the default
     // hourDataUrl.
-    // KNOWN ISSUE (observed in live verification, not yet fixed): bars render across a
-    // thin strip at the immediate coastline edge, not deep inland -- looks like the
-    // coastline masking isn't quite matched to the GFS-Wave grid's actual no-data
-    // boundary near shore. landReset isn't set below (defaults to 0.0, same as wind,
-    // i.e. no land-masking at all) -- currents sets landReset:1.0 and doesn't have this
-    // problem, so that's the likely starting point for a fix, but needs its own
-    // investigation rather than a blind copy (wave no-data cells near coastlines may
-    // behave differently than open-ocean currents no-data cells).
     const bars = createParticleGLController(map, {
         sectionKey: 'waves',
         primitive: 'bar',                   // perpendicular crest bars (windy.com swell look)
@@ -126,6 +118,14 @@ export function loadLayer(map, config) {
         vmax: VMAX_WAVES,                   // must match backend
         colormap: () => buildBarLUT(),
         maxSpeedColor: () => VMAX_WAVES,    // colour ramp spans 0..VMAX_WAVES metres
+        // Without this, a particle that drifts onto a no-data (land) cell just sits
+        // there forever -- velocity samples as zero on land, so it never advects away,
+        // rendering a static bar right at the coastline until its age naturally expires
+        // (tests/gl-shaders/particles_land_reset.test.js verifies this against the real
+        // UPDATE_FS shader: landReset=0 leaves a land-stuck particle unmoved; =1 resets
+        // it to a random ocean-eligible position immediately). Matches currents, which
+        // has always had this set.
+        landReset: () => 1.0,
         // Bars are FIXED length (not speed-scaled like wind streaks), sized from the
         // bar_length config key (1..20 px, default 7) to match the old wave engine.
         lenSpeedScale: 0,
