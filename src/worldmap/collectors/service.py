@@ -18,8 +18,9 @@ Two cadences (identical semantics to the old DataCollector.run()):
   * Backfill drain every backfill_poll_seconds so frontend-flagged (404) missing hours
     fill within ~a minute rather than waiting for the next full cycle.
 
-This replaces DataCollector; worldmap.data_collector is now a thin backward-compat shim
-that calls this.
+This replaces the legacy DataCollector monolith. No `data_collector.py` shim exists — the
+`data_collector` Docker service invokes this module directly (`python -m
+worldmap.collectors.service`).
 
 Phase 3 is complete: the legacy field_ingest.py monolith (FieldIngest) has been decomposed
 into GfsAtmosCollector/GfsWavesCollector/RtofsCurrentsCollector and deleted. Each cycle
