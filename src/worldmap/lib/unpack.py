@@ -57,6 +57,31 @@ def _standardize_lon(lons, *fields):
     return lons_sorted, out
 
 
+def _swell_uv(swh, mwd):
+    """Significant wave height + primary wave direction -> (u, v, mag).
+
+    Returns the travel vector (u east, v north, in m) plus the NaN-masked magnitude
+    (`values` for the heat-tile / legend path). dirpw/mwd is the WMO "FROM" convention
+    (see CONTEXT.md's "Direction convention (FROM)"): the angle the swell arrives FROM,
+    not heads toward -- computing sin/cos directly gives a vector pointing back the way
+    the swell came, 180 degrees opposite of its actual travel. NEGATE to get the
+    heading-toward vector, matching wind/currents' u/v convention (verified against
+    windy.com). This sign is the exact spot a real bug lived; test_lib_unpack.py pins it.
+
+    Bad / out-of-range / missing cells (non-finite, swh<0, swh>60 m, non-finite dir)
+    become NaN, so encode_uv flags them transparent (alpha 0) and the particle layer
+    respawns there.
+    """
+    swh = np.asarray(swh, dtype=np.float32)
+    mwd = np.asarray(mwd, dtype=np.float32)
+    bad = ~np.isfinite(swh) | (swh < 0.0) | (swh > 60.0) | ~np.isfinite(mwd)
+    rad = np.radians(np.nan_to_num(mwd))
+    mag = np.where(bad, np.nan, swh)
+    u = -mag * np.sin(rad)  # east component (m); NaN where bad -> alpha 0
+    v = -mag * np.cos(rad)  # north component (m)
+    return u, v, mag
+
+
 def isobars_data_unpack(path):
     """PRMSL -> mean sea level pressure in hPa, smoothed (sigma 1.2)."""
     ds = xr.open_dataset(
@@ -315,15 +340,9 @@ def waves_data_unpack(path):
     """GFS-Wave global 0p25 GRIB -> swell vector field (u, v) per forecast hour.
 
     Magnitude is significant wave height (swh); direction is primary wave direction
-    (dirpw, or mwd as a fallback name). dirpw/mwd is the WMO "FROM" convention (the
-    same convention as wind direction: the angle swell is arriving FROM, not heading
-    TOWARD) -- computing sin/cos directly from it gives a vector pointing back the way
-    the swell came from, 180 degrees opposite of its actual travel direction. Negate to
-    get the vector pointing where the swell is HEADING, matching wind/currents' u/v
-    convention (verified against windy.com's reference rendering). Bad / land / missing
-    cells become NaN so encode_uv flags them transparent (alpha 0) and the particle
-    layer respawns there. GFS native grid is row0=north, matching encode_uv, so no
-    vertical flip is needed (unlike the south-first RTOFS).
+    (dirpw, or mwd as a fallback name). The swh + direction -> (u, v) transform (and the
+    subtle WMO FROM-convention sign) lives in _swell_uv. GFS native grid is row0=north,
+    matching encode_uv, so no vertical flip is needed (unlike the south-first RTOFS).
     """
     ds = xr.open_dataset(
         path,
@@ -337,11 +356,7 @@ def waves_data_unpack(path):
     lons, (swh, mwd) = _standardize_lon(ds["longitude"].values, swh, mwd)
     ds.close()
 
-    bad = ~np.isfinite(swh) | (swh < 0.0) | (swh > 60.0) | ~np.isfinite(mwd)
-    rad = np.radians(np.nan_to_num(mwd))
-    mag = np.where(bad, np.nan, swh)
-    u = -mag * np.sin(rad)  # east component (m); NaN where bad -> alpha 0
-    v = -mag * np.cos(rad)  # north component (m)
+    u, v, mag = _swell_uv(swh, mwd)
 
     out = _blank()
     out.update(lat=lats, lon=lons, u=u, v=v, values=mag)
