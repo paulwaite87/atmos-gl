@@ -389,14 +389,3 @@ def make_store(workdir: str = ".") -> "FieldStore":
     from worldmap.db.field_catalog_adapter import FieldCatalogAdapter
 
     return FieldStore(FieldCatalogAdapter(), workdir)
-
-
-def init_fieldstore(field_catalog_adapter, workdir: str = ".") -> FieldStore:
-    """Explicitly (re)initialise the global fieldstore instance.
-
-    Useful at process startup when you already hold a FieldCatalogAdapter and want
-    the store bound to it. Overwrites any previously created singleton.
-    """
-    global _store_instance
-    _store_instance = FieldStore(field_catalog_adapter, workdir)
-    return _store_instance
