@@ -2,9 +2,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:shaders": "node tests/gl-shaders/particles_land_reset.test.js"
   },
   "devDependencies": {
+    "playwright": "^1.61.1",
     "vitest": "^3.0.0"
   }
 }
