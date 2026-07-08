@@ -1,7 +1,6 @@
 import os
 import json
 import logging
-from pathlib import Path
 
 from worldmap.lib.logging import set_loglevel
 
@@ -102,27 +101,3 @@ class WorldMapConfig:
         if section not in self.config:
             self.config[section] = {}
         self.config[section][setting] = value
-
-    def setup_for_tests(self, project_root):
-        """Tweak the configuration for testing purposes."""
-        # Sets the working directory to the testing project root
-        self.update_setting("common", "workdir", str(project_root))
-
-        # Clears any user-created marker files from config for testing (using empty list)
-        self.update_setting("common", "extra_marker_files", [])
-
-        # Set night shade mode True (native boolean)
-        self.update_setting("common", "night_shade", True)
-
-        # Go through each section enabling it for testing, and also
-        # set the output path to a suitable file for test output
-        for section, settings in self.config.items():
-            if isinstance(settings, dict) and "enabled" in settings:
-                self.update_setting(section, "enabled", True)
-
-            current_outfile = self.get_setting(section, "outfile")
-            if current_outfile:
-                original_path = Path(current_outfile)
-                # Build test filename: data/isobars.png -> data/test_isobars.png
-                test_path = original_path.parent / f"test_{original_path.name}"
-                self.update_setting(section, "outfile", str(test_path))
