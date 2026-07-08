@@ -12,7 +12,12 @@ from unittest.mock import patch, MagicMock
 import pytest
 
 from worldmap.tasks.common import ForecastState
-from worldmap.tasks.scalar_field import ScalarFieldUpdater, ScalarFieldSpec, SPECS
+from worldmap.tasks.scalar_field import (
+    ScalarFieldUpdater,
+    ScalarFieldSpec,
+    SPECS,
+    _threshold_colormap,
+)
 
 
 def make_bare_updater(spec):
@@ -33,7 +38,7 @@ def make_bare_updater(spec):
     return u
 
 
-@pytest.mark.parametrize("key", ["temperature", "ozone", "stormwatch"])
+@pytest.mark.parametrize("key", ["temperature", "ozone", "stormwatch", "pwat"])
 def test_plot_dispatches_spec_to_render(key):
     spec = SPECS[key]
     u = make_bare_updater(spec)
@@ -75,8 +80,8 @@ def test_plot_skips_when_field_missing():
     u.save_key_image.assert_not_called()
 
 
-def test_specs_cover_the_three_scalar_fields():
-    assert set(SPECS) == {"temperature", "ozone", "stormwatch"}
+def test_specs_cover_the_four_scalar_fields():
+    assert set(SPECS) == {"temperature", "ozone", "stormwatch", "pwat"}
     for key, spec in SPECS.items():
         assert isinstance(spec, ScalarFieldSpec)
         assert spec.product == key
@@ -90,3 +95,78 @@ def test_layer_builder_binds_each_spec_via_partial():
         assert isinstance(entry, partial)
         assert entry.func is ScalarFieldUpdater
         assert entry.keywords["spec"] is SPECS[key]
+
+
+class TestThresholdColormap:
+    """_threshold_colormap: the ozone/pwat 'critical zone' rendering (architecture
+    review candidate #5 -- restores ozone's dropped critical-palette behaviour and
+    reuses the same mechanism for pwat, mirrored)."""
+
+    def test_focus_below_grades_toward_vmin_flat_above_threshold(self):
+        # ozone shape: worst reading is at vmin: palette[-1] (yellow) should land there;
+        # palette[0] (magenta) anchors the threshold boundary; above threshold is flat.
+        magenta, yellow = (1.0, 0.0, 1.0), (1.0, 1.0, 0.0)
+        flat = (0.0, 0.1, 0.3, 0.2)
+        cmap = _threshold_colormap(
+            vmin=150.0, vmax=500.0, threshold=220.0, focus="below",
+            palette_colors=[magenta, yellow], flat_color=flat,
+        )
+        t = (220.0 - 150.0) / (500.0 - 150.0)
+        assert cmap(0.0)[:3] == pytest.approx(yellow, abs=0.02)
+        assert cmap(t)[:3] == pytest.approx(magenta, abs=0.02)
+        assert cmap(1.0) == pytest.approx(flat, abs=0.02)
+        assert cmap(0.9) == pytest.approx(flat, abs=0.02)
+
+    def test_focus_above_grades_toward_vmax_flat_below_threshold(self):
+        # pwat shape: worst reading is at vmax: palette[-1] anchors vmax, palette[0]
+        # anchors the threshold boundary; below threshold is flat (invisible).
+        blue, violet = (0.0, 0.0, 0.55), (0.6, 0.0, 0.85)
+        flat = (0.0, 0.0, 0.0, 0.0)
+        cmap = _threshold_colormap(
+            vmin=0.0, vmax=80.0, threshold=50.0, focus="above",
+            palette_colors=[blue, violet], flat_color=flat,
+        )
+        t = 50.0 / 80.0
+        assert cmap(t)[:3] == pytest.approx(blue, abs=0.02)
+        assert cmap(1.0)[:3] == pytest.approx(violet, abs=0.02)
+        assert cmap(0.0) == pytest.approx(flat, abs=0.02)
+        assert cmap(t - 0.1) == pytest.approx(flat, abs=0.02)
+
+    def test_multi_stop_palette_spans_boundary_to_extreme(self):
+        # pwat's "standard" palette (precipitation's 7-stop ramp): first colour at the
+        # threshold boundary, last colour at vmax.
+        cyan = (0.0, 1.0, 1.0)
+        magenta = (1.0, 0.0, 1.0)
+        palette = [cyan, (0, 0.5, 1), (0, 1, 0), (1, 1, 0), (1, 0.5, 0), (1, 0, 0), magenta]
+        cmap = _threshold_colormap(
+            vmin=0.0, vmax=80.0, threshold=50.0, focus="above",
+            palette_colors=palette, flat_color=(0, 0, 0, 0),
+        )
+        t = 50.0 / 80.0
+        assert cmap(t)[:3] == pytest.approx(cyan, abs=0.02)
+        assert cmap(1.0)[:3] == pytest.approx(magenta, abs=0.02)
+
+
+def test_resolve_cmap_reads_live_threshold_and_palette_settings():
+    u = make_bare_updater(SPECS["pwat"])
+    u.settings = {"critical_pwat": 30.0, "palette": "deep_teal"}
+    cmap = u._resolve_cmap()
+    pale_cyan = (0.7, 1.0, 1.0)
+    deep_teal = (0.0, 0.35, 0.3)
+    t = 30.0 / 80.0
+    assert cmap(t)[:3] == pytest.approx(pale_cyan, abs=0.02)
+    assert cmap(1.0)[:3] == pytest.approx(deep_teal, abs=0.02)
+
+
+def test_resolve_cmap_falls_back_to_spec_defaults_when_unset():
+    u = make_bare_updater(SPECS["ozone"])
+    u.settings = {}
+    cmap = u._resolve_cmap()
+    yellow = (1.0, 1.0, 0.0)
+    assert cmap(0.0)[:3] == pytest.approx(yellow, abs=0.02)
+
+
+def test_resolve_cmap_plain_specs_unaffected():
+    u = make_bare_updater(SPECS["temperature"])
+    cmap = u._resolve_cmap()
+    assert cmap.name == "RdYlBu_r"

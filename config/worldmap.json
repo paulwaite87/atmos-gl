@@ -125,7 +125,7 @@
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
     "outfile": "data/ozone.png",
     "level_of_detail": "1",
-    "palette": "critical",
+    "palette": "alert",
     "critical_du": 220,
     "alpha": 45,
     "key_fontsize": 8,
@@ -140,6 +140,18 @@
     "level_of_detail": "2",
     "min_cape": 1200,
     "alpha": 50,
+    "key_fontsize": 8,
+    "runs_per_day": 2,
+    "cache_expiry_days": 3
+  },
+  "pwat": {
+    "enabled": false,
+    "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
+    "outfile": "data/pwat.png",
+    "level_of_detail": "1",
+    "palette": "standard",
+    "critical_pwat": 50,
+    "alpha": 45,
     "key_fontsize": 8,
     "runs_per_day": 2,
     "cache_expiry_days": 3

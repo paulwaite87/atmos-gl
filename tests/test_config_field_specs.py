@@ -374,9 +374,12 @@ def test_section_conditional_palette_options_differ_per_section():
     must stay independent, not accidentally share one shared constant."""
     sst_values = {v for v, _ in FIELD_SPECS[("sst", "palette")].options}
     ozone_values = {v for v, _ in FIELD_SPECS[("ozone", "palette")].options}
+    pwat_values = {v for v, _ in FIELD_SPECS[("pwat", "palette")].options}
     assert sst_values == {"thermal", "vivid", "deep", "ocean"}
-    assert ozone_values == {"critical", "plasma", "viridis", "inferno", "turbo"}
+    assert ozone_values == {"alert", "high_contrast"}
+    assert pwat_values == {"standard", "atmospheric_river", "deep_teal"}
     assert sst_values.isdisjoint(ozone_values)
+    assert sst_values.isdisjoint(pwat_values)
 
 
 # --- GET /config: Atmospheric / Climate tabs render correctly ---
