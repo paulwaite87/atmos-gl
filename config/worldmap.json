@@ -145,7 +145,7 @@
     "cache_expiry_days": 3
   },
   "pwat": {
-    "enabled": false,
+    "enabled": true,
     "url": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
     "outfile": "data/pwat.png",
     "level_of_detail": "1",
