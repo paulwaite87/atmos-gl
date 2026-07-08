@@ -37,6 +37,7 @@ docker-compose.override.yml
 Thumbs.db
 .vscode/
 .idea/
+.claude/
 *.swp
 *~
 
