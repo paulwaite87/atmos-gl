@@ -9,9 +9,7 @@ different cadence to the GFS pair — no probe is shared here, but the same per-
 memoisation still applies if something else ever needs the RTOFS baseline too. See
 field_base.CycleContext.
 """
-import os
 import logging
-import tempfile
 from datetime import datetime, timedelta, timezone
 
 from worldmap.lib.rtofs import (
@@ -22,7 +20,7 @@ from worldmap.lib.rtofs import (
 )
 from worldmap.lib.gfs import download_whole, remote_exists
 from worldmap.lib.unpack import CURRENTS_UNPACKERS
-from .field_base import FieldCollectorBase, CycleContext
+from .field_base import FieldCollectorBase, CycleContext, with_tempfile
 
 logger = logging.getLogger("worldmap.collectors.rtofs_currents")
 
@@ -102,20 +100,13 @@ class RtofsCurrentsCollector(FieldCollectorBase):
                 logger.debug(f"currents f{fhour:03d} download skipped: {e}")
                 continue
 
-            tmp = tempfile.NamedTemporaryFile(suffix=".nc", delete=False)
-            tmp.write(data)
-            tmp.close()
             try:
-                fields = unpacker(tmp.name)
-                self.store.store_field(date_str, run, fhour, product, fields, valid)
-                stored += 1
+                with with_tempfile(data, ".nc") as tmp_path:
+                    fields = unpacker(tmp_path)
+                    self.store.store_field(date_str, run, fhour, product, fields, valid)
+                    stored += 1
             except Exception as e:
                 logger.debug(f"currents f{fhour:03d} unpack/store failed: {e}")
-            finally:
-                try:
-                    os.remove(tmp.name)
-                except OSError:
-                    pass
 
         logger.info(
             f"Data Collector (currents): {date_str} {run}Z, hours "
@@ -147,15 +138,7 @@ class RtofsCurrentsCollector(FieldCollectorBase):
         if not data:
             return False
         valid = self._valid_time(run_date, run_id, fhour)
-        tmp = tempfile.NamedTemporaryFile(suffix=".nc", delete=False)
-        tmp.write(data)
-        tmp.close()
-        try:
-            fields = unpacker(tmp.name)
+        with with_tempfile(data, ".nc") as tmp_path:
+            fields = unpacker(tmp_path)
             self.store.store_field(run_date, run_id, fhour, product, fields, valid)
             return True
-        finally:
-            try:
-                os.remove(tmp.name)
-            except OSError:
-                pass

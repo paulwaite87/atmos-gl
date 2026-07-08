@@ -8,10 +8,7 @@ Runs on the SAME GFS run + forecast-hour cadence as GfsAtmosCollector, so it sha
 baseline (CycleContext key "gfs") rather than probing NOMADS a second time — see
 field_base.CycleContext.
 """
-import os
-import glob
 import logging
-import tempfile
 from datetime import datetime, timedelta, timezone
 
 from worldmap.lib.gfs import (
@@ -21,7 +18,7 @@ from worldmap.lib.gfs import (
     build_wave_url,
 )
 from worldmap.lib.unpack import WAVES_UNPACKERS
-from .field_base import FieldCollectorBase, CycleContext
+from .field_base import FieldCollectorBase, CycleContext, with_tempfile
 
 logger = logging.getLogger("worldmap.collectors.gfs_waves")
 
@@ -79,23 +76,15 @@ class GfsWavesCollector(FieldCollectorBase):
                 logger.debug(f"waves f{fhour:03d} download skipped: {e}")
                 continue
 
-            tmp = tempfile.NamedTemporaryFile(suffix=".grib2", delete=False)
-            tmp.write(data)
-            tmp.close()
             try:
-                fields = unpacker(tmp.name)
-                self.store.store_field(
-                    run_date_str, run_id, fhour, product, fields, valid
-                )
-                stored += 1
+                with with_tempfile(data, ".grib2", cleanup_idx=True) as tmp_path:
+                    fields = unpacker(tmp_path)
+                    self.store.store_field(
+                        run_date_str, run_id, fhour, product, fields, valid
+                    )
+                    stored += 1
             except Exception as e:
                 logger.debug(f"waves f{fhour:03d} unpack/store failed: {e}")
-            finally:
-                for path in [tmp.name] + glob.glob(tmp.name + "*.idx"):
-                    try:
-                        os.remove(path)
-                    except OSError:
-                        pass
 
         logger.info(
             f"Data Collector (waves): {run_date_str} {run_id}Z, "
@@ -118,16 +107,7 @@ class GfsWavesCollector(FieldCollectorBase):
         if not data:
             return False
         valid = self._valid_time(run_date, run_id, fhour)
-        tmp = tempfile.NamedTemporaryFile(suffix=".grib2", delete=False)
-        tmp.write(data)
-        tmp.close()
-        try:
-            fields = unpacker(tmp.name)
+        with with_tempfile(data, ".grib2", cleanup_idx=True) as tmp_path:
+            fields = unpacker(tmp_path)
             self.store.store_field(run_date, run_id, fhour, product, fields, valid)
             return True
-        finally:
-            for path in [tmp.name] + glob.glob(tmp.name + "*.idx"):
-                try:
-                    os.remove(path)
-                except OSError:
-                    pass
