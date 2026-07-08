@@ -1,9 +1,10 @@
 import { liveDataSync } from './_datasync.js';
+import { hoverPopup } from './_hoverpopup.js';
 
 export function loadLayer(map, config) {
     const sourceId = 'lightning-source';
     const layerId  = 'lightning-layer';
-    const popup = new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 15 });
+    let stopPopup = null;
     const boltIcons = [
         { id: 'bolt-white',  url: '/images/bolt_white.png' },
         { id: 'bolt-yellow', url: '/images/bolt_yellow.png' },
@@ -19,24 +20,19 @@ export function loadLayer(map, config) {
         return r.json();
     };
 
-    const onEnter = (e) => {
-        if (!e.features.length) return;
-        map.getCanvas().style.cursor = 'pointer';
+    const popupHtml = (f) => {
         const recentMins = config.strike_recent_minutes ?? 15;
         const keepMins   = config.strike_keep_minutes ?? 60;
-        const f = e.features[0].properties;
-        const coords = e.features[0].geometry.coordinates.slice();
-        const mins = Math.floor(f.age_minutes);
+        const p = f.properties;
+        const mins = Math.floor(p.age_minutes);
         const age = mins < 60 ? `${mins} mins ago` : `${(mins / 60).toFixed(1)} hours ago`;
         const color = mins <= recentMins ? '#28a745' : (mins <= keepMins ? '#f0ad4e' : '#d9534f');
-        popup.setLngLat(coords).setHTML(
-            `<div style="font-family:sans-serif;font-size:12px;color:#000;padding:5px;">
-                <strong style="color:#ff4a4a;font-size:14px;">Strike at ${f.timestamp}</strong>
+        return `<div style="font-family:sans-serif;font-size:12px;color:#000;padding:5px;">
+                <strong style="color:#ff4a4a;font-size:14px;">Strike at ${p.timestamp}</strong>
                 <hr style="border:0;border-top:1px solid #ccc;margin:6px 0;">
                 <div><span style="color:#666;width:40px;display:inline-block;">Age:</span> <strong style="color:${color};">${age}</strong></div>
-            </div>`).addTo(map);
+            </div>`;
     };
-    const onLeave = () => { map.getCanvas().style.cursor = ''; popup.remove(); };
 
     const mount = async (cfg) => {
         const recentMins = cfg.strike_recent_minutes ?? 15;
@@ -59,8 +55,7 @@ export function loadLayer(map, config) {
                 'icon-allow-overlap': true, 'icon-ignore-placement': true,
             },
         });
-        map.on('mouseenter', layerId, onEnter);
-        map.on('mouseleave', layerId, onLeave);
+        stopPopup = hoverPopup(map, layerId, { html: popupHtml });
     };
 
     const refresh = async (cfg) => {
@@ -69,9 +64,7 @@ export function loadLayer(map, config) {
     };
 
     const unmount = () => {
-        map.off('mouseenter', layerId, onEnter);
-        map.off('mouseleave', layerId, onLeave);
-        popup.remove();
+        stopPopup?.();
         if (map.getLayer(layerId))   map.removeLayer(layerId);
         if (map.getSource(sourceId)) map.removeSource(sourceId);
     };

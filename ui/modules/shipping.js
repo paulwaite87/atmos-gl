@@ -1,4 +1,5 @@
 import { liveDataSync } from './_datasync.js';
+import { hoverPopup } from './_hoverpopup.js';
 
 // Helper function: Parses time difference into '3d 13h 20 mins ago' formats
 function formatLastUpdate(lastUpdateStr) {
@@ -29,7 +30,7 @@ function formatLastUpdate(lastUpdateStr) {
 export function loadLayer(map, config) {
     const sourceId = 'ships-source';
     const layerId  = 'ships-layer';
-    const popup = new maplibregl.Popup({ closeButton: false, closeOnClick: false });
+    let stopPopup = null;
 
     // Set X days here, or pass it in via the config object
     const maxAgeDays = config.max_age_days || 7;
@@ -64,16 +65,10 @@ export function loadLayer(map, config) {
         return geojson;
     };
 
-    const onEnter = (e) => {
-        if (!e.features.length) return;
-        map.getCanvas().style.cursor = 'pointer';
-        const s = e.features[0].properties;
-        const coords = e.features[0].geometry.coordinates.slice();
-
+    const popupHtml = (f) => {
+        const s = f.properties;
         const lastSeenText = formatLastUpdate(s.last_position_update);
-
-        popup.setLngLat(coords).setHTML(
-            `<div style="font-family:sans-serif;font-size:12px;color:#000;padding:5px;">
+        return `<div style="font-family:sans-serif;font-size:12px;color:#000;padding:5px;">
                 <strong style="color:#007bff;font-size:14px;">${s.name}</strong><br>
                 <span style="color:#666;">Class:</span> ${s.vessel_class}<br>
                 <span style="color:#666;">Dest:</span> ${s.destination}<br>
@@ -87,10 +82,8 @@ export function loadLayer(map, config) {
                 <span style="color:#666;">Beam:</span> ${s.beam}m<br>
                 <span style="color:#666;">Speed:</span> ${s.speed}knots<br>
                 <span style="color:#666;">Last seen:</span> ${lastSeenText}
-            </div>`).addTo(map);
+            </div>`;
     };
-
-    const onLeave = () => { map.getCanvas().style.cursor = ''; popup.remove(); };
 
     const mount = async () => {
         await Promise.all(shipIcons.map(async (ic) => {
@@ -120,8 +113,7 @@ export function loadLayer(map, config) {
             },
         });
 
-        map.on('mouseenter', layerId, onEnter);
-        map.on('mouseleave', layerId, onLeave);
+        stopPopup = hoverPopup(map, layerId, { offset: 0, html: popupHtml });
     };
 
     const refresh = async () => {
@@ -130,9 +122,7 @@ export function loadLayer(map, config) {
     };
 
     const unmount = () => {
-        map.off('mouseenter', layerId, onEnter);
-        map.off('mouseleave', layerId, onLeave);
-        popup.remove();
+        stopPopup?.();
         if (map.getLayer(layerId))   map.removeLayer(layerId);
         if (map.getSource(sourceId)) map.removeSource(sourceId);
     };
