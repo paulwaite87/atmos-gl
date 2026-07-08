@@ -1,5 +1,6 @@
 import { liveLayerSync } from './_refresh.js';
 import { createParticleGLController } from './_particles_gl.js';
+import { keyFilename, showLegend, removeLegend } from './_legend.js';
 
 /**
  * Waves layer = Web-Mercator heat tiles (significant wave height) + an animated swell
@@ -43,22 +44,8 @@ export function loadLayer(map, config) {
 
     let currentVersion = null;
 
-    const worldKeyRel = (cfg) => {
-        const o = cfg.outfile, i = o.lastIndexOf('.');
-        const base = i !== -1 ? o.slice(0, i) : o;
-        const ext  = i !== -1 ? o.slice(i)    : '';
-        return `${base}_key${ext}`;
-    };
     const setLegend = (cfg) => {
-        const stack = document.getElementById('legend-stack');
-        if (!stack) return;
-        document.getElementById(slotId)?.remove();
-        const slot = document.createElement('div');
-        slot.id = slotId; slot.className = 'legend-slot';
-        const img = document.createElement('img');
-        img.src = `${window.MAP_UI}/${worldKeyRel(cfg)}?t=${Date.now()}`;
-        img.style.display = 'block'; img.style.width = '100%';
-        slot.appendChild(img); stack.appendChild(slot);
+        showLegend(slotId, `${window.MAP_UI}/${keyFilename(cfg.outfile)}?t=${Date.now()}`);
     };
 
     const tilesUrl = (version) =>
@@ -151,7 +138,7 @@ export function loadLayer(map, config) {
         bars.unmount();
         if (map.getLayer(layerId))   map.removeLayer(layerId);
         if (map.getSource(sourceId)) map.removeSource(sourceId);
-        document.getElementById(slotId)?.remove();
+        removeLegend(slotId);
     };
 
     return liveLayerSync(map, {

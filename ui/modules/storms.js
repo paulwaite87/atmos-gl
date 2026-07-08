@@ -1,4 +1,6 @@
 import { liveDataSync } from './_datasync.js';
+import { hoverPopup } from './_hoverpopup.js';
+import { startPulse } from './_pulse.js';
 
 export function loadLayer(map, config) {
     const sourceId = 'storms-source';
@@ -6,8 +8,8 @@ export function loadLayer(map, config) {
         'storms-cone', 'storms-cone-shadow', 'storms-cone-outline',
         'storms-track-past', 'storms-track-forecast', 'storms-points',
     ];
-    const popup = new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 10 });
-    let pulsing = false;
+    let stopPopup = null;
+    let stopPulse = null;
 
     const urlFor = () => `${window.WM_API}/storms/geojson?t=${Date.now()}`;
 
@@ -17,33 +19,17 @@ export function loadLayer(map, config) {
         return r.json();
     };
 
-    const onEnter = (e) => {
-        map.getCanvas().style.cursor = 'pointer';
-        const p = e.features[0].properties;
-        const coords = e.features[0].geometry.coordinates.slice();
+    const popupHtml = (f) => {
+        const p = f.properties;
         const dateStr = new Date(p.dt).toLocaleString(undefined,
             { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-        popup.setLngLat(coords).setHTML(
-            `<div style="font-family:sans-serif;font-size:12px;color:#000;padding:4px;">
+        return `<div style="font-family:sans-serif;font-size:12px;color:#000;padding:4px;">
                 <strong style="color:#ff4a4a;font-size:14px;">${p.name || p.sid}</strong>
                 <hr style="border:0;border-top:1px solid #ccc;margin:4px 0;">
                 <div><span style="color:#666;width:45px;display:inline-block;">Type:</span> <strong>${p.record_type}</strong></div>
                 <div><span style="color:#666;width:45px;display:inline-block;">Time:</span> <strong>${dateStr}</strong></div>
                 ${p.tau > 0 ? `<div><span style="color:#666;width:45px;display:inline-block;">Hour:</span> <strong>+${p.tau}</strong></div>` : ''}
-            </div>`).addTo(map);
-    };
-    const onLeave = () => { map.getCanvas().style.cursor = ''; popup.remove(); };
-
-    const startPulse = () => {
-        pulsing = true;
-        const loop = () => {
-            if (!pulsing || !map.getLayer('storms-points')) return;
-            const r = 6 + ((Math.sin(Date.now() / 400) + 1) / 2) * 4;
-            map.setPaintProperty('storms-points', 'circle-radius',
-                ['match', ['get', 'record_type'], 'CURRENT', r, 4]);
-            requestAnimationFrame(loop);
-        };
-        requestAnimationFrame(loop);
+            </div>`;
     };
 
     const mount = async () => {
@@ -74,9 +60,10 @@ export function loadLayer(map, config) {
                 'circle-color': '#111111', 'circle-stroke-color': '#ff4a4a', 'circle-stroke-width': 2,
             } });
 
-        map.on('mouseenter', 'storms-points', onEnter);
-        map.on('mouseleave', 'storms-points', onLeave);
-        startPulse();
+        stopPopup = hoverPopup(map, 'storms-points', { offset: 10, html: popupHtml });
+        stopPulse = startPulse(map, 'storms-points', 'circle-radius', {
+            base: 6, toValue: (r) => ['match', ['get', 'record_type'], 'CURRENT', r, 4],
+        });
     };
 
     const refresh = async () => {
@@ -85,10 +72,8 @@ export function loadLayer(map, config) {
     };
 
     const unmount = () => {
-        pulsing = false;
-        map.off('mouseenter', 'storms-points', onEnter);
-        map.off('mouseleave', 'storms-points', onLeave);
-        popup.remove();
+        stopPulse?.();
+        stopPopup?.();
         for (const id of layerIds) if (map.getLayer(id)) map.removeLayer(id);
         if (map.getSource(sourceId)) map.removeSource(sourceId);
     };

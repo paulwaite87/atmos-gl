@@ -1,6 +1,7 @@
 import { createFillLayer } from './_webglfill.js';
 import { createCurrentParticleGLLayer } from './_currentparticles_gl.js';
 import { timeline } from './timeline.js';
+import { keyFilename, showLegend, removeLegend } from './_legend.js';
 
 // Backend VMAX_CURRENT (m/s). Texture is R=U, G=V encoded as channel*(2*vmax)-vmax.
 const VMAX = 2.5;
@@ -120,23 +121,10 @@ export async function loadLayer(map, config, fullConfig = {}) {
     };
 
     // ---- legend (colourbar key PNG written by the backend) ----
-    const keyUrlFor = (cfg) => {
-        const o = cfg.outfile, i = o.lastIndexOf('.');
-        const b = i !== -1 ? o.slice(0, i) : o, e = i !== -1 ? o.slice(i) : '';
-        return `${window.MAP_UI}/${b}_key${e}`;
-    };
     const addLegend = (cfg) => {
-        const stack = document.getElementById('legend-stack');
-        if (!stack) return;
-        document.getElementById(slotId)?.remove();
-        const slot = document.createElement('div');
-        slot.id = slotId; slot.className = 'legend-slot';
-        const img = document.createElement('img');
-        img.src = `${keyUrlFor(cfg)}?t=${Date.now()}`;
-        img.style.display = 'block'; img.style.width = '100%';
-        slot.appendChild(img); stack.appendChild(slot);
+        showLegend(slotId, `${window.MAP_UI}/${keyFilename(cfg.outfile)}?t=${Date.now()}`);
     };
-    const removeLegend = () => document.getElementById(slotId)?.remove();
+    const clearLegend = () => removeLegend(slotId);
 
     const palette = config.palette && PALETTES[config.palette] ? config.palette : 'thermal_red';
 
@@ -185,7 +173,7 @@ export async function loadLayer(map, config, fullConfig = {}) {
         }),
         onMount: addLegend,
         onRefresh: addLegend,
-        onUnmount: removeLegend,
+        onUnmount: clearLegend,
     });
 
     // ---- 2) PARTICLES (on top): flowing trails advected along the u/v texture ----
@@ -218,6 +206,6 @@ export async function loadLayer(map, config, fullConfig = {}) {
     return () => {
         try { stopParticles && stopParticles(); } catch {}
         try { stopFill && stopFill(); } catch {}
-        try { removeLegend(); } catch {}
+        try { clearLegend(); } catch {}
     };
 }
