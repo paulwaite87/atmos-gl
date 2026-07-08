@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 #   isobars       :PRMSL:mean sea level:
 #   precipitation :PRATE:surface:
 #   ozone         :TOZNE:
+#   pwat          :PWAT:entire atmosphere (considered as a single layer):
 #   stormwatch    :CAPE:surface: / :CIN:surface:
 #   temperature   :TMP:2 m above ground:
 #   wind          :UGRD:/:VGRD:10 m above ground:
@@ -26,6 +27,7 @@ ATMOS_TARGETS = [
     ":PRMSL:mean sea level:",
     ":PRATE:surface:",
     ":TOZNE:",
+    ":PWAT:",
     ":CAPE:surface:",
     ":CIN:surface:",
     ":TMP:2 m above ground:",

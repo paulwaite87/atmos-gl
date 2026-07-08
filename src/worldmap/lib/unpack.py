@@ -183,6 +183,23 @@ def ozone_data_unpack(path):
     return out
 
 
+def pwat_data_unpack(path):
+    """PWAT -> total column precipitable water in mm (numerically == kg/m^2)."""
+    ds = xr.open_dataset(
+        path,
+        engine="cfgrib",
+        backend_kwargs={"filter_by_keys": {"shortName": "pwat"}},
+    )
+    var = list(ds.data_vars)[0]
+    p = ds[var].values.squeeze()
+    lats = ds["latitude"].values
+    lons, (p,) = _standardize_lon(ds["longitude"].values, p)
+    ds.close()
+    out = _blank()
+    out.update(lat=np.asarray(lats), lon=lons, values=p)
+    return out
+
+
 def wind_data_unpack(path):
     """UGRD/VGRD @ 10 m -> u, v wind components (m/s)."""
     ds = xr.open_dataset(
@@ -396,6 +413,7 @@ ATMOS_UNPACKERS = {
     "temperature": temperature_data_unpack,
     "humidity": rh_data_unpack,
     "ozone": ozone_data_unpack,
+    "pwat": pwat_data_unpack,
     "wind": wind_data_unpack,
     "stormwatch": stormwatch_data_unpack,
 }

@@ -2,30 +2,35 @@ import { createFillLayer } from './_webglfill.js';
 import { keyFilename, showLegend, removeLegend } from './_legend.js';
 import { buildThresholdLUT } from './_thresholdpalette.js';
 
-// GPU scrubber layer. Critical-zone ramp over [150, 450] Dobson Units (total column
-// ozone) -- mirrors tasks/scalar_field.py's SPECS["ozone"] (architecture review
-// candidate #5: restores the critical-palette behaviour PR #49 silently dropped when
-// OzoneUpdater was collapsed into the generic ScalarFieldUpdater). Brightest colour
-// (yellow) marks the worst reading (lowest ozone, i.e. the hole), fading through
-// magenta at the critical_du threshold to a dim, near-transparent "safe" zone above it.
-const VMIN = 150.0;
-const VMAX = 500.0;
+// GPU scrubber layer. Critical-zone ramp over [0, 80] mm precipitable water (total
+// column moisture) -- mirrors tasks/scalar_field.py's SPECS["pwat"]. Highlights
+// potential problem areas (elevated moisture -- a precondition for heavy rain/
+// atmospheric rivers) rather than colouring the whole globe: below critical_pwat is
+// fully transparent, above it grades toward the brightest colour at vmax (the most
+// anomalous reading).
+const VMIN = 0.0;
+const VMAX = 80.0;
 
 const PALETTES = {
-    alert: [[1, 0, 1], [1, 1, 0]],           // magenta (threshold) -> yellow (worst)
-    high_contrast: [[1, 0, 0], [1, 1, 0.8]], // red (threshold) -> pale yellow (worst)
+    // Matches precipitation.js's "standard" palette exactly, so the two layers
+    // visually reinforce each other when both render at once.
+    standard: [
+        [0, 1, 1], [0, 0.5, 1], [0, 1, 0], [1, 1, 0], [1, 0.5, 0], [1, 0, 0], [1, 0, 1],
+    ],
+    atmospheric_river: [[0, 0, 0.55], [0.6, 0, 0.85]], // deep blue -> violet (NOAA moisture-plume convention)
+    deep_teal: [[0.7, 1, 1], [0, 0.35, 0.3]],           // pale cyan -> deep teal
 };
-const FLAT_COLOR = [0, 0.1, 0.3, 0.2]; // dim, mostly-transparent -- the "safe" zone
+const FLAT_COLOR = [0, 0, 0, 0]; // fully transparent -- unremarkable moisture
 
 export function loadLayer(map, config, fullConfig = {}) {
-    const slotId = 'ozone-legend-slot';
+    const slotId = 'pwat-legend-slot';
 
     const addLegend = (cfg) => {
         showLegend(slotId, `${window.MAP_UI}/${keyFilename(cfg.outfile)}?t=${Date.now()}`);
     };
 
     createFillLayer(map, {
-        sectionKey: 'ozone',
+        sectionKey: 'pwat',
         initialConfig: config,
         initialAnimation: fullConfig.animation || {},
         initialCommon: fullConfig.common || {},
@@ -45,9 +50,9 @@ export function loadLayer(map, config, fullConfig = {}) {
         }),
         colormap: (cfg) => buildThresholdLUT({
             vmin: VMIN, vmax: VMAX,
-            threshold: Number(cfg.critical_du) || 220.0,
-            focus: 'below',
-            paletteColors: PALETTES[cfg.palette] || PALETTES.alert,
+            threshold: Number(cfg.critical_pwat) || 50.0,
+            focus: 'above',
+            paletteColors: PALETTES[cfg.palette] || PALETTES.standard,
             flatColor: FLAT_COLOR,
         }),
         onMount: addLegend,

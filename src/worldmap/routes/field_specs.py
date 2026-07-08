@@ -20,7 +20,7 @@ constants below capture those shapes once and get registered under every
 Migrated so far: Global (common, animation), Events (quakes, volcanoes),
 Misc (satellites, terminator, markers), Shipping (shipping),
 Atmospheric (clouds, isobars, wind, precipitation, lightning, storms),
-Climate (sst, currents, waves, temperature, ozone, stormwatch).
+Climate (sst, currents, waves, temperature, ozone, stormwatch, pwat).
 
 Validated with ast.parse.
 """
@@ -364,11 +364,8 @@ FIELD_SPECS = {
     ("temperature", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
     ("ozone", "level_of_detail"): _LEVEL_OF_DETAIL,
     ("ozone", "palette"): SelectSpec([
-        ("critical", "Critical"),
-        ("plasma", "Plasma"),
-        ("viridis", "Viridis"),
-        ("inferno", "Inferno"),
-        ("turbo", "Turbo"),
+        ("alert", "Alert (magenta -> yellow)"),
+        ("high_contrast", "High contrast (red -> pale yellow)"),
     ]),
     ("ozone", "critical_du"): SliderSpec(min=150.0, max=500.0, step=10.0, decimals=1, suffix="du"),
     ("ozone", "alpha"): _ALPHA,
@@ -382,6 +379,17 @@ FIELD_SPECS = {
     ("stormwatch", "key_fontsize"): _FONTSIZE,
     ("stormwatch", "runs_per_day"): _RUNS_PER_DAY,
     ("stormwatch", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
+    ("pwat", "level_of_detail"): _LEVEL_OF_DETAIL,
+    ("pwat", "palette"): SelectSpec([
+        ("standard", "Standard (matches precipitation)"),
+        ("atmospheric_river", "Atmospheric river (blue -> violet)"),
+        ("deep_teal", "Deep teal (cyan -> teal)"),
+    ]),
+    ("pwat", "critical_pwat"): SliderSpec(min=0.0, max=80.0, step=5.0, decimals=0, suffix="mm"),
+    ("pwat", "alpha"): _ALPHA,
+    ("pwat", "key_fontsize"): _FONTSIZE,
+    ("pwat", "runs_per_day"): _RUNS_PER_DAY,
+    ("pwat", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
     # --- Background (shipping_collector, lightning_collector, satellites_collector,
     # data_collector, housekeeper) ---
     ("shipping_collector", "log_level"): _LOG_LEVEL,
@@ -417,6 +425,7 @@ _LABEL_OVERRIDES = {
     ("quakes", "min_mag"): "Minimum magnitude",
     ("stormwatch", "min_cape"): "Minimum CAPE Threshold",
     ("ozone", "critical_du"): "Critical Ozone Threshold (Dobson Units)",
+    ("pwat", "critical_pwat"): "Critical Moisture Threshold (mm)",
 }
 
 
