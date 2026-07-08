@@ -36,10 +36,14 @@ class CloudUpdater(Updater):
         logger.debug(f"Saving transparent cloud map in {self.output_path}")
         transparent_clouds_image.save(self.output_path, "PNG")
 
-    def run(self):
+    def run(self, max_hours=None):
         """Render the transparent cloud overlay from the collector-maintained cache.
         No network: the data_collector fetches the GIBS image. (Re)process only when the
-        cache is newer than our output, so we don't repaint an unchanged image."""
+        cache is newer than our output, so we don't repaint an unchanged image.
+
+        max_hours is a no-op here -- clouds render once per cycle, not per forecast
+        hour, so it has nothing to cap. Accepted only so layer_builder's dispatch can
+        call every TASK_CLASSES entry's run() the same way."""
         if not os.path.exists(self.cache_output_path):
             logger.info(
                 f"Clouds: cache {os.path.basename(self.cache_output_path)} not present "

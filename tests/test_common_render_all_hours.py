@@ -83,7 +83,24 @@ def test_one_hour_plot_failure_does_not_stop_the_others():
     assert plotted == 2  # hours 0 and 6 still rendered despite hour 3 raising
 
 
-def test_publishes_the_last_hour_when_any_hours_were_resolved():
+def test_publishes_each_plotted_hour_immediately():
+    """Publishes as each hour lands, not once at the end -- with max_hours capping a
+    call to one hour, "once at the end" would mean "never" until the whole backlog
+    drains (architecture review candidate "interleave per-hour rendering across
+    layers")."""
+    u = make_bare_layer()
+    u.should_plot_for_hour = MagicMock(return_value=True)
+    u.get_db_field_at_hour = MagicMock(return_value={"values": [[1.0]]})
+    plot_fn = MagicMock()
+
+    u.render_all_hours("isobars", plot_fn, field_ready=lambda f: True)
+
+    assert u.publish_current_hour.call_args_list == [
+        ((0,),), ((3,),), ((6,),),
+    ]
+
+
+def test_does_not_publish_when_nothing_needs_plotting():
     u = make_bare_layer()
     u.should_plot_for_hour = MagicMock(return_value=False)  # nothing needs plotting
     u.get_db_field_at_hour = MagicMock()
@@ -91,7 +108,32 @@ def test_publishes_the_last_hour_when_any_hours_were_resolved():
 
     u.render_all_hours("isobars", plot_fn, field_ready=lambda f: True)
 
-    u.publish_current_hour.assert_called_once_with(6)  # last of [0, 3, 6]
+    u.publish_current_hour.assert_not_called()
+
+
+def test_max_hours_stops_after_plotting_that_many_and_yields():
+    u = make_bare_layer()
+    u.should_plot_for_hour = MagicMock(return_value=True)
+    u.get_db_field_at_hour = MagicMock(return_value={"values": [[1.0]]})
+    plot_fn = MagicMock()
+
+    plotted = u.render_all_hours("isobars", plot_fn, field_ready=lambda f: True, max_hours=1)
+
+    assert plotted == 1
+    seen_hours = [call.args[1].fhour for call in plot_fn.call_args_list]
+    assert seen_hours == [0]  # stopped after the first hour, never examined 3 or 6
+    u.publish_current_hour.assert_called_once_with(0)
+
+
+def test_max_hours_none_drains_the_whole_backlog():
+    u = make_bare_layer()
+    u.should_plot_for_hour = MagicMock(return_value=True)
+    u.get_db_field_at_hour = MagicMock(return_value={"values": [[1.0]]})
+    plot_fn = MagicMock()
+
+    plotted = u.render_all_hours("isobars", plot_fn, field_ready=lambda f: True, max_hours=None)
+
+    assert plotted == 3
 
 
 def test_no_catalog_data_returns_zero_and_does_not_publish():

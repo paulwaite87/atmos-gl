@@ -848,7 +848,7 @@ class MultiHourRenderMixin:
             # On error, be conservative — don't plot (file is probably fine)
             return False
 
-    def render_all_hours(self, product_name, plot_fn, field_ready):
+    def render_all_hours(self, product_name, plot_fn, field_ready, max_hours=None):
         """Gap-filling per-hour render loop.
 
         The scrubber needs a rendered PNG for every forecast hour that has data, not
@@ -864,6 +864,13 @@ class MultiHourRenderMixin:
                      for the given ForecastState.
             field_ready: callable(field) -> bool; whether the fetched field has the
                      data this layer needs (e.g. values is not None; u/v for wind).
+            max_hours: stop after actually plotting this many hours (None = drain the
+                     whole backlog in one call, the original behaviour). layer_builder
+                     passes 1 so one process-pool dispatch renders one hour and yields
+                     the worker back to the round-robin queue, instead of one layer
+                     monopolising a worker until its entire backlog is caught up
+                     (architecture review candidate "interleave per-hour rendering
+                     across layers").
 
         Returns the number of hours actually (re)plotted.
         """
@@ -881,10 +888,10 @@ class MultiHourRenderMixin:
         run_date, run_id, hours = resolved
 
         plotted = 0
-        last_state = None
+        examined = 0
         for fh in hours:
+            examined += 1
             state = ForecastState.at_hour(run_date, run_id, fh)
-            last_state = state
             if not self.should_plot_for_hour(state, product_name):
                 continue
             field = self.get_db_field_at_hour(state, product_name)
@@ -899,20 +906,30 @@ class MultiHourRenderMixin:
                 # UI's percent bar already reflects per-hour progress live; last_updated
                 # should too instead of sitting on "never" for the whole cycle.
                 self.process_status_adapter.record_process_run(self.section, "layer", success=True)
+                # Publish THIS hour to the stable base filename immediately, not once
+                # at the end -- with max_hours capping each call to one hour, "once at
+                # the end" would mean "never" until the whole backlog drains. The
+                # tradeoff: while catching up a multi-hour backlog, the stable file can
+                # briefly point at an older hour than it did a moment ago (hours render
+                # in ascending order) before reaching the true latest again -- accepted
+                # in exchange for every layer visibly progressing instead of one at a
+                # time.
+                self.publish_current_hour(state.fhour)
             except Exception as e:
                 logger.warning(f"{self.section}: plot f{state.fhour:03d} failed: {e}")
+            if max_hours is not None and plotted >= max_hours:
+                break
 
+        stopped_early = examined < len(hours)
         if plotted:
-            logger.info(
-                f"{self.section}: rendered {plotted} hour(s) "
-                f"({len(hours)} available, {len(hours) - plotted} already fresh)."
+            suffix = (
+                f"({len(hours)} available, stopped early after {examined} examined)"
+                if stopped_early
+                else f"({len(hours)} available, {len(hours) - plotted} already fresh)"
             )
+            logger.info(f"{self.section}: rendered {plotted} hour(s) {suffix}.")
         else:
             logger.debug(
                 f"{self.section}: all {len(hours)} hour(s) fresh; nothing to render."
             )
-
-        # Keep the stable base-name static current (for forecast_stepping=off / fallback).
-        if last_state is not None:
-            self.publish_current_hour(last_state.fhour)
         return plotted

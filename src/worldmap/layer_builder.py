@@ -17,7 +17,7 @@ from worldmap.db.process_status_adapter import ProcessStatusAdapter
 
 
 # Task imports
-from worldmap.tasks.common import MapData, LAYER_CYCLE_SECONDS
+from worldmap.tasks.common import MapData, LAYER_CYCLE_SECONDS, MultiHourRenderMixin
 from worldmap.tasks.clouds import CloudUpdater
 from worldmap.tasks.isobars import IsobarUpdater
 from worldmap.tasks.wind import WindUpdater
@@ -56,6 +56,26 @@ TASK_CLASSES = {
 }
 
 
+def _updater_class(entry):
+    """The plain class behind a TASK_CLASSES entry, unwrapping the partial() binding
+    the four ScalarFieldUpdater-based sections use."""
+    return entry.func if isinstance(entry, partial) else entry
+
+
+# Sections rendered per-forecast-hour (mix in MultiHourRenderMixin) vs. once per cycle
+# (sst/clouds/markers -- no per-hour concept). Only multi-hour sections participate in
+# the round-robin dispatch below: each round renders at most ONE hour per section, so a
+# section with a large backlog can't monopolise the render pool's workers for its whole
+# catch-up -- every section advances roughly evenly instead of depth-first through
+# whichever ones got dispatched first (architecture review candidate "interleave
+# per-hour rendering across layers").
+MULTI_HOUR_SECTIONS = [
+    name for name, entry in TASK_CLASSES.items()
+    if issubclass(_updater_class(entry), MultiHourRenderMixin)
+]
+SINGLE_SHOT_SECTIONS = [name for name in TASK_CLASSES if name not in MULTI_HOUR_SECTIONS]
+
+
 def _worker_init(config_path):
     """Runs once per worker PROCESS at spawn. The child never calls main(), so it must
     configure its own logging — at the configured level so worker render logs match the
@@ -69,7 +89,7 @@ def _worker_init(config_path):
         pass
 
 
-def _render_worker(config_path, section, baseline):
+def _render_worker(config_path, section, baseline, max_hours=None):
     """Runs in a SEPARATE PROCESS.
 
     Rebuilds config + map_data from the config path (no live objects cross the process
@@ -81,8 +101,12 @@ def _render_worker(config_path, section, baseline):
     parallel — what the thread model could not do safely (those C libraries are not
     thread-safe and segfaulted under concurrency).
 
-    Exceptions are caught and returned as (section, repr) rather than raised, so one
-    failing layer can't poison the gather.
+    max_hours is forwarded to run() unconditionally -- every TASK_CLASSES updater
+    accepts it now (single-shot layers ignore it; multi-hour ones cap the backlog they
+    drain this call to that many hours). Returns (section, error, plotted): error is
+    None on success (repr(exception) on failure, and one failing layer can't poison the
+    gather since it's caught here rather than raised); plotted is however many hours
+    run() actually rendered (0 for single-shot layers, or an exception).
     """
     try:
         cfg = WorldMapConfig(config_path)
@@ -92,10 +116,10 @@ def _render_worker(config_path, section, baseline):
             md.shared_state["gfs_baseline"] = baseline["gfs"]
         if baseline.get("rtofs"):
             md.shared_state["rtofs_baseline"] = baseline["rtofs"]
-        TASK_CLASSES[section](cfg, md).run()
-        return (section, None)
+        plotted = TASK_CLASSES[section](cfg, md).run(max_hours=max_hours)
+        return (section, None, plotted or 0)
     except Exception as e:
-        return (section, repr(e))
+        return (section, repr(e), 0)
 
 
 class LayerBuilder:
@@ -181,14 +205,20 @@ class LayerBuilder:
 
     def _handle_results(self, sections, results):
         """Log per-task errors and record process_status for the Data Status UI (one row
-        per TASK_CLASSES entry, success or failure). `sections` is the same ordered list
+        per dispatched section, success or failure). `sections` is the same ordered list
         futures were built from, so zip(sections, results) reliably pairs each result with
         its task even in the edge case where a result is a bare Exception (e.g. the
-        executor itself died) rather than _render_worker's own (section, error) tuple.
+        executor itself died) rather than _render_worker's own (section, error, plotted)
+        tuple.
 
-        Returns True if the pool broke (a worker died) and must be recreated.
+        Returns (broken, plotted_by_section). broken is True if the pool broke (a worker
+        died) and must be recreated. plotted_by_section maps each section to how many
+        hours it actually rendered this dispatch -- the round-robin loop in
+        start_scheduler() uses it to drop a multi-hour section once it stops reporting
+        progress, rather than looping it forever.
         """
         broken = False
+        plotted_by_section = {}
         for section, r in zip(sections, results):
             if isinstance(r, BrokenProcessPool):
                 broken = True
@@ -207,9 +237,57 @@ class LayerBuilder:
                 )
             else:
                 self.process_status_adapter.record_process_run(section, "layer", success=True)
+                if r and len(r) > 2:
+                    plotted_by_section[section] = r[2] or 0
         if broken:
             logger.error("Render worker died (BrokenProcessPool); recreating pool")
-        return broken
+        return broken, plotted_by_section
+
+    async def _dispatch_round(self, loop, sections, baseline, max_hours_by_section):
+        """Dispatch one future per section in `sections` (each capped to
+        max_hours_by_section[section] hours -- None for single-shot layers, 1 for a
+        multi-hour layer's round-robin turn), gather, record process_status, and
+        recreate the pool if a worker died. Returns plotted_by_section."""
+        futures = [
+            loop.run_in_executor(
+                self._pool, _render_worker, self.config_path, section, baseline,
+                max_hours_by_section[section],
+            )
+            for section in sections
+        ]
+        results = await asyncio.gather(*futures, return_exceptions=True)
+        broken, plotted_by_section = self._handle_results(sections, results)
+        if broken:
+            try:
+                self._pool.shutdown(wait=False, cancel_futures=True)
+            except Exception:
+                pass
+            self._pool = self._new_pool()
+        return plotted_by_section
+
+    async def _run_dispatch_cycle(self, loop, baseline):
+        """One cycle's worth of rendering, given an already-resolved baseline.
+
+        Single-shot layers (sst/clouds/markers) dispatch once, same as before.
+        Multi-hour layers dispatch in ROUNDS -- one hour per section per round -- so a
+        section with a large backlog can't monopolise the render pool's workers for its
+        whole catch-up; every section advances roughly evenly instead of depth-first
+        through whichever ones happened to dispatch first (architecture review
+        candidate "interleave per-hour rendering across layers"). A round drops a
+        multi-hour section once it stops reporting progress.
+        """
+        pending = {s: None for s in SINGLE_SHOT_SECTIONS}
+        pending.update({s: 1 for s in MULTI_HOUR_SECTIONS})
+
+        while pending:
+            sections = list(pending)
+            plotted_by_section = await self._dispatch_round(
+                loop, sections, baseline, pending
+            )
+            pending = {
+                s: 1 for s in MULTI_HOUR_SECTIONS
+                if s in pending and plotted_by_section.get(s, 0) > 0
+            }
 
     async def start_scheduler(self):
         # Initial refresh so the region/config are current before the primer is built.
@@ -232,22 +310,12 @@ class LayerBuilder:
                     # each updater's per-hour freshness check skips already-current work, so
                     # a steady-state cycle is cheap and a changed/deleted layer re-renders
                     # promptly, now-hour first — and now genuinely in parallel.
+                    # refresh_settings/baseline-resolve still only happen once per OUTER
+                    # cycle -- a very large backlog still delays picking up config/baseline
+                    # changes until every section's rounds finish, unchanged from before
+                    # this file's per-hour round-robin dispatch existed.
                     baseline = self._resolve_baselines()
-                    sections = list(TASK_CLASSES)
-                    futures = [
-                        loop.run_in_executor(
-                            self._pool, _render_worker, self.config_path, section, baseline
-                        )
-                        for section in sections
-                    ]
-                    results = await asyncio.gather(*futures, return_exceptions=True)
-
-                    if self._handle_results(sections, results):
-                        try:
-                            self._pool.shutdown(wait=False, cancel_futures=True)
-                        except Exception:
-                            pass
-                        self._pool = self._new_pool()
+                    await self._run_dispatch_cycle(loop, baseline)
                 else:
                     logger.info("Layer-builder scheduler disabled: skipping")
 

@@ -99,7 +99,10 @@ class MarkerUpdater(Updater):
         return run_date, run_id, int(fhour)
 
     # ---- main ---------------------------------------------------------------
-    def run(self):
+    def run(self, max_hours=None):
+        # max_hours is a no-op here -- markers render once per cycle, not per forecast
+        # hour, so it has nothing to cap. Accepted only so layer_builder's dispatch can
+        # call every TASK_CLASSES entry's run() the same way.
         resolved = self._resolve_run_hour()
         if not resolved:
             logger.warning(
