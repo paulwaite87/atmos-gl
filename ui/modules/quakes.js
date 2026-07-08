@@ -1,13 +1,14 @@
 import { liveDataSync } from './_datasync.js';
+import { hoverPopup } from './_hoverpopup.js';
 
 export function loadLayer(map, config) {
     const sourceId = 'quakes-source';
     const layerId  = 'quakes-layer';
-    const popup = new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 15 });
     const quakeIcons = [
         { id: 'quake-new', url: '/images/earthquake_new.png' },
         { id: 'quake-old', url: '/images/earthquake_old.png' },
     ];
+    let stopPopup = null;
 
     const urlFor = (cfg) => `${window.WM_API}/quakes/geojson`
         + `?min_mag=${cfg.min_mag ?? 3.5}`
@@ -20,21 +21,15 @@ export function loadLayer(map, config) {
         return r.json();
     };
 
-    // named handlers so unmount can map.off() them
-    const onEnter = (e) => {
-        if (!e.features.length) return;
-        map.getCanvas().style.cursor = 'pointer';
-        const d = e.features[0].properties;
-        const coords = e.features[0].geometry.coordinates.slice();
+    const popupHtml = (f) => {
+        const d = f.properties;
         const mins = Math.floor(d.age_minutes);
         const age = mins < 60 ? `${mins} mins ago` : `${Math.floor(mins/60)} hours ago`;
-        popup.setLngLat(coords).setHTML(
-            `<div style="font-family:sans-serif;font-size:12px;color:#000;padding:5px;">
+        return `<div style="font-family:sans-serif;font-size:12px;color:#000;padding:5px;">
                <strong style="color:#ff4a4a;">M ${Number(d.mag).toFixed(1)}</strong> — ${d.place}
                <hr style="margin:6px 0;"><div>Depth: <strong>${d.depth} km</strong></div>
-               <div>Age: <strong>${age}</strong></div></div>`).addTo(map);
+               <div>Age: <strong>${age}</strong></div></div>`;
     };
-    const onLeave = () => { map.getCanvas().style.cursor = ''; popup.remove(); };
 
     const mount = async (cfg) => {
         await Promise.all(quakeIcons.map(async (ic) => {
@@ -53,8 +48,7 @@ export function loadLayer(map, config) {
                 'icon-allow-overlap': true, 'icon-ignore-placement': true,
             },
         });
-        map.on('mouseenter', layerId, onEnter);
-        map.on('mouseleave', layerId, onLeave);
+        stopPopup = hoverPopup(map, layerId, { html: popupHtml });
     };
 
     const refresh = async (cfg) => {
@@ -63,9 +57,7 @@ export function loadLayer(map, config) {
     };
 
     const unmount = () => {
-        map.off('mouseenter', layerId, onEnter);
-        map.off('mouseleave', layerId, onLeave);
-        popup.remove();
+        stopPopup?.();
         if (map.getLayer(layerId))   map.removeLayer(layerId);
         if (map.getSource(sourceId)) map.removeSource(sourceId);
     };

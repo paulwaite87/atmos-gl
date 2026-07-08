@@ -1,9 +1,10 @@
 import { liveDataSync } from './_datasync.js';
+import { hoverPopup } from './_hoverpopup.js';
 
 export function loadLayer(map, config) {
     const sourceId = 'volcanoes-source';
     const layerId  = 'volcanoes-layer';
-    const popup = new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 15 });
+    let stopPopup = null;
 
     const urlFor = (cfg) => {
         // Build the query so UNSET config values are omitted or sent as proper defaults,
@@ -24,20 +25,15 @@ export function loadLayer(map, config) {
         return r.json();
     };
 
-    const onEnter = (e) => {
-        if (!e.features.length) return;
-        map.getCanvas().style.cursor = 'pointer';
-        const p = e.features[0].properties;
-        const coords = e.features[0].geometry.coordinates.slice();
-        popup.setLngLat(coords).setHTML(
-            `<div style="font-family:sans-serif;font-size:12px;color:#000;padding:3px;">
+    const popupHtml = (f) => {
+        const p = f.properties;
+        return `<div style="font-family:sans-serif;font-size:12px;color:#000;padding:3px;">
                 <strong style="font-size:13px;color:#333;">${p.name || 'Unknown Volcano'}</strong>
                 <hr style="border:0;border-top:1px solid #ccc;margin:4px 0;">
                 <div><span style="color:#666;width:45px;display:inline-block;">VEI:</span> <strong>${p.vei}</strong></div>
                 <div><span style="color:#666;width:45px;display:inline-block;">Code:</span> <strong>${p.code || 'N/A'}</strong></div>
-            </div>`).addTo(map);
+            </div>`;
     };
-    const onLeave = () => { map.getCanvas().style.cursor = ''; popup.remove(); };
 
     const mount = async (cfg) => {
         if (!map.hasImage('volcano-icon')) {
@@ -54,8 +50,7 @@ export function loadLayer(map, config) {
                 'icon-allow-overlap': true, 'icon-ignore-placement': true,
             },
         });
-        map.on('mouseenter', layerId, onEnter);
-        map.on('mouseleave', layerId, onLeave);
+        stopPopup = hoverPopup(map, layerId, { html: popupHtml });
     };
 
     const refresh = async (cfg) => {
@@ -64,9 +59,7 @@ export function loadLayer(map, config) {
     };
 
     const unmount = () => {
-        map.off('mouseenter', layerId, onEnter);
-        map.off('mouseleave', layerId, onLeave);
-        popup.remove();
+        stopPopup?.();
         if (map.getLayer(layerId))   map.removeLayer(layerId);
         if (map.getSource(sourceId)) map.removeSource(sourceId);
     };

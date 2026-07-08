@@ -1,5 +1,6 @@
 import { createParticleGLLayer } from './_particles_gl.js';
 import { createFillLayer } from './_webglfill.js';
+import { replaceSlot, removeLegend } from './_legend.js';
 
 const VMAX_WIND = 40.0;   // m/s velocity-texture encoding range (must match backend)
 
@@ -105,23 +106,17 @@ export async function loadLayer(map, config, fullConfig = {}) {
         .join(', ');
 
     const addLegend = (cfg) => {
-        const stack = document.getElementById('legend-stack');
-        if (!stack) return;
-        document.getElementById(slotId)?.remove();
         const vmaxKph = heatmapMaxKph;
         const ticks = [0, 0.25, 0.5, 0.75, 1].map(f => Math.round(vmaxKph * f));
-        const slot = document.createElement('div');
-        slot.id = slotId;
-        slot.className = 'legend-slot';
-        slot.innerHTML = `
-            <div style="font-size:11px;color:#fff;font-weight:600;margin-bottom:3px;">Wind speed (km/h)</div>
-            <div style="height:10px;border-radius:2px;background:linear-gradient(to right, ${gradient()});"></div>
-            <div style="display:flex;justify-content:space-between;font-size:10px;color:rgba(255,255,255,0.8);margin-top:2px;">
-                ${ticks.map(t => `<span>${t}</span>`).join('')}
-            </div>`;
-        stack.appendChild(slot);
+        replaceSlot(slotId, (slot) => {
+            slot.innerHTML = `
+                <div style="font-size:11px;color:#fff;font-weight:600;margin-bottom:3px;">Wind speed (km/h)</div>
+                <div style="height:10px;border-radius:2px;background:linear-gradient(to right, ${gradient()});"></div>
+                <div style="display:flex;justify-content:space-between;font-size:10px;color:rgba(255,255,255,0.8);margin-top:2px;">
+                    ${ticks.map(t => `<span>${t}</span>`).join('')}
+                </div>`;
+        });
     };
-    const removeLegend = () => document.getElementById(slotId)?.remove();
 
     // Keep the static-raster (non-stepping) heatmap opacity live too. Fill (stepping) mode
     // gets its opacity from u_alpha; static mode is a raster layer, so set raster-opacity
@@ -164,7 +159,7 @@ export async function loadLayer(map, config, fullConfig = {}) {
         colormap: () => buildLUT(),
         onMount: (cfg) => { addLegend(cfg); applyHeatmapOpacity(cfg); },
         onRefresh: (cfg) => { addLegend(cfg); applyHeatmapOpacity(cfg); },
-        onUnmount: removeLegend,
+        onUnmount: () => removeLegend(slotId),
     });
 
     // 2) Particles, exactly as before EXCEPT a single fixed colour (particle_color), which

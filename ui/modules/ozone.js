@@ -1,5 +1,6 @@
 import { createFillLayer } from './_webglfill.js';
 import { CMAP_VIRIDIS, rgbToRgba } from './_colormaps.js';
+import { keyFilename, showLegend, removeLegend } from './_legend.js';
 
 // GPU scrubber layer. Linear viridis ramp over [200, 450] (total column ozone),
 // matching the static matplotlib key (OzoneUpdater: cmap viridis, Normalize 200..450).
@@ -9,24 +10,9 @@ const VMAX = 450.0;
 export function loadLayer(map, config, fullConfig = {}) {
     const slotId = 'ozone-legend-slot';
 
-    const keyUrlFor = (cfg) => {
-        const o = cfg.outfile, i = o.lastIndexOf('.');
-        const base = i !== -1 ? o.slice(0, i) : o;
-        const ext = i !== -1 ? o.slice(i) : '';
-        return `${window.MAP_UI}/${base}_key${ext}`;
-    };
     const addLegend = (cfg) => {
-        const stack = document.getElementById('legend-stack');
-        if (!stack) return;
-        document.getElementById(slotId)?.remove();
-        const slot = document.createElement('div');
-        slot.id = slotId; slot.className = 'legend-slot';
-        const img = document.createElement('img');
-        img.src = `${keyUrlFor(cfg)}?t=${Date.now()}`;
-        img.style.display = 'block'; img.style.width = '100%';
-        slot.appendChild(img); stack.appendChild(slot);
+        showLegend(slotId, `${window.MAP_UI}/${keyFilename(cfg.outfile)}?t=${Date.now()}`);
     };
-    const removeLegend = () => document.getElementById(slotId)?.remove();
 
     createFillLayer(map, {
         sectionKey: 'ozone',
@@ -50,6 +36,6 @@ export function loadLayer(map, config, fullConfig = {}) {
         colormap: () => rgbToRgba(CMAP_VIRIDIS),
         onMount: addLegend,
         onRefresh: addLegend,
-        onUnmount: removeLegend,
+        onUnmount: () => removeLegend(slotId),
     });
 }

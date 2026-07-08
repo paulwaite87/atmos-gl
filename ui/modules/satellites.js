@@ -1,10 +1,12 @@
 import { liveDataSync } from './_datasync.js';
+import { hoverPopup } from './_hoverpopup.js';
+import { startPulse } from './_pulse.js';
 
 export function loadLayer(map, config) {
     const sourceId = 'satellites-source';
     const layerIds = ['sat-track-past', 'sat-track-future', 'sat-position', 'sat-labels'];
-    const popup = new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 10 });
-    let pulsing = false;
+    let stopPopup = null;
+    let stopPulse = null;
 
     const urlFor = () => `${window.WM_API}/satellites/geojson?t=${Date.now()}`;
     const fetchData = async () => {
@@ -13,29 +15,14 @@ export function loadLayer(map, config) {
         return r.json();
     };
 
-    const onEnter = (e) => {
-        map.getCanvas().style.cursor = 'pointer';
-        const p = e.features[0].properties;
-        const c = e.features[0].geometry.coordinates.slice();
-        popup.setLngLat(c).setHTML(
-            `<div style="font-family:sans-serif;font-size:12px;color:#000;padding:4px;">
+    const popupHtml = (f) => {
+        const p = f.properties;
+        return `<div style="font-family:sans-serif;font-size:12px;color:#000;padding:4px;">
                 <strong style="color:#222;font-size:14px;">${p.name}</strong>
                 <hr style="border:0;border-top:1px solid #ccc;margin:4px 0;">
                 <div><span style="color:#666;width:50px;display:inline-block;">NORAD:</span> <strong>${p.norad_id}</strong></div>
                 <div><span style="color:#666;width:50px;display:inline-block;">Alt:</span> <strong>${p.alt_km} km</strong></div>
-            </div>`).addTo(map);
-    };
-    const onLeave = () => { map.getCanvas().style.cursor = ''; popup.remove(); };
-
-    const startPulse = () => {
-        pulsing = true;
-        const loop = () => {
-            if (!pulsing || !map.getLayer('sat-position')) return;
-            const r = 5 + ((Math.sin(Date.now() / 400) + 1) / 2) * 4;
-            map.setPaintProperty('sat-position', 'circle-radius', r);
-            requestAnimationFrame(loop);
-        };
-        requestAnimationFrame(loop);
+            </div>`;
     };
 
     const mount = async () => {
@@ -60,9 +47,8 @@ export function loadLayer(map, config) {
                       'text-allow-overlap': false },
             paint: { 'text-color': ['get', 'color'], 'text-halo-color': '#000', 'text-halo-width': 1 } });
 
-        map.on('mouseenter', 'sat-position', onEnter);
-        map.on('mouseleave', 'sat-position', onLeave);
-        startPulse();
+        stopPopup = hoverPopup(map, 'sat-position', { offset: 10, html: popupHtml });
+        stopPulse = startPulse(map, 'sat-position', 'circle-radius', { base: 5 });
     };
 
     const refresh = async () => {
@@ -71,10 +57,8 @@ export function loadLayer(map, config) {
     };
 
     const unmount = () => {
-        pulsing = false;
-        map.off('mouseenter', 'sat-position', onEnter);
-        map.off('mouseleave', 'sat-position', onLeave);
-        popup.remove();
+        stopPulse?.();
+        stopPopup?.();
         for (const id of layerIds) if (map.getLayer(id)) map.removeLayer(id);
         if (map.getSource(sourceId)) map.removeSource(sourceId);
     };
