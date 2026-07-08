@@ -472,6 +472,25 @@ def test_config_page_omits_fallback_section_for_exempt_sections():
     assert 'id="fallback-section-housekeeper"' not in html
 
 
+def test_config_page_renders_pwat_as_a_plain_toggle_not_a_climate_radio():
+    """pwat isn't mutually exclusive with the sst/currents/waves/temperature/ozone/
+    stormwatch climate base layer -- it must get its own Show-tab checkbox (like
+    precipitation), never a radio__pwat entry in the exclusive_climate group."""
+    resp = client.get("/config")
+    html = resp.text
+    assert 'type="checkbox" id="pwat__enabled"' in html
+    assert 'id="radio__pwat"' not in html
+
+
+def test_config_page_renders_pwat_fields_section_and_gated_fallback():
+    resp = client.get("/config")
+    html = resp.text
+    assert 'id="fields-section-pwat"' in html
+    assert 'id="fallback-section-pwat"' in html
+    assert 'id="pwat__critical_pwat"' in html
+    assert 'id="pwat__palette"' in html
+
+
 def test_config_page_has_no_remaining_legacy_dispatch_code():
     """TAB_GROUPS/renderTabContainers became fully dead once every tab migrated --
     this guards against either being silently reintroduced."""

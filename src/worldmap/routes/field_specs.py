@@ -19,8 +19,8 @@ constants below capture those shapes once and get registered under every
 
 Migrated so far: Global (common, animation), Events (quakes, volcanoes),
 Misc (satellites, terminator, markers), Shipping (shipping),
-Atmospheric (clouds, isobars, wind, precipitation, lightning, storms),
-Climate (sst, currents, waves, temperature, ozone, stormwatch, pwat).
+Atmospheric (clouds, isobars, wind, precipitation, pwat, lightning, storms),
+Climate (sst, currents, waves, temperature, ozone, stormwatch).
 
 Validated with ast.parse.
 """
@@ -249,7 +249,7 @@ FIELD_SPECS = {
     # --- Shipping (shipping) ---
     ("shipping", "icon_zoom"): _ICON_ZOOM,
     ("shipping", "runs_per_day"): _RUNS_PER_DAY,
-    # --- Atmospheric (clouds, isobars, wind, precipitation, lightning, storms) ---
+    # --- Atmospheric (clouds, isobars, wind, precipitation, pwat, lightning, storms) ---
     ("clouds", "threshold"): SliderSpec(
         min=0, max=100, step=1, suffix="%",
         byte_to_percent=True, raw_max=255, extra_class="cloud-threshold-slider",
@@ -292,6 +292,17 @@ FIELD_SPECS = {
     ("precipitation", "key_fontsize"): _FONTSIZE,
     ("precipitation", "runs_per_day"): _RUNS_PER_DAY,
     ("precipitation", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
+    ("pwat", "level_of_detail"): _LEVEL_OF_DETAIL,
+    ("pwat", "palette"): SelectSpec([
+        ("standard", "Standard (matches precipitation)"),
+        ("atmospheric_river", "Atmospheric river (blue -> violet)"),
+        ("deep_teal", "Deep teal (cyan -> teal)"),
+    ]),
+    ("pwat", "critical_pwat"): SliderSpec(min=0.0, max=80.0, step=5.0, decimals=0, suffix="mm"),
+    ("pwat", "alpha"): _ALPHA,
+    ("pwat", "key_fontsize"): _FONTSIZE,
+    ("pwat", "runs_per_day"): _RUNS_PER_DAY,
+    ("pwat", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
     ("lightning", "icon_zoom"): _ICON_ZOOM,
     ("lightning", "strike_recent_minutes"): _MINUTES,
     ("lightning", "strike_keep_minutes"): _MINUTES,
@@ -379,17 +390,6 @@ FIELD_SPECS = {
     ("stormwatch", "key_fontsize"): _FONTSIZE,
     ("stormwatch", "runs_per_day"): _RUNS_PER_DAY,
     ("stormwatch", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
-    ("pwat", "level_of_detail"): _LEVEL_OF_DETAIL,
-    ("pwat", "palette"): SelectSpec([
-        ("standard", "Standard (matches precipitation)"),
-        ("atmospheric_river", "Atmospheric river (blue -> violet)"),
-        ("deep_teal", "Deep teal (cyan -> teal)"),
-    ]),
-    ("pwat", "critical_pwat"): SliderSpec(min=0.0, max=80.0, step=5.0, decimals=0, suffix="mm"),
-    ("pwat", "alpha"): _ALPHA,
-    ("pwat", "key_fontsize"): _FONTSIZE,
-    ("pwat", "runs_per_day"): _RUNS_PER_DAY,
-    ("pwat", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
     # --- Background (shipping_collector, lightning_collector, satellites_collector,
     # data_collector, housekeeper) ---
     ("shipping_collector", "log_level"): _LOG_LEVEL,
