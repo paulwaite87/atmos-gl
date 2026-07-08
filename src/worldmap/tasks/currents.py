@@ -137,13 +137,16 @@ class CurrentsUpdater(Updater, MultiHourRenderMixin):
             f"f{state.fhour:03d} (R=U, G=V)."
         )
 
-    def run(self):
+    def run(self, max_hours=None):
         # Resolve the RTOFS run (NOT GFS). Warms the shared per-cycle baseline cache
         # (map_data.shared_state); render_all_hours resolves its own state from the
         # catalog below, so the return value here is unused.
         self.get_rtofs_state()
-        self.render_all_hours(
+        # max_hours=1 from layer_builder's round-robin dispatch renders one hour and
+        # returns, so this layer doesn't monopolise a render-pool worker.
+        return self.render_all_hours(
             "currents",
             plot_fn=self.plot,
             field_ready=lambda f: f.get("u") is not None and f.get("v") is not None,
+            max_hours=max_hours,
         )

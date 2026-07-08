@@ -129,7 +129,7 @@ class WavesUpdater(Updater, MultiHourRenderMixin):
         norm = mcolors.Normalize(vmin=0.0, vmax=8.0)
         self.save_waves_key(self.output_path, cmap, norm, threshold=threshold)
 
-    def run(self):
+    def run(self, max_hours=None):
         # Warms the shared per-cycle GFS baseline cache (map_data.shared_state) for
         # other updaters this cycle; both sections below resolve their own state from
         # the catalog, so the return value here is unused.
@@ -140,10 +140,15 @@ class WavesUpdater(Updater, MultiHourRenderMixin):
         # yet / tile version unchanged) that must NOT skip the per-hour velocity render,
         # since those fields update independently of the heat-tile settings. Mirrors how
         # wind/currents render every catalog hour; gap-fills only missing/stale hours.
-        self.render_all_hours(
+        # max_hours=1 from layer_builder's round-robin dispatch renders one hour and
+        # returns, so this layer doesn't monopolise a render-pool worker -- part 2 below
+        # (tile baking) has no per-hour concept and isn't capped, but is cheap to re-check
+        # every call (an early return once its version already matches).
+        plotted = self.render_all_hours(
             "waves",
             plot_fn=self.plot_swell,
             field_ready=lambda f: f.get("u") is not None and f.get("v") is not None,
+            max_hours=max_hours,
         )
 
         # 2) Heat tiles + legend, baked from the fieldstore now-hour field (no GRIB).
@@ -157,7 +162,7 @@ class WavesUpdater(Updater, MultiHourRenderMixin):
                 "Waves: no waves field in the fieldstore yet (collector hasn't run); "
                 "skipping tile build."
             )
-            return
+            return plotted
         run_date, run_id, hours = resolved
         now_fh = hours[0]
         state = ForecastState.at_hour(run_date, run_id, now_fh)
@@ -166,7 +171,7 @@ class WavesUpdater(Updater, MultiHourRenderMixin):
             logger.warning(
                 "Waves: now-hour field missing u/v in the fieldstore; skipping tile build."
             )
-            return
+            return plotted
 
         # The legend key is cheap to draw and depends on palette/alpha/threshold AND
         # key_fontsize. Refresh it whenever the task runs, so settings like key_fontsize
@@ -180,7 +185,7 @@ class WavesUpdater(Updater, MultiHourRenderMixin):
         if rt.current_version(
             spec, self.config, state.run_date_str, state.run_id, now_fh
         ) == rt.published_version(spec, self.config):
-            return
+            return plotted
 
         # Publish-then-fill: bake + publish the new version IMMEDIATELY so the API can
         # serve it on demand (the frontend's visible tiles render first — viewport
@@ -194,3 +199,4 @@ class WavesUpdater(Updater, MultiHourRenderMixin):
         logger.info(f"Waves: version {version} published; warming base pyramid...")
         rt.warm_pyramid(spec, self.config, version, field, meta)
         logger.info("Waves: base pyramid warmed.")
+        return plotted

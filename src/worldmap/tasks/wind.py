@@ -92,7 +92,7 @@ class WindUpdater(Updater, MultiHourRenderMixin):
             f"Finished Wind f{state.fhour:03d} (heatmap .png + R=U,G=V texture)."
         )
 
-    def run(self):
+    def run(self, max_hours=None):
         # Warms the shared per-cycle GFS baseline cache (map_data.shared_state) for
         # other updaters this cycle; render_all_hours resolves its own state from the
         # catalog below, so the return value here is unused.
@@ -144,8 +144,12 @@ class WindUpdater(Updater, MultiHourRenderMixin):
                 logger.warning(f"Wind: could not write wind_meta.json: {e}")
 
         # --- render all hours (plot() now has VMAX_SPEED set globally) ----------------
-        self.render_all_hours(
+        # max_hours=1 from layer_builder's round-robin dispatch renders one hour and
+        # returns, so this layer doesn't monopolise a render-pool worker -- the pre-scan
+        # above re-runs every such call (cheap DB reads, not full renders, so acceptable).
+        return self.render_all_hours(
             "wind",
             plot_fn=self.plot,
             field_ready=lambda f: f.get("u") is not None and f.get("v") is not None,
+            max_hours=max_hours,
         )

@@ -127,7 +127,10 @@ class SSTUpdater(Updater):
 
         logger.debug(f"Successfully rendered raw NOAA OISST map in {self.mode} mode.")
 
-    def run(self):
+    def run(self, max_hours=None):
+        # max_hours is a no-op here -- SST renders once per cycle, not per forecast
+        # hour, so it has nothing to cap. Accepted only so layer_builder's dispatch can
+        # call every TASK_CLASSES entry's run() the same way.
         # The data_collector now owns the OISST download; we just render from the shared
         # cache it maintains. Read it, and (re)render only when the cache is newer than
         # our output, so we don't repaint every cycle for an unchanged daily field.
