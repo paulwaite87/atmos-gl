@@ -7,10 +7,7 @@ as the first per-source FieldCollectorBase subclass (Phase 3, complete).
 Shares its baseline (CycleContext key "gfs") with GfsWavesCollector, which needs the same GFS
 run — see field_base.CycleContext.
 """
-import os
-import glob
 import logging
-import tempfile
 from datetime import datetime, timedelta, timezone
 
 from worldmap.lib.gfs import (
@@ -21,7 +18,7 @@ from worldmap.lib.gfs import (
     build_atmos_url,
 )
 from worldmap.lib.unpack import ATMOS_UNPACKERS
-from .field_base import FieldCollectorBase, CycleContext
+from .field_base import FieldCollectorBase, CycleContext, with_tempfile
 
 logger = logging.getLogger("worldmap.collectors.gfs_atmos")
 
@@ -84,26 +81,16 @@ class GfsAtmosCollector(FieldCollectorBase):
                 logger.debug(f"atmos f{fhour:03d} download skipped: {e}")
                 continue
 
-            tmp = tempfile.NamedTemporaryFile(suffix=".grib2", delete=False)
-            tmp.write(data)
-            tmp.close()
-            try:
+            with with_tempfile(data, ".grib2", cleanup_idx=True) as tmp_path:
                 for product, unpacker in missing:
                     try:
-                        fields = unpacker(tmp.name)
+                        fields = unpacker(tmp_path)
                         self.store.store_field(
                             run_date_str, run_id, fhour, product, fields, valid
                         )
                         stored += 1
                     except Exception as e:
                         logger.debug(f"{product} f{fhour:03d} unpack/store failed: {e}")
-            finally:
-                # Remove the temp GRIB and any cfgrib .idx sidecars it created.
-                for path in [tmp.name] + glob.glob(tmp.name + "*.idx"):
-                    try:
-                        os.remove(path)
-                    except OSError:
-                        pass
 
         logger.info(
             f"Data Collector (gfs): {run_date_str} {run_id}Z, hours {fhour_0:03d}..{fhour_end - 1:03d}; "
@@ -129,16 +116,7 @@ class GfsAtmosCollector(FieldCollectorBase):
         if not data:
             return False
         valid = self._valid_time(run_date, run_id, fhour)
-        tmp = tempfile.NamedTemporaryFile(suffix=".grib2", delete=False)
-        tmp.write(data)
-        tmp.close()
-        try:
-            fields = unpacker(tmp.name)
+        with with_tempfile(data, ".grib2", cleanup_idx=True) as tmp_path:
+            fields = unpacker(tmp_path)
             self.store.store_field(run_date, run_id, fhour, product, fields, valid)
             return True
-        finally:
-            for path in [tmp.name] + glob.glob(tmp.name + "*.idx"):
-                try:
-                    os.remove(path)
-                except OSError:
-                    pass

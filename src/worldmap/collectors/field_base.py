@@ -27,13 +27,44 @@ claimed (run_date, run_id, fhour, product) request to whichever collector's `pro
 owns that product. Adding a new source's backfill support is then "add its class to the
 list", not a new branch here.
 """
+import glob
 import logging
+import os
+import tempfile
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 
 from .base import CollectorBase
 from worldmap.lib.data_status import estimate_next_update, read_process_status, build_status
 
 logger = logging.getLogger(__name__)
+
+
+@contextmanager
+def with_tempfile(data: bytes, suffix: str, cleanup_idx: bool = False):
+    """Write `data` to a fresh tempfile and yield its path; always remove it afterwards
+    (plus any `*.idx` cfgrib sidecars, if `cleanup_idx`), even if the body raises.
+
+    Owns only the tempfile's lifecycle — not the download (already source-specific in
+    lib/gfs.py/lib/rtofs.py) or the unpack/store/error-handling that follows (which
+    genuinely differs: gfs_atmos.collect() unpacks several products from one tempfile,
+    each with its own try/except, while the other five call sites unpack a single
+    product). Architecture review candidate "collapse the field-collector download ->
+    unpack -> store mechanic" — this is the part of that mechanic that was identical
+    across all three collectors' collect()/backfill_hour() pairs.
+    """
+    tmp = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
+    tmp.write(data)
+    tmp.close()
+    try:
+        yield tmp.name
+    finally:
+        paths = [tmp.name] + (glob.glob(tmp.name + "*.idx") if cleanup_idx else [])
+        for path in paths:
+            try:
+                os.remove(path)
+            except OSError:
+                pass
 
 
 class CycleContext:
