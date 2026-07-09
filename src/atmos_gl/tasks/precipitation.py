@@ -213,15 +213,18 @@ class PrecipitationUpdater(Updater, MultiHourRenderMixin):
             arr = gaussian_filter(arr, sigma=sigma)
         return arr
 
-    def run(self):
+    def run(self, max_hours=None):
         # Warms the shared per-cycle GFS baseline cache (map_data.shared_state) for
         # other updaters this cycle; render_all_hours resolves its own state from the
         # catalog below, so the return value here is unused.
         self.get_gfs_state()
         # Render EVERY available forecast hour (gap-filling), so the scrubber has
         # a PNG for each hour. should_plot_for_hour skips hours already fresh.
-        self.render_all_hours(
+        # max_hours=1 from layer_builder's round-robin dispatch renders one hour and
+        # returns, so this layer doesn't monopolise a render-pool worker.
+        return self.render_all_hours(
             "precipitation",
             plot_fn=self.plot,
             field_ready=lambda f: f.get("values") is not None,
+            max_hours=max_hours,
         )
