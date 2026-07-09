@@ -2,6 +2,9 @@
 # Ignore various data files
 data/*
 files/
+# The live, locally-running config -- config/worldmap.json.tmpl is the tracked
+# template; this file is where settings actually get changed/tested day to day.
+# See CLAUDE.md's "Settings changes" section for the tmpl <-> live workflow.
 /config/worldmap.json
 
 # Ignore environment secrets
