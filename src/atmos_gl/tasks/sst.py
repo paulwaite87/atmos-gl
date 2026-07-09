@@ -144,14 +144,31 @@ class SSTUpdater(Updater):
             )
             return
 
+        # Both modes share this one output path (sst.png/sst_key.png) -- the source
+        # netCDF's mtime alone can't tell us "this file was last rendered in a
+        # DIFFERENT mode than the one now configured", so a mode switch wouldn't
+        # reliably trigger a re-render (e.g. if the newly-selected mode's netCDF
+        # happens to be older than the stale output). Track which mode last rendered
+        # in a small sidecar marker and force a re-render whenever it disagrees with
+        # the current mode, regardless of file mtimes.
+        mode_marker = self.cache_path("last_mode.txt")
+        last_mode = None
+        if os.path.exists(mode_marker):
+            with open(mode_marker) as f:
+                last_mode = f.read().strip()
+        mode_changed = last_mode != self.mode
+
         out = self.output_path
-        if (
+        fresh = (
             out
             and os.path.exists(out)
             and os.path.getmtime(out) >= os.path.getmtime(self.nc_path)
-        ):
+        )
+        if fresh and not mode_changed:
             logger.debug("SST: output already up to date with cache; skipping render.")
             return
 
         logger.info(f"Generating SST {self.mode} plot...")
         self.plot()
+        with open(mode_marker, "w") as f:
+            f.write(self.mode)

@@ -18,6 +18,13 @@ _OISST = {
     "absolute": ("sst.day.mean", "noaa_oisst_mean.nc"),
 }
 
+# Every known mode, for callers that need to treat them uniformly (the collector fetches
+# all of them unconditionally of which one is currently configured -- see
+# SstCollector.collect() -- so switching modes in the config UI always has warm data
+# instead of waiting up to a full is_stale() cadence for the newly-selected mode's netCDF
+# to be fetched for the first time).
+OISST_MODES = tuple(_OISST.keys())
+
 
 def oisst_spec(mode):
     """(remote_stem, cache_filename) for a mode; unknown modes fall back to absolute."""

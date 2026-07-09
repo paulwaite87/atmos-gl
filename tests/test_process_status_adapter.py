@@ -52,3 +52,44 @@ def test_get_all_process_status_keys_by_name():
     rows = adapter.get_all_process_status()
     assert set(rows.keys()) == {"quakes", "storms"}
     assert rows["quakes"]["kind"] == "collector"
+
+
+def test_record_start_sets_running_status_without_touching_last_updated_or_error():
+    adapter = FakeProcessStatusAdapter()
+    adapter.record_process_run("sst", "collector", success=True)
+    before = adapter.get_process_status("sst")
+
+    adapter.record_process_start("sst", "collector")
+    row = adapter.get_process_status("sst")
+
+    assert row["status"] == "running"
+    assert row["started_at"] is not None
+    assert row["last_updated"] == before["last_updated"]  # untouched -- not faked fresh
+    assert row["last_error"] is None
+
+
+def test_record_run_clears_started_at_and_sets_terminal_status_on_success():
+    adapter = FakeProcessStatusAdapter()
+    adapter.record_process_start("sst", "collector")
+    adapter.record_process_run("sst", "collector", success=True)
+    row = adapter.get_process_status("sst")
+
+    assert row["status"] == "success"
+    assert row["started_at"] is None
+
+
+def test_record_run_clears_started_at_and_sets_terminal_status_on_failure():
+    adapter = FakeProcessStatusAdapter()
+    adapter.record_process_start("sst", "collector")
+    adapter.record_process_run("sst", "collector", success=False, error="boom")
+    row = adapter.get_process_status("sst")
+
+    assert row["status"] == "failed"
+    assert row["started_at"] is None
+
+
+def test_never_run_row_has_no_status_key_error():
+    """get_process_status returns None entirely when nothing has run -- status only
+    exists once a row does."""
+    adapter = FakeProcessStatusAdapter()
+    assert adapter.get_process_status("sst") is None

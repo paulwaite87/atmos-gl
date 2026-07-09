@@ -161,7 +161,7 @@ class FieldCollectorBase(CollectorBase):
         shouldn't itself hit rate limits). last_updated/detail still come from
         process_status (written by CollectorService._collect_fields()), same as the
         CollectorBase default."""
-        last_updated, last_error = read_process_status(
+        last_updated, last_error, status = read_process_status(
             self.process_status_adapter, self.status_name
         )
 
@@ -201,6 +201,7 @@ class FieldCollectorBase(CollectorBase):
             next_update=estimate_next_update(last_updated, period_s, self.enabled),
             enabled=self.enabled,
             detail=detail,
+            status=status,
         )
 
     @staticmethod

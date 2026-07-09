@@ -62,21 +62,35 @@ def period_s_from_runs_per_day(runs_per_day) -> float:
 
 
 def read_process_status(process_status_adapter, name: str):
-    """(last_updated, last_error) for `name`'s most recent process_status row, or
-    (None, None) if it has none yet. The same read every data_status()/layer_status()
-    implementation starts with."""
+    """(last_updated, last_error, status) for `name`'s most recent process_status row,
+    or (None, None, None) if it has none yet. The same read every data_status()/
+    layer_status() implementation starts with. `status` is "idle"/"running"/"success"/
+    "failed" -- set by record_process_start()/record_process_run()
+    (db/process_status_adapter.py); "running" is the one value that can't be inferred
+    from last_updated/last_error alone, since work in flight touches neither."""
     row = process_status_adapter.get_process_status(name)
     if not row:
-        return None, None
-    return row["last_updated"], row["last_error"]
+        return None, None, None
+    return row["last_updated"], row["last_error"], row.get("status")
 
 
 def build_status(
-    *, name: str, kind: str, percent: float, last_updated, next_update, enabled: bool, detail
+    *,
+    name: str,
+    kind: str,
+    percent: float,
+    last_updated,
+    next_update,
+    enabled: bool,
+    detail,
+    status: str | None = None,
 ) -> dict:
     """Assembles the final Data Status dict shape every data_status()/layer_status()
     implementation returns. `percent` is rounded here so callers pass the raw computed
-    value rather than each remembering `round(percent, 1)` themselves."""
+    value rather than each remembering `round(percent, 1)` themselves. `status` is
+    optional -- callers that don't track a "running" state (nothing calls
+    record_process_start() for them yet) simply omit it and the UI treats null the
+    same as before this field existed."""
     return {
         "name": name,
         "kind": kind,
@@ -85,4 +99,5 @@ def build_status(
         "next_update": next_update,
         "enabled": enabled,
         "detail": detail,
+        "status": status,
     }

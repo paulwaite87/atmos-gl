@@ -133,7 +133,7 @@ class CollectorBase:
         of it (see collectors/__init__.py). next_update must reflect that real, unconditional
         schedule rather than reporting "disabled" for a source that is in fact still being
         collected in the background."""
-        last_updated, last_error = read_process_status(
+        last_updated, last_error, status = read_process_status(
             self.process_status_adapter, self.section
         )
         return build_status(
@@ -144,6 +144,7 @@ class CollectorBase:
             next_update=estimate_next_update(last_updated, self.period_s, True),
             enabled=self.enabled,
             detail=last_error,
+            status=status,
         )
 
     # ------------------------------------------------------------------
@@ -257,7 +258,7 @@ class AsyncCollectorBase:
         heartbeat_period_s in place of period_s (these have no is_stale cadence — they
         self-schedule inside run() and record a heartbeat at their own natural
         checkpoint, e.g. once per rotation/scan)."""
-        last_updated, last_error = read_process_status(
+        last_updated, last_error, status = read_process_status(
             self.process_status_adapter, self.section
         )
         return build_status(
@@ -270,6 +271,7 @@ class AsyncCollectorBase:
             ),
             enabled=self.enabled,
             detail=last_error,
+            status=status,
         )
 
     @classmethod

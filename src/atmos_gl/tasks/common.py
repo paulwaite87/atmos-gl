@@ -589,7 +589,7 @@ class Updater:
         real, unconditional schedule rather than reporting "disabled" for a layer that is
         in fact still being rendered in the background.
         """
-        last_updated, last_error = read_process_status(
+        last_updated, last_error, status = read_process_status(
             self.process_status_adapter, self.section
         )
         detail = last_error
@@ -623,6 +623,7 @@ class Updater:
             enabled=self.enabled,
             next_update=next_update,
             detail=detail,
+            status=status,
         )
 
     def latest_store_run(self, products):

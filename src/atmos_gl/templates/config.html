@@ -24,6 +24,8 @@
         .status-pct { width: 48px; flex: 0 0 48px; text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; font-size: 0.9rem; }
         .status-times { width: 230px; flex: 0 0 230px; font-size: 0.78rem; color: #6c757d; text-align: right; }
         .status-empty { color: #6c757d; font-size: 0.9rem; }
+        .status-running-badge { flex: 0 0 auto; font-size: 0.7rem; animation: status-running-pulse 1.5s ease-in-out infinite; }
+        @keyframes status-running-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
     </style>
 </head>
 <body class="bg-dark text-light">
@@ -593,6 +595,14 @@
                 const nextUpdate = item.next_update
                     ? formatRelativeTime(item.next_update, { future: true })
                     : (item.enabled === false ? "disabled" : "—");
+                // "running" means the process is CURRENTLY mid-collect/render (e.g. a
+                // slow multi-hundred-MB SST download) -- percent/last_updated still
+                // reflect the last COMPLETED run (not faked fresh), so the badge is the
+                // only signal that something is happening right now rather than the row
+                // just sitting on a stale reading until the run finishes.
+                const runningBadge = item.status === "running"
+                    ? '<span class="badge bg-primary status-running-badge">running</span>'
+                    : "";
                 const title = item.detail ? item.detail.replace(/"/g, "&quot;") : "";
                 return `
                     <div class="status-row" title="${title}">
@@ -602,6 +612,7 @@
                         </div>
                         <div class="status-pct">${pct.toFixed(0)}%</div>
                         <div class="status-times">updated ${lastUpdated} &middot; next ${nextUpdate}</div>
+                        ${runningBadge}
                     </div>
                 `;
             }).join("");
