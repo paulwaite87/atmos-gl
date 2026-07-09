@@ -51,12 +51,20 @@ After that, most things can be done via the Makefile. To see what is available:
 
     make help
 
-The rest of this README is written for folks who are not developers! If you are a developer,
+The rest of this README is written for folks who are not developers. If you are a developer,
 skip ahead to [Developer's corner](#developers-corner).
 
 ### Quick Start
 
-    cp .env.tmpl .env
+Run this to download everything needed and set it up in `~/worldmap-ng` (pass a path as
+an argument if you'd rather install somewhere else):
+
+    curl -fsSL https://raw.githubusercontent.com/paulwaite87/worldmap-ng/master/install.sh | bash
+
+This fetches `docker-compose.yml`, a `worldmap.sh` control script, and the reference
+data the map needs, then creates a `.env` and `config/worldmap.json` for you (both
+left alone on future re-runs, so it's always safe to run this again later to pick up
+updates to everything else).
 
 Edit `.env` and fill in your API keys — see
 [Obtaining an API Key for Shipping data](#obtaining-an-api-key-for-shipping-data),
@@ -64,15 +72,24 @@ Edit `.env` and fill in your API keys — see
 and [Map tiles](#map-tiles) below. Shipping and lightning are optional (you can enable them
 later once you have keys); the map tiles key is needed for the globe's basemap to render at all.
 
-Then pull the pre-built images and start everything:
+Then start everything:
 
-    make prod
+    cd ~/worldmap-ng
+    ./worldmap.sh start
 
 By default most layers are disabled to begin with — see [Setting it up](#setting-it-up) below.
 
 To stop everything:
 
-    make prod-down
+    ./worldmap.sh stop
+
+`worldmap.sh` also has `restart`, `update` (pulls the latest images), `status` (ship/lightning
+counts per region) and `logs` commands — run it with no arguments for the full list. If you
+ever need to report a problem, `./worldmap.sh logs save` writes a timestamped log file with
+any API keys automatically redacted, safe to attach to a GitHub issue.
+
+If you've cloned the repo instead (see [For the ninjas](#for-the-ninjas-clone-the-repository)
+below), `make prod`/`make prod-down` do the same job as `worldmap.sh start`/`stop`.
 
 ### Setting it up
 The configuration file is called `worldmap.json` and it lives in the `config` folder.
