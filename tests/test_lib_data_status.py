@@ -8,7 +8,7 @@ Updater.layer_status() -- none of it had any test coverage before this.
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock
 
-from worldmap.lib.data_status import (
+from atmos_gl.lib.data_status import (
     freshness_percent,
     estimate_next_update,
     period_s_from_runs_per_day,

@@ -9,7 +9,7 @@ import os
 
 import pytest
 
-from worldmap.collectors.field_base import with_tempfile
+from atmos_gl.collectors.field_base import with_tempfile
 
 
 def test_writes_data_and_yields_a_readable_path():

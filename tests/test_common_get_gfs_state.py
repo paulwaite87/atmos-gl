@@ -8,7 +8,7 @@ import datetime as real_datetime
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from worldmap.tasks.common import Updater
+from atmos_gl.tasks.common import Updater
 
 FIXED_NOW = real_datetime.datetime(2026, 1, 1, 6, 0, 0, tzinfo=real_datetime.timezone.utc)
 
@@ -31,8 +31,8 @@ def test_get_gfs_state_resolves_and_computes_offset():
     updater = make_bare_updater(forecast_hour=0)
 
     with (
-        patch("worldmap.lib.gfs.resolve_gfs_baseline", return_value=baseline) as mock_resolve,
-        patch("worldmap.tasks.common.datetime") as mock_datetime,
+        patch("atmos_gl.lib.gfs.resolve_gfs_baseline", return_value=baseline) as mock_resolve,
+        patch("atmos_gl.tasks.common.datetime") as mock_datetime,
     ):
         mock_datetime.now.return_value = FIXED_NOW
         state = updater.get_gfs_state()
@@ -54,8 +54,8 @@ def test_get_gfs_state_caches_baseline_across_calls():
     updater = make_bare_updater(forecast_hour=2)
 
     with (
-        patch("worldmap.lib.gfs.resolve_gfs_baseline", return_value=baseline) as mock_resolve,
-        patch("worldmap.tasks.common.datetime") as mock_datetime,
+        patch("atmos_gl.lib.gfs.resolve_gfs_baseline", return_value=baseline) as mock_resolve,
+        patch("atmos_gl.tasks.common.datetime") as mock_datetime,
     ):
         mock_datetime.now.return_value = FIXED_NOW
         updater.get_gfs_state()
@@ -68,7 +68,7 @@ def test_get_gfs_state_caches_baseline_across_calls():
 def test_get_gfs_state_raises_when_baseline_unresolvable():
     updater = make_bare_updater()
 
-    with patch("worldmap.lib.gfs.resolve_gfs_baseline", return_value=None):
+    with patch("atmos_gl.lib.gfs.resolve_gfs_baseline", return_value=None):
         try:
             updater.get_gfs_state()
         except RuntimeError as e:

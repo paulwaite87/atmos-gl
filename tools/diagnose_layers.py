@@ -8,7 +8,7 @@ Checks, for each product, the three places the pipeline can silently stall:
   3. Does the rendered _data.png exist (task plotted it)?
 
 Run inside the container (same env as layer_builder), e.g.:
-  python3 diagnose_layers.py --config /path/to/worldmap.json
+  python3 diagnose_layers.py --config /path/to/atmos-gl.json
 """
 
 import os
@@ -22,12 +22,12 @@ def main():
     ap.add_argument("--products", default="isobars,precipitation,wind,temperature,ozone,stormwatch")
     args = ap.parse_args()
 
-    from worldmap.lib.config import WorldMapConfig
-    from worldmap.db.engine import Session
-    from worldmap.db.models import FieldCatalog
+    from atmos_gl.lib.config import AtmosGLConfig
+    from atmos_gl.db.engine import Session
+    from atmos_gl.db.models import FieldCatalog
     from sqlalchemy import func, select
 
-    config = WorldMapConfig(args.config)
+    config = AtmosGLConfig(args.config)
     config.load()
     workdir = config.get_setting("common", "workdir", ".")
     data_dir = os.path.join(workdir, "data")

@@ -10,7 +10,7 @@ cartopy/shapely.
 import numpy as np
 import pytest
 
-from worldmap.tiles.raster_tiles import (
+from atmos_gl.tiles.raster_tiles import (
     tile_pixel_lonlat,
     build_lut,
     sample_field,

@@ -7,7 +7,7 @@ before this refactor.
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock
 
-from worldmap.collectors.field_base import FieldCollectorBase
+from atmos_gl.collectors.field_base import FieldCollectorBase
 
 
 def make_bare_field_collector(status_name="gfs_atmos", settings=None, products=None):

@@ -9,7 +9,7 @@ it's out of scope here.
 import logging
 from unittest.mock import patch
 
-from worldmap.collectors.base import CollectorBase
+from atmos_gl.collectors.base import CollectorBase
 
 
 def test_returns_true_when_head_changed_reports_true():
@@ -26,7 +26,7 @@ def test_returns_true_when_head_probe_fails():
 
 def test_returns_false_and_logs_when_unchanged(caplog):
     with patch.object(CollectorBase, "_head_changed", return_value=False):
-        with caplog.at_level(logging.DEBUG, logger="worldmap.collectors.base"):
+        with caplog.at_level(logging.DEBUG, logger="atmos_gl.collectors.base"):
             result = CollectorBase._head_changed_or_default("http://example.com", "Volcanoes")
 
     assert result is False
@@ -35,7 +35,7 @@ def test_returns_false_and_logs_when_unchanged(caplog):
 
 def test_label_is_used_verbatim_in_the_log_message(caplog):
     with patch.object(CollectorBase, "_head_changed", return_value=False):
-        with caplog.at_level(logging.DEBUG, logger="worldmap.collectors.base"):
+        with caplog.at_level(logging.DEBUG, logger="atmos_gl.collectors.base"):
             CollectorBase._head_changed_or_default("http://example.com", "Satellites")
 
     assert "Satellites: remote unchanged; skipping collect." in caplog.text

@@ -1,4 +1,4 @@
-from worldmap.db.satellite_adapter import FakeSatelliteAdapter
+from atmos_gl.db.satellite_adapter import FakeSatelliteAdapter
 
 
 def test_update_satellite_inserts_new_satellite():

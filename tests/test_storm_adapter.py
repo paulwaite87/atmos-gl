@@ -1,7 +1,7 @@
 import json
 from datetime import datetime, timedelta, timezone
 
-from worldmap.db.storm_adapter import FakeStormAdapter
+from atmos_gl.db.storm_adapter import FakeStormAdapter
 
 
 def _geojson(adapter):

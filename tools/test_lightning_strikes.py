@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 sys.path.append(os.getcwd())
-from worldmap.db.lightning_adapter import LightningAdapter
+from atmos_gl.db.lightning_adapter import LightningAdapter
 
 
 def generate_test_strikes():

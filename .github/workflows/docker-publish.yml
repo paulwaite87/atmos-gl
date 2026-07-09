@@ -10,7 +10,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  # This automatically evaluates to paulwaite87/WorldMap
+  # This automatically evaluates to paulwaite87/atmos-gl
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:

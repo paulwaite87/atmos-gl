@@ -11,8 +11,8 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
-from worldmap.tasks.common import ForecastState
-from worldmap.tasks.scalar_field import (
+from atmos_gl.tasks.common import ForecastState
+from atmos_gl.tasks.scalar_field import (
     ScalarFieldUpdater,
     ScalarFieldSpec,
     SPECS,
@@ -45,8 +45,8 @@ def test_plot_dispatches_spec_to_render(key):
     field0 = {"lat": [0], "lon": [0], "values": [[1.0]]}
     state = ForecastState.at_hour("2026-06-13", "18", 3)
 
-    with patch("worldmap.tasks.scalar_field.Plot") as MockPlot, patch(
-        "worldmap.tasks.scalar_field.encode_frames"
+    with patch("atmos_gl.tasks.scalar_field.Plot") as MockPlot, patch(
+        "atmos_gl.tasks.scalar_field.encode_frames"
     ) as mock_encode:
         u.plot(field0, state)
 
@@ -72,8 +72,8 @@ def test_plot_dispatches_spec_to_render(key):
 def test_plot_skips_when_field_missing():
     u = make_bare_updater(SPECS["temperature"])
     state = ForecastState.at_hour("2026-06-13", "18", 3)
-    with patch("worldmap.tasks.scalar_field.Plot") as MockPlot, patch(
-        "worldmap.tasks.scalar_field.encode_frames"
+    with patch("atmos_gl.tasks.scalar_field.Plot") as MockPlot, patch(
+        "atmos_gl.tasks.scalar_field.encode_frames"
     ):
         u.plot({"lat": [0], "lon": [0], "values": None}, state)
     MockPlot.assert_not_called()
@@ -88,7 +88,7 @@ def test_specs_cover_the_four_scalar_fields():
 
 
 def test_layer_builder_binds_each_spec_via_partial():
-    from worldmap.layer_builder import TASK_CLASSES
+    from atmos_gl.layer_builder import TASK_CLASSES
 
     for key in SPECS:
         entry = TASK_CLASSES[key]

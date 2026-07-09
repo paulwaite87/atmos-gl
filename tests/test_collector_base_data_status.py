@@ -7,7 +7,7 @@ neither had any test coverage before this refactor.
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock
 
-from worldmap.collectors.base import CollectorBase, AsyncCollectorBase
+from atmos_gl.collectors.base import CollectorBase, AsyncCollectorBase
 
 
 def make_bare_collector(section="quakes", settings=None):

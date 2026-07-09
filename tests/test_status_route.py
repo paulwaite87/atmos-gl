@@ -12,14 +12,14 @@ real DB, config file, or the fieldstore singleton -- previously untestable at al
 """
 from datetime import datetime, timezone
 
-from worldmap.routes.status import (
+from atmos_gl.routes.status import (
     get_collector_classes,
     get_cache_collector_classes,
     get_field_collector_classes,
     get_embeddable_collector_classes,
     get_task_classes,
 )
-from worldmap.api import app
+from atmos_gl.api import app
 
 
 class _StubCollector:

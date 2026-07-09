@@ -10,7 +10,7 @@ It reads the .idx sidecar, resolves the byte ranges for exactly the ATMOS_TARGET
 your data_collector uses, downloads only those ranges, and writes a small filtered
 "union" GRIB locally — the same bytes the collector hands to the unpackers.
 
-This is a faithful, dependency-light copy of worldmap.lib.gfs.{gfs_index_ranges,
+This is a faithful, dependency-light copy of atmos_gl.lib.gfs.{gfs_index_ranges,
 download_byte_ranges}; nothing project-internal is imported, so you can run it
 anywhere Python 3 + requests is available.
 
@@ -39,7 +39,7 @@ except ImportError:
     sys.exit("This script needs 'requests'.  pip install requests")
 
 
-# Must match worldmap.lib.gfs.ATMOS_TARGETS exactly.
+# Must match atmos_gl.lib.gfs.ATMOS_TARGETS exactly.
 ATMOS_TARGETS = [
     ":PRMSL:mean sea level:",
     ":PRATE:surface:",
@@ -55,7 +55,7 @@ ATMOS_TARGETS = [
 def gfs_index_ranges(grib_url, targets, timeout=30, want_lines=False):
     """Resolve (start, end) byte ranges for each target from the .idx sidecar.
 
-    Mirrors worldmap.lib.gfs.gfs_index_ranges. Returns a list of (start, end)
+    Mirrors atmos_gl.lib.gfs.gfs_index_ranges. Returns a list of (start, end)
     tuples (end < 0 means 'to EOF'). If want_lines, also returns the matched
     .idx line text per target as a parallel list.
     """
@@ -85,7 +85,7 @@ def gfs_index_ranges(grib_url, targets, timeout=30, want_lines=False):
 def download_byte_ranges(url, ranges, timeout=120):
     """Download the given byte ranges and return the concatenated bytes.
 
-    Mirrors worldmap.lib.gfs.download_byte_ranges.
+    Mirrors atmos_gl.lib.gfs.download_byte_ranges.
     """
     out = bytearray()
     for start, end in ranges:

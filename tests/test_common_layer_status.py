@@ -7,7 +7,7 @@ this refactor.
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock
 
-from worldmap.tasks.common import Updater
+from atmos_gl.tasks.common import Updater
 
 
 def make_bare_updater(section="isobars", settings=None, status_product=None):

@@ -8,7 +8,7 @@ import os
 
 import matplotlib.colors as mcolors
 
-from worldmap.tasks.common import Updater
+from atmos_gl.tasks.common import Updater
 
 
 def make_bare_updater():

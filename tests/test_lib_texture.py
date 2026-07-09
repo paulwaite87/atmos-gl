@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 from PIL import Image
 
-from worldmap.lib.texture import encode_uv, encode_frames
+from atmos_gl.lib.texture import encode_uv, encode_frames
 
 
 def _decode_uv_channel(byte, vmax):

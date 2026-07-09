@@ -2644,7 +2644,7 @@ wheels = [
 ]
 
 [[package]]
-name = "worldmap"
+name = "atmos_gl"
 version = "1.0.0"
 source = { editable = "." }
 dependencies = [

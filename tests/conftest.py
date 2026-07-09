@@ -7,11 +7,11 @@ test's substituted adapter from leaking into the next.
 `real_db` is for Real/Fake adapter drift tests (architecture review candidate "guard
 against Real/Fake adapter drift") -- a throwaway postgis/postgis container, migrated
 with the SAME `alembic upgrade head` production uses, session-scoped so the container
-only starts once. Matches docker-compose.yml's worldmap_db image+version exactly for
+only starts once. Matches docker-compose.yml's atmos_gl_db image+version exactly for
 fidelity. Adapters under test still need their own `Session` monkeypatched to point at
-this engine (see test_ship_adapter_real_vs_fake.py) -- worldmap.db.engine.Session is
+this engine (see test_ship_adapter_real_vs_fake.py) -- atmos_gl.db.engine.Session is
 bound at import time to the real PGHOST/etc., and each adapter module imports that
-name directly, so patching worldmap.db.engine alone doesn't reach them.
+name directly, so patching atmos_gl.db.engine alone doesn't reach them.
 """
 import os
 import subprocess
@@ -21,7 +21,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from testcontainers.postgres import PostgresContainer
 
-from worldmap.api import app
+from atmos_gl.api import app
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -35,19 +35,19 @@ def client():
 @pytest.fixture(scope="session")
 def real_db():
     with PostgresContainer(
-        "postgis/postgis:15-3.3",  # matches docker-compose.yml's worldmap_db exactly
-        username="wmap_test",
-        password="wmap_test",
-        dbname="worldmap_test",
+        "postgis/postgis:15-3.3",  # matches docker-compose.yml's atmos_gl_db exactly
+        username="agl_test",
+        password="agl_test",
+        dbname="atmos_gl_test",
         driver="psycopg2",
     ) as pg:
         env = os.environ.copy()
         env.update(
             PGHOST=pg.get_container_host_ip(),
             PGPORT=str(pg.get_exposed_port(5432)),
-            PGUSER="wmap_test",
-            PGPASSWORD="wmap_test",
-            PGDATABASE="worldmap_test",
+            PGUSER="agl_test",
+            PGPASSWORD="agl_test",
+            PGDATABASE="atmos_gl_test",
         )
         subprocess.run(
             ["alembic", "upgrade", "head"], env=env, cwd=REPO_ROOT, check=True

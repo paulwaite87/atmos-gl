@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Route-level tests for GET /api/forecast_state and GET /api/regions (architecture
 review candidate "Give routers the seam the Fakes are waiting for")."""
-from worldmap.db.field_catalog_adapter import FakeFieldCatalogAdapter
-from worldmap.db.region_adapter import FakeRegionAdapter
-from worldmap.routes.config import get_field_catalog_adapter, get_region_adapter
-from worldmap.api import app
+from atmos_gl.db.field_catalog_adapter import FakeFieldCatalogAdapter
+from atmos_gl.db.region_adapter import FakeRegionAdapter
+from atmos_gl.routes.config import get_field_catalog_adapter, get_region_adapter
+from atmos_gl.api import app
 
 
 def _seed_region(adapter, label, lon_min, lat_min, lon_max, lat_max):

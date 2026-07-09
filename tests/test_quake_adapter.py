@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone
 
-from worldmap.db.quake_adapter import FakeQuakeAdapter
+from atmos_gl.db.quake_adapter import FakeQuakeAdapter
 
 
 def _iso(dt):

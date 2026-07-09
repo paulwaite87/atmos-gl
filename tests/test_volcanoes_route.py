@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Route-level test for GET /api/volcanoes/geojson (architecture review candidate
 "Give routers the seam the Fakes are waiting for")."""
-from worldmap.db.volcano_adapter import FakeVolcanoAdapter
-from worldmap.routes.volcanoes import get_volcano_adapter
-from worldmap.api import app
+from atmos_gl.db.volcano_adapter import FakeVolcanoAdapter
+from atmos_gl.routes.volcanoes import get_volcano_adapter
+from atmos_gl.api import app
 
 
 def test_volcanoes_geojson_reflects_the_overridden_fake(client):

@@ -1,6 +1,6 @@
 import json
 
-from worldmap.db.marker_adapter import FakeMarkerAdapter
+from atmos_gl.db.marker_adapter import FakeMarkerAdapter
 
 
 def _row(id_, name="Wellington", lat=-41.28, lon=174.77, **kw):

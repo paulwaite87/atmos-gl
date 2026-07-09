@@ -1,6 +1,6 @@
 import json
 
-from worldmap.db.volcano_adapter import FakeVolcanoAdapter
+from atmos_gl.db.volcano_adapter import FakeVolcanoAdapter
 
 
 def _geojson(adapter, vei_min=0, significant=False, date_codes=None):

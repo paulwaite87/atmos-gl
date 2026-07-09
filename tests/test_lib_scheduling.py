@@ -4,7 +4,7 @@ service scaffold"). interval_elapsed replaces the identical `last_run is None or
 (now - last_run) >= interval_s` check hand-duplicated in Housekeeper.run() and
 CollectorService.run() -- neither had test coverage for this logic before.
 """
-from worldmap.lib.scheduling import interval_elapsed
+from atmos_gl.lib.scheduling import interval_elapsed
 
 
 def test_interval_elapsed_true_when_never_run():

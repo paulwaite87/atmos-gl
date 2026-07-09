@@ -4,9 +4,9 @@ import os
 import uuid
 from datetime import datetime, timedelta, timezone
 
-# Ensure we can import the worldmap module
+# Ensure we can import the atmos_gl module
 sys.path.append(os.getcwd())
-from worldmap.db.quake_adapter import QuakeAdapter
+from atmos_gl.db.quake_adapter import QuakeAdapter
 
 
 def generate_test_quakes():

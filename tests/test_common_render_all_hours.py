@@ -8,7 +8,7 @@ changed to plot_fn(field, state) -- and had zero direct test coverage before thi
 """
 from unittest.mock import MagicMock
 
-from worldmap.tasks.common import Updater, MultiHourRenderMixin, ForecastState
+from atmos_gl.tasks.common import Updater, MultiHourRenderMixin, ForecastState
 
 
 class _MultiHourLayer(Updater, MultiHourRenderMixin):

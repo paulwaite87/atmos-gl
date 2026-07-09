@@ -4,11 +4,11 @@ import logging
 from sqlalchemy import func, select
 
 # Import your core modules based on the project structure
-from worldmap.db.engine import Session
-from worldmap.db.models import Storm, StormTrack
-from worldmap.lib.config import WorldMapConfig
-from worldmap.tasks.common import MapData
-from worldmap.tasks.storms import StormUpdater
+from atmos_gl.db.engine import Session
+from atmos_gl.db.models import Storm, StormTrack
+from atmos_gl.lib.config import AtmosGLConfig
+from atmos_gl.tasks.common import MapData
+from atmos_gl.tasks.storms import StormUpdater
 
 # Configure basic logging so you can watch the progress in the terminal
 logging.basicConfig(level=logging.INFO, format='%(levelname)s - %(message)s')
@@ -32,7 +32,7 @@ def refresh_all_cones():
     logger.info("Initializing dependencies...")
 
     # 1. Core Initialization
-    config = WorldMapConfig(config_path="/opt/project/config/worldmap.json")
+    config = AtmosGLConfig(config_path="/opt/project/config/atmos-gl.json")
     updater = StormUpdater(config, MapData(config))
 
     try:

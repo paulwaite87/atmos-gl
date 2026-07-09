@@ -5,7 +5,7 @@ lived entirely inside prune_orphaned_hour_outputs, tangled with glob/os.remove I
 it could only be exercised by touching a real filesystem. Neither function needs a
 Housekeeper instance or any I/O -- module-level, pure, previously untested.
 """
-from worldmap.housekeeper import _parse_hour_output_name, _is_orphaned
+from atmos_gl.housekeeper import _parse_hour_output_name, _is_orphaned
 
 
 # ---- _parse_hour_output_name --------------------------------------------------

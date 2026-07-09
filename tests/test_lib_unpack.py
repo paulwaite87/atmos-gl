@@ -9,7 +9,7 @@ cfgrib to exercise honestly and carries little bug risk compared to this math.
 import numpy as np
 import pytest
 
-from worldmap.lib.unpack import _swell_uv, _standardize_lon, _regrid_curvilinear
+from atmos_gl.lib.unpack import _swell_uv, _standardize_lon, _regrid_curvilinear
 
 
 # ---- _swell_uv --------------------------------------------------------------
