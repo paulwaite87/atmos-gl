@@ -1,13 +1,17 @@
-# Live World Map for Linux
+# Live World Map
 
 ## What is this?
 
-A Docker container-based system that features a number of data acquisition scripts for Clouds, Isobars, Wind,
-Rain, Lightning Strikes, Storm tracking, Earthquakes, Volcanoes, Sea Surface Temperature (SST), Ocean Currents
-and Shipping before utilizing `xplanet` to render it all as an image of The World or part of it, for your desktop.
+A Docker Compose–based system that gives you a live, interactive 3D globe in your browser —
+built on MapLibre GL JS — showing real-time and forecast weather and world events: clouds,
+isobars, wind, precipitation, precipitable water (moisture), sea surface temperature, ocean
+currents, wave height, air temperature, ozone, storm watch (CAPE/CIN), earthquakes, volcanoes,
+tropical storms, lightning strikes, shipping traffic, satellites and more.
 
-There is also a daemon which will monitor the folder this image is generated in, and update your desktop wallpaper
-with what is essentially a live view of what's happening on the planet.
+A Python/FastAPI backend continuously pulls forecast data from NOAA/NCEP (GFS atmospheric and
+wave models, RTOFS ocean currents) and live event feeds (USGS earthquakes, NOAA/NHC/JTWC storm
+tracks, Smithsonian volcano data, AIS shipping, lightning strikes, satellite orbits), storing
+everything in PostGIS and rendering it onto the globe as you watch.
 
 ### Global example
 ![World Map Example](docs/worldmap-example.jpg)
@@ -19,10 +23,10 @@ with what is essentially a live view of what's happening on the planet.
 
 ### Prerequisites: Docker Installation
 
-Before running this project, you must have Docker and Docker Compose installed on your system. 
-For Ubuntu users, it is highly recommended to install Docker via the official Docker repository 
-rather than the default apt archives to ensure you have the latest version compatible with 
-modern systemd and container features. You can verify your installation by running 
+Before running this project, you must have Docker and Docker Compose installed on your system.
+For Ubuntu users, it is highly recommended to install Docker via the official Docker repository
+rather than the default apt archives to ensure you have the latest version compatible with
+modern systemd and container features. You can verify your installation by running
 docker --version in your terminal.
 
 If you need some guidance on this a good place to look is
@@ -30,147 +34,127 @@ here https://www.digitalocean.com/community/tutorials/how-to-install-and-use-doc
 
 Despite the '20-04' at the end of the link, this tutorial is also fine for later versions of Ubuntu.
 
-To avoid having to use sudo with every command, ensure your user is added to the docker group. 
-After installation, run `sudo usermod -aG docker $USER` and log out and back in for the changes 
-to take effect. This will allow you to manage containers and orchestration seamlessly while 
+To avoid having to use sudo with every command, ensure your user is added to the docker group.
+After installation, run `sudo usermod -aG docker $USER` and log out and back in for the changes
+to take effect. This will allow you to manage containers and orchestration seamlessly while
 working within the repository.
+
+Everything here is Docker-based, so while these instructions lean Linux, it should run
+wherever Docker Desktop does.
 
 ### For the ninjas: Clone the repository
 
     cd /your/preferred/workspace
-    git clone -v https://github.com/paulwaite87/worldmap
+    git clone -v https://github.com/paulwaite87/worldmap-ng
 
 After that, most things can be done via the Makefile. To see what is available:
 
     make help
 
-The rest of this README is written for folks who are not developers!
+The rest of this README is written for folks who are not developers! If you are a developer,
+skip ahead to [Developer's corner](#developers-corner).
 
 ### Quick Start
-The recommended method of getting this up and running is to use the pre-built
-images and the `worldmap-install.sh` script.
 
-Begin by visiting the repo on Github (which is where you are if you are reading this!)
-and downloading that file, or you can grab it in raw form directly using this link and then
-save it yourself:
-    https://raw.githubusercontent.com/paulwaite87/worldmap/refs/heads/master/worldmap-install.sh
+    cp .env.tmpl .env
 
-You may have to make sure it is executable with
+Edit `.env` and fill in your API keys — see
+[Obtaining an API Key for Shipping data](#obtaining-an-api-key-for-shipping-data),
+[Obtaining an API Key for Weather/Lightning Strikes](#obtaining-an-api-key-for-weatherlightning-strikes)
+and [Map tiles](#map-tiles) below. Shipping and lightning are optional (you can enable them
+later once you have keys); the map tiles key is needed for the globe's basemap to render at all.
 
-    chmod a+x worldmap-install.sh
+Then pull the pre-built images and start everything:
 
-Then just run that:
+    make prod
 
-    ./worldmap-install.sh
+By default most layers are disabled to begin with — see [Setting it up](#setting-it-up) below.
 
-By default this will install stuff in your home folder in a sub-folder called
-`worldmap`.
+To stop everything:
 
-If you want it to live somewhere else, then use this command instead:
-
-    ./worldmap-install.sh /path/to/worldmap
-
-Either of those will pull the pre-built images and will start everything running,
-but most things will be disabled to begin with.
+    make prod-down
 
 ### Setting it up
-The configuration file is called `worldmap.json` and it lives in the `config` folder. 
-You can either edit this file directly, or browse to `http://localhost:8180` to use
+The configuration file is called `worldmap.json` and it lives in the `config` folder.
+You can either edit this file directly, or browse to `http://localhost:9000/config` to use
 the configuration webpage there. If you do use that page, and save some changes they
-will overwrite your `worldmap.json` obviously. Which is absolutely fine, except
-the original un-edited version that gets installed for you does have some quite 
-informative comments scattered through it so to preserve those to look at anytime, 
-you could make a backup copy of the file first.
+will overwrite your `worldmap.json` — which is fine, but if you want to preserve your own
+hand-edits, make a backup copy of the file first.
 
-Here is a shot of the homepage for the configurator at `http://localhost:8180`
+The live globe itself is at `http://localhost:8180`.
+
+Here is a shot of the homepage for the configurator at `http://localhost:9000/config`
 
 ![Configuration Homepage](docs/worldmap-config-homepage.png)
 
-I would suggest first selecting a region on that homepage, setting up
-your desktop geometry, and then in the `Atmospheric` tab just `Clouds` as a
-starting point.
+I would suggest first picking a region on the Global tab (or leaving it as the whole
+World), and then in the `Show` tab just enabling `Clouds` as a starting point.
 
 #### Forecasting
-The system will also allow you to display elements on the map as a forecast. On the
-configuration homepage check out the `Forecast Hours Ahead` slider. The two most
-useful elements which will show forecasts are of course Precipitation, and Isobars,
-but others will do so as well such as Stormwatch, Temperature, Waves and Wind. A
+The map has a time scrubber built right into it — play, step forward/back, or drag through
+the available forecast hours for any layer that supports forecasting. The most useful
+elements which will show forecasts are of course Precipitation, Precipitable Water and
+Isobars, but others will do so as well such as Stormwatch, Temperature, Waves and Wind. A
 notable exception is Clouds which are really only eye-candy as far as meteorology
-is concerned. They are built up over 24 hours as 14 photo swathes by the polar
-orbiting NOAA satellites, so are not computed out into the future like the above
-datasets.
+is concerned. They are built up over 24 hours as photo swathes by the polar orbiting NOAA
+satellites, so are not computed out into the future like the above datasets. The Global
+tab also has forecast-stepping controls that let you play forward through upcoming hours
+automatically.
 
 #### Day and Night
-Xplanet will shade your view with a nice transition at the terminator between day
-and night on your map, showing areas which are enjoying their night time in a
-shaded render. This is good for a realistic view of what's happening on the planet
-however sometimes you might just want to clearly see elements on the map. There is
-a checkbox labelled `Night shade` which allows you to select which mode you want
-it to display the map in.
-
-It should be noted that if you select one of the climate layers, such as SST,
-Waves, Temperature, Ozone, or Stormwatch then the map will be rendered without
-any shading automatically. That's because these layers paint the whole region
-being viewed and shade will just make it hard to see the climate detail.
+There is a `Terminator` layer (in the `Show` tab's `Miscellaneous` group) which shades the
+night side of the globe with a soft transition at the terminator line, for a realistic view
+of what's happening on the planet day and night. It has its own opacity, colour and edge
+softness settings if you'd like to tune the look, and can simply be switched off if you'd
+rather have an unshaded view of whatever layers you have enabled.
 
 ### Control
-There is a control script for managing things.
+Everything is managed through the Makefile.
 
-    ./worldmap.sh
+    make up
 
-With no options, it will print out the commands it understands. The main one for
-getting you desktop wallpaper updating would be:
+Gets your stack running (an alias for `docker compose up -d`). And to stop it:
 
-    ./worldmap.sh map-start
+    make stop
 
-And to stop it:
+Once running, browse to `http://localhost:8180` for the live globe.
 
-    ./worldmap.sh map-stop
+If you change something in `config/worldmap.json` by hand rather than through the web UI,
+or if you just want to restart the backend services:
 
-See if that works for you. You should hopefully see your background change to a
-map of the region you selected, with a clouds overlay.
+    make reload
 
 ### Logging
-If you use the control script thusly:
+To tail the logs of everything:
 
-    ./worldmap.sh logs
+    make logs
 
-The logging will be tailed to your console. A healthy repeating cycle might look 
-something like this. Obviously the below example shows shipping and lightning
-collector output, which you won't see out of the box unless you already acquired
-API keys and enabled them.
+Or just one service:
 
-    shipping_collector  | 2026-05-28 23:06:32,213 [INFO] worldmap.shipping_collector: Shipping Collector Service: Starting weighted global rotation
-    lightning_collector     | 2026-05-28 23:06:33,453 [INFO] worldmap.lightning_collector: Weather Scanner Service: Starting regional scans.
-    layer_builder         | 2026-05-28 23:06:34,599 [INFO] worldmap.layer_builder: Map-builder scheduler run started
-    layer_builder         | 2026-05-28 23:06:34,599 [INFO] worldmap.layer_builder: Running scheduled task: 'isobars'
-    layer_builder         | 2026-05-28 23:06:34,875 [INFO] worldmap.tasks.isobars: Downloading fresh isobar data...
-    layer_builder         | 2026-05-28 23:06:35,545 [INFO] worldmap.tasks.isobars: Generating Isobar plot...
-    layer_builder         | 2026-05-28 23:06:37,662 [INFO] worldmap.layer_builder: Running scheduled task: 'precipitation'
-    layer_builder         | 2026-05-28 23:06:38,211 [INFO] worldmap.tasks.precipitation: Downloading fresh precipitation data from: https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod/gfs.20260528/06/atmos/gfs.t06z.pgrb2.0p25.f001
-    layer_builder         | 2026-05-28 23:06:38,974 [INFO] worldmap.tasks.precipitation: Generating Precipitation plot...
-    layer_builder         | 2026-05-28 23:06:39,108 [INFO] worldmap.tasks.precipitation: Large region detected (127.2°x57.4°). Using resource-friendly global grid settings.
-    layer_builder         | 2026-05-28 23:06:39,974 [INFO] worldmap.layer_builder: Running scheduled task: 'clouds'
-    layer_builder         | 2026-05-28 23:06:39,975 [INFO] worldmap.tasks.clouds: Fetching regional NASA GIBS clouds for 2026-05-27 (4096x2048)...
-    layer_builder         | 2026-05-28 23:06:46,066 [INFO] worldmap.layer_builder: Running scheduled task: 'composite'
-    layer_builder         | 2026-05-28 23:06:50,236 [INFO] worldmap.layer_builder: Running scheduled task: 'lightning'
-    layer_builder         | 2026-05-28 23:06:50,315 [INFO] worldmap.tasks.lightning: Placed 0 strikes
-    layer_builder         | 2026-05-28 23:06:50,315 [INFO] worldmap.layer_builder: Running scheduled task: 'quakes'
-    layer_builder         | 2026-05-28 23:06:51,149 [INFO] worldmap.layer_builder: Running scheduled task: 'satellites'
-    layer_builder         | 2026-05-28 23:06:51,154 [INFO] worldmap.tasks.satellites: Satellite update complete. Tracked 1/1 objects.
-    layer_builder         | 2026-05-28 23:06:51,155 [INFO] worldmap.layer_builder: Running scheduled task: 'shipping'
-    layer_builder         | 2026-05-28 23:06:51,233 [INFO] worldmap.tasks.shipping: Shipping update complete. Placed 549 ships in region.
-    layer_builder         | 2026-05-28 23:06:51,236 [INFO] worldmap.layer_builder: Running scheduled task: 'xplanet'
-    layer_builder         | 2026-05-28 23:06:52,024 [INFO] worldmap.tasks.renderer: Successfully generated map: ./data/1779966411-regionmap.jpg
-    layer_builder         | 2026-05-28 23:06:52,024 [INFO] worldmap.layer_builder: Map-builder scheduler run finished
+    make logs service=layer_builder
 
-The `layer_builder` is the main process which puts together all the elements which get displayed 
-on the map. This process is endlessly repeating, so your map will change through the 
-day as the elements are updated.
+A healthy repeating cycle might look something like this. Obviously the below example
+shows shipping and lightning collector output, which you won't see out of the box unless
+you already acquired API keys and enabled them.
+
+    data_collector       | 2026-07-08 22:12:30,063 [INFO] worldmap.collectors.gfs_atmos: Data Collector (gfs): 20260708 06Z, hours 004..051; stored 0 field(s).
+    data_collector       | 2026-07-08 22:33:52,623 [INFO] worldmap.collectors.shipping: ShippingCollector: starting weighted global rotation.
+    data_collector       | 2026-07-08 22:34:10,815 [INFO] worldmap.collectors.quakes: Quakes: upserted 26 records (min_mag=3.5).
+    data_collector       | 2026-07-08 22:34:30,026 [INFO] worldmap.collectors.volcanoes: Volcanoes: upserted 200 records.
+    layer_builder        | 2026-07-08 22:34:26,909 [INFO] worldmap.tasks.wind: Wind: heatmap scale = 230 km/h (data peak 221.8 km/h across 48 hours)
+    layer_builder        | 2026-07-08 22:34:36,300 [INFO] worldmap.tasks.currents: Finished Currents velocity texture f057 (R=U, G=V).
+    layer_builder        | 2026-07-08 22:38:39,481 [INFO] worldmap.tasks.scalar_field: Finished ozone texture f014.
+
+The `data_collector` continuously fetches fresh data in the background regardless of
+which layers you have switched on, so it's ready the moment you enable something. The
+`layer_builder` is what turns collected data into the images/textures the globe actually
+displays, cycling through every enabled layer, one forecast hour at a time, so all your
+enabled layers make visible progress together rather than one finishing its whole backlog
+before the next one starts.
 
 ### Regions
-The database will be seeded with a few regions, which can be used to zoom in on where 
-you want to populate elements on the map. You can add as many regions as you want. 
+The database will be seeded with a few regions, which can be used to zoom in on where
+you want to populate elements on the map. You can add as many regions as you want.
 
 To add a region, we will need to get nerdy and insert data into your database. The
 format of an SQL statement which will do just that is:
@@ -179,36 +163,34 @@ format of an SQL statement which will do just that is:
 
 Copy this somewhere that you can change it in an editor.
 
-For the coords, go to https://tools.mofei.life/bbox#1/0/0 and navigate to wherever is 
-centre of the region you want on the World map there. Zoom in and then pull a bounding-box 
+For the coords, go to https://tools.mofei.life/bbox#1/0/0 and navigate to wherever is
+centre of the region you want on the World map there. Zoom in and then pull a bounding-box
 with SHIFT-drag (TIP: ideally make it approx. 2:1 width:height). In the WGS84 box `Copy`
 the bounding box coords and paste those (minus the square brackets) into your INSERT.
 The co-ordinate ordering is already correct. Give your INSERT a new appropriate label,
 (replacing 'My Region', then copy that SQL statement onto your clipboard and execute
 this command:
 
-    ./worldmap.sh db
+    make psql
 
 That will get you into the World Map database PSQL shell. Paste your INSERT into that and
 hit enter. Bingo, a brand new region. The World Map configurator should read your new region
-and allow you to select it. The system will pull a dedicated region map at your specified
-target geometry so there is no degradation of resolution when you display a small region
-of the World. Perfect day/night maps care of NASA Blue Marble every time!
+and allow you to select it.
 
 Just hit Ctrl-d to get out of the database.
 
 ### Obtaining an API Key for Shipping data
 The `shipping_collector` needs an API Key to access the AIS stream carrying shipping messages.
 
-To obtain one, head on over to https://aisstream.io/documentation on that page you will see 
-a link to `Sign In` (https://aisstream.io/authenticate) which will ask you to sign in to their 
+To obtain one, head on over to https://aisstream.io/documentation on that page you will see
+a link to `Sign In` (https://aisstream.io/authenticate) which will ask you to sign in to their
 Github. Obviously if you don't have a Github account you will have to sign up for that first.
 
-The process of obtaining the API Key is easy once you are signed in. There is a link `API Keys` 
+The process of obtaining the API Key is easy once you are signed in. There is a link `API Keys`
 and you can create one there. Copy the key, and then back in the root directory edit the
-file named `.env` and replace the `AIS_API_KEY` placeholder there with your newly minted 
-API Key. You will now be able to go into the World Map Configurator and on the `Show` tab 
-in the `Background Processes` enable either or both the Shipping and Lightning processes.
+file named `.env` and replace the `AIS_API_KEY` placeholder there with your newly minted
+API Key. You will now be able to go into the World Map Configurator and on the `Show` tab
+in the `Background Processes` group enable either or both the Shipping and Lightning processes.
 
 ### Obtaining an API Key for Weather/Lightning Strikes
 This is for the `lightning_collector` and it's a similar deal, but also easy. You just need to
@@ -219,21 +201,25 @@ In your `.env` file do as above and put the key in for the `OPENWEATHER_API_KEY`
 
 Once the `lightning_collector` process is enabled and running, you will find that the table
 in the database called `lightning_strikes` will acquire data, though it also gets culled
-every few hours (`expiry_hours` setting in that section) so won't get too populated.
+every few hours (`strike_expiry_hours` setting in that section) so won't get too populated.
 
-A `make status` command will show the number of strikes in each region.
+### Map tiles
+The globe's basemap imagery (satellite/street tiles) is served by MapTiler, and needs its own
+free API key. Sign up at https://www.maptiler.com/, grab a key from your account dashboard,
+and put it in `.env` as `MAPTILER_API_KEY`. Without this the globe has nothing to render its
+basemap with.
 
 ### Shipping Data Acquisition
-Ships broadcast data in the form of messages continuously at regular intervals. The main 
-message they emit is a `PositionReport` which contains information as to latitude and longitude, 
+Ships broadcast data in the form of messages continuously at regular intervals. The main
+message they emit is a `PositionReport` which contains information as to latitude and longitude,
 current heading and speed. This message is usually fairly frequent. The other message of
-interest to us is the `ShipStaticData` which has details of the ship itself such as name, 
-size, draught, type and IMO number (International Maritime Organization number). This message 
-is broadcast much less frequently, but the data is extremely useful to identify the type of 
+interest to us is the `ShipStaticData` which has details of the ship itself such as name,
+size, draught, type and IMO number (International Maritime Organization number). This message
+is broadcast much less frequently, but the data is extremely useful to identify the type of
 vessel and its current loading state (draught).
 
 The `shipping_collector` listens for both types of message and will gradually populate your
-database `ships` table with them. It does this by slicing the globe up into 10 segments by
+database `ships` table with them. It does this by slicing the globe up into segments by
 longitude, and then listening in each slice defined as a bounding box. The listen duration
 varies according to how busy each slice is expected to be, based on shipping lanes and the
 area of ocean it's looking at.
@@ -244,32 +230,33 @@ no details about the ship itself. The `shipping_collector` will look for an exis
 record in our database with the same `mmsi` identifier, and if found add the new position info.
 It also logs the position in the tracking table `ship_position` so we can display vessel tracks.
 If it doesn't find an existing `ships` record it creates a `shadow` record with scant data about
-the ship, basically just the name and the `mmsi` identifier. At some point we would hope to 
+the ship, basically just the name and the `mmsi` identifier. At some point we would hope to
 back-fill that data when a `ShipStaticData` is acquired for it.
 
-The `layer_builder` (see below) is independent of all this and just displays ships in the database 
-which happen to be in the region(s) you have specified you want to display (or the whole World 
+The `layer_builder` (see below) is independent of all this and just displays ships in the database
+which happen to be in the region(s) you have specified you want to display (or the whole World
 if you left that list empty).
 
 One useful command for shipping is:
 
-    ./worldmap.sh status
+    make status
 
 That will print out some status info about ships in each region, ship totals and also lightning
 strikes per region.
 
 ### Map Overlays and Markers
-Apart from shipping there are, of course, other elements to the map display. 
+Apart from shipping there are, of course, other elements to the map display.
 The full list is:
 
 * Clouds
 * Isobars
-* Rainfall
 * Wind speed & direction
-* Sea surface temperature (absolute or anomaly)
+* Precipitation
+* Precipitable water (atmospheric moisture)
+* Sea surface temperature
 * Ocean currents
 * Wave height & direction
-* Air temperature (absolute or anomaly)
+* Air temperature
 * Ozone layer density
 * Storm watch
 * Lightning strikes
@@ -278,6 +265,7 @@ The full list is:
 * Volcanoes
 * Shipping
 * Satellites
+* Place markers
 
 Each of these has its own configuration options.
 
@@ -289,21 +277,14 @@ In the web UI, the `Show` tab controls what gets shown on the map. If something 
 disabled, then the following tabs will have that section hidden, to avoid cluttering
 the interface.
 
-These elements are also updated according to a frequency determined by a `Runs per day` 
+These elements are also updated according to a frequency determined by a `Runs per day`
 setting. This is to restrict load on the remote servers, which only update their
-data every few hours at most anyway.
+data every few hours at most anyway. Data collection itself, though, always runs in the
+background regardless of whether a layer is switched on — so the moment you enable
+something it's ready to display rather than waiting for a fresh fetch.
 
-You can, however, force the system to refresh the map using the following:
-
-    ./worldmap.sh refresh-map
-
-Though it should be noted that this will not necessarily result in data being refreshed
-from the upstream source. Where possible the system will do a HEAD request to find out
-if the remote data is newer than what we already have locally. If it isn't then we
-will just refresh the map using the locally cached data.
-
-If you really want a fresh start, then `sudo rm data/*` should do the trick! And if,
-for some reason you want to refresh the regional maps then `sudo rm data/regions/*`.
+If you really want a fresh start, stop the stack and remove the contents of the `data`
+folder — you may need `sudo` depending on how your containers are set up.
 
 ### Some further notes
 
@@ -313,14 +294,24 @@ cover snow, sleet, hail etc. It's probably one of the most interesting layers fr
 the point of view of the amateur meteorologist given it often affects our daily plans
 in life! Given it can be displayed forecasted, it's quite useful in that regard.
 
+#### Precipitable Water
+This shows the total amount of water vapour sitting in a column of atmosphere — not rain
+itself, but the fuel that heavy rain and atmospheric rivers need. Rather than colourising
+the whole globe, it only highlights potential problem areas: anywhere below a configurable
+`Critical Moisture Threshold` is left transparent, and only the genuinely moist regions
+above it get coloured, brightest where moisture is most extreme. By default it uses the
+same colour palette as Precipitation, so the two layers visually reinforce each other when
+shown together, though a couple of other palettes are available if you'd prefer something
+distinct.
+
 #### Isobars
 The cornerstone of meteorology it shows what the pressure is doing in the atmosphere
-and hence how the air masses are moving. Coupled with wind barbs and precipitation
+and hence how the air masses are moving. Coupled with wind and precipitation
 layers it really does show you how the weather is shaping up. Once again it can be
 forecasted which makes it very useful.
 
 #### Volcanoes
-Volcanoes are pretty much static day-to-day and can end up just cluttering up the map, 
+Volcanoes are pretty much static day-to-day and can end up just cluttering up the map,
 so I generally don't display them. There are also a lot of them, depending on which
 options you set in the configuration. Each volcano will appear on the map
 as this symbol ![Volcano](ui/images/volcano_symbol.png)
@@ -330,9 +321,9 @@ volcano on the planet has a big eruption and you want to display it. That field 
 take a comma-separated list too, if you have several you want to display.
 
 #### Earthquakes
-These are one of the most interesting elements to put onto the map because it allows 
-you to visualise clusters of quakes appearing and providing a pattern of activity. 
-The symbol used comes in two colours, one for a very recent earthquake and one for 
+These are one of the most interesting elements to put onto the map because it allows
+you to visualise clusters of quakes appearing and providing a pattern of activity.
+The symbol used comes in two colours, one for a very recent earthquake and one for
 those older. You can set the `Recent activity hours` which determines this switch in
 the configuration UI. The expiry hours can also be set there. Symbols:
 * ![EQ recent](ui/images/earthquake_new.png) Recent earthquake activity
@@ -351,17 +342,17 @@ of the storm is shown with this icon:
 To get the data we scan two sources:
 * NHC (National Hurricane Center)
     Responsible for tracking storms in the North Atlantic (AL) and Eastern North
-    Pacific (EP). Their servers also typically host data for the Central North 
-    Pacific (CP), which is technically handled by the CPHC in Hawaii.  
+    Pacific (EP). Their servers also typically host data for the Central North
+    Pacific (CP), which is technically handled by the CPHC in Hawaii.
 
-* JTWC (Joint Typhoon Warning Center): This is a joint U.S. Navy and Air Force 
+* JTWC (Joint Typhoon Warning Center): This is a joint U.S. Navy and Air Force
     command responsible for tracking tropical cyclones everywhere else on Earth
-    including the Western North Pacific (typhoons), the Indian Ocean, and the 
+    including the Western North Pacific (typhoons), the Indian Ocean, and the
     Southern Hemisphere.
 
 The major advantage of the ATCF (Automated Tropical Cyclone Forecast) system is
-that it's a shared standard. Even though the NHC and JTWC are entirely different 
-organizations with different jurisdictions, they both output their data using 
+that it's a shared standard. Even though the NHC and JTWC are entirely different
+organizations with different jurisdictions, they both output their data using
 the same comma-delimited columns.
 
 There are a lot of configurable items on the panel for storms, so you can get
@@ -381,28 +372,25 @@ We also have a colour code to give an idea of timing:
 This area is quite fascinating as it covers the entire planet. The data is sourced
 from https://nomads.ncep.noaa.gov/ which contains a staggering amount of publicly
 available data. Currently we are just dipping our toes in those waters and providing
-Sea Surface Temperature, Air/land Temperature, Wave Heights, Ocean Currents and
+Sea Surface Temperature, Air Temperature, Wave Heights, Ocean Currents and
 the Ozone Layer data resolved to a 0.25 degree grid (with interpolation/smoothing
 as required).
 
-Each of those layers is mutually exclusive due to the fact they provide a colourisation
-of the entire planet. If you had more than one you might end up with a useless mashup
-of overlapping colours on screen. In fact use of these layers is best done with just
-about every other layer disabled. That would include Clouds, Isobars and Precipitation,
+Each of Sea Surface Temperature, Ocean Currents, Wave Heights, Air Temperature, Ozone
+and Storm Watch is mutually exclusive as a "climate base layer" — the `Show` tab presents
+them as radio buttons rather than independent checkboxes, since they each colourise the
+entire planet and having more than one on at once would just be a useless mashup of
+overlapping colours. In fact use of these layers is best done with just about every other
+colourising layer disabled — that would include Precipitation and Precipitable Water —
 though for marker elements such as Earthquakes, Shipping etc it isn't so important.
 
 ##### SST
-For Sea Surface Temperature we have two options: Absolute and Anomaly. Absolute give you
-a straightforward temperature reading map. Anomaly is the temperature deviation from
-those expected from historical data. That is, differences from what would be normal
-at that location, day of the year and time of day. It's a fascinating visualisation
-of the warming of our planet.
+Sea Surface Temperature, sourced straight from NOAA's data. A fascinating visualisation
+of what's happening across our oceans.
 
 ##### Air Temperature
-Air/land temperatures are a measure of what's going on in our atmosphere. Absolute is
-once again straightforward, but this time the `Anomaly` setting is not a comparison
-with historical data. It is a comparison with the average temperature of the region
-being viewed right now. So it shows the hot and cool spots in the region.
+Air/land temperatures are a measure of what's going on in our atmosphere, resolved
+globally at the same grid resolution as everything else here.
 
 ##### Waves
 This one is a colourisation depicting wave height across the planet. It gets quite
@@ -415,14 +403,12 @@ on a real-time basis. This is one layer which could be shown together with other
 such as Isobars, Clouds and Precipitation as it isn't a colouration layer.
 
 ##### Ozone Layer
-Another interesting climate layer to have a look at. There are a few palettes to
-choose from but I think the most useful one is `critical` which ties in with a
-setting you can configure called `Critical du`. The `du` stands for "Dobson Units"
-which is what the ozone layer density is measured in. A value of `220.0` is
-considered the threshold for a "hole" in the ozone layer. If you choose the
-`critical` palette any ozone levels above that setting will be rendered
-transparent, and anything below is given a color, so you only see the problem
-areas.
+Another interesting climate layer to have a look at. There are a couple of palettes to
+choose from, both built around a setting called `Critical Ozone Threshold`. The `du`
+stands for "Dobson Units" which is what the ozone layer density is measured in. A value
+of `220.0` is considered the threshold for a "hole" in the ozone layer. Any ozone reading
+below that setting is coloured (brightest at the very worst readings), and anything above
+it fades to a dim, near-transparent "safe" tone — so you only really see the problem areas.
 
 ##### Storm Watch
 This layer shows where there is a likelihood of a storm forming. It uses the CAPE
@@ -436,58 +422,43 @@ Potential Energy) above it. Combining both gives us a reasonable idea of the
 actual potential for storm formation.
 
 #### Wind
-Wind is depicted as a grid of 'barbs' where the length is proportional to the
-wind speed, and the direction is indicated by the angle. This layer is quite good
-paired with isobars where you can see the effect of differing air pressure.
+Wind is depicted windy.com-style: animated flowing particle trails over a colourised
+speed heatmap, so you can see both direction and intensity of the wind at a glance. This
+layer is quite good paired with isobars where you can see the effect of differing air
+pressure.
 
 #### Shipping
-If you select `Disc` ship icons there are basically two variants, Cargo and Tanker but
-with different colours depending on loading state. This setting is really only useful
-when you have things set up such that there is a low density of ships otherwise they
-can overlap too much:
-* ![Cargo](ui/images/ship_cargo.png) Cargo
-* ![Cargo unloaded](ui/images/ship_cargo_empty.png) Cargo (unloaded)
-* ![Tanker](ui/images/ship_tanker.png) Tanker
-* ![Tanker unloaded](ui/images/ship_tanker_empty.png) Tanker (unloaded)
-
-If you select `Arrows` for the ship icons then there is a color code: red for tankers,
-green for cargo, violet for passenger/other. Also the arrows will point in the direction
-that the vessel is heading currently. Examples:
+Ships are shown as small rotating icons pointing in their current heading, colour-coded
+by vessel type: red for tankers, green for cargo, and violet/purple for passenger and
+other vessel types.
 * ![Tankers](ui/images/red_ship_base.png) Tankers
 * ![Cargo](ui/images/green_ship_base.png) Cargo
 * ![Passenger](ui/images/purple_ship_base.png) Passenger/other
 
-Tip: If you have `filter_ships_underway` set to True, shipping with speeds less than 
-1.0 knots, or flagged as anchored or moored are NOT displayed. This avoids masses of ship
-icons overlaying each other in port locations making a mess on the map.
-
-There are also other filters in that section, so play around until you get the level of
-detail you want.
+Smaller vessels only appear once you're zoomed in reasonably close, with progressively
+larger ones visible from further out — this keeps busy shipping lanes from turning into
+an unreadable wall of icons at low zoom.
 
 #### Satellites
-Plotting satellite paths is something XPlanet is famous for, and you can do that in this
-package as well. Of course there are literally thousands of objects up there whizzing around
-and about the Planet, not to mention the mega-clusters like Starlink etc. so I've just
-populated a multi-select with a handful of the most popular ones you can display.
+Plotting satellite paths is something this map is happy to do, and there are literally
+thousands of objects up there whizzing around the Planet, not to mention the
+mega-clusters like Starlink etc. so there's a multi-select with a handful of the most
+popular ones you can display.
 
 There is also a text box for you to add a comma-separated list of satellite names to cater
-for a few you want which aren't in my list. Just be aware any you add have to come from
-the groups I currently download from Celestrak: `resource`, `science`, `stations`, and 
+for a few you want which aren't in the list. Just be aware any you add have to come from
+the groups currently downloaded from Celestrak: `resource`, `science`, `stations`, and
 `weather`. You can see what's in those by browsing to the following URL, replacing `{group}`
 with one of those 4 group names:
     https://celestrak.org/NORAD/elements/gp.php?GROUP={group}&FORMAT=tle
 
-### Wallpaper updates
-The whole idea of this is to have a live desktop background. To update your wallpaper 
-(fingers crossed!) execute the following command:
+## Developer's corner
+If you are a developer, `make up` starts the stack with your local source bind-mounted in
+(via `docker-compose.override.yml`) so code edits just need `make reload` to take effect —
+no image rebuild required. `make build`/`make rebuild` are only needed for dependency or
+Dockerfile changes. `make test`, `make lint` and `make bash` are all there for you too —
+run `make help` for the full list.
 
-    ./worldmap.sh start-map
-
-This kicks off a script which runs in the background, so to stop it:
-
-    ./worldmap.sh stop-map
-
-### Developer's corner
-If you are a developer feel free to have a look at `wallpaper-update-daemon.py` for
-more details. It works for my distro, but since I can't test yours, it might not. Feel
-free to clone the repo, update the code and give us a pull request!
+See `CLAUDE.md` at the repo root for the architectural conventions this project follows
+(collector/render task layout, testing approach, git workflow) before diving in. Feel free
+to clone the repo, update the code and give us a pull request!
