@@ -9,6 +9,12 @@
 # Safe to re-run: refreshes docker-compose.yml, atmos-gl.sh and the markers/ reference
 # data, but never overwrites an existing .env or config/atmos-gl.json -- those are your
 # live, locally-customised files.
+#
+# Note for the maintainer: the repo was renamed worldmap-ng -> atmos-gl, so the
+# published images moved to new GHCR packages (ghcr.io/paulwaite87/atmos-gl and
+# -ui). A freshly-created GHCR package can start out private; if `docker compose
+# pull` fails with "denied" for someone running this script, check that both
+# packages are set to public under https://github.com/paulwaite87?tab=packages.
 set -euo pipefail
 
 REPO_RAW="https://raw.githubusercontent.com/paulwaite87/atmos-gl/master"
