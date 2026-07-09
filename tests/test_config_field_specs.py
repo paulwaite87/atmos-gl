@@ -17,6 +17,7 @@ from worldmap.routes.field_specs import (
     SliderSpec,
     FIELD_SPECS,
     field_label,
+    section_label,
     format_slider_badge,
     clamp_slider_value,
     to_display_value,
@@ -470,6 +471,30 @@ def test_config_page_omits_fallback_section_for_exempt_sections():
     html = resp.text
     assert 'id="fallback-section-common"' not in html
     assert 'id="fallback-section-housekeeper"' not in html
+
+
+def test_section_label_matches_the_show_tab_wording():
+    assert section_label("pwat") == "Precipitable Water"
+    assert section_label("sst") == "Sea Surface Temp"
+    assert section_label("storms") == "Storm Track"
+    assert section_label("temperature") == "Air Temperature"
+
+
+def test_section_label_falls_back_to_title_case_for_sections_without_a_show_tab_entry():
+    assert section_label("map_builder") == "Map Builder"
+    assert section_label("animation") == "Animation"
+
+
+def test_config_page_renders_friendly_section_headings_not_raw_bracket_keys():
+    """The settings heading and the "enable it in the Show tab" fallback prompt both
+    used to show the raw config key in brackets (e.g. "[pwat] Properties") -- both now
+    use the same friendly name the Show tab itself uses for that layer's toggle."""
+    resp = client.get("/config")
+    html = resp.text
+    assert "Precipitable Water Properties" in html
+    assert "[pwat] Properties" not in html
+    assert "Enable <strong>Earthquakes</strong> in the Show tab to edit." in html
+    assert "[quakes]" not in html
 
 
 def test_config_page_renders_pwat_as_a_plain_toggle_not_a_climate_radio():

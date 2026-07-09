@@ -9,6 +9,7 @@ from worldmap.lib.config import WorldMapConfig
 from worldmap.routes.field_specs import (
     FIELD_SPECS,
     field_label,
+    section_label,
     format_slider_badge,
     clamp_slider_value,
     to_display_value,
@@ -29,6 +30,7 @@ ui_router = APIRouter(tags=["Config UI"])
 templates = Jinja2Templates(directory=Path(__file__).resolve().parent.parent / "templates")
 templates.env.globals["field_specs"] = FIELD_SPECS
 templates.env.globals["field_label"] = field_label
+templates.env.globals["section_label"] = section_label
 templates.env.globals["format_slider_badge"] = format_slider_badge
 templates.env.globals["clamp_slider_value"] = clamp_slider_value
 templates.env.globals["to_display_value"] = to_display_value
