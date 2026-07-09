@@ -102,18 +102,29 @@ def test_period_s_from_runs_per_day_floors_tiny_values_at_001():
 # --- read_process_status ---
 
 
-def test_read_process_status_returns_none_none_when_no_row():
+def test_read_process_status_returns_none_none_none_when_no_row():
     adapter = MagicMock()
     adapter.get_process_status.return_value = None
-    assert read_process_status(adapter, "quakes") == (None, None)
+    assert read_process_status(adapter, "quakes") == (None, None, None)
 
 
-def test_read_process_status_extracts_last_updated_and_last_error():
+def test_read_process_status_extracts_last_updated_last_error_and_status():
     adapter = MagicMock()
     now = datetime.now(timezone.utc)
-    adapter.get_process_status.return_value = {"last_updated": now, "last_error": "boom"}
-    assert read_process_status(adapter, "quakes") == (now, "boom")
+    adapter.get_process_status.return_value = {
+        "last_updated": now, "last_error": "boom", "status": "failed",
+    }
+    assert read_process_status(adapter, "quakes") == (now, "boom", "failed")
     adapter.get_process_status.assert_called_once_with("quakes")
+
+
+def test_read_process_status_defaults_status_to_none_when_row_lacks_it():
+    """Defensive: a row shape without a "status" key (e.g. a Fake predating this
+    field) shouldn't raise -- status just reads as None."""
+    adapter = MagicMock()
+    now = datetime.now(timezone.utc)
+    adapter.get_process_status.return_value = {"last_updated": now, "last_error": None}
+    assert read_process_status(adapter, "quakes") == (now, None, None)
 
 
 # --- build_status ---
@@ -139,7 +150,16 @@ def test_build_status_assembles_the_expected_shape():
         "next_update": next_update,
         "enabled": True,
         "detail": None,
+        "status": None,
     }
+
+
+def test_build_status_includes_status_when_provided():
+    result = build_status(
+        name="sst", kind="collector", percent=100.0, last_updated=None,
+        next_update=None, enabled=True, detail=None, status="running",
+    )
+    assert result["status"] == "running"
 
 
 def test_build_status_rounds_percent_to_one_decimal():

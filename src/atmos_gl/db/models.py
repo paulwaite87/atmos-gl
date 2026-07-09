@@ -239,6 +239,12 @@ class ProcessStatus(Base):
     kind: Mapped[str] = mapped_column(Text, nullable=False)
     last_updated: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_error: Mapped[str | None] = mapped_column(Text)
+    # "idle" | "running" | "success" | "failed" -- set by record_process_start()/
+    # record_process_run() (db/process_status_adapter.py). started_at is cleared back
+    # to NULL on completion (success or failure); it's only meaningful while status is
+    # "running".
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default="idle")
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
