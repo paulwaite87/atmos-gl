@@ -1,4 +1,4 @@
-# Makefile for WorldMap Project Suite
+# Makefile for Atmos GL Project Suite
 # The source is bind-mounted into the dev containers (see docker-compose.override.yml),
 # so a CODE edit is already on disk inside the container. You only need to RESTART
 # the service's process for Python to re-import it — NOT rebuild the image. `make build`
@@ -7,11 +7,11 @@
 .PHONY: run stop build rebuild start-desktop-fg stop-desktop psql logs clean purge backup restore refresh-map test bash status help bootstrap-config
 
 # Variables
-DB_USER = wmap
-DB_NAME = worldmap
-DB_SERVICE = worldmap_db
+DB_USER = agl
+DB_NAME = atmos_gl
+DB_SERVICE = atmos_gl_db
 BUILDER_SERVICE = layer_builder
-DUMP_FILE = worldmap_dump.sql
+DUMP_FILE = atmos_gl_dump.sql
 
 # Backend services that run your mounted Python code (everything except UI/DB).
 BACKEND_SERVICES = data_collector layer_builder housekeeper map_api
@@ -28,11 +28,11 @@ endif
 stop:
 	docker compose down
 
-## bootstrap-config: Ensure a live config/worldmap.json exists (never overwrites one already there)
+## bootstrap-config: Ensure a live config/atmos-gl.json exists (never overwrites one already there)
 bootstrap-config:
-	@if [ ! -f config/worldmap.json ]; then \
-		cp config/worldmap.json.tmpl config/worldmap.json; \
-		echo "Created config/worldmap.json from config/worldmap.json.tmpl"; \
+	@if [ ! -f config/atmos-gl.json ]; then \
+		cp config/atmos-gl.json.tmpl config/atmos-gl.json; \
+		echo "Created config/atmos-gl.json from config/atmos-gl.json.tmpl"; \
 	fi
 
 ## start|run|up: Start dev stack (auto-merges docker-compose.override.yml)
@@ -102,15 +102,15 @@ lint-fix: lint-format
 	@echo "Fixing issues.."
 	docker compose exec $(BUILDER_SERVICE) uv run ruff check --fix src
 
-## backup: Backup database to local worldmap-dump.sql file
+## backup: Backup database to local atmos_gl_dump.sql file
 backup:
-	@echo "Ensuring worldmap database is running"
+	@echo "Ensuring atmos_gl database is running"
 	docker compose up $(DB_SERVICE) -d
 	@echo "Creating compressed database backup to $(DUMP_FILE)..."
 	docker compose exec $(DB_SERVICE) pg_dump -U $(DB_USER) -Fc $(DB_NAME) > $(DUMP_FILE)
 	@echo "Backup complete."
 
-## restore: Restores the local worldmap-dump.sql backup
+## restore: Restores the local atmos_gl_dump.sql backup
 restore:
 	@echo "WARNING: This will DELETE and RECREATE the $(DB_NAME) database from $(DUMP_FILE)."
 	@if [ ! -f $(DUMP_FILE) ]; then echo "Error: $(DUMP_FILE) not found."; exit 1; fi
@@ -118,12 +118,12 @@ restore:
 	if [ "$${ans:-N}" = "y" ] || [ "$${ans:-N}" = "Y" ]; then \
 		echo "Stopping backend services" ; \
 		docker compose stop $(BACKEND_SERVICES); \
-		echo "Ensuring worldmap database is running..." ; \
+		echo "Ensuring atmos_gl database is running..." ; \
 		docker compose up $(DB_SERVICE) -d && sleep 5 ; \
 		echo "Restoring database..." ; \
 		cat $(DUMP_FILE) | docker compose exec -T $(DB_SERVICE) pg_restore -U $(DB_USER) -d postgres --clean --create --if-exists ; \
 		echo "Restore complete." ; \
-		echo "Stopping worldmap database. Backend left as stopped." ; \
+		echo "Stopping atmos_gl database. Backend left as stopped." ; \
 		docker compose stop $(DB_SERVICE) ; \
 	fi
 
@@ -143,7 +143,7 @@ purge:
 
 ## psql: Open psql session in map database
 psql:
-	@echo "Ensuring worldmap database is running"
+	@echo "Ensuring atmos_gl database is running"
 	@docker compose up $(DB_SERVICE) -d
 	@docker compose exec $(DB_SERVICE) psql -U $(DB_USER) $(DB_NAME)
 

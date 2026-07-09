@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Worldmap Live</title>
+    <title>Atmos GL Live</title>
     <link href="https://unpkg.com/maplibre-gl@^5.0.0/dist/maplibre-gl.css" rel="stylesheet" />
     <style>
         body { margin: 0; padding: 0; overflow: hidden; background-color: #04040e; }
@@ -84,7 +84,7 @@
     <div id="globeViz"></div>
 
     <script type="module">
-        async function bootstrapWorldmap() {
+        async function bootstrapAtmosGL() {
             try {
                 // 1. Fetch live application configuration block from backend API
                 const response = await fetch('http://localhost:9000/api/config');
@@ -243,7 +243,7 @@
         }
 
         // Initialize execution setup
-        bootstrapWorldmap();
+        bootstrapAtmosGL();
     </script>
 </body>
 </html>

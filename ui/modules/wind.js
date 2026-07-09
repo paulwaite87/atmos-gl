@@ -5,7 +5,7 @@ import { replaceSlot, removeLegend } from './_legend.js';
 const VMAX_WIND = 40.0;   // m/s velocity-texture encoding range (must match backend)
 
 // windy.com-style wind-speed ramp, calm -> storm. Drives the underlying SPEED HEATMAP
-// (kept in sync with backend WIND_PALETTE in src/worldmap/tasks/wind.py). Particles no
+// (kept in sync with backend WIND_PALETTE in src/atmos_gl/tasks/wind.py). Particles no
 // longer use this — they render in a single fixed colour from config (particle_color).
 const PALETTE = [
     [0.25, 0.30, 0.60],   // calm   - deep blue

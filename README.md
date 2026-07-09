@@ -1,4 +1,4 @@
-# Live World Map
+# Atmos GL
 
 ## What is this?
 
@@ -14,10 +14,10 @@ tracks, Smithsonian volcano data, AIS shipping, lightning strikes, satellite orb
 everything in PostGIS and rendering it onto the globe as you watch.
 
 ### Global example
-![World Map Example](docs/worldmap-example.jpg)
+![Atmos GL Example](docs/atmos-gl-example.jpg)
 
 ### Regional example
-![Regional Map Example](docs/worldmap-region-example.jpg)
+![Regional Map Example](docs/atmos-gl-region-example.jpg)
 
 ## How do I use this?
 
@@ -45,7 +45,7 @@ wherever Docker Desktop does.
 ### For the ninjas: Clone the repository
 
     cd /your/preferred/workspace
-    git clone -v https://github.com/paulwaite87/worldmap-ng
+    git clone -v https://github.com/paulwaite87/atmos-gl
 
 After that, most things can be done via the Makefile. To see what is available:
 
@@ -56,13 +56,13 @@ skip ahead to [Developer's corner](#developers-corner).
 
 ### Quick Start
 
-Run this to download everything needed and set it up in `~/worldmap-ng` (pass a path as
+Run this to download everything needed and set it up in `~/atmos-gl` (pass a path as
 an argument if you'd rather install somewhere else):
 
-    curl -fsSL https://raw.githubusercontent.com/paulwaite87/worldmap-ng/master/install.sh | bash
+    curl -fsSL https://raw.githubusercontent.com/paulwaite87/atmos-gl/master/install.sh | bash
 
-This fetches `docker-compose.yml`, a `worldmap.sh` control script, and the reference
-data the map needs, then creates a `.env` and `config/worldmap.json` for you (both
+This fetches `docker-compose.yml`, a `atmos-gl.sh` control script, and the reference
+data the map needs, then creates a `.env` and `config/atmos-gl.json` for you (both
 left alone on future re-runs, so it's always safe to run this again later to pick up
 updates to everything else).
 
@@ -74,35 +74,35 @@ later once you have keys); the map tiles key is needed for the globe's basemap t
 
 Then start everything:
 
-    cd ~/worldmap-ng
-    ./worldmap.sh start
+    cd ~/atmos-gl
+    ./atmos-gl.sh start
 
 By default most layers are disabled to begin with — see [Setting it up](#setting-it-up) below.
 
 To stop everything:
 
-    ./worldmap.sh stop
+    ./atmos-gl.sh stop
 
-`worldmap.sh` also has `restart`, `update` (pulls the latest images), `status` (ship/lightning
+`atmos-gl.sh` also has `restart`, `update` (pulls the latest images), `status` (ship/lightning
 counts per region) and `logs` commands — run it with no arguments for the full list. If you
-ever need to report a problem, `./worldmap.sh logs save` writes a timestamped log file with
+ever need to report a problem, `./atmos-gl.sh logs save` writes a timestamped log file with
 any API keys automatically redacted, safe to attach to a GitHub issue.
 
 If you've cloned the repo instead (see [For the ninjas](#for-the-ninjas-clone-the-repository)
-below), `make prod`/`make prod-down` do the same job as `worldmap.sh start`/`stop`.
+below), `make prod`/`make prod-down` do the same job as `atmos-gl.sh start`/`stop`.
 
 ### Setting it up
-The configuration file is called `worldmap.json` and it lives in the `config` folder.
+The configuration file is called `atmos-gl.json` and it lives in the `config` folder.
 You can either edit this file directly, or browse to `http://localhost:9000/config` to use
 the configuration webpage there. If you do use that page, and save some changes they
-will overwrite your `worldmap.json` — which is fine, but if you want to preserve your own
+will overwrite your `atmos-gl.json` — which is fine, but if you want to preserve your own
 hand-edits, make a backup copy of the file first.
 
 The live globe itself is at `http://localhost:8180`.
 
 Here is a shot of the homepage for the configurator at `http://localhost:9000/config`
 
-![Configuration Homepage](docs/worldmap-config-homepage.png)
+![Configuration Homepage](docs/atmos-gl-config-homepage.png)
 
 I would suggest first picking a region on the Global tab (or leaving it as the whole
 World), and then in the `Show` tab just enabling `Clouds` as a starting point.
@@ -136,7 +136,7 @@ Gets your stack running (an alias for `docker compose up -d`). And to stop it:
 
 Once running, browse to `http://localhost:8180` for the live globe.
 
-If you change something in `config/worldmap.json` by hand rather than through the web UI,
+If you change something in `config/atmos-gl.json` by hand rather than through the web UI,
 or if you just want to restart the backend services:
 
     make reload
@@ -154,13 +154,13 @@ A healthy repeating cycle might look something like this. Obviously the below ex
 shows shipping and lightning collector output, which you won't see out of the box unless
 you already acquired API keys and enabled them.
 
-    data_collector       | 2026-07-08 22:12:30,063 [INFO] worldmap.collectors.gfs_atmos: Data Collector (gfs): 20260708 06Z, hours 004..051; stored 0 field(s).
-    data_collector       | 2026-07-08 22:33:52,623 [INFO] worldmap.collectors.shipping: ShippingCollector: starting weighted global rotation.
-    data_collector       | 2026-07-08 22:34:10,815 [INFO] worldmap.collectors.quakes: Quakes: upserted 26 records (min_mag=3.5).
-    data_collector       | 2026-07-08 22:34:30,026 [INFO] worldmap.collectors.volcanoes: Volcanoes: upserted 200 records.
-    layer_builder        | 2026-07-08 22:34:26,909 [INFO] worldmap.tasks.wind: Wind: heatmap scale = 230 km/h (data peak 221.8 km/h across 48 hours)
-    layer_builder        | 2026-07-08 22:34:36,300 [INFO] worldmap.tasks.currents: Finished Currents velocity texture f057 (R=U, G=V).
-    layer_builder        | 2026-07-08 22:38:39,481 [INFO] worldmap.tasks.scalar_field: Finished ozone texture f014.
+    data_collector       | 2026-07-08 22:12:30,063 [INFO] atmos_gl.collectors.gfs_atmos: Data Collector (gfs): 20260708 06Z, hours 004..051; stored 0 field(s).
+    data_collector       | 2026-07-08 22:33:52,623 [INFO] atmos_gl.collectors.shipping: ShippingCollector: starting weighted global rotation.
+    data_collector       | 2026-07-08 22:34:10,815 [INFO] atmos_gl.collectors.quakes: Quakes: upserted 26 records (min_mag=3.5).
+    data_collector       | 2026-07-08 22:34:30,026 [INFO] atmos_gl.collectors.volcanoes: Volcanoes: upserted 200 records.
+    layer_builder        | 2026-07-08 22:34:26,909 [INFO] atmos_gl.tasks.wind: Wind: heatmap scale = 230 km/h (data peak 221.8 km/h across 48 hours)
+    layer_builder        | 2026-07-08 22:34:36,300 [INFO] atmos_gl.tasks.currents: Finished Currents velocity texture f057 (R=U, G=V).
+    layer_builder        | 2026-07-08 22:38:39,481 [INFO] atmos_gl.tasks.scalar_field: Finished ozone texture f014.
 
 The `data_collector` continuously fetches fresh data in the background regardless of
 which layers you have switched on, so it's ready the moment you enable something. The
@@ -190,8 +190,8 @@ this command:
 
     make psql
 
-That will get you into the World Map database PSQL shell. Paste your INSERT into that and
-hit enter. Bingo, a brand new region. The World Map configurator should read your new region
+That will get you into the Atmos GL database PSQL shell. Paste your INSERT into that and
+hit enter. Bingo, a brand new region. The Atmos GL configurator should read your new region
 and allow you to select it.
 
 Just hit Ctrl-d to get out of the database.
@@ -206,7 +206,7 @@ Github. Obviously if you don't have a Github account you will have to sign up fo
 The process of obtaining the API Key is easy once you are signed in. There is a link `API Keys`
 and you can create one there. Copy the key, and then back in the root directory edit the
 file named `.env` and replace the `AIS_API_KEY` placeholder there with your newly minted
-API Key. You will now be able to go into the World Map Configurator and on the `Show` tab
+API Key. You will now be able to go into the Atmos GL Configurator and on the `Show` tab
 in the `Background Processes` group enable either or both the Shipping and Lightning processes.
 
 ### Obtaining an API Key for Weather/Lightning Strikes

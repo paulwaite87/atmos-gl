@@ -12,8 +12,8 @@ behaves like itself, not that FieldStore does anything (fails the deletion test)
 import numpy as np
 import pytest
 
-from worldmap.db.field_catalog_adapter import FakeFieldCatalogAdapter
-from worldmap.lib.fieldstore import FieldStore
+from atmos_gl.db.field_catalog_adapter import FakeFieldCatalogAdapter
+from atmos_gl.lib.fieldstore import FieldStore
 
 
 def _unpacked(lat=None, lon=None, u=None, v=None, values=None):

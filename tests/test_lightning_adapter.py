@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone
 
-from worldmap.db.lightning_adapter import FakeLightningAdapter
+from atmos_gl.db.lightning_adapter import FakeLightningAdapter
 
 
 def _iso(dt):

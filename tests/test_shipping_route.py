@@ -4,9 +4,9 @@ routers the seam the Fakes are waiting for"). Only proves the override takes eff
 and the response contract holds -- constructing realistic AIS static/position
 fixtures is its own, unrelated exercise already covered by tests/test_ship_adapter.py
 against the Fake directly."""
-from worldmap.db.ship_adapter import FakeShipAdapter
-from worldmap.routes.shipping import get_ship_adapter
-from worldmap.api import app
+from atmos_gl.db.ship_adapter import FakeShipAdapter
+from atmos_gl.routes.shipping import get_ship_adapter
+from atmos_gl.api import app
 
 
 def test_ships_geojson_uses_the_overridden_fake(client):

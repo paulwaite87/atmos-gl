@@ -1,8 +1,8 @@
-name: worldmap-ng
+name: atmos-gl
 services:
   data_collector:
-    image: ghcr.io/paulwaite87/worldmap-ng:latest
-    command: python -m worldmap.collectors.service --config /opt/project/config/worldmap.json
+    image: ghcr.io/paulwaite87/atmos-gl:latest
+    command: python -m atmos_gl.collectors.service --config /opt/project/config/atmos-gl.json
     env_file:
       - .env
     environment:
@@ -12,26 +12,26 @@ services:
       - TZ=Pacific/Auckland
       - PYTHONPATH=/opt/project/src
       - PYTHONUNBUFFERED=1
-      - PGHOST=worldmap_db
+      - PGHOST=atmos_gl_db
       - PGPORT=5432
-      - PGDATABASE=worldmap
-      - PGUSER=wmap
-      - PGPASSWORD=wmap
+      - PGDATABASE=atmos_gl
+      - PGUSER=agl
+      - PGPASSWORD=agl
     restart: unless-stopped
     depends_on:
-      worldmap_db:
+      atmos_gl_db:
         condition: service_healthy
-      worldmap_db_migrate:
+      atmos_gl_db_migrate:
         condition: service_completed_successfully
     volumes:
       - ./data:/opt/project/data
       - ./config:/opt/project/config
     networks:
-      - wmap
+      - agl
 
   layer_builder:
-    image: ghcr.io/paulwaite87/worldmap-ng:latest
-    command: python -m worldmap.layer_builder --config /opt/project/config/worldmap.json
+    image: ghcr.io/paulwaite87/atmos-gl:latest
+    command: python -m atmos_gl.layer_builder --config /opt/project/config/atmos-gl.json
     env_file:
       - .env
     environment:
@@ -39,27 +39,27 @@ services:
       - TZ=Pacific/Auckland
       - PYTHONPATH=/opt/project/src
       - PYTHONUNBUFFERED=1
-      - PGHOST=worldmap_db
+      - PGHOST=atmos_gl_db
       - PGPORT=5432
-      - PGDATABASE=worldmap
-      - PGUSER=wmap
-      - PGPASSWORD=wmap
+      - PGDATABASE=atmos_gl
+      - PGUSER=agl
+      - PGPASSWORD=agl
     restart: unless-stopped
     depends_on:
-      worldmap_db:
+      atmos_gl_db:
         condition: service_healthy
-      worldmap_db_migrate:
+      atmos_gl_db_migrate:
         condition: service_completed_successfully
     volumes:
       - ./data:/opt/project/data
       - ./config:/opt/project/config
       - ./markers:/opt/project/markers
     networks:
-      - wmap
+      - agl
 
   housekeeper:
-    image: ghcr.io/paulwaite87/worldmap-ng:latest
-    command: python -m worldmap.housekeeper --config /opt/project/config/worldmap.json
+    image: ghcr.io/paulwaite87/atmos-gl:latest
+    command: python -m atmos_gl.housekeeper --config /opt/project/config/atmos-gl.json
     env_file:
       - .env
     environment:
@@ -72,13 +72,13 @@ services:
       - ./data:/opt/project/data
       - ./config:/opt/project/config
     networks:
-      - wmap
+      - agl
 
   map_api:
-    image: ghcr.io/paulwaite87/worldmap-ng:latest
-    # Reverted to a simpler runtime installation since wmapuser now owns the virtual environment
+    image: ghcr.io/paulwaite87/atmos-gl:latest
+    # Reverted to a simpler runtime installation since agluser now owns the virtual environment
     command: >
-      bash -c "uv pip install fastapi uvicorn && python -m uvicorn worldmap.api:app --host 0.0.0.0 --port 9000"
+      bash -c "uv pip install fastapi uvicorn && python -m uvicorn atmos_gl.api:app --host 0.0.0.0 --port 9000"
     ports:
       - "9000:9000"
     env_file:
@@ -88,63 +88,63 @@ services:
       - TZ=Pacific/Auckland
       - PYTHONPATH=/opt/project/src
       - PYTHONUNBUFFERED=1
-      - PGHOST=worldmap_db
+      - PGHOST=atmos_gl_db
       - PGPORT=5432
-      - PGDATABASE=worldmap
-      - PGUSER=wmap
-      - PGPASSWORD=wmap
-      - CONFIG_PATH=/opt/project/config/worldmap.json
+      - PGDATABASE=atmos_gl
+      - PGUSER=agl
+      - PGPASSWORD=agl
+      - CONFIG_PATH=/opt/project/config/atmos-gl.json
       - MAPTILER_API_KEY=${MAPTILER_API_KEY}
     restart: unless-stopped
     depends_on:
-      worldmap_db:
+      atmos_gl_db:
         condition: service_healthy
-      worldmap_db_migrate:
+      atmos_gl_db_migrate:
         condition: service_completed_successfully
     volumes:
       - ./data:/opt/project/data
       - ./config:/opt/project/config
     networks:
-      - wmap
+      - agl
 
   map_ui:
-    image: ghcr.io/paulwaite87/worldmap-ng-ui:latest
+    image: ghcr.io/paulwaite87/atmos-gl-ui:latest
     ports:
       - "8180:8080"
     depends_on:
       - map_api
     networks:
-      - wmap
+      - agl
 
-  worldmap_db_init:
+  atmos_gl_db_init:
     image: alpine:latest
     command: >
       sh -c "chown ${UID:-1000}:${GID:-1000} /var/lib/postgresql/data && 
              chown ${UID:-1000}:${GID:-1000} /var/log/postgresql"
     volumes:
-      - wmap-pgdata:/var/lib/postgresql/data
+      - agl-pgdata:/var/lib/postgresql/data
       - postgres_logs:/var/log/postgresql
     networks:
-      - wmap
+      - agl
 
-  worldmap_db:
+  atmos_gl_db:
     image: postgis/postgis:15-3.3
     # The database STILL needs the user directive because it uses a pre-built image,
     # not your custom Dockerfile
     user: "${UID:-1000}:${GID:-1000}"
     depends_on:
-      worldmap_db_init:
+      atmos_gl_db_init:
         condition: service_completed_successfully
     environment:
-      POSTGRES_USER: wmap
-      POSTGRES_PASSWORD: wmap
-      POSTGRES_DB: worldmap
+      POSTGRES_USER: agl
+      POSTGRES_PASSWORD: agl
+      POSTGRES_DB: atmos_gl
       PGTZ: Pacific/Auckland
     ports:
       - "15432:5432"
     restart: unless-stopped
     volumes:
-      - wmap-pgdata:/var/lib/postgresql/data
+      - agl-pgdata:/var/lib/postgresql/data
       - postgres_logs:/var/log/postgresql
     command: >
       postgres
@@ -159,7 +159,7 @@ services:
       -c log_filename='postgresql.log'
       -c log_rotation_size=10MB
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U wmap -d worldmap"]
+      test: ["CMD-SHELL", "pg_isready -U agl -d atmos_gl"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -169,30 +169,30 @@ services:
         max-size: "10m"
         max-file: "3"
     networks:
-      - wmap
+      - agl
 
-  worldmap_db_migrate:
-    image: ghcr.io/paulwaite87/worldmap-ng:latest
+  atmos_gl_db_migrate:
+    image: ghcr.io/paulwaite87/atmos-gl:latest
     command: alembic upgrade head
     env_file:
       - .env
     environment:
       - PYTHONPATH=/opt/project/src
-      - PGHOST=worldmap_db
+      - PGHOST=atmos_gl_db
       - PGPORT=5432
-      - PGDATABASE=worldmap
-      - PGUSER=wmap
-      - PGPASSWORD=wmap
+      - PGDATABASE=atmos_gl
+      - PGUSER=agl
+      - PGPASSWORD=agl
     depends_on:
-      worldmap_db:
+      atmos_gl_db:
         condition: service_healthy
     networks:
-      - wmap
+      - agl
 
 networks:
-  wmap:
+  agl:
     driver: bridge
 
 volumes:
-  wmap-pgdata:
+  agl-pgdata:
   postgres_logs:

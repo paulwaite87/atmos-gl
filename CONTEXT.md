@@ -1,4 +1,4 @@
-# Domain context — worldmap-ng
+# Domain context — atmos-gl
 
 Domain language for the map's data layers. Extend as terms are sharpened; keep
 definitions to one sentence.

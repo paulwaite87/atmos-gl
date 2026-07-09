@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 """Route-level tests for GET /api/tiles/{layer}/meta and .../{z}/{x}/{y}.png
 (architecture review candidate "give raster_tiles the seam the other routers have").
-No other router in this codebase actually Depends()-seams WorldMapConfig (they all
+No other router in this codebase actually Depends()-seams AtmosGLConfig (they all
 load it inline) -- this introduces that pattern here specifically, since tiles.py's
 only real dependency is config, not a DB adapter. Previously untested entirely.
 """
-from worldmap.routes.tiles import get_config
-from worldmap.api import app
+from atmos_gl.routes.tiles import get_config
+from atmos_gl.api import app
 
 
 class FakeConfig:
-    """Minimal stand-in for WorldMapConfig -- only the methods raster_tiles.py
+    """Minimal stand-in for AtmosGLConfig -- only the methods raster_tiles.py
     actually calls (get_section, get_setting)."""
 
     def __init__(self, sections=None):

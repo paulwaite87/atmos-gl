@@ -1,4 +1,5 @@
 {
+  "name": "atmos-gl",
   "private": true,
   "type": "module",
   "scripts": {

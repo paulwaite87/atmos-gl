@@ -5,8 +5,8 @@ stormwatch.py (see the architecture review's "Absorb the regrid/LOD block" candi
 """
 import numpy as np
 
-from worldmap.tasks import common
-from worldmap.tasks.common import Updater, _MAX_LOD_GRID_POINTS
+from atmos_gl.tasks import common
+from atmos_gl.tasks.common import Updater, _MAX_LOD_GRID_POINTS
 
 
 def make_bare_updater(level_of_detail=1):

@@ -1,7 +1,7 @@
 # Ignore local data
 data/
 files/
-config/worldmap.json
+config/atmos-gl.json
 
 # Ignore Python artifacts
 **/__pycache__/

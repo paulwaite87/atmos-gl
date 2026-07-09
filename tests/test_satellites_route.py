@@ -5,9 +5,9 @@ takes effect -- the route's own orbital propagation (sgp4/skyfield) needs real O
 element sets to produce non-empty output, which is unrelated to this candidate; with
 no matching rows the route already short-circuits to an empty collection before any
 propagation runs."""
-from worldmap.db.satellite_adapter import FakeSatelliteAdapter
-from worldmap.routes.satellites import get_satellite_adapter
-from worldmap.api import app
+from atmos_gl.db.satellite_adapter import FakeSatelliteAdapter
+from atmos_gl.routes.satellites import get_satellite_adapter
+from atmos_gl.api import app
 
 
 def test_satellites_geojson_uses_the_overridden_fake(client):

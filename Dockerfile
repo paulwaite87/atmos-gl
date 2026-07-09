@@ -30,8 +30,8 @@ RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone \
     && echo 'en_NZ.UTF-8 UTF-8' > /etc/locale.gen && locale-gen en_NZ.UTF-8
 
 # Create the non-root user and group
-RUN groupadd -g ${GID} wmapgroup && \
-    useradd -u ${UID} -g wmapgroup -m wmapuser
+RUN groupadd -g ${GID} aglgroup && \
+    useradd -u ${UID} -g aglgroup -m agluser
 
 # 3. Virtual Environment & Tooling Setup
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
@@ -58,13 +58,13 @@ RUN uv sync --frozen --no-dev --editable \
     && uv pip install -e .
 
 # Grant the non-root user ownership of both the project and the virtual environment
-RUN chown -R wmapuser:wmapgroup /opt/project /opt/venv
+RUN chown -R agluser:aglgroup /opt/project /opt/venv
 
 # Switch to the non-root user
-USER wmapuser
+USER agluser
 
 # 7. Runtime Configuration
 ENV PYTHONPATH="/opt/project/src"
 
 # Updated fallback command to use the new 'builder' script entry point
-CMD ["builder", "--config", "config/worldmap.json"]
+CMD ["builder", "--config", "config/atmos-gl.json"]

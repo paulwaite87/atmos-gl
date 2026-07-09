@@ -1,4 +1,4 @@
-from worldmap.db.process_status_adapter import FakeProcessStatusAdapter
+from atmos_gl.db.process_status_adapter import FakeProcessStatusAdapter
 
 
 def test_get_process_status_returns_none_when_never_run():

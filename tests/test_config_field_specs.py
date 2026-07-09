@@ -11,9 +11,9 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
-from worldmap.api import app
-from worldmap.lib.config import WorldMapConfig
-from worldmap.routes.field_specs import (
+from atmos_gl.api import app
+from atmos_gl.lib.config import AtmosGLConfig
+from atmos_gl.routes.field_specs import (
     SliderSpec,
     FIELD_SPECS,
     field_label,
@@ -281,13 +281,13 @@ def test_update_config_rejects_invalid_select_option():
 
 
 def test_update_config_accepts_valid_payload(tmp_path):
-    """Uses a throwaway config file so this test can't corrupt config/worldmap.json."""
-    tmp_config = tmp_path / "worldmap.json"
+    """Uses a throwaway config file so this test can't corrupt config/atmos-gl.json."""
+    tmp_config = tmp_path / "atmos-gl.json"
     tmp_config.write_text('{"common": {"auto_rotate_speed": 0.5}}')
 
     with patch(
-        "worldmap.routes.config.load_config",
-        return_value=WorldMapConfig(str(tmp_config)),
+        "atmos_gl.routes.config.load_config",
+        return_value=AtmosGLConfig(str(tmp_config)),
     ):
         resp = client.post("/api/config", json={"common": {"auto_rotate_speed": 0.5}})
 

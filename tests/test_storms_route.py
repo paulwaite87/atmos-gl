@@ -4,9 +4,9 @@
 takes effect and the response contract holds -- constructing a realistic storm
 cone/track fixture is its own, unrelated exercise already covered by
 tests/test_storm_adapter.py against the Fake directly."""
-from worldmap.db.storm_adapter import FakeStormAdapter
-from worldmap.routes.storms import get_storm_adapter
-from worldmap.api import app
+from atmos_gl.db.storm_adapter import FakeStormAdapter
+from atmos_gl.routes.storms import get_storm_adapter
+from atmos_gl.api import app
 
 
 def test_storms_geojson_uses_the_overridden_fake(client):

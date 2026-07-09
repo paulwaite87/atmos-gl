@@ -9,7 +9,7 @@ itself and smoke-test the mixin still works when mixed into a bare instance.
 """
 import os
 
-from worldmap.tasks.common import Updater, MultiHourRenderMixin, ForecastState
+from atmos_gl.tasks.common import Updater, MultiHourRenderMixin, ForecastState
 
 
 def test_updater_itself_does_not_have_the_per_hour_methods():

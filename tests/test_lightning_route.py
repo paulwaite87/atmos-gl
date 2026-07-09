@@ -3,9 +3,9 @@
 "Give routers the seam the Fakes are waiting for")."""
 from datetime import datetime, timezone
 
-from worldmap.db.lightning_adapter import FakeLightningAdapter
-from worldmap.routes.lightning import get_lightning_adapter
-from worldmap.api import app
+from atmos_gl.db.lightning_adapter import FakeLightningAdapter
+from atmos_gl.routes.lightning import get_lightning_adapter
+from atmos_gl.api import app
 
 
 def test_lightning_geojson_reflects_the_overridden_fake(client):

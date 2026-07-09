@@ -1,4 +1,4 @@
-# CLAUDE.md — worldmap-ng
+# CLAUDE.md — atmos-gl
 
 Conventions and architectural invariants for AI-assisted work on this repository.
 Read this before making any changes.
@@ -7,9 +7,9 @@ Read this before making any changes.
 
 ## Project overview
 
-`worldmap-ng` is a web-based global map with a **MapLibre GL JS v5** globe frontend
+`atmos-gl` is a web-based global map with a **MapLibre GL JS v5** globe frontend
 and a **Python 3.12 / FastAPI / PostGIS / Docker** backend. The production image is
-`ghcr.io/paulwaite87/worldmap-ng:latest`.
+`ghcr.io/paulwaite87/atmos-gl:latest`.
 
 Key backend responsibilities:
 - Periodic ingestion of GFS atmospheric, GFS wave, and RTOFS current forecast fields
@@ -89,7 +89,7 @@ For multi-step tasks, state a brief plan:
 ## Repository layout
 
 ```
-src/worldmap/               ← PYTHONPATH root (PYTHONPATH=/opt/project/src)
+src/atmos_gl/               ← PYTHONPATH root (PYTHONPATH=/opt/project/src)
   collectors/               ← ALL data-collection code lives here
     base.py                 ← CollectorBase, AsyncCollectorBase
     field_base.py           ← FieldCollectorBase(CollectorBase), CycleContext, drain_backfill()
@@ -114,7 +114,7 @@ unreachable inside the container and will silently fail. Never create collector 
 at the repo root.
 
 **No `data_collector.py` shim exists.** `docker-compose.yml`'s `data_collector` service
-invokes `CollectorService` directly (`python -m worldmap.collectors.service`), so nothing
+invokes `CollectorService` directly (`python -m atmos_gl.collectors.service`), so nothing
 depends on a shim module at runtime. `pyproject.toml`'s `[project.scripts]` no longer
 declares a `datacollector` entry point (it pointed at this now-nonexistent module).
 
@@ -155,9 +155,9 @@ They are *not* separate Docker services. The `_supervise_collector()` wrapper in
 (`AIS_API_KEY`, `OPENWEATHER_API_KEY`) are environment variables on the
 `data_collector` Docker service only.
 
-### 5. Package path is `src/worldmap/collectors/`
+### 5. Package path is `src/atmos_gl/collectors/`
 
-Imports must be `from worldmap.collectors.xyz import ...`, never relative imports
+Imports must be `from atmos_gl.collectors.xyz import ...`, never relative imports
 from a root-level `collectors/` directory.
 
 ---
@@ -253,7 +253,7 @@ file:
 
 ## Docker conventions
 
-- Production image: `ghcr.io/paulwaite87/worldmap-ng:latest`
+- Production image: `ghcr.io/paulwaite87/atmos-gl:latest`
 - `PYTHONPATH=/opt/project/src` in the container
 - The Dockerfile copies only `src/` — anything outside is invisible at runtime
 - Service-level env vars (API keys, DB credentials) live in `docker-compose.yml`
@@ -264,9 +264,9 @@ file:
 
 ## Settings changes
 
-`config/worldmap.json` is gitignored — it's the **live** config the running stack actually
+`config/atmos-gl.json` is gitignored — it's the **live** config the running stack actually
 reads and writes (via the config UI or hand-edits), and it drifts constantly during normal
-use. `config/worldmap.json.tmpl` is the **tracked template**, committed to the repo, and is
+use. `config/atmos-gl.json.tmpl` is the **tracked template**, committed to the repo, and is
 the one Claude Code should read when it needs to know the current *shape* of the config
 schema (section/option names, structure) for something like a code change.
 
@@ -274,14 +274,14 @@ When a task involves refactoring settings (adding/renaming/restructuring config
 sections or options — e.g. the PWAT layer's config additions, or the `ozone`/`pwat`
 critical-palette fields):
 
-1. Modify and test the change against the live `config/worldmap.json` first — this is
+1. Modify and test the change against the live `config/atmos-gl.json` first — this is
    where iteration happens, exactly like any other manual settings change.
-2. Once the shape has settled, update `config/worldmap.json.tmpl` to match it exactly.
-3. Commit `config/worldmap.json.tmpl` alongside whatever other code changes are part of
-   that refactor. Never commit `config/worldmap.json` itself (it's gitignored — don't
+2. Once the shape has settled, update `config/atmos-gl.json.tmpl` to match it exactly.
+3. Commit `config/atmos-gl.json.tmpl` alongside whatever other code changes are part of
+   that refactor. Never commit `config/atmos-gl.json` itself (it's gitignored — don't
    force-add it).
 
-A fresh checkout has no live `config/worldmap.json` at all — only the `.tmpl`. `make
+A fresh checkout has no live `config/atmos-gl.json` at all — only the `.tmpl`. `make
 up`/`make prod` bootstrap it automatically (see the Makefile's `bootstrap-config`
 target: copies the template over if the live file is missing, never overwrites an
 existing one). CI does the same as an explicit step before running pytest. Anything
@@ -319,7 +319,7 @@ copy to exist first.
 
 ### Issue tracker
 
-Issues are tracked in this repo's GitHub Issues (paulwaite87/worldmap-ng), via the `gh` CLI. External PRs are not treated as a triage surface. See `docs/agents/issue-tracker.md`.
+Issues are tracked in this repo's GitHub Issues (paulwaite87/atmos-gl), via the `gh` CLI. External PRs are not treated as a triage surface. See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 

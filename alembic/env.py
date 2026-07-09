@@ -5,8 +5,8 @@ from sqlalchemy import engine_from_config
 from sqlalchemy import pool
 
 from alembic import context
-from worldmap.db.engine import _database_url
-from worldmap.db.models import Base
+from atmos_gl.db.engine import _database_url
+from atmos_gl.db.models import Base
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

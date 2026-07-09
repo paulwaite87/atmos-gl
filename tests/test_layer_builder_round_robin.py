@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from worldmap.layer_builder import (
+from atmos_gl.layer_builder import (
     MULTI_HOUR_SECTIONS,
     SINGLE_SHOT_SECTIONS,
     TASK_CLASSES,
@@ -32,7 +32,7 @@ def test_multi_hour_and_single_shot_sections_partition_task_classes():
 
 
 def test_updater_class_unwraps_partial_bindings():
-    from worldmap.tasks.scalar_field import ScalarFieldUpdater
+    from atmos_gl.tasks.scalar_field import ScalarFieldUpdater
 
     assert _updater_class(TASK_CLASSES["ozone"]) is ScalarFieldUpdater
     assert _updater_class(TASK_CLASSES["isobars"]) is TASK_CLASSES["isobars"]
@@ -43,9 +43,9 @@ def test_render_worker_forwards_max_hours_and_returns_plotted_count():
     fake_updater.run.return_value = 1
     fake_cls = MagicMock(return_value=fake_updater)
 
-    with patch.dict("worldmap.layer_builder.TASK_CLASSES", {"fake": fake_cls}), \
-         patch("worldmap.layer_builder.WorldMapConfig"), \
-         patch("worldmap.layer_builder.MapData"):
+    with patch.dict("atmos_gl.layer_builder.TASK_CLASSES", {"fake": fake_cls}), \
+         patch("atmos_gl.layer_builder.AtmosGLConfig"), \
+         patch("atmos_gl.layer_builder.MapData"):
         result = _render_worker("cfg.json", "fake", {}, max_hours=1)
 
     fake_updater.run.assert_called_once_with(max_hours=1)
@@ -60,9 +60,9 @@ def test_render_worker_reports_zero_plotted_on_none_return():
     fake_updater.run.return_value = None
     fake_cls = MagicMock(return_value=fake_updater)
 
-    with patch.dict("worldmap.layer_builder.TASK_CLASSES", {"fake": fake_cls}), \
-         patch("worldmap.layer_builder.WorldMapConfig"), \
-         patch("worldmap.layer_builder.MapData"):
+    with patch.dict("atmos_gl.layer_builder.TASK_CLASSES", {"fake": fake_cls}), \
+         patch("atmos_gl.layer_builder.AtmosGLConfig"), \
+         patch("atmos_gl.layer_builder.MapData"):
         result = _render_worker("cfg.json", "fake", {})
 
     assert result == ("fake", None, 0)
@@ -71,9 +71,9 @@ def test_render_worker_reports_zero_plotted_on_none_return():
 def test_render_worker_catches_exceptions():
     fake_cls = MagicMock(side_effect=RuntimeError("boom"))
 
-    with patch.dict("worldmap.layer_builder.TASK_CLASSES", {"fake": fake_cls}), \
-         patch("worldmap.layer_builder.WorldMapConfig"), \
-         patch("worldmap.layer_builder.MapData"):
+    with patch.dict("atmos_gl.layer_builder.TASK_CLASSES", {"fake": fake_cls}), \
+         patch("atmos_gl.layer_builder.AtmosGLConfig"), \
+         patch("atmos_gl.layer_builder.MapData"):
         section, error, plotted = _render_worker("cfg.json", "fake", {})
 
     assert section == "fake"

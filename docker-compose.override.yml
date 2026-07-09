@@ -3,7 +3,7 @@
 # The base docker-compose.yml is the consumer/production config: published GHCR images,
 # nothing mounted over the code. This override makes LOCAL DEV self-contained — it builds
 # a local image and bind-mounts the source, and crucially it NEVER pulls from GHCR:
-#   * image: worldmap:latest  — overrides the GHCR ref with a local tag, so dev doesn't
+#   * image: atmos_gl:latest  — overrides the GHCR ref with a local tag, so dev doesn't
 #                               touch the registry (no "denied" if the package is private
 #                               or not yet published).
 #   * pull_policy: build      — Compose builds rather than pulls.
@@ -15,7 +15,7 @@
 # `docker compose -f docker-compose.yml up`) gets the clean published images.
 
 x-app-dev: &app-dev
-  image: worldmap:latest
+  image: atmos_gl:latest
   pull_policy: build
   build:
     context: .
@@ -35,7 +35,7 @@ services:
     <<: *app-dev
   map_api:
     <<: *app-dev
-  worldmap_db_migrate:
+  atmos_gl_db_migrate:
     <<: *app-dev
 
   # Dev: serve the UI from the working tree (live edits) via stock nginx.

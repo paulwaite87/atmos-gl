@@ -18,7 +18,7 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.orm import sessionmaker
 
-from worldmap.db.ship_adapter import ShipAdapter, FakeShipAdapter
+from atmos_gl.db.ship_adapter import ShipAdapter, FakeShipAdapter
 
 
 def _make_adapter(kind, real_db):
@@ -26,7 +26,7 @@ def _make_adapter(kind, real_db):
     ship_adapter.Session to the real_db engine for "real", or is a no-op for "fake"."""
     if kind == "real":
         TestSession = sessionmaker(bind=real_db)
-        return ShipAdapter(), patch("worldmap.db.ship_adapter.Session", TestSession)
+        return ShipAdapter(), patch("atmos_gl.db.ship_adapter.Session", TestSession)
     return FakeShipAdapter(), contextlib.nullcontext()
 
 
