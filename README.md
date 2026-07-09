@@ -19,7 +19,7 @@ everything in PostGIS and rendering it onto the globe as you watch.
 ### Regional example
 ![Regional Map Example](docs/atmos-gl-region-example.jpg)
 
-## How do I use this?
+## Quick Start
 
 ### Prerequisites: Docker Installation
 
@@ -42,26 +42,14 @@ working within the repository.
 Everything here is Docker-based, so while these instructions lean Linux, it should run
 wherever Docker Desktop does.
 
-### For the ninjas: Clone the repository
-
-    cd /your/preferred/workspace
-    git clone -v https://github.com/paulwaite87/atmos-gl
-
-After that, most things can be done via the Makefile. To see what is available:
-
-    make help
-
-The rest of this README is written for folks who are not developers. If you are a developer,
-skip ahead to [Developer's corner](#developers-corner).
-
-### Quick Start
+### Install and Run
 
 Run this to download everything needed and set it up in `~/atmos-gl` (pass a path as
 an argument if you'd rather install somewhere else):
 
     curl -fsSL https://raw.githubusercontent.com/paulwaite87/atmos-gl/master/install.sh | bash
 
-This fetches `docker-compose.yml`, a `atmos-gl.sh` control script, and the reference
+This fetches `docker-compose.yml`, an `atmos-gl.sh` control script, and the reference
 data the map needs, then creates a `.env` and `config/atmos-gl.json` for you (both
 left alone on future re-runs, so it's always safe to run this again later to pick up
 updates to everything else).
@@ -69,7 +57,7 @@ updates to everything else).
 Edit `.env` and fill in your API keys — see
 [Obtaining an API Key for Shipping data](#obtaining-an-api-key-for-shipping-data),
 [Obtaining an API Key for Weather/Lightning Strikes](#obtaining-an-api-key-for-weatherlightning-strikes)
-and [Map tiles](#map-tiles) below. Shipping and lightning are optional (you can enable them
+and [Map Tiles](#map-tiles) below. Shipping and lightning are optional (you can enable them
 later once you have keys); the map tiles key is needed for the globe's basemap to render at all.
 
 Then start everything:
@@ -77,7 +65,7 @@ Then start everything:
     cd ~/atmos-gl
     ./atmos-gl.sh start
 
-By default most layers are disabled to begin with — see [Setting it up](#setting-it-up) below.
+By default most layers are disabled to begin with — see [Setting it Up](#setting-it-up) below.
 
 To stop everything:
 
@@ -88,10 +76,10 @@ counts per region) and `logs` commands — run it with no arguments for the full
 ever need to report a problem, `./atmos-gl.sh logs save` writes a timestamped log file with
 any API keys automatically redacted, safe to attach to a GitHub issue.
 
-If you've cloned the repo instead (see [For the ninjas](#for-the-ninjas-clone-the-repository)
-below), `make prod`/`make prod-down` do the same job as `atmos-gl.sh start`/`stop`.
+(If you've cloned the repo instead of using the installer, the Makefile has equivalents for
+all of this — see [Developer's Corner](#developers-corner) below.)
 
-### Setting it up
+### Setting it Up
 The configuration file is called `atmos-gl.json` and it lives in the `config` folder.
 You can either edit this file directly, or browse to `http://localhost:9000/config` to use
 the configuration webpage there. If you do use that page, and save some changes they
@@ -107,94 +95,10 @@ Here is a shot of the homepage for the configurator at `http://localhost:9000/co
 I would suggest first picking a region on the Global tab (or leaving it as the whole
 World), and then in the `Show` tab just enabling `Clouds` as a starting point.
 
-#### Forecasting
-The map has a time scrubber built right into it — play, step forward/back, or drag through
-the available forecast hours for any layer that supports forecasting. The most useful
-elements which will show forecasts are of course Precipitation, Precipitable Water and
-Isobars, but others will do so as well such as Stormwatch, Temperature, Waves and Wind. A
-notable exception is Clouds which are really only eye-candy as far as meteorology
-is concerned. They are built up over 24 hours as photo swathes by the polar orbiting NOAA
-satellites, so are not computed out into the future like the above datasets. The Global
-tab also has forecast-stepping controls that let you play forward through upcoming hours
-automatically.
-
-#### Day and Night
-There is a `Terminator` layer (in the `Show` tab's `Miscellaneous` group) which shades the
-night side of the globe with a soft transition at the terminator line, for a realistic view
-of what's happening on the planet day and night. It has its own opacity, colour and edge
-softness settings if you'd like to tune the look, and can simply be switched off if you'd
-rather have an unshaded view of whatever layers you have enabled.
-
-### Control
-Everything is managed through the Makefile.
-
-    make up
-
-Gets your stack running (an alias for `docker compose up -d`). And to stop it:
-
-    make stop
-
-Once running, browse to `http://localhost:8180` for the live globe.
-
 If you change something in `config/atmos-gl.json` by hand rather than through the web UI,
-or if you just want to restart the backend services:
+restart the backend to pick it up:
 
-    make reload
-
-### Logging
-To tail the logs of everything:
-
-    make logs
-
-Or just one service:
-
-    make logs service=layer_builder
-
-A healthy repeating cycle might look something like this. Obviously the below example
-shows shipping and lightning collector output, which you won't see out of the box unless
-you already acquired API keys and enabled them.
-
-    data_collector       | 2026-07-08 22:12:30,063 [INFO] atmos_gl.collectors.gfs_atmos: Data Collector (gfs): 20260708 06Z, hours 004..051; stored 0 field(s).
-    data_collector       | 2026-07-08 22:33:52,623 [INFO] atmos_gl.collectors.shipping: ShippingCollector: starting weighted global rotation.
-    data_collector       | 2026-07-08 22:34:10,815 [INFO] atmos_gl.collectors.quakes: Quakes: upserted 26 records (min_mag=3.5).
-    data_collector       | 2026-07-08 22:34:30,026 [INFO] atmos_gl.collectors.volcanoes: Volcanoes: upserted 200 records.
-    layer_builder        | 2026-07-08 22:34:26,909 [INFO] atmos_gl.tasks.wind: Wind: heatmap scale = 230 km/h (data peak 221.8 km/h across 48 hours)
-    layer_builder        | 2026-07-08 22:34:36,300 [INFO] atmos_gl.tasks.currents: Finished Currents velocity texture f057 (R=U, G=V).
-    layer_builder        | 2026-07-08 22:38:39,481 [INFO] atmos_gl.tasks.scalar_field: Finished ozone texture f014.
-
-The `data_collector` continuously fetches fresh data in the background regardless of
-which layers you have switched on, so it's ready the moment you enable something. The
-`layer_builder` is what turns collected data into the images/textures the globe actually
-displays, cycling through every enabled layer, one forecast hour at a time, so all your
-enabled layers make visible progress together rather than one finishing its whole backlog
-before the next one starts.
-
-### Regions
-The database will be seeded with a few regions, which can be used to zoom in on where
-you want to populate elements on the map. You can add as many regions as you want.
-
-To add a region, we will need to get nerdy and insert data into your database. The
-format of an SQL statement which will do just that is:
-
-    INSERT INTO map_region (label, boundary) VALUES ('My Region', ST_MakeEnvelope(-7.346384, 42.490591, 10.854976, 51.487329, 4326));
-
-Copy this somewhere that you can change it in an editor.
-
-For the coords, go to https://tools.mofei.life/bbox#1/0/0 and navigate to wherever is
-centre of the region you want on the World map there. Zoom in and then pull a bounding-box
-with SHIFT-drag (TIP: ideally make it approx. 2:1 width:height). In the WGS84 box `Copy`
-the bounding box coords and paste those (minus the square brackets) into your INSERT.
-The co-ordinate ordering is already correct. Give your INSERT a new appropriate label,
-(replacing 'My Region', then copy that SQL statement onto your clipboard and execute
-this command:
-
-    make psql
-
-That will get you into the Atmos GL database PSQL shell. Paste your INSERT into that and
-hit enter. Bingo, a brand new region. The Atmos GL configurator should read your new region
-and allow you to select it.
-
-Just hit Ctrl-d to get out of the database.
+    ./atmos-gl.sh restart
 
 ### Obtaining an API Key for Shipping data
 The `shipping_collector` needs an API Key to access the AIS stream carrying shipping messages.
@@ -220,48 +124,67 @@ Once the `lightning_collector` process is enabled and running, you will find tha
 in the database called `lightning_strikes` will acquire data, though it also gets culled
 every few hours (`strike_expiry_hours` setting in that section) so won't get too populated.
 
-### Map tiles
+### Map Tiles
 The globe's basemap imagery (satellite/street tiles) is served by MapTiler, and needs its own
 free API key. Sign up at https://www.maptiler.com/, grab a key from your account dashboard,
 and put it in `.env` as `MAPTILER_API_KEY`. Without this the globe has nothing to render its
 basemap with.
 
-### Shipping Data Acquisition
-Ships broadcast data in the form of messages continuously at regular intervals. The main
-message they emit is a `PositionReport` which contains information as to latitude and longitude,
-current heading and speed. This message is usually fairly frequent. The other message of
-interest to us is the `ShipStaticData` which has details of the ship itself such as name,
-size, draught, type and IMO number (International Maritime Organization number). This message
-is broadcast much less frequently, but the data is extremely useful to identify the type of
-vessel and its current loading state (draught).
+### Forecasting
+The map has a time scrubber built right into it — play, step forward/back, or drag through
+the available forecast hours for any layer that supports forecasting. The most useful
+elements which will show forecasts are of course Precipitation, Precipitable Water and
+Isobars, but others will do so as well such as Stormwatch, Temperature, Waves and Wind. A
+notable exception is Clouds which are really only eye-candy as far as meteorology
+is concerned. They are built up over 24 hours as photo swathes by the polar orbiting NOAA
+satellites, so are not computed out into the future like the above datasets. The Global
+tab also has forecast-stepping controls that let you play forward through upcoming hours
+automatically.
 
-The `shipping_collector` listens for both types of message and will gradually populate your
-database `ships` table with them. It does this by slicing the globe up into segments by
-longitude, and then listening in each slice defined as a bounding box. The listen duration
-varies according to how busy each slice is expected to be, based on shipping lanes and the
-area of ocean it's looking at.
+### Day and Night
+There is a `Terminator` layer (in the `Show` tab's `Miscellaneous` group) which shades the
+night side of the globe with a soft transition at the terminator line, for a realistic view
+of what's happening on the planet day and night. It has its own opacity, colour and edge
+softness settings if you'd like to tune the look, and can simply be switched off if you'd
+rather have an unshaded view of whatever layers you have enabled.
 
-At any given instant either a `ShipStaticData` or `PositionReport` message might come in. If it's
-a `PositionReport` the message is fairly specific to position, heading, speed etc. and contains
-no details about the ship itself. The `shipping_collector` will look for an existing `ships`
-record in our database with the same `mmsi` identifier, and if found add the new position info.
-It also logs the position in the tracking table `ship_position` so we can display vessel tracks.
-If it doesn't find an existing `ships` record it creates a `shadow` record with scant data about
-the ship, basically just the name and the `mmsi` identifier. At some point we would hope to
-back-fill that data when a `ShipStaticData` is acquired for it.
+### Watching It Work
+To tail the logs of everything:
 
-The `layer_builder` (see below) is independent of all this and just displays ships in the database
-which happen to be in the region(s) you have specified you want to display (or the whole World
-if you left that list empty).
+    ./atmos-gl.sh logs
 
-One useful command for shipping is:
+Or just one service:
 
-    make status
+    ./atmos-gl.sh logs layer_builder
 
-That will print out some status info about ships in each region, ship totals and also lightning
-strikes per region.
+A healthy repeating cycle might look something like this. Obviously the below example
+shows shipping and lightning collector output, which you won't see out of the box unless
+you already acquired API keys and enabled them.
 
-### Map Overlays and Markers
+    data_collector       | 2026-07-08 22:12:30,063 [INFO] atmos_gl.collectors.gfs_atmos: Data Collector (gfs): 20260708 06Z, hours 004..051; stored 0 field(s).
+    data_collector       | 2026-07-08 22:33:52,623 [INFO] atmos_gl.collectors.shipping: ShippingCollector: starting weighted global rotation.
+    data_collector       | 2026-07-08 22:34:10,815 [INFO] atmos_gl.collectors.quakes: Quakes: upserted 26 records (min_mag=3.5).
+    data_collector       | 2026-07-08 22:34:30,026 [INFO] atmos_gl.collectors.volcanoes: Volcanoes: upserted 200 records.
+    layer_builder        | 2026-07-08 22:34:26,909 [INFO] atmos_gl.tasks.wind: Wind: heatmap scale = 230 km/h (data peak 221.8 km/h across 48 hours)
+    layer_builder        | 2026-07-08 22:34:36,300 [INFO] atmos_gl.tasks.currents: Finished Currents velocity texture f057 (R=U, G=V).
+    layer_builder        | 2026-07-08 22:38:39,481 [INFO] atmos_gl.tasks.scalar_field: Finished ozone texture f014.
+
+The `data_collector` continuously fetches fresh data in the background regardless of
+which layers you have switched on, so it's ready the moment you enable something. The
+`layer_builder` is what turns collected data into the images/textures the globe actually
+displays, cycling through every enabled layer, one forecast hour at a time, so all your
+enabled layers make visible progress together rather than one finishing its whole backlog
+before the next one starts.
+
+For ship/lightning counts per region, run:
+
+    ./atmos-gl.sh status
+
+### Starting Fresh
+If you really want a fresh start, stop the stack and remove the contents of the `data`
+folder — you may need `sudo` depending on how your containers are set up.
+
+## Map Layers
 Apart from shipping there are, of course, other elements to the map display.
 The full list is:
 
@@ -300,18 +223,42 @@ data every few hours at most anyway. Data collection itself, though, always runs
 background regardless of whether a layer is switched on — so the moment you enable
 something it's ready to display rather than waiting for a fresh fetch.
 
-If you really want a fresh start, stop the stack and remove the contents of the `data`
-folder — you may need `sudo` depending on how your containers are set up.
+### Regions
+The database will be seeded with a few regions, which can be used to zoom in on where
+you want to populate elements on the map. You can add as many regions as you want.
 
-### Some further notes
+To add a region, we will need to get nerdy and insert data into your database. The
+format of an SQL statement which will do just that is:
 
-#### Precipitation
+    INSERT INTO map_region (label, boundary) VALUES ('My Region', ST_MakeEnvelope(-7.346384, 42.490591, 10.854976, 51.487329, 4326));
+
+Copy this somewhere that you can change it in an editor.
+
+For the coords, go to https://tools.mofei.life/bbox#1/0/0 and navigate to wherever is
+centre of the region you want on the World map there. Zoom in and then pull a bounding-box
+with SHIFT-drag (TIP: ideally make it approx. 2:1 width:height). In the WGS84 box `Copy`
+the bounding box coords and paste those (minus the square brackets) into your INSERT.
+The co-ordinate ordering is already correct. Give your INSERT a new appropriate label,
+(replacing 'My Region', then copy that SQL statement onto your clipboard and execute
+this command:
+
+    docker compose exec atmos_gl_db psql -U agl atmos_gl
+
+(If you've cloned the repo, `make psql` is a shortcut for this.)
+
+That will get you into the Atmos GL database PSQL shell. Paste your INSERT into that and
+hit enter. Bingo, a brand new region. The Atmos GL configurator should read your new region
+and allow you to select it.
+
+Just hit Ctrl-d to get out of the database.
+
+### Precipitation
 Often mis-labelled as rainfall, even though that's what it mostly is, it does also
 cover snow, sleet, hail etc. It's probably one of the most interesting layers from
 the point of view of the amateur meteorologist given it often affects our daily plans
 in life! Given it can be displayed forecasted, it's quite useful in that regard.
 
-#### Precipitable Water
+### Precipitable Water
 This shows the total amount of water vapour sitting in a column of atmosphere — not rain
 itself, but the fuel that heavy rain and atmospheric rivers need. Rather than colourising
 the whole globe, it only highlights potential problem areas: anywhere below a configurable
@@ -321,13 +268,13 @@ same colour palette as Precipitation, so the two layers visually reinforce each 
 shown together, though a couple of other palettes are available if you'd prefer something
 distinct.
 
-#### Isobars
+### Isobars
 The cornerstone of meteorology it shows what the pressure is doing in the atmosphere
 and hence how the air masses are moving. Coupled with wind and precipitation
 layers it really does show you how the weather is shaping up. Once again it can be
 forecasted which makes it very useful.
 
-#### Volcanoes
+### Volcanoes
 Volcanoes are pretty much static day-to-day and can end up just cluttering up the map,
 so I generally don't display them. There are also a lot of them, depending on which
 options you set in the configuration. Each volcano will appear on the map
@@ -337,7 +284,7 @@ One useful option for these is the option `Specific volcano by name` if a partic
 volcano on the planet has a big eruption and you want to display it. That field can
 take a comma-separated list too, if you have several you want to display.
 
-#### Earthquakes
+### Earthquakes
 These are one of the most interesting elements to put onto the map because it allows
 you to visualise clusters of quakes appearing and providing a pattern of activity.
 The symbol used comes in two colours, one for a very recent earthquake and one for
@@ -346,7 +293,7 @@ the configuration UI. The expiry hours can also be set there. Symbols:
 * ![EQ recent](ui/images/earthquake_new.png) Recent earthquake activity
 * ![EQ older](ui/images/earthquake_old.png) Older earthquakes
 
-#### Storms
+### Storms
 Storms will drop off the map when the `Expiry days` is exceeded. Quite often the NOAA
 site will simply stop updating a storm if it loses strength and becomes a tropical low
 or similar. This expiry stops it hanging around too long once the updates stop.
@@ -375,7 +322,7 @@ the same comma-delimited columns.
 There are a lot of configurable items on the panel for storms, so you can get
 these looking how you like to see them.
 
-#### Lightning
+### Lightning
 Lightning strikes are of course very brief, so we need a shorter expiry for them to
 avoid them building up and obliterating parts of the map. You have an `Expiry hours`
 slider in the configuration panel for these to let you tune that. Having them show
@@ -385,7 +332,7 @@ We also have a colour code to give an idea of timing:
 * ![Bolt New](ui/images/bolt_yellow.png) Within the last hour
 * ![Bolt New](ui/images/bolt_red.png) Older than an hour (but not yet expired)
 
-#### Climate
+### Climate
 This area is quite fascinating as it covers the entire planet. The data is sourced
 from https://nomads.ncep.noaa.gov/ which contains a staggering amount of publicly
 available data. Currently we are just dipping our toes in those waters and providing
@@ -401,25 +348,25 @@ overlapping colours. In fact use of these layers is best done with just about ev
 colourising layer disabled — that would include Precipitation and Precipitable Water —
 though for marker elements such as Earthquakes, Shipping etc it isn't so important.
 
-##### SST
+#### SST
 Sea Surface Temperature, sourced straight from NOAA's data. A fascinating visualisation
 of what's happening across our oceans.
 
-##### Air Temperature
+#### Air Temperature
 Air/land temperatures are a measure of what's going on in our atmosphere, resolved
 globally at the same grid resolution as everything else here.
 
-##### Waves
+#### Waves
 This one is a colourisation depicting wave height across the planet. It gets quite
 interesting when you watch waves interacting with a storm, or a tsunami eventuates
 from an earthquake.
 
-##### Ocean Currents
+#### Ocean Currents
 These are depicted as curves with arrows showing the flows going on in our oceans
 on a real-time basis. This is one layer which could be shown together with others
 such as Isobars, Clouds and Precipitation as it isn't a colouration layer.
 
-##### Ozone Layer
+#### Ozone Layer
 Another interesting climate layer to have a look at. There are a couple of palettes to
 choose from, both built around a setting called `Critical Ozone Threshold`. The `du`
 stands for "Dobson Units" which is what the ozone layer density is measured in. A value
@@ -427,7 +374,7 @@ of `220.0` is considered the threshold for a "hole" in the ozone layer. Any ozon
 below that setting is coloured (brightest at the very worst readings), and anything above
 it fades to a dim, near-transparent "safe" tone — so you only really see the problem areas.
 
-##### Storm Watch
+#### Storm Watch
 This layer shows where there is a likelihood of a storm forming. It uses the CAPE
 measurement (Convective Available Potential Energy) which, as the name suggests is
 a value which expresses how much energy is available in the atmosphere, but it
@@ -438,13 +385,13 @@ parcel must break through before it can tap into the CAPE (Convective Available
 Potential Energy) above it. Combining both gives us a reasonable idea of the
 actual potential for storm formation.
 
-#### Wind
+### Wind
 Wind is depicted windy.com-style: animated flowing particle trails over a colourised
 speed heatmap, so you can see both direction and intensity of the wind at a glance. This
 layer is quite good paired with isobars where you can see the effect of differing air
 pressure.
 
-#### Shipping
+### Shipping
 Ships are shown as small rotating icons pointing in their current heading, colour-coded
 by vessel type: red for tankers, green for cargo, and violet/purple for passenger and
 other vessel types.
@@ -456,7 +403,35 @@ Smaller vessels only appear once you're zoomed in reasonably close, with progres
 larger ones visible from further out — this keeps busy shipping lanes from turning into
 an unreadable wall of icons at low zoom.
 
-#### Satellites
+#### Shipping Data Acquisition
+Ships broadcast data in the form of messages continuously at regular intervals. The main
+message they emit is a `PositionReport` which contains information as to latitude and longitude,
+current heading and speed. This message is usually fairly frequent. The other message of
+interest to us is the `ShipStaticData` which has details of the ship itself such as name,
+size, draught, type and IMO number (International Maritime Organization number). This message
+is broadcast much less frequently, but the data is extremely useful to identify the type of
+vessel and its current loading state (draught).
+
+The `shipping_collector` listens for both types of message and will gradually populate your
+database `ships` table with them. It does this by slicing the globe up into segments by
+longitude, and then listening in each slice defined as a bounding box. The listen duration
+varies according to how busy each slice is expected to be, based on shipping lanes and the
+area of ocean it's looking at.
+
+At any given instant either a `ShipStaticData` or `PositionReport` message might come in. If it's
+a `PositionReport` the message is fairly specific to position, heading, speed etc. and contains
+no details about the ship itself. The `shipping_collector` will look for an existing `ships`
+record in our database with the same `mmsi` identifier, and if found add the new position info.
+It also logs the position in the tracking table `ship_position` so we can display vessel tracks.
+If it doesn't find an existing `ships` record it creates a `shadow` record with scant data about
+the ship, basically just the name and the `mmsi` identifier. At some point we would hope to
+back-fill that data when a `ShipStaticData` is acquired for it.
+
+The `layer_builder` (see above) is independent of all this and just displays ships in the database
+which happen to be in the region(s) you have specified you want to display (or the whole World
+if you left that list empty).
+
+### Satellites
 Plotting satellite paths is something this map is happy to do, and there are literally
 thousands of objects up there whizzing around the Planet, not to mention the
 mega-clusters like Starlink etc. so there's a multi-select with a handful of the most
@@ -469,12 +444,62 @@ the groups currently downloaded from Celestrak: `resource`, `science`, `stations
 with one of those 4 group names:
     https://celestrak.org/NORAD/elements/gp.php?GROUP={group}&FORMAT=tle
 
-## Developer's corner
+## Developer's Corner
+
+### Clone the Repository
+
+    cd /your/preferred/workspace
+    git clone -v https://github.com/paulwaite87/atmos-gl
+
+After that, most things can be done via the Makefile. To see what is available:
+
+    make help
+
 If you are a developer, `make up` starts the stack with your local source bind-mounted in
 (via `docker-compose.override.yml`) so code edits just need `make reload` to take effect —
 no image rebuild required. `make build`/`make rebuild` are only needed for dependency or
-Dockerfile changes. `make test`, `make lint` and `make bash` are all there for you too —
-run `make help` for the full list.
+Dockerfile changes.
+
+### Control
+Everything is managed through the Makefile.
+
+    make up
+
+Gets your stack running (an alias for `docker compose up -d`). And to stop it:
+
+    make stop
+
+Once running, browse to `http://localhost:8180` for the live globe.
+
+If you change something in `config/atmos-gl.json` by hand rather than through the web UI,
+or if you just want to restart the backend services:
+
+    make reload
+
+`make prod`/`make prod-down` do the same job as `atmos-gl.sh start`/`stop` — running exactly
+as a package consumer would, against the published images rather than a local build.
+
+### Logging
+To tail the logs of everything:
+
+    make logs
+
+Or just one service:
+
+    make logs service=layer_builder
+
+See [Watching It Work](#watching-it-work) above for what a healthy log cycle looks like.
+
+One useful command for shipping is:
+
+    make status
+
+That will print out some status info about ships in each region, ship totals and also lightning
+strikes per region.
+
+### Everything Else
+`make test`, `make lint` and `make bash` are all there for you too — run `make help` for
+the full list.
 
 See `CLAUDE.md` at the repo root for the architectural conventions this project follows
 (collector/render task layout, testing approach, git workflow) before diving in. Feel free

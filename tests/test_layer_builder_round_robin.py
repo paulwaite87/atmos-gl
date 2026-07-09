@@ -7,6 +7,7 @@ threads an optional max_hours through to run(), and start_scheduler() dispatches
 multi-hour sections in rounds of one hour each instead of one all-hours call, so no
 single section's backlog can monopolise the pool.
 """
+import inspect
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -36,6 +37,27 @@ def test_updater_class_unwraps_partial_bindings():
 
     assert _updater_class(TASK_CLASSES["ozone"]) is ScalarFieldUpdater
     assert _updater_class(TASK_CLASSES["isobars"]) is TASK_CLASSES["isobars"]
+
+
+def test_every_multi_hour_section_run_accepts_max_hours():
+    """_render_worker calls run(max_hours=max_hours) unconditionally for every
+    TASK_CLASSES entry (see test_render_worker_forwards_max_hours_and_returns_plotted_count
+    above) -- but that test only exercises a fake updater, so it can't catch a REAL
+    multi-hour section whose run() doesn't declare max_hours. That gap let
+    PrecipitationUpdater.run() ship without the parameter: every dispatch round raised
+    TypeError("PrecipitationUpdater.run() got an unexpected keyword argument
+    'max_hours'"), so precipitation silently never rendered a new hour while every other
+    multi-hour layer kept advancing."""
+    for section in MULTI_HOUR_SECTIONS:
+        cls = _updater_class(TASK_CLASSES[section])
+        params = inspect.signature(cls.run).parameters
+        accepts_max_hours = "max_hours" in params or any(
+            p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values()
+        )
+        assert accepts_max_hours, (
+            f"{cls.__name__}.run() (section {section!r}) doesn't accept max_hours; "
+            f"_render_worker calls every section's run(max_hours=...) unconditionally"
+        )
 
 
 def test_render_worker_forwards_max_hours_and_returns_plotted_count():
