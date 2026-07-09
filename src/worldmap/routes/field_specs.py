@@ -440,6 +440,45 @@ def field_label(section: str, option: str) -> str:
     return spaced[:1].upper() + spaced[1:]
 
 
+# Friendly section headings for the "X Properties" title above each settings block --
+# the same name used for that layer's toggle/radio in the Show tab, so both parts of
+# the UI call a layer by the same name instead of the raw config key in brackets
+# (e.g. "Precipitable Water Properties", not "[pwat] Properties").
+SECTION_LABELS = {
+    "clouds": "Clouds",
+    "isobars": "Isobars",
+    "wind": "Wind",
+    "precipitation": "Precipitation",
+    "pwat": "Precipitable Water",
+    "lightning": "Lightning",
+    "storms": "Storm Track",
+    "sst": "Sea Surface Temp",
+    "currents": "Ocean Currents",
+    "waves": "Wave Heights",
+    "temperature": "Air Temperature",
+    "ozone": "Ozone",
+    "stormwatch": "Storm Watch",
+    "quakes": "Earthquakes",
+    "volcanoes": "Volcanoes",
+    "satellites": "Satellites",
+    "terminator": "Terminator Night/day Shade",
+    "markers": "Place Markers",
+    "shipping": "Shipping Overlay",
+    "shipping_collector": "Shipping Collector (AIS Loop)",
+    "lightning_collector": "Lightning Collector Daemon",
+    "satellites_collector": "Satellites Collector",
+    "data_collector": "Data Collector",
+}
+
+
+def section_label(section: str) -> str:
+    """Friendly "X Properties" heading for a settings section -- matches the Show
+    tab's label for that layer's toggle/radio exactly. Sections with no Show-tab entry
+    (map_builder, animation, housekeeper) fall back to a title-cased, space-split
+    version of the section key."""
+    return SECTION_LABELS.get(section, section.replace("_", " ").title())
+
+
 def to_display_value(spec: SliderSpec, raw_value):
     """Converts a stored value into the space the HTML slider actually operates in.
     Only clouds.threshold uses this today (raw 0-255 byte, displayed/edited as a
