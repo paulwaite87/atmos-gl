@@ -262,6 +262,27 @@ file:
 
 ---
 
+## Settings changes
+
+`config/worldmap.json` is gitignored — it's the **live** config the running stack actually
+reads and writes (via the config UI or hand-edits), and it drifts constantly during normal
+use. `config/worldmap.json.tmpl` is the **tracked template**, committed to the repo, and is
+the one Claude Code should read when it needs to know the current *shape* of the config
+schema (section/option names, structure) for something like a code change.
+
+When a task involves refactoring settings (adding/renaming/restructuring config
+sections or options — e.g. the PWAT layer's config additions, or the `ozone`/`pwat`
+critical-palette fields):
+
+1. Modify and test the change against the live `config/worldmap.json` first — this is
+   where iteration happens, exactly like any other manual settings change.
+2. Once the shape has settled, update `config/worldmap.json.tmpl` to match it exactly.
+3. Commit `config/worldmap.json.tmpl` alongside whatever other code changes are part of
+   that refactor. Never commit `config/worldmap.json` itself (it's gitignored — don't
+   force-add it).
+
+---
+
 ## Git workflow
 
 - Work on a **feature branch** named `feature/<short-description>` or
