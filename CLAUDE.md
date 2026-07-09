@@ -281,6 +281,13 @@ critical-palette fields):
    that refactor. Never commit `config/worldmap.json` itself (it's gitignored — don't
    force-add it).
 
+A fresh checkout has no live `config/worldmap.json` at all — only the `.tmpl`. `make
+up`/`make prod` bootstrap it automatically (see the Makefile's `bootstrap-config`
+target: copies the template over if the live file is missing, never overwrites an
+existing one). CI does the same as an explicit step before running pytest. Anything
+that reads config outside those paths (a one-off script, a fresh test run) needs that
+copy to exist first.
+
 ---
 
 ## Git workflow

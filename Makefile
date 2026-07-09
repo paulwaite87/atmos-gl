@@ -4,7 +4,7 @@
 # the service's process for Python to re-import it — NOT rebuild the image. `make build`
 # is now only for dependency or Dockerfile changes.
 # =============================================================================
-.PHONY: run stop build rebuild start-desktop-fg stop-desktop psql logs clean purge backup restore refresh-map test bash status help
+.PHONY: run stop build rebuild start-desktop-fg stop-desktop psql logs clean purge backup restore refresh-map test bash status help bootstrap-config
 
 # Variables
 DB_USER = wmap
@@ -28,8 +28,15 @@ endif
 stop:
 	docker compose down
 
+## bootstrap-config: Ensure a live config/worldmap.json exists (never overwrites one already there)
+bootstrap-config:
+	@if [ ! -f config/worldmap.json ]; then \
+		cp config/worldmap.json.tmpl config/worldmap.json; \
+		echo "Created config/worldmap.json from config/worldmap.json.tmpl"; \
+	fi
+
 ## start|run|up: Start dev stack (auto-merges docker-compose.override.yml)
-up run start:
+up run start: bootstrap-config
 	docker compose up -d
 
 ## build: Rebuild images — only needed for DEPENDENCY changes
@@ -41,7 +48,7 @@ rebuild:
 	docker compose build --no-cache
 
 ## prod: Run EXACTLY as a package consumer would
-prod:
+prod: bootstrap-config
 	docker compose -f docker-compose.yml pull
 	docker compose -f docker-compose.yml up -d
 
