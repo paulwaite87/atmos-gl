@@ -48,7 +48,7 @@ export function loadLayer(map, config, fullConfig = {}) {
                 return vec4(c, u_alpha);
             }`,
         customUniforms: (cfg) => ({
-            u_alpha: Number(cfg.alpha) > 0 ? Number(cfg.alpha) / 100 : 0.85,
+            u_alpha: Number(cfg.opacity) > 0 ? Number(cfg.opacity) / 100 : 0.85,
             u_min: Number(cfg.min_cape) >= 0 ? Number(cfg.min_cape) : 250.0,
         }),
         colormap: () => rgbToRgba(CMAP_YLORRD),

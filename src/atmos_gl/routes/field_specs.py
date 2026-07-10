@@ -115,7 +115,8 @@ _HOURS = SliderSpec(min=0, max=96, step=1, suffix="h")
 _MINUTES = SliderSpec(min=0, max=120, step=1, suffix="mins")
 _FONTSIZE = SliderSpec(min=6, max=24, step=1, suffix="px")
 _RUNS_PER_DAY = SliderSpec(min=1, max=24, step=1, suffix=" runs")
-_ALPHA = SliderSpec(min=0, max=100, step=5)
+_OPACITY = SliderSpec(min=0, max=100, step=1)
+_PARTICLE_ALPHA = SliderSpec(min=0, max=100, step=5)
 _PARTICLE_SPEED_LIKE = SliderSpec(min=0, max=100, step=1)
 _PARTICLE_SIZE = SliderSpec(min=0.1, max=5.0, step=0.05, decimals=2)
 _TRAIL_FADE_OR_LENGTH = SliderSpec(min=0, max=100, step=1)
@@ -238,7 +239,7 @@ FIELD_SPECS = {
     ("satellites", "sat_names"): _SAT_NAMES,
     ("satellites", "past_minutes"): _MINUTES,
     ("satellites", "future_minutes"): _MINUTES,
-    ("terminator", "alpha"): _ALPHA,
+    ("terminator", "opacity"): _OPACITY,
     ("terminator", "shade_color"): ColorSpec(named=False),
     ("terminator", "edge_softness"): SliderSpec(min=0, max=50, step=1),
     ("markers", "marker_color"): ColorSpec(),
@@ -258,7 +259,7 @@ FIELD_SPECS = {
     ("isobars", "level_of_detail"): _LEVEL_OF_DETAIL,
     ("isobars", "isobar_color"): ColorSpec(),
     ("isobars", "linewidth"): SliderSpec(min=0.1, max=5.0, step=0.1, decimals=1, suffix="px"),
-    ("isobars", "alpha"): _ALPHA,
+    ("isobars", "opacity"): _OPACITY,
     ("isobars", "label_fontsize"): _FONTSIZE,
     ("isobars", "label_outline"): ToggleSpec(),
     ("isobars", "runs_per_day"): _RUNS_PER_DAY,
@@ -270,15 +271,15 @@ FIELD_SPECS = {
     ("wind", "point_size"): SliderSpec(min=1, max=8, step=1, suffix="px"),
     ("wind", "vector_color"): ColorSpec(),
     ("wind", "particle_speed"): _PARTICLE_SPEED_LIKE,
-    ("wind", "particle_alpha"): _ALPHA,
+    ("wind", "particle_alpha"): _PARTICLE_ALPHA,
     ("wind", "particle_size"): _PARTICLE_SIZE,
     ("wind", "trail_fade"): _TRAIL_FADE_OR_LENGTH,
-    ("wind", "alpha"): _ALPHA,
+    ("wind", "opacity"): _OPACITY,
     ("wind", "runs_per_day"): _RUNS_PER_DAY,
     ("wind", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
     ("precipitation", "level_of_detail"): _LEVEL_OF_DETAIL,
     ("precipitation", "min_mm_hr"): SliderSpec(min=0.0, max=10.0, step=0.1, decimals=1),
-    ("precipitation", "alpha"): _ALPHA,
+    ("precipitation", "opacity"): _OPACITY,
     ("precipitation", "palette"): SelectSpec([
         ("standard", "Standard"),
         ("ocean_blue", "Ocean blue"),
@@ -294,7 +295,7 @@ FIELD_SPECS = {
         ("deep_teal", "Deep teal (cyan -> teal)"),
     ]),
     ("pwat", "critical_pwat"): SliderSpec(min=0.0, max=80.0, step=5.0, decimals=0, suffix="mm"),
-    ("pwat", "alpha"): _ALPHA,
+    ("pwat", "opacity"): _OPACITY,
     ("pwat", "key_fontsize"): _FONTSIZE,
     ("pwat", "runs_per_day"): _RUNS_PER_DAY,
     ("pwat", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
@@ -306,7 +307,7 @@ FIELD_SPECS = {
     # --- Climate (sst, currents, waves, temperature, ozone, stormwatch) ---
     ("sst", "level_of_detail"): _LEVEL_OF_DETAIL,
     ("sst", "mode"): _MODE_OPTIONS,
-    ("sst", "alpha"): _ALPHA,
+    ("sst", "opacity"): _OPACITY,
     ("sst", "palette"): SelectSpec([
         ("thermal", "Thermal"),
         ("vivid", "Vivid"),
@@ -325,7 +326,7 @@ FIELD_SPECS = {
         ("toxic_neon", "Toxic neon"),
         ("cyberpunk", "Cyberpunk"),
     ]),
-    ("currents", "alpha"): _ALPHA,
+    ("currents", "opacity"): _OPACITY,
     ("currents", "particle_speed"): _PARTICLE_SPEED_LIKE,
     ("currents", "current_speed_minimum"): SliderSpec(
         min=0.0, max=5.0, step=0.1, decimals=2, suffix=" m/s"
@@ -340,14 +341,14 @@ FIELD_SPECS = {
         ("neon_surge", "Neon surge"),
         ("solar_flare", "Solar flare"),
     ]),
-    ("waves", "alpha"): _ALPHA,
+    ("waves", "opacity"): _OPACITY,
     ("waves", "min_wave_height"): SliderSpec(min=0, max=5, step=0.25, suffix=" m", zero_label="off"),
     ("waves", "key_fontsize"): _FONTSIZE,
     ("waves", "runs_per_day"): _RUNS_PER_DAY,
     ("waves", "particle_speed"): _PARTICLE_SPEED_LIKE,
     ("waves", "particle_size"): _PARTICLE_SIZE,
     ("waves", "bar_length"): SliderSpec(min=1, max=8, step=1),
-    ("waves", "particle_alpha"): _ALPHA,
+    ("waves", "particle_alpha"): _PARTICLE_ALPHA,
     ("waves", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
     ("temperature", "level_of_detail"): _LEVEL_OF_DETAIL,
     ("temperature", "palette"): SelectSpec([
@@ -355,7 +356,7 @@ FIELD_SPECS = {
         ("extreme_contrast", "Extreme contrast"),
         ("twilight_gradient", "Twilight gradient"),
     ]),
-    ("temperature", "alpha"): _ALPHA,
+    ("temperature", "opacity"): _OPACITY,
     ("temperature", "show_freezing_line"): ToggleSpec(),
     ("temperature", "key_fontsize"): _FONTSIZE,
     ("temperature", "runs_per_day"): _RUNS_PER_DAY,
@@ -366,14 +367,14 @@ FIELD_SPECS = {
         ("high_contrast", "High contrast (red -> pale yellow)"),
     ]),
     ("ozone", "critical_du"): SliderSpec(min=150.0, max=500.0, step=10.0, decimals=1, suffix="du"),
-    ("ozone", "alpha"): _ALPHA,
+    ("ozone", "opacity"): _OPACITY,
     ("ozone", "key_fontsize"): _FONTSIZE,
     ("ozone", "runs_per_day"): _RUNS_PER_DAY,
     ("ozone", "stormwatch"): ToggleSpec(),
     ("ozone", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
     ("stormwatch", "level_of_detail"): _LEVEL_OF_DETAIL,
     ("stormwatch", "min_cape"): SliderSpec(min=0, max=5000, step=100, suffix="J/Kg"),
-    ("stormwatch", "alpha"): _ALPHA,
+    ("stormwatch", "opacity"): _OPACITY,
     ("stormwatch", "key_fontsize"): _FONTSIZE,
     ("stormwatch", "runs_per_day"): _RUNS_PER_DAY,
     ("stormwatch", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,

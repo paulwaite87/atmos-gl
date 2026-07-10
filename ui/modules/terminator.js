@@ -6,8 +6,8 @@ export function loadLayer(map, config) {
 
     const num = (v, d) => { const n = parseFloat(v); return Number.isFinite(n) ? n : d; };
     const paintFrom = (c) => {
-        // alpha is on the standardised 0-100 UI scale; convert to 0-1.
-        const opacity = Math.max(0, Math.min(100, num(c && c.alpha, 40))) / 100;
+        // opacity is on the standardised 0-100 UI scale; convert to 0-1.
+        const opacity = Math.max(0, Math.min(100, num(c && c.opacity, 40))) / 100;
         // edge_softness feathers the day/night boundary. A blurred line ONLY softens if
         // it's wide enough that the blur forms a visible band over the fill's hard edge;
         // blurring a thin (6px) line just fades it to nothing and the crisp fill edge

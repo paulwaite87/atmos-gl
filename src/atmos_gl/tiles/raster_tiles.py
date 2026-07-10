@@ -69,8 +69,8 @@ class TileSpec:
     palettes: dict | None = None
     default_palette: str | None = None
     palette_setting: str | None = None
-    alpha_setting: str = "alpha"
-    alpha_default: float = 70.0
+    opacity_setting: str = "opacity"
+    opacity_default: float = 70.0
     threshold_setting: str | None = None
 
 
@@ -261,7 +261,7 @@ def _settings(spec: TileSpec, config):
         0,
         min(
             255,
-            int(round(float(sect.get(spec.alpha_setting, spec.alpha_default)) / 100.0 * 255)),
+            int(round(float(sect.get(spec.opacity_setting, spec.opacity_default)) / 100.0 * 255)),
         ),
     )
     threshold = None
@@ -499,8 +499,8 @@ WAVES_SPEC = TileSpec(
     palettes=WAVES_PALETTES,
     default_palette="ocean_storm",
     palette_setting="palette",
-    alpha_setting="alpha",
-    alpha_default=70.0,
+    opacity_setting="opacity",
+    opacity_default=70.0,
     threshold_setting="min_wave_height",
 )
 

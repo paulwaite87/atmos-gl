@@ -31,7 +31,7 @@ export function loadLayer(map, config, fullConfig = {}) {
                 return vec4(c, u_alpha);
             }`,
         customUniforms: (cfg) => ({
-            u_alpha: Number(cfg.alpha) > 0 ? Number(cfg.alpha) / 100 : 0.85,
+            u_alpha: Number(cfg.opacity) > 0 ? Number(cfg.opacity) / 100 : 0.85,
         }),
         colormap: () => rgbToRgba(CMAP_RDYLBU_R),
         onMount: addLegend,
