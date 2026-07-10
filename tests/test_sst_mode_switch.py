@@ -1,17 +1,23 @@
 #!/usr/bin/env python3
-"""Regression tests for the SST Absolute<->Anomaly mode-switch bug: switching
-`sst.mode` in the config kept showing the old mode's PNG + key indefinitely.
+"""Regression tests for the SST Absolute<->Anomaly mode-switch bug, and for the
+follow-up design change that supersedes half of that fix: both modes are now rendered
+to permanent, independent output paths every cycle (sst_absolute.png/sst_anomaly.png),
+not just whichever mode is currently configured -- so the frontend (ui/modules/sst.js)
+can switch between them instantly, and the config's `mode` setting only controls which
+one gets published to the stable, run-agnostic sst.png/sst_key.png for anything still
+reading that name directly.
 
-Two compounding causes, both covered here:
+Original two compounding causes:
   * SstCollector.collect() only ever downloaded the netCDF for whichever mode was
     CURRENTLY configured -- switching modes left the other mode's source file
     completely un-downloaded until the next is_stale() cadence (up to
     runs_per_day-derived hours later), which has no awareness that `mode` changed.
+    (Still true today -- covered below.)
   * SSTUpdater.run() wrote both modes to the SAME output path and decided whether to
     re-render purely by comparing that file's mtime against the source netCDF's mtime
     -- it had no way to know "this file was last rendered in a DIFFERENT mode than the
-    one now configured", so a mode switch wasn't guaranteed to trigger a re-render even
-    once the right source data existed.
+    one now configured". This is now moot: each mode has always had its own,
+    independently-freshness-checked output path, so there's nothing to disambiguate.
 """
 import os
 from unittest.mock import MagicMock, patch
@@ -105,6 +111,7 @@ def make_bare_sst_updater(mode, workdir, output_path):
     u.output_path = output_path
     u.settings = {}
     u.plot = MagicMock()
+    u._publish_current_mode = MagicMock()
     return u
 
 
@@ -116,61 +123,94 @@ def _touch(path, mtime_offset=0):
         os.utime(path, (t, t))
 
 
-def test_run_skips_when_mode_unchanged_and_output_already_fresh(tmp_path):
+def test_run_renders_both_modes_to_separate_persistent_paths(tmp_path):
     (tmp_path / "data").mkdir()
-    nc_path = tmp_path / "data" / "sst_cache_noaa_oisst_mean.nc"
+    abs_nc = tmp_path / "data" / "sst_cache_noaa_oisst_mean.nc"
+    anom_nc = tmp_path / "data" / "sst_cache_noaa_oisst_anomaly.nc"
+    _touch(abs_nc)
+    _touch(anom_nc)
     out_path = tmp_path / "data" / "sst.png"
-    _touch(nc_path)
-    _touch(out_path, mtime_offset=10)  # newer than source
 
     u = make_bare_sst_updater("absolute", str(tmp_path), str(out_path))
-    marker = tmp_path / "data" / "sst_cache_last_mode.txt"
-    marker.write_text("absolute")
-
     u.run()
 
-    u.plot.assert_not_called()
+    assert u.plot.call_count == 2
+    called_modes = {call.args[0] for call in u.plot.call_args_list}
+    assert called_modes == {"absolute", "anomaly"}
+    called_outputs = {call.args[2] for call in u.plot.call_args_list}
+    assert called_outputs == {
+        str(tmp_path / "data" / "sst_absolute.png"),
+        str(tmp_path / "data" / "sst_anomaly.png"),
+    }
 
 
-def test_run_rerenders_when_mode_changed_even_if_output_is_newer_than_source(tmp_path):
-    """The core regression: output already exists and is NEWER than the source
-    netCDF (the old code's only freshness signal), but it was last rendered in a
-    different mode than the one now configured. The fix must re-render anyway."""
+def test_run_skips_a_mode_whose_output_is_already_fresh(tmp_path):
     (tmp_path / "data").mkdir()
-    nc_path = tmp_path / "data" / "sst_cache_noaa_oisst_anomaly.nc"
+    abs_nc = tmp_path / "data" / "sst_cache_noaa_oisst_mean.nc"
+    anom_nc = tmp_path / "data" / "sst_cache_noaa_oisst_anomaly.nc"
+    _touch(abs_nc)
+    _touch(anom_nc)
+    # Absolute already has a fresh render; anomaly doesn't yet.
+    _touch(tmp_path / "data" / "sst_absolute.png", mtime_offset=10)
     out_path = tmp_path / "data" / "sst.png"
-    _touch(nc_path)
-    _touch(out_path, mtime_offset=10)  # newer than source -- "fresh" by mtime alone
-
-    marker = tmp_path / "data" / "sst_cache_last_mode.txt"
-    marker.write_text("absolute")  # out.png was last rendered in absolute mode
-
-    u = make_bare_sst_updater("anomaly", str(tmp_path), str(out_path))
-    u.run()
-
-    u.plot.assert_called_once()
-    assert marker.read_text().strip() == "anomaly"
-
-
-def test_run_renders_on_first_run_with_no_prior_marker(tmp_path):
-    (tmp_path / "data").mkdir()
-    nc_path = tmp_path / "data" / "sst_cache_noaa_oisst_mean.nc"
-    out_path = tmp_path / "data" / "sst.png"
-    _touch(nc_path)
 
     u = make_bare_sst_updater("absolute", str(tmp_path), str(out_path))
     u.run()
 
     u.plot.assert_called_once()
-    marker = tmp_path / "data" / "sst_cache_last_mode.txt"
-    assert marker.read_text().strip() == "absolute"
+    assert u.plot.call_args.args[0] == "anomaly"
 
 
-def test_run_skips_when_source_cache_missing(tmp_path):
+def test_run_does_not_render_when_both_modes_already_fresh(tmp_path):
     (tmp_path / "data").mkdir()
+    for mode, nc_name in [("absolute", "noaa_oisst_mean.nc"), ("anomaly", "noaa_oisst_anomaly.nc")]:
+        _touch(tmp_path / "data" / f"sst_cache_{nc_name}")
+        _touch(tmp_path / "data" / f"sst_{mode}.png", mtime_offset=10)
     out_path = tmp_path / "data" / "sst.png"
 
     u = make_bare_sst_updater("anomaly", str(tmp_path), str(out_path))
     u.run()
 
     u.plot.assert_not_called()
+    # Publishing still happens every cycle regardless of whether a render occurred.
+    u._publish_current_mode.assert_called_once_with(str(tmp_path / "data" / "sst_anomaly.png"))
+
+
+def test_run_publishes_only_the_currently_configured_mode(tmp_path):
+    (tmp_path / "data").mkdir()
+    _touch(tmp_path / "data" / "sst_cache_noaa_oisst_mean.nc")
+    _touch(tmp_path / "data" / "sst_cache_noaa_oisst_anomaly.nc")
+    out_path = tmp_path / "data" / "sst.png"
+
+    u = make_bare_sst_updater("anomaly", str(tmp_path), str(out_path))
+    u.run()
+
+    u._publish_current_mode.assert_called_once_with(str(tmp_path / "data" / "sst_anomaly.png"))
+
+
+def test_run_skips_a_mode_whose_source_cache_is_missing_without_blocking_the_other(tmp_path):
+    (tmp_path / "data").mkdir()
+    abs_nc = tmp_path / "data" / "sst_cache_noaa_oisst_mean.nc"
+    _touch(abs_nc)  # anomaly netCDF not fetched yet
+    out_path = tmp_path / "data" / "sst.png"
+
+    u = make_bare_sst_updater("absolute", str(tmp_path), str(out_path))
+    u.run()
+
+    u.plot.assert_called_once()
+    assert u.plot.call_args.args[0] == "absolute"
+    u._publish_current_mode.assert_called_once()
+
+
+def test_run_publishes_nothing_when_configured_modes_source_is_missing(tmp_path):
+    """Configured mode is anomaly, but only the absolute netCDF exists -- absolute
+    renders, but nothing is published to the stable filename since the configured
+    mode's own data isn't ready."""
+    (tmp_path / "data").mkdir()
+    _touch(tmp_path / "data" / "sst_cache_noaa_oisst_mean.nc")
+    out_path = tmp_path / "data" / "sst.png"
+
+    u = make_bare_sst_updater("anomaly", str(tmp_path), str(out_path))
+    u.run()
+
+    u._publish_current_mode.assert_not_called()

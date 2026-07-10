@@ -363,7 +363,6 @@ def test_shared_constants_reused_across_many_sections():
         FIELD_SPECS[("isobars", "level_of_detail")]
         is FIELD_SPECS[("stormwatch", "level_of_detail")]
     )
-    assert FIELD_SPECS[("sst", "mode")] is FIELD_SPECS[("temperature", "mode")]
     assert (
         FIELD_SPECS[("wind", "particle_speed")]
         is FIELD_SPECS[("animation", "stepping_rate")]

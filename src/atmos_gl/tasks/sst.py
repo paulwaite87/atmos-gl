@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import os
+import shutil
 import logging
 import gc
 import numpy as np
@@ -20,19 +21,27 @@ class SSTUpdater(Updater):
         super().__init__(config, "sst", map_data)
         self.mode = self.settings.get("mode", "absolute").strip().lower()
 
-    def plot(self):
+    def _output_path_for_mode(self, mode: str) -> str:
+        """Per-mode, ALWAYS-kept-fresh output path: 'data/sst.png' -> e.g.
+        'data/sst_anomaly.png'. Both modes render here every cycle (independent of
+        the configured `mode`) so the frontend can switch between them instantly --
+        see ui/modules/sst.js."""
+        base, ext = os.path.splitext(self.output_path)
+        return f"{base}_{mode}{ext}"
+
+    def plot(self, mode: str, nc_path: str, output_path: str):
         alpha = float(self.settings.get("alpha", 40) / 100)
         bbox = self.map_region_bbox
 
         # --- Data Loading ---
-        ds = xr.open_dataset(self.nc_path, chunks={"time": 1})
+        ds = xr.open_dataset(nc_path, chunks={"time": 1})
         latest_slice = ds.isel(time=-1)
 
         lat_raw = latest_slice["lat"].values
         lon_raw = latest_slice["lon"].values
 
         # Dynamically target 'anom' for anomaly mode, or 'sst' for absolute mean mode
-        data_var = "anom" if self.mode == "anomaly" else "sst"
+        data_var = "anom" if mode == "anomaly" else "sst"
         raw_matrix = latest_slice[data_var].values.squeeze()
 
         # Cleanly transform NOAA's 0-360 range into a standard -180 to +180 baseline
@@ -57,7 +66,7 @@ class SSTUpdater(Updater):
         gc.collect()
 
         # --- Dynamic Mode Styling Pipeline ---
-        if self.mode == "anomaly":
+        if mode == "anomaly":
             # Isolates 98th percentile of absolute variance on screen for stable scale bounds
             abs_anomalies = np.abs(display_data)
             calculated_range = (
@@ -107,10 +116,10 @@ class SSTUpdater(Updater):
             zorder=2,
         )
 
-        plot.save_figure(self.output_path)
+        plot.save_figure(output_path)
         calculated_ticks = np.linspace(vmin, vmax, 5)
         self.save_key_image(
-            self.output_path,
+            output_path,
             cmap,
             norm,
             calculated_ticks,
@@ -125,50 +134,51 @@ class SSTUpdater(Updater):
         if callable(plt_close):
             plt_close()
 
-        logger.debug(f"Successfully rendered raw NOAA OISST map in {self.mode} mode.")
+        logger.debug(f"Successfully rendered raw NOAA OISST map in {mode} mode.")
+
+    def _publish_current_mode(self, mode_output_path: str):
+        """Copy the currently-configured mode's per-mode render to the stable,
+        run-agnostic base filename (sst.png/sst_key.png) for anything still reading
+        that name directly. Always refreshed each cycle (a cheap file copy),
+        independent of whether that mode's plot needed re-rendering this cycle."""
+        base, ext = os.path.splitext(self.output_path)
+        mode_base, mode_ext = os.path.splitext(mode_output_path)
+        pairs = [
+            (mode_output_path, self.output_path),
+            (f"{mode_base}_key{mode_ext}", f"{base}_key{ext}"),
+        ]
+        for src, dst in pairs:
+            if not os.path.exists(src):
+                continue
+            tmp = f"{dst}.tmp"
+            shutil.copy2(src, tmp)
+            os.replace(tmp, dst)
 
     def run(self, max_hours=None):
         # max_hours is a no-op here -- SST renders once per cycle, not per forecast
         # hour, so it has nothing to cap. Accepted only so layer_builder's dispatch can
         # call every TASK_CLASSES entry's run() the same way.
-        # The data_collector now owns the OISST download; we just render from the shared
-        # cache it maintains. Read it, and (re)render only when the cache is newer than
-        # our output, so we don't repaint every cycle for an unchanged daily field.
-        from atmos_gl.lib.oisst import oisst_cache_path
+        # The data_collector fetches BOTH modes' netCDFs unconditionally (see
+        # collectors/sst.py), so both are rendered here every cycle too -- each to its
+        # own permanent output path, independent of which mode is currently configured
+        # -- so the frontend can switch between them instantly (ui/modules/sst.js)
+        # rather than waiting on a config change + re-render round-trip.
+        from atmos_gl.lib.oisst import oisst_cache_path, OISST_MODES
 
-        self.nc_path = oisst_cache_path(self.workdir, self.mode)
-        if not os.path.exists(self.nc_path):
-            logger.info(
-                f"SST: cache {os.path.basename(self.nc_path)} not present yet "
-                "(data collector hasn't fetched it); skipping."
-            )
-            return
+        for mode in OISST_MODES:
+            nc_path = oisst_cache_path(self.workdir, mode)
+            if not os.path.exists(nc_path):
+                logger.info(
+                    f"SST: cache {os.path.basename(nc_path)} not present yet "
+                    f"(data collector hasn't fetched it); skipping {mode}."
+                )
+                continue
 
-        # Both modes share this one output path (sst.png/sst_key.png) -- the source
-        # netCDF's mtime alone can't tell us "this file was last rendered in a
-        # DIFFERENT mode than the one now configured", so a mode switch wouldn't
-        # reliably trigger a re-render (e.g. if the newly-selected mode's netCDF
-        # happens to be older than the stale output). Track which mode last rendered
-        # in a small sidecar marker and force a re-render whenever it disagrees with
-        # the current mode, regardless of file mtimes.
-        mode_marker = self.cache_path("last_mode.txt")
-        last_mode = None
-        if os.path.exists(mode_marker):
-            with open(mode_marker) as f:
-                last_mode = f.read().strip()
-        mode_changed = last_mode != self.mode
+            out = self._output_path_for_mode(mode)
+            fresh = os.path.exists(out) and os.path.getmtime(out) >= os.path.getmtime(nc_path)
+            if not fresh:
+                logger.info(f"Generating SST {mode} plot...")
+                self.plot(mode, nc_path, out)
 
-        out = self.output_path
-        fresh = (
-            out
-            and os.path.exists(out)
-            and os.path.getmtime(out) >= os.path.getmtime(self.nc_path)
-        )
-        if fresh and not mode_changed:
-            logger.debug("SST: output already up to date with cache; skipping render.")
-            return
-
-        logger.info(f"Generating SST {self.mode} plot...")
-        self.plot()
-        with open(mode_marker, "w") as f:
-            f.write(self.mode)
+            if mode == self.mode:
+                self._publish_current_mode(out)

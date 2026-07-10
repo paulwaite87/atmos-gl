@@ -362,7 +362,6 @@ FIELD_SPECS = {
     ("waves", "particle_alpha"): _ALPHA,
     ("waves", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
     ("temperature", "level_of_detail"): _LEVEL_OF_DETAIL,
-    ("temperature", "mode"): _MODE_OPTIONS,
     ("temperature", "palette"): SelectSpec([
         ("global_thermal", "Global thermal"),
         ("extreme_contrast", "Extreme contrast"),
