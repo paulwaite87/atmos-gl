@@ -73,26 +73,6 @@
             border-radius: 4px;
             border: 1px solid rgba(255, 255, 255, 0.2);
         }
-        /* sst.js's Absolute/Anomaly toggle -- #legend-stack disables pointer-events so
-           it doesn't block map dragging behind it; buttons need it back explicitly. */
-        .sst-mode-toggle {
-            display: flex;
-            gap: 4px;
-            margin-bottom: 4px;
-            pointer-events: auto;
-        }
-        .sst-mode-btn {
-            flex: 1;
-            font: 11px sans-serif;
-            padding: 3px 6px;
-            background: rgba(255, 255, 255, 0.1);
-            color: #fff;
-            border: 1px solid rgba(255, 255, 255, 0.3);
-            border-radius: 3px;
-            cursor: pointer;
-        }
-        .sst-mode-btn:hover { background: rgba(255, 255, 255, 0.2); }
-        .sst-mode-btn.active { background: #0d6efd; border-color: #0d6efd; }
     </style>
     <script src="https://unpkg.com/maplibre-gl@^5.0.0/dist/maplibre-gl.js"></script>
 </head>
