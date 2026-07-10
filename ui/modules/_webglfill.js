@@ -59,11 +59,12 @@ export function createFillLayer(map, opts) {
         backfillKey = null,   // optional resolver (snap)=>{date,run,hour} for backfill
         beforeId = null,      // insert beneath this layer id (guarded if it doesn't exist)
         refreshMs, syncMs,
-        staticUrl = (cfg) => `${window.MAP_UI}/${cfg.outfile}`,
+        // Backend always writes to data/{sectionKey}.png (hardcoded server-side, no
+        // longer a user-editable `outfile` config setting -- see field_specs.py).
+        staticUrl = () => `${window.MAP_UI}/data/${sectionKey}.png`,
         hourDataUrl = (cfg, hour, bust) => {
-            const base = cfg.outfile.replace(/\.png$/, '');
             const f = String(hour).padStart(3, '0');
-            return `${window.MAP_UI}/${base}_f${f}_data.png?t=${bust}`;
+            return `${window.MAP_UI}/data/${sectionKey}_f${f}_data.png?t=${bust}`;
         },
         forecastStepping = (anim) => (anim && anim.forecast_stepping !== false),
     } = opts;

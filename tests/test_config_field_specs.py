@@ -112,13 +112,6 @@ def test_validate_against_specs_ignores_missing_sections():
 # --- Events / Misc / Shipping batch: prefix badges, shared shapes, new kinds ---
 
 
-def test_field_label_generic_override_beats_section_specific_fallback():
-    """"outfile" is checked before any (section, option) override or the generic
-    spaced-capitalised fallback, matching the legacy JS's unconditional first check."""
-    assert field_label("quakes", "outfile") == "Output file"
-    assert field_label("volcanoes", "outfile") == "Output file"
-
-
 def test_field_label_section_specific_override_for_quakes_min_mag():
     assert field_label("quakes", "min_mag") == "Minimum magnitude"
 

@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 class CloudUpdater(Updater):
     def __init__(self, config: AtmosGLConfig, map_data: MapData):
-        super().__init__(config, "Clouds", map_data)
+        super().__init__(config, "Clouds", map_data, outfile="data/cloud_map.png")
         # The data_collector now owns the GIBS download; we read the single global cache
         # it maintains and turn it into a transparent overlay.
         self.cache_output_path = clouds_cache_path(self.workdir)

@@ -27,7 +27,7 @@ PALETTES = rt.WAVES_PALETTES
 
 class WavesUpdater(Updater, MultiHourRenderMixin):
     def __init__(self, config: AtmosGLConfig, map_data: MapData):
-        super().__init__(config, "Waves", map_data)
+        super().__init__(config, "Waves", map_data, outfile="data/waves.png")
 
         # DESIGNED GRADIENTS FOR WAVE HEIGHT INTENSITY
         self.PALETTES = PALETTES

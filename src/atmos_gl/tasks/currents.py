@@ -28,7 +28,7 @@ class CurrentsUpdater(Updater, MultiHourRenderMixin):
     VMAX_CURRENT = 2.5  # m/s; clips the strongest currents (Gulf Stream/Kuroshio ~2.5)
 
     def __init__(self, config: AtmosGLConfig, map_data: MapData):
-        super().__init__(config, "Currents", map_data)
+        super().__init__(config, "Currents", map_data, outfile="data/currents.png")
         # No static PNG — only the GPU velocity texture (like wind).
         self.per_hour_outputs = ["_data.png"]
         self.status_product = "currents"

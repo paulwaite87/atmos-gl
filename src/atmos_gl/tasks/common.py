@@ -310,7 +310,9 @@ class ForecastState:
 
 
 class Updater:
-    def __init__(self, config: AtmosGLConfig, section: str, map_data: MapData):
+    def __init__(
+        self, config: AtmosGLConfig, section: str, map_data: MapData, outfile: str = ""
+    ):
         self.config = config
         self.map_data = map_data
         self.section = section.lower()
@@ -323,7 +325,12 @@ class Updater:
         # psycopg2 connection across threads.
         self._store = fieldstore.make_store(self.workdir)
         self.process_status_adapter = ProcessStatusAdapter()
-        self.outfile = self.settings.get("outfile", "")
+        # Hardcoded per-subclass (e.g. "data/isobars.png"), not user-configurable --
+        # every layer except clouds only ever used a configurable outfile as a base to
+        # mangle (per-hour/mode suffixes), so the literal value a user typed was never
+        # the real filename anyway. The frontend hardcodes the matching convention too
+        # (data/{sectionKey}...), so nothing here is meant to be edited independently.
+        self.outfile = outfile
         self.output_path = None
         self.enabled = self.settings.get("enabled", False)
         # This is the starting hour (offset) for all renders. It used to be a
@@ -376,17 +383,6 @@ class Updater:
                 # Use append mode ('a') to touch/create the file if missing
                 with open(self.output_path, "a") as _:
                     pass
-
-    def get_output_path_if_exists(self, section=None):
-        """Returns an output path for the given section, but only if the file exists"""
-        outfile = self.config.get_setting(
-            section if section else self.section, "outfile"
-        )
-        if outfile:
-            output_path = str(os.path.join(self.common.get("workdir", "."), outfile))
-            if os.path.exists(output_path):
-                return output_path
-        return None
 
     def cache_path(self, filename: str) -> str:
         """Path for a downloadable cache file under the data dir.

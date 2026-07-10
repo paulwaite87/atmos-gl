@@ -91,9 +91,6 @@ class AtmosGLConfig:
         """Returns the native boolean value for 'enabled'."""
         return self.config.get(section, {}).get("enabled", False)
 
-    def get_section_outfile(self, section):
-        return self.config.get(section, {}).get("outfile", None)
-
     def get_setting(self, section, setting, default=None):
         return self.config.get(section, {}).get(setting, default)
 

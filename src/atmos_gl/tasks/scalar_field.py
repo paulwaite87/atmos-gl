@@ -192,7 +192,7 @@ SPECS = {
 
 class ScalarFieldUpdater(Updater, MultiHourRenderMixin):
     def __init__(self, config: AtmosGLConfig, map_data: MapData, spec: ScalarFieldSpec):
-        super().__init__(config, spec.product, map_data)
+        super().__init__(config, spec.product, map_data, outfile=f"data/{spec.product}.png")
         self.spec = spec
         self.level_of_detail = int(self.settings.get("level_of_detail", 1))
         self.lod_desc = None

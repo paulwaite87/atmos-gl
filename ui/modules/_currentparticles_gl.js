@@ -260,10 +260,11 @@ export function createCurrentParticleGLLayer(map, opts) {
         // particle_speed as a raw multiplier (back-compat). Currents passes a mapper that
         // translates the 0-100 UI slider into its own min..max speed range.
         speedFromConfig = (cfg) => (Number(cfg.particle_speed) > 0 ? Number(cfg.particle_speed) / 500 : defaultSpeed),
+        // Backend always writes to data/{sectionKey}_f{NNN}_data.png (hardcoded
+        // server-side, no longer a user-editable `outfile` config setting).
         hourDataUrl = (cfg, hour, bust) => {
-            const base = cfg.outfile.replace(/\.png$/, '');
             const f = String(hour).padStart(3, '0');
-            return `${window.MAP_UI}/${base}_f${f}_data.png?t=${bust}`;
+            return `${window.MAP_UI}/data/${sectionKey}_f${f}_data.png?t=${bust}`;
         },
         refreshMs, syncMs,
     } = opts;

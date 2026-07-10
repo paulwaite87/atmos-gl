@@ -632,8 +632,10 @@ export function createParticleGLController(map, opts) {
         vmax = 40.0,                                      // must match backend VMAX_WIND
         colormap = null,                                  // (cfg) -> Uint8Array(256*4)
         lodCount = null,
-        staticUrl = (cfg) => `${window.MAP_UI}/${cfg.outfile}`,
-        dataUrl = (cfg) => `${window.MAP_UI}/${cfg.outfile.replace(/\.png$/, '_data.png')}`,
+        // Backend always writes to data/{sectionKey}.png / _data.png (hardcoded
+        // server-side, no longer a user-editable `outfile` config setting).
+        staticUrl = () => `${window.MAP_UI}/data/${sectionKey}.png`,
+        dataUrl = () => `${window.MAP_UI}/data/${sectionKey}_data.png`,
         // When true (wind): drive the velocity field from the shared timeline,
         // reloading per forecast hour. When false (waves): the field is a single static
         // _data.png — skip the timeline subscription entirely and (re)load only on
@@ -645,9 +647,8 @@ export function createParticleGLController(map, opts) {
         backfillKey = null,
         // Per-hour velocity texture, driven by the shared timeline.
         hourDataUrl = (cfg, hour, bust) => {
-            const base = cfg.outfile.replace(/\.png$/, '');
             const f = String(hour).padStart(3, '0');
-            return `${window.MAP_UI}/${base}_f${f}_data.png?t=${bust}`;
+            return `${window.MAP_UI}/data/${sectionKey}_f${f}_data.png?t=${bust}`;
         },
         staticFallback = true,                            // barbs PNG when not animated / no WebGL
         particleCount = (cfg) => defaultParticleCount(cfg, lodCount),

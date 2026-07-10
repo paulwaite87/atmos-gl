@@ -54,9 +54,8 @@ function makePressureLabels(map, config) {
     const EMPTY = { type: 'FeatureCollection', features: [] };
 
     const labelUrl = (hour, bust) => {
-        const base = config.outfile.replace(/\.png$/, '');
         const f = String(hour).padStart(3, '0');
-        return `${window.MAP_UI}/${base}_f${f}_labels.geojson?t=${bust}`;
+        return `${window.MAP_UI}/data/isobars_f${f}_labels.geojson?t=${bust}`;
     };
 
     const color = config.isobar_color || '#ffffff';

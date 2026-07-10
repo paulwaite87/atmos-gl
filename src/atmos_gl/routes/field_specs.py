@@ -409,13 +409,6 @@ FIELD_SPECS = {
     ("housekeeper", "dry_run"): ToggleSpec(),
 }
 
-# Option-name-only label overrides, checked BEFORE the (section, option) overrides
-# below -- ported from the legacy JS's customLabelText, which checked option === "outfile"
-# unconditionally, ahead of any section-specific case.
-_GENERIC_LABEL_OVERRIDES = {
-    "outfile": "Output file",
-}
-
 # Per-(section, option) label overrides, ported from the legacy JS's customLabelText
 # special cases -- only the ones relevant to fields with a FIELD_SPECS entry so far.
 _LABEL_OVERRIDES = {
@@ -429,9 +422,6 @@ _LABEL_OVERRIDES = {
 
 
 def field_label(section: str, option: str) -> str:
-    generic_override = _GENERIC_LABEL_OVERRIDES.get(option)
-    if generic_override is not None:
-        return generic_override
     override = _LABEL_OVERRIDES.get((section, option))
     if override is not None:
         return override
