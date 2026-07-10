@@ -230,7 +230,6 @@ FIELD_SPECS = {
     ("quakes", "label_fontsize"): _FONTSIZE,
     ("quakes", "min_mag"): SliderSpec(min=0, max=10, step=0.1, decimals=1, prefix="M "),
     ("quakes", "runs_per_day"): _RUNS_PER_DAY,
-    ("volcanoes", "marker_color"): ColorSpec(),
     ("volcanoes", "significant_only"): ToggleSpec(),
     ("volcanoes", "vei_min"): _VEI_OPTIONS,
     ("volcanoes", "erupt_date_codes"): _ERUPT_DATE_CODES,
@@ -246,9 +245,6 @@ FIELD_SPECS = {
     ("markers", "marker_fontsize"): _FONTSIZE,
     ("markers", "weather_popup"): ToggleSpec(),
     ("markers", "runs_per_day"): _RUNS_PER_DAY,
-    # --- Shipping (shipping) ---
-    ("shipping", "icon_zoom"): _ICON_ZOOM,
-    ("shipping", "runs_per_day"): _RUNS_PER_DAY,
     # --- Atmospheric (clouds, isobars, wind, precipitation, pwat, lightning, storms) ---
     ("clouds", "threshold"): SliderSpec(
         min=0, max=100, step=1, suffix="%",
@@ -278,7 +274,6 @@ FIELD_SPECS = {
     ("wind", "particle_size"): _PARTICLE_SIZE,
     ("wind", "trail_fade"): _TRAIL_FADE_OR_LENGTH,
     ("wind", "heatmap_opacity"): _ALPHA,
-    ("wind", "alpha"): _ALPHA,
     ("wind", "runs_per_day"): _RUNS_PER_DAY,
     ("wind", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
     ("precipitation", "level_of_detail"): _LEVEL_OF_DETAIL,
@@ -303,16 +298,9 @@ FIELD_SPECS = {
     ("pwat", "key_fontsize"): _FONTSIZE,
     ("pwat", "runs_per_day"): _RUNS_PER_DAY,
     ("pwat", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
-    ("lightning", "icon_zoom"): _ICON_ZOOM,
     ("lightning", "strike_recent_minutes"): _MINUTES,
     ("lightning", "strike_keep_minutes"): _MINUTES,
     ("lightning", "strike_expiry_hours"): _HOURS,
-    ("lightning", "runs_per_day"): _RUNS_PER_DAY,
-    ("storms", "icon_zoom"): _ICON_ZOOM,
-    ("storms", "storm_name_fontsize"): _FONTSIZE,
-    ("storms", "forecast_cone_alpha"): _ALPHA,
-    ("storms", "forecast_cone_color"): ColorSpec(),
-    ("storms", "storm_track_color"): ColorSpec(),
     ("storms", "expiry_days"): SliderSpec(min=0, max=60, step=1, suffix=" days expiry"),
     ("storms", "runs_per_day"): _RUNS_PER_DAY,
     # --- Climate (sst, currents, waves, temperature, ozone, stormwatch) ---
