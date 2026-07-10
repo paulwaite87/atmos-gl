@@ -424,6 +424,31 @@ The `layer_builder` (see above) is independent of all this and just displays shi
 which happen to be in the region(s) you have specified you want to display (or the whole World
 if you left that list empty).
 
+### Data Collector
+The data collector is a separate background process which collects data for:
+* Quakes
+* Storms
+* Volcanoes
+* Satellites
+* SST
+* GFS Atmos:
+  * Isobars
+  * Precipitation
+  * Temperature
+  * Ozone
+  * Wind
+  * Stormwatch
+* Clouds
+* Waves
+* Currents
+* Shipping
+* Lightning
+* Markers (Cities, Towns etc)
+
+There is a status page in the configuration UI which shows the amount of data currently
+collected, and also how much of that data has been crunched into front-end content.
+![Data Status](docs/atmos-gl-conf-status.png)
+
 ### Satellites
 Plotting satellite paths is something that XPlanet did, and since that venerable project
 inspired this one, we do it here too.
