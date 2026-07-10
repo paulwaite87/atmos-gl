@@ -30,7 +30,7 @@ class SSTUpdater(Updater):
         return f"{base}_{mode}{ext}"
 
     def plot(self, mode: str, nc_path: str, output_path: str):
-        alpha = float(self.settings.get("alpha", 40) / 100)
+        alpha = float(self.settings.get("opacity", 40) / 100)
         bbox = self.map_region_bbox
 
         # --- Data Loading ---

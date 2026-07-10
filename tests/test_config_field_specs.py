@@ -349,7 +349,7 @@ def test_validate_against_specs_uses_raw_max_for_byte_to_percent_field():
 def test_shared_constants_reused_across_many_sections():
     """_ALPHA, _LEVEL_OF_DETAIL etc. are declared once and referenced under every
     field that needs them -- not redeclared per section."""
-    assert FIELD_SPECS[("isobars", "alpha")] is FIELD_SPECS[("sst", "alpha")]
+    assert FIELD_SPECS[("isobars", "opacity")] is FIELD_SPECS[("sst", "opacity")]
     assert (
         FIELD_SPECS[("isobars", "level_of_detail")]
         is FIELD_SPECS[("stormwatch", "level_of_detail")]

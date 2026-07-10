@@ -143,7 +143,7 @@ export function loadLayer(map, config, fullConfig = {}) {
         fragmentBody: fragmentBodyFor(palette),
         customUniforms: (cfg) => ({
             u_min: Number(cfg.min_mm_hr) >= 0 ? Number(cfg.min_mm_hr) : 0.1,
-            u_alpha: Number(cfg.alpha) > 0 ? Number(cfg.alpha) / 100 : 0.9,
+            u_alpha: Number(cfg.opacity) > 0 ? Number(cfg.opacity) / 100 : 0.9,
         }),
         onMount: addLegend,
         onRefresh: addLegend,                  // re-stamp the key image

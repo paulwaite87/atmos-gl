@@ -82,10 +82,10 @@ function buildFlatLUT(rgb) {
     return lut;
 }
 
-// Heatmap opacity 0..1 from alpha (accepts a 0-1 fraction or a 0-100 percent),
+// Heatmap opacity 0..1 from opacity (accepts a 0-1 fraction or a 0-100 percent),
 // default 0.6. Drives BOTH the fill-mode per-pixel alpha and the static raster opacity.
 function heatmapAlpha(cfg) {
-    const op = Number(cfg.alpha);
+    const op = Number(cfg.opacity);
     if (!isFinite(op) || op < 0) return 0.6;
     return op > 1 ? Math.min(1, op / 100) : op;
 }

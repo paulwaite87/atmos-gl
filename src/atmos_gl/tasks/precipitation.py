@@ -98,7 +98,7 @@ class PrecipitationUpdater(Updater, MultiHourRenderMixin):
         )
 
         min_rate = self.settings.get("min_mm_hr", 0.1)
-        alpha = float(self.settings.get("alpha", 50) / 100)
+        alpha = float(self.settings.get("opacity", 50) / 100)
         palette_name = self.settings.get("palette", "standard")
 
         # --- Static region render (frame 0) ---

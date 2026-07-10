@@ -115,7 +115,7 @@ class WavesUpdater(Updater, MultiHourRenderMixin):
         if palette_name not in self.PALETTES:
             palette_name = "ocean_storm"
         alpha_setting = float(
-            np.clip(float(self.settings.get("alpha", 75) / 100), 0.1, 1.0)
+            np.clip(float(self.settings.get("opacity", 75) / 100), 0.1, 1.0)
         )
         try:
             threshold = max(0.0, float(self.settings.get("min_wave_height", 0) or 0))

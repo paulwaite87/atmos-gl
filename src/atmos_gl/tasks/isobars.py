@@ -48,7 +48,7 @@ class IsobarUpdater(Updater, MultiHourRenderMixin):
         color = self.settings.get("isobar_color", "white")
         f_size = self.settings.get("label_fontsize", 10)
         thickness = self.settings.get("linewidth", 1.0)
-        alpha_val = float(self.settings.get("alpha", 100) / 100)
+        alpha_val = float(self.settings.get("opacity", 100) / 100)
 
         line_effect = [
             patheffects.withStroke(linewidth=thickness + 2, foreground="black")
