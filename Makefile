@@ -28,11 +28,15 @@ endif
 stop:
 	docker compose down
 
-## bootstrap-config: Ensure a live config/atmos-gl.json exists (never overwrites one already there)
+## bootstrap-config: Ensure live config/atmos-gl.json and .env exist (never overwrites either if already there)
 bootstrap-config:
 	@if [ ! -f config/atmos-gl.json ]; then \
 		cp config/atmos-gl.json.tmpl config/atmos-gl.json; \
 		echo "Created config/atmos-gl.json from config/atmos-gl.json.tmpl"; \
+	fi
+	@if [ ! -f .env ]; then \
+		cp .env.tmpl .env; \
+		echo "Created .env from .env.tmpl -- edit this to add your API keys"; \
 	fi
 
 ## start|run|up: Start dev stack (auto-merges docker-compose.override.yml)
