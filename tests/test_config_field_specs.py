@@ -112,13 +112,6 @@ def test_validate_against_specs_ignores_missing_sections():
 # --- Events / Misc / Shipping batch: prefix badges, shared shapes, new kinds ---
 
 
-def test_field_label_generic_override_beats_section_specific_fallback():
-    """"outfile" is checked before any (section, option) override or the generic
-    spaced-capitalised fallback, matching the legacy JS's unconditional first check."""
-    assert field_label("quakes", "outfile") == "Output file"
-    assert field_label("volcanoes", "outfile") == "Output file"
-
-
 def test_field_label_section_specific_override_for_quakes_min_mag():
     assert field_label("quakes", "min_mag") == "Minimum magnitude"
 
@@ -261,10 +254,10 @@ def test_config_page_renders_toggle_as_checkbox():
 
 
 def test_config_page_falls_back_to_text_input_for_unspecced_field():
-    """workdir has no FIELD_SPECS entry -- must still render via the generic fallback."""
+    """isobars.url has no FIELD_SPECS entry -- must still render via the generic fallback."""
     resp = client.get("/config")
     html = resp.text
-    assert 'id="common__workdir"' in html
+    assert 'id="isobars__url"' in html
 
 
 # --- POST /api/config: spec-based validation ---

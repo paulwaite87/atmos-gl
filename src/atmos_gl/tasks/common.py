@@ -20,6 +20,7 @@ from atmos_gl.lib.config import AtmosGLConfig
 from atmos_gl.db.region_adapter import RegionAdapter
 from atmos_gl.lib import fieldstore
 from atmos_gl.db.process_status_adapter import ProcessStatusAdapter
+from atmos_gl.lib.output_files import OUTFILES
 from atmos_gl.lib.data_status import (
     freshness_percent,
     estimate_next_update,
@@ -323,7 +324,10 @@ class Updater:
         # psycopg2 connection across threads.
         self._store = fieldstore.make_store(self.workdir)
         self.process_status_adapter = ProcessStatusAdapter()
-        self.outfile = self.settings.get("outfile", "")
+        # Looked up by section, not user-configurable -- see lib/output_files.py's
+        # docstring for why (and for the matching value routes/config.py injects into
+        # /api/config so the frontend's cfg.outfile still resolves the same way).
+        self.outfile = OUTFILES.get(self.section, "")
         self.output_path = None
         self.enabled = self.settings.get("enabled", False)
         # This is the starting hour (offset) for all renders. It used to be a
@@ -361,7 +365,7 @@ class Updater:
 
     def get_output_path(self) -> str | None:
         return (
-            str(os.path.join(self.common.get("workdir", "."), self.outfile))
+            str(os.path.join(self.workdir, self.outfile))
             if self.outfile
             else None
         )
@@ -376,17 +380,6 @@ class Updater:
                 # Use append mode ('a') to touch/create the file if missing
                 with open(self.output_path, "a") as _:
                     pass
-
-    def get_output_path_if_exists(self, section=None):
-        """Returns an output path for the given section, but only if the file exists"""
-        outfile = self.config.get_setting(
-            section if section else self.section, "outfile"
-        )
-        if outfile:
-            output_path = str(os.path.join(self.common.get("workdir", "."), outfile))
-            if os.path.exists(output_path):
-                return output_path
-        return None
 
     def cache_path(self, filename: str) -> str:
         """Path for a downloadable cache file under the data dir.
