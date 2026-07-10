@@ -55,7 +55,7 @@ class ShippingCollector(AsyncCollectorBase):
 
     def refresh_settings(self) -> None:
         super().refresh_settings()
-        self.url = self.settings.get("url")
+        self.url = self.datasource_url("shipping")
         # API key: config file first, then environment variable.
         self.api_key = (
             self.settings.get("api_key")

@@ -5,9 +5,8 @@ Like SST, this is a file-cache source (a single global RGB image), not a fieldst
 product: the clouds *updater* reads the cached image and composites it. This collector
 just keeps the cache warm.
 
-Its endpoint lives in the `clouds` layer config rather than in data_collector.datasources,
-so in the old monolith it was fetched outside the datasource loop. As a CollectorBase
-subclass it now sits in the same registry as every other collector.
+Its endpoint lives in data_collector.datasources (key "clouds"), same as every other
+source -- see CollectorBase.datasource_url().
 
 Freshness is two-layered:
   * is_stale()  — orchestrator cadence; period_s is derived from expiry_hours here (the
@@ -48,7 +47,7 @@ class CloudsCollector(CollectorBase):
         """Fetch the global GIBS cloud image into the shared cache the clouds layer reads,
         refreshing only when the cache is missing or older than expiry_hours. The date is
         the most recent complete day (now - offset_days) so VIIRS swaths are complete."""
-        base_url = self.settings.get("url")
+        base_url = self.datasource_url("clouds")
         if not base_url:
             logger.warning("Clouds: no url configured; skipping.")
             return

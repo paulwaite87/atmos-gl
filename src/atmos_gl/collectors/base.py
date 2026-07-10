@@ -60,6 +60,16 @@ class CollectorBase:
         self.process_status_adapter = ProcessStatusAdapter()
         self.settings = config.get_section(self.section) or {}
 
+    def datasource_url(self, key: str) -> str:
+        """The configured data_collector.datasources[key] base URL, or "" if unset.
+
+        Every collector's actual source URL lives in this one shared dict now (mirrors
+        FieldCollectorBase.base_url(), generalised to sources whose `section` isn't
+        "data_collector" -- they still need their own section for `enabled` etc, so this
+        reaches into data_collector separately instead of overriding `section`)."""
+        datasources = self.config.get_setting("data_collector", "datasources", {}) or {}
+        return (datasources.get(key) or "").rstrip("/")
+
     # ------------------------------------------------------------------
     # Scheduling
     # ------------------------------------------------------------------
@@ -249,6 +259,13 @@ class AsyncCollectorBase:
     @property
     def enabled(self) -> bool:
         return bool(self.settings.get("enabled", False))
+
+    def datasource_url(self, key: str) -> str:
+        """The configured data_collector.datasources[key] base URL, or "" if unset.
+        See CollectorBase.datasource_url() -- same contract, duplicated here since
+        AsyncCollectorBase is a sibling hierarchy, not a subclass."""
+        datasources = self.config.get_setting("data_collector", "datasources", {}) or {}
+        return (datasources.get(key) or "").rstrip("/")
 
     async def run(self) -> None:
         raise NotImplementedError(f"{type(self).__name__}.run() not implemented")

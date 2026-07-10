@@ -221,7 +221,7 @@ def test_config_page_renders_unstructured_color_for_terminator():
 def test_config_page_full_widths_a_url_field():
     resp = client.get("/config")
     html = resp.text
-    idx = html.index('id="quakes__url"')
+    idx = html.index('id="storms__jtwc_url"')
     preceding = html[max(0, idx - 400) : idx]
     assert "col-12" in preceding
 
@@ -253,10 +253,10 @@ def test_config_page_renders_toggle_as_checkbox():
 
 
 def test_config_page_falls_back_to_text_input_for_unspecced_field():
-    """clouds.url has no FIELD_SPECS entry -- must still render via the generic fallback."""
+    """storms.jtwc_url has no FIELD_SPECS entry -- must still render via the generic fallback."""
     resp = client.get("/config")
     html = resp.text
-    assert 'id="clouds__url"' in html
+    assert 'id="storms__jtwc_url"' in html
 
 
 # --- POST /api/config: spec-based validation ---
@@ -443,7 +443,7 @@ def test_config_page_renders_datasources_accordion_with_existing_entries():
     accordion_html = html[idx : idx + 3500]
     assert ">gfs<" in accordion_html
     assert ">currents<" in accordion_html
-    assert "addDatasource('data_collector')" in html[idx : idx + 4500]
+    assert "addDatasource('data_collector')" in html[idx:]
 
 
 def test_config_page_renders_fallback_section_for_gated_layers():

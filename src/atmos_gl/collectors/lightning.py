@@ -36,7 +36,7 @@ class LightningCollector(AsyncCollectorBase):
     def refresh_settings(self) -> None:
         super().refresh_settings()
         self.primary_region_label = self.config.get_setting("common", "region")
-        self.url = self.settings.get("url")
+        self.url = self.datasource_url("lightning")
         # API key: config file first, then environment variable.
         self.api_key = (
             self.settings.get("api_key")

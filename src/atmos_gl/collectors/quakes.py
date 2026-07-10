@@ -28,14 +28,14 @@ class QuakeCollector(CollectorBase):
         self.quake_adapter = QuakeAdapter()
 
     def has_new_data(self) -> bool:
-        url = self.settings.get("url", "")
+        url = self.datasource_url("quakes")
         if not url:
             return True
         return self._head_changed_or_default(url, "Quakes")
 
     def collect(self) -> None:
         """Fetch USGS quake CSV and upsert into the database."""
-        url = self.settings.get("url", "")
+        url = self.datasource_url("quakes")
         min_mag = float(self.settings.get("min_mag", 3.5))
         if not url:
             logger.warning("Quakes: no URL configured; skipping.")

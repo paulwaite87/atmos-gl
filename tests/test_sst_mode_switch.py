@@ -28,9 +28,19 @@ from atmos_gl.tasks.sst import SSTUpdater
 
 def make_bare_sst_collector(settings=None, workdir="."):
     c = SstCollector.__new__(SstCollector)
-    c.settings = settings or {}
+    settings = settings or {}
+    c.settings = settings
+    url = settings.get("url", "https://example.com/oisst")
+
+    def fake_get_setting(section, key, default=None):
+        if section == "data_collector" and key == "datasources":
+            return {"sst": url}
+        if section == "common" and key == "workdir":
+            return workdir
+        return default
+
     c.config = MagicMock()
-    c.config.get_setting.return_value = workdir
+    c.config.get_setting.side_effect = fake_get_setting
     return c
 
 

@@ -47,7 +47,7 @@ class SstCollector(CollectorBase):
         swallowing a per-mode failure here would let the Data Status UI report 100%
         while that mode's cache silently went stale.
         """
-        url_base = self.settings.get("url", "").rstrip("/")
+        url_base = self.datasource_url("sst")
         if not url_base:
             logger.warning("SST: no url configured; skipping.")
             return
