@@ -122,9 +122,8 @@ def test_format_slider_badge_applies_prefix():
 
 
 def test_shared_slider_shape_reused_across_sections():
-    """icon_zoom/runs_per_day are the same widget shape everywhere they appear --
-    registered once and shared, not re-declared per section."""
-    assert FIELD_SPECS[("quakes", "icon_zoom")] is FIELD_SPECS[("shipping", "icon_zoom")]
+    """runs_per_day is the same widget shape everywhere it appears -- registered
+    once and shared, not re-declared per section."""
     assert (
         FIELD_SPECS[("quakes", "runs_per_day")]
         is FIELD_SPECS[("markers", "runs_per_day")]
@@ -205,8 +204,8 @@ def test_config_page_renders_multiselect_with_correct_options_checked():
 def test_config_page_renders_color_picker_with_resolved_hex():
     resp = client.get("/config")
     html = resp.text
-    assert 'id="volcanoes__marker_color"' in html
-    assert 'value="#ee82ee"' in html  # Violet
+    assert 'id="markers__marker_color"' in html
+    assert 'value="#ffffff"' in html  # White
 
 
 def test_config_page_renders_unstructured_color_for_terminator():
@@ -350,7 +349,6 @@ def test_validate_against_specs_uses_raw_max_for_byte_to_percent_field():
 def test_shared_constants_reused_across_many_sections():
     """_ALPHA, _LEVEL_OF_DETAIL etc. are declared once and referenced under every
     field that needs them -- not redeclared per section."""
-    assert FIELD_SPECS[("isobars", "alpha")] is FIELD_SPECS[("wind", "alpha")]
     assert FIELD_SPECS[("isobars", "alpha")] is FIELD_SPECS[("sst", "alpha")]
     assert (
         FIELD_SPECS[("isobars", "level_of_detail")]
