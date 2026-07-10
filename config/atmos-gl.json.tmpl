@@ -21,7 +21,6 @@
   },
   "clouds": {
     "enabled": false,
-    "url": "https://gibs.earthdata.nasa.gov/wms/epsg4326/best/wms.cgi",
     "threshold": 168,
     "gamma": 0.5,
     "offset_days": 1,
@@ -136,7 +135,6 @@
   },
   "sst": {
     "enabled": false,
-    "url": "https://downloads.psl.noaa.gov/Datasets/noaa.oisst.v2.highres",
     "level_of_detail": "3",
     "mode": "absolute",
     "opacity": 100,
@@ -163,7 +161,6 @@
   },
   "quakes": {
     "enabled": false,
-    "url": "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.csv",
     "icon_zoom": 0.7,
     "marker_symbol_new": "earthquake_new.png",
     "marker_symbol_old": "earthquake_old.png",
@@ -175,7 +172,6 @@
   },
   "volcanoes": {
     "enabled": false,
-    "url": "https://www.ngdc.noaa.gov/hazel/hazard-service/api/v1/volcanoes",
     "significant_only": true,
     "vei_min": 4,
     "erupt_date_codes": [
@@ -209,7 +205,14 @@
     "enabled": true,
     "datasources": {
       "gfs": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod",
-      "currents": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/rtofs/prod/"
+      "currents": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/rtofs/prod/",
+      "sst": "https://downloads.psl.noaa.gov/Datasets/noaa.oisst.v2.highres",
+      "clouds": "https://gibs.earthdata.nasa.gov/wms/epsg4326/best/wms.cgi",
+      "quakes": "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.csv",
+      "volcanoes": "https://www.ngdc.noaa.gov/hazel/hazard-service/api/v1/volcanoes",
+      "satellites": "https://celestrak.org/NORAD/elements",
+      "shipping": "wss://stream.aisstream.io/v0/stream",
+      "lightning": "https://demo.openweathermap.org/lightning/1.0/data"
     },
     "update_minutes": 15,
     "backfill_poll_seconds": 60,
@@ -218,14 +221,12 @@
   },
   "satellites_collector": {
     "enabled": true,
-    "url": "https://celestrak.org/NORAD/elements",
     "groups": "stations,weather,science,resource",
     "update_hours": 12,
     "log_level": "INFO"
   },
   "shipping_collector": {
     "enabled": true,
-    "url": "wss://stream.aisstream.io/v0/stream",
     "listen_duration": 1200,
     "sleep_interval": 300,
     "vessel_track_expiry_days": 14,
@@ -233,7 +234,6 @@
   },
   "lightning_collector": {
     "enabled": false,
-    "url": "https://demo.openweathermap.org/lightning/1.0/data",
     "expiry_hours": 24,
     "log_level": "INFO"
   },

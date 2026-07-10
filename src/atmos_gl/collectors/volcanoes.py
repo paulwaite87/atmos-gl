@@ -27,7 +27,7 @@ class VolcanoesCollector(CollectorBase):
         self.volcano_adapter = VolcanoAdapter()
 
     def base_url(self):
-        return self.settings.get("url", "").rstrip("/")
+        return self.datasource_url("volcanoes")
 
     def has_new_data(self) -> bool:
         url = self.base_url()

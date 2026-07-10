@@ -40,7 +40,7 @@ class SatellitesCollector(CollectorBase):
         return [g.strip() for g in raw.split(",") if g.strip()]
 
     def _base_url(self) -> str:
-        return self.settings.get("url", "https://celestrak.org/NORAD/elements").rstrip("/")
+        return self.datasource_url("satellites") or "https://celestrak.org/NORAD/elements"
 
     def has_new_data(self) -> bool:
         """HEAD the stations-group URL as a proxy for the whole dataset."""
