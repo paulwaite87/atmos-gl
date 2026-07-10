@@ -361,7 +361,6 @@ class Updater:
         # Always set these, which can be over-ridden later if required.
         # If the updater doesn't have an outfile defined, this does nothing.
         self.set_output_path()
-        self.base_url = self.get_base_url()
 
     def get_output_path(self) -> str | None:
         return (
@@ -392,9 +391,6 @@ class Updater:
         return str(
             os.path.join(self.workdir, "data", f"{self.section}_cache_{filename}")
         )
-
-    def get_base_url(self):
-        return self.settings.get("url", "").rstrip("/")
 
     def remove_output_file(self):
         """Clears the output file of this updater if it exists"""
