@@ -32,7 +32,7 @@ WIND_CMAP = mcolors.LinearSegmentedColormap.from_list("windy_wind", WIND_PALETTE
 
 class WindUpdater(Updater, MultiHourRenderMixin):
     def __init__(self, config: AtmosGLConfig, map_data: MapData):
-        super().__init__(config, "Wind", map_data, outfile="data/wind.png")
+        super().__init__(config, "Wind", map_data)
         self.VMAX_WIND = 40.0          # m/s encoding range for the velocity texture
         self.level_of_detail = int(self.settings.get("level_of_detail", 1))
         self.lod_desc = None

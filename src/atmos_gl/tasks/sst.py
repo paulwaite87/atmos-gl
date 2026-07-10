@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 class SSTUpdater(Updater):
     def __init__(self, config: AtmosGLConfig, map_data: MapData):
-        super().__init__(config, "sst", map_data, outfile="data/sst.png")
+        super().__init__(config, "sst", map_data)
         self.mode = self.settings.get("mode", "absolute").strip().lower()
 
     def _output_path_for_mode(self, mode: str) -> str:

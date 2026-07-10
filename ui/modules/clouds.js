@@ -7,9 +7,7 @@ export function loadLayer(map, config) {
         [-180, 85.051129], [180, 85.051129],
         [180, -85.051129], [-180, -85.051129],
     ];
-    // Backend always writes to data/cloud_map.png (hardcoded server-side, no longer a
-    // user-editable `outfile` config setting).
-    const urlFor = () => `${window.MAP_UI}/data/cloud_map.png`;
+    const urlFor = (cfg) => `${window.MAP_UI}/${cfg.outfile}`;
 
     const mount = (cfg) => {
         if (map.getSource(sourceId)) return;

@@ -6,6 +6,7 @@ from fastapi.templating import Jinja2Templates
 from atmos_gl.db.field_catalog_adapter import FieldCatalogAdapter
 from atmos_gl.db.region_adapter import RegionAdapter
 from atmos_gl.lib.config import AtmosGLConfig
+from atmos_gl.lib.output_files import OUTFILES
 from atmos_gl.routes.field_specs import (
     FIELD_SPECS,
     field_label,
@@ -237,6 +238,12 @@ def _build_config_data() -> dict:
     if "common" in data:
         if not maptiler_key:
             data["common"]["RULE__missing_maptiler"] = True
+
+    # Not stored in config.json, not user-editable (see lib/output_files.py) -- injected
+    # here so the frontend can still read cfg.outfile exactly as before, just sourced
+    # from the same hardcoded value the render task itself uses.
+    for section, path in OUTFILES.items():
+        data.setdefault(section, {})["outfile"] = path
 
     return data
 

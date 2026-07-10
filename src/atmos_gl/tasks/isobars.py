@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 class IsobarUpdater(Updater, MultiHourRenderMixin):
     def __init__(self, config: AtmosGLConfig, map_data: MapData):
-        super().__init__(config, "Isobars", map_data, outfile="data/isobars.png")
+        super().__init__(config, "Isobars", map_data)
         # Physical bounds for the shader encoding (must match the frontend).
         # 950hPa (severe cyclone) to 1050hPa (strong anticyclone).
         self.VMIN_PRESSURE = 950.0

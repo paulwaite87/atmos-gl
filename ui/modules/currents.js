@@ -1,7 +1,7 @@
 import { createFillLayer } from './_webglfill.js';
 import { createCurrentParticleGLLayer } from './_currentparticles_gl.js';
 import { timeline } from './timeline.js';
-import { showLegend, removeLegend } from './_legend.js';
+import { keyFilename, showLegend, removeLegend } from './_legend.js';
 
 // Backend VMAX_CURRENT (m/s). Texture is R=U, G=V encoded as channel*(2*vmax)-vmax.
 const VMAX = 2.5;
@@ -115,13 +115,14 @@ export async function loadLayer(map, config, fullConfig = {}) {
     const currentsHourUrl = (cfg, timelineHour, bust) => {
         const rh = recon.toRtofsHour(timelineHour);
         if (rh == null) return null;                 // not ready -> skip this load
+        const base = cfg.outfile.replace(/\.png$/, '');
         const f = String(rh).padStart(3, '0');
-        return `${window.MAP_UI}/data/currents_f${f}_data.png?t=${bust}`;
+        return `${window.MAP_UI}/${base}_f${f}_data.png?t=${bust}`;
     };
 
     // ---- legend (colourbar key PNG written by the backend) ----
-    const addLegend = () => {
-        showLegend(slotId, `${window.MAP_UI}/data/currents_key.png?t=${Date.now()}`);
+    const addLegend = (cfg) => {
+        showLegend(slotId, `${window.MAP_UI}/${keyFilename(cfg.outfile)}?t=${Date.now()}`);
     };
     const clearLegend = () => removeLegend(slotId);
 

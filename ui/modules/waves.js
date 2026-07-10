@@ -1,6 +1,6 @@
 import { liveLayerSync } from './_refresh.js';
 import { createParticleGLController } from './_particles_gl.js';
-import { showLegend, removeLegend } from './_legend.js';
+import { keyFilename, showLegend, removeLegend } from './_legend.js';
 
 /**
  * Waves layer = Web-Mercator heat tiles (significant wave height) + an animated swell
@@ -44,8 +44,8 @@ export function loadLayer(map, config) {
 
     let currentVersion = null;
 
-    const setLegend = () => {
-        showLegend(slotId, `${window.MAP_UI}/data/waves_key.png?t=${Date.now()}`);
+    const setLegend = (cfg) => {
+        showLegend(slotId, `${window.MAP_UI}/${keyFilename(cfg.outfile)}?t=${Date.now()}`);
     };
 
     const tilesUrl = (version) =>
@@ -120,7 +120,7 @@ export function loadLayer(map, config) {
                               return isFinite(v) ? Math.min(20, Math.max(1, v)) : 7; },
         thickness: (cfg) => { const v = Number(cfg.particle_size);
                               return isFinite(v) ? Math.min(5, Math.max(0.5, v)) : 1.5; },
-        // hourDataUrl defaults to data/waves_f{NNN}_data.png — the per-hour swell
+        // hourDataUrl defaults to <outfile_base>_f{NNN}_data.png — the per-hour swell
         // field the collector now writes (GFS-Wave global 0p25, forecast-stepped).
     });
 

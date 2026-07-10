@@ -20,6 +20,7 @@ from atmos_gl.lib.config import AtmosGLConfig
 from atmos_gl.db.region_adapter import RegionAdapter
 from atmos_gl.lib import fieldstore
 from atmos_gl.db.process_status_adapter import ProcessStatusAdapter
+from atmos_gl.lib.output_files import OUTFILES
 from atmos_gl.lib.data_status import (
     freshness_percent,
     estimate_next_update,
@@ -310,9 +311,7 @@ class ForecastState:
 
 
 class Updater:
-    def __init__(
-        self, config: AtmosGLConfig, section: str, map_data: MapData, outfile: str = ""
-    ):
+    def __init__(self, config: AtmosGLConfig, section: str, map_data: MapData):
         self.config = config
         self.map_data = map_data
         self.section = section.lower()
@@ -325,12 +324,10 @@ class Updater:
         # psycopg2 connection across threads.
         self._store = fieldstore.make_store(self.workdir)
         self.process_status_adapter = ProcessStatusAdapter()
-        # Hardcoded per-subclass (e.g. "data/isobars.png"), not user-configurable --
-        # every layer except clouds only ever used a configurable outfile as a base to
-        # mangle (per-hour/mode suffixes), so the literal value a user typed was never
-        # the real filename anyway. The frontend hardcodes the matching convention too
-        # (data/{sectionKey}...), so nothing here is meant to be edited independently.
-        self.outfile = outfile
+        # Looked up by section, not user-configurable -- see lib/output_files.py's
+        # docstring for why (and for the matching value routes/config.py injects into
+        # /api/config so the frontend's cfg.outfile still resolves the same way).
+        self.outfile = OUTFILES.get(self.section, "")
         self.output_path = None
         self.enabled = self.settings.get("enabled", False)
         # This is the starting hour (offset) for all renders. It used to be a
@@ -368,7 +365,7 @@ class Updater:
 
     def get_output_path(self) -> str | None:
         return (
-            str(os.path.join(self.common.get("workdir", "."), self.outfile))
+            str(os.path.join(self.workdir, self.outfile))
             if self.outfile
             else None
         )

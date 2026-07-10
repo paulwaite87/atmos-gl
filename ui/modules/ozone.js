@@ -1,5 +1,5 @@
 import { createFillLayer } from './_webglfill.js';
-import { showLegend, removeLegend } from './_legend.js';
+import { keyFilename, showLegend, removeLegend } from './_legend.js';
 import { buildThresholdLUT } from './_thresholdpalette.js';
 
 // GPU scrubber layer. Critical-zone ramp over [150, 450] Dobson Units (total column
@@ -20,8 +20,8 @@ const FLAT_COLOR = [0, 0.1, 0.3, 0.2]; // dim, mostly-transparent -- the "safe" 
 export function loadLayer(map, config, fullConfig = {}) {
     const slotId = 'ozone-legend-slot';
 
-    const addLegend = () => {
-        showLegend(slotId, `${window.MAP_UI}/data/ozone_key.png?t=${Date.now()}`);
+    const addLegend = (cfg) => {
+        showLegend(slotId, `${window.MAP_UI}/${keyFilename(cfg.outfile)}?t=${Date.now()}`);
     };
 
     createFillLayer(map, {

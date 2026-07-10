@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 class PrecipitationUpdater(Updater, MultiHourRenderMixin):
     def __init__(self, config: AtmosGLConfig, map_data: MapData):
-        super().__init__(config, "Precipitation", map_data, outfile="data/precipitation.png")
+        super().__init__(config, "Precipitation", map_data)
         self.level_of_detail = int(self.settings.get("level_of_detail", 1))
         self.lod_desc = None
 

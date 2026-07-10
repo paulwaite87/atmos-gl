@@ -1,5 +1,5 @@
 import { createFillLayer } from './_webglfill.js';
-import { showLegend, removeLegend } from './_legend.js';
+import { keyFilename, showLegend, removeLegend } from './_legend.js';
 import { buildThresholdLUT } from './_thresholdpalette.js';
 
 // GPU scrubber layer. Critical-zone ramp over [0, 80] mm precipitable water (total
@@ -25,8 +25,8 @@ const FLAT_COLOR = [0, 0, 0, 0]; // fully transparent -- unremarkable moisture
 export function loadLayer(map, config, fullConfig = {}) {
     const slotId = 'pwat-legend-slot';
 
-    const addLegend = () => {
-        showLegend(slotId, `${window.MAP_UI}/data/pwat_key.png?t=${Date.now()}`);
+    const addLegend = (cfg) => {
+        showLegend(slotId, `${window.MAP_UI}/${keyFilename(cfg.outfile)}?t=${Date.now()}`);
     };
 
     createFillLayer(map, {

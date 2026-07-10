@@ -1,6 +1,6 @@
 import { createFillLayer } from './_webglfill.js';
 import { CMAP_RDYLBU_R, rgbToRgba } from './_colormaps.js';
-import { showLegend, removeLegend } from './_legend.js';
+import { keyFilename, showLegend, removeLegend } from './_legend.js';
 
 // GPU scrubber layer. Linear RdYlBu_r ramp over [-40, 50] °C, matching the static
 // matplotlib colourbar key (TemperatureUpdater: cmap RdYlBu_r, Normalize -40..50).
@@ -10,8 +10,8 @@ const VMAX = 50.0;
 export function loadLayer(map, config, fullConfig = {}) {
     const slotId = 'temperature-legend-slot';
 
-    const addLegend = () => {
-        showLegend(slotId, `${window.MAP_UI}/data/temperature_key.png?t=${Date.now()}`);
+    const addLegend = (cfg) => {
+        showLegend(slotId, `${window.MAP_UI}/${keyFilename(cfg.outfile)}?t=${Date.now()}`);
     };
 
     createFillLayer(map, {
