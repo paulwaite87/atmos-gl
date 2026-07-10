@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import logging
 import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -19,8 +20,20 @@ from atmos_gl.routes import (
     markers,
     status,
 )
+from atmos_gl.lib.config import AtmosGLConfig
 
 app = FastAPI(title="Atmos GL Configuration API")
+
+# uvicorn logs every request at INFO regardless of our own log_level setting -- only
+# let those through when common.log_level is explicitly DEBUG, same threshold every
+# other service uses to decide "chatty" vs "quiet". Runs once at import (uvicorn
+# configures its own logging before importing the app, so nothing resets this after).
+_config_path = os.getenv("CONFIG_PATH", "./config/atmos-gl.json")
+if os.path.exists(_config_path):
+    _live_config = AtmosGLConfig(_config_path)
+    _live_config.load()
+    if _live_config.get_setting("common", "log_level", "INFO") != "DEBUG":
+        logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
 
 origins = [
     "http://localhost:8180",
