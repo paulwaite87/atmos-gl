@@ -118,9 +118,18 @@ class CollectorService:
         only once. One collector failing is logged and skipped; it never aborts the others
         or the rest of collect_once(). Every attempt (success or failure) is recorded to
         process_status via status_name (NOT section - all three share section
-        "data_collector", so status_name is the only unique key), for the Data Status UI."""
+        "data_collector", so status_name is the only unique key), for the Data Status UI.
+
+        A collector disabled in data_collector.channel_enabled (keyed by status_name --
+        gfs_atmos/gfs_waves/rtofs_currents) is skipped entirely, same as _drive()."""
         ctx = CycleContext()
+        channel_enabled = self.config.get_setting("data_collector", "channel_enabled", {}) or {}
         for CollectorCls in FIELD_COLLECTOR_CLASSES:
+            if not channel_enabled.get(CollectorCls.status_name, True):
+                logger.debug(
+                    f"{CollectorCls.status_name}: channel disabled; skipping."
+                )
+                continue
             try:
                 CollectorCls(self.config, self.store).collect(ctx)
                 self.process_status_adapter.record_process_run(

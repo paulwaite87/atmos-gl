@@ -131,11 +131,20 @@ def _drive(collectors, config, last_runs: dict) -> None:
     show "running" instead of sitting on a stale reading for however long collect()
     takes. data_collector and map_api (which serves that UI) are separate processes,
     so this has to go through process_status (the shared DB), not an in-memory flag.
+
+    A collector whose `channel_key` is set and disabled in data_collector.channel_enabled
+    is skipped entirely -- not even is_stale()/has_new_data(), since those can themselves
+    hit the network (e.g. a HEAD request). last_runs is deliberately left untouched so
+    re-enabling triggers an immediate collection rather than waiting out a stale period.
     """
     now = time.monotonic()
     process_status_adapter = ProcessStatusAdapter()
+    channel_enabled = config.get_setting("data_collector", "channel_enabled", {}) or {}
     for CollectorCls in collectors:
         key = CollectorCls.section
+        if CollectorCls.channel_key and not channel_enabled.get(CollectorCls.channel_key, True):
+            logger.debug(f"{key}: channel '{CollectorCls.channel_key}' disabled; skipping.")
+            continue
         try:
             feed = CollectorCls(config)
             if not feed.is_stale(last_runs.get(key)):

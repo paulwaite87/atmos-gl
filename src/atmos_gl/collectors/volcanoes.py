@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 
 class VolcanoesCollector(CollectorBase):
     section = "volcanoes"
+    channel_key = "volcanoes"
 
     def __init__(self, config):
         super().__init__(config)

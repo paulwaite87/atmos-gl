@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 
 class SatellitesCollector(CollectorBase):
     section = "satellites_collector"
+    channel_key = "satellites"
 
     def __init__(self, config):
         super().__init__(config)
