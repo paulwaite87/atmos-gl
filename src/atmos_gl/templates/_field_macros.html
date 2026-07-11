@@ -136,7 +136,13 @@
           <h5 class="text-info border-bottom border-secondary pb-2 mb-3">{{ "Global Settings" if section == "common" else section_label(section) ~ " Properties" }}</h5>
           <div class="row g-3">
             {% for option, value in section_data.items() %}
-              {% if not ((option == "enabled" and section != "housekeeper") or option.startswith("RULE__") or option == "outfile") %}
+              {# channel_enabled is a dict with no FIELD_SPECS entry, same as
+                 datasources -- but unlike datasources it has no dedicated accordion
+                 here, so it must be excluded outright rather than falling through to
+                 render_field's generic text-input fallback (which stringifies a dict,
+                 and saving that string back clobbers the real channel_enabled dict).
+                 It's edited exclusively on the Data Status tab's toggle switches. #}
+              {% if not ((option == "enabled" and section != "housekeeper") or option.startswith("RULE__") or option == "outfile" or (section == "data_collector" and option == "channel_enabled")) %}
                 {% if section == "data_collector" and option == "datasources" %}
                   {{ render_datasources_accordion(section, value) }}
                 {% else %}
