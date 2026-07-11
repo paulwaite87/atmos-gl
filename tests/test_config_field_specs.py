@@ -446,6 +446,19 @@ def test_config_page_renders_datasources_accordion_with_existing_entries():
     assert "addDatasource('data_collector')" in html[idx:]
 
 
+def test_config_page_never_renders_channel_enabled_as_a_generic_field():
+    """Regression guard: channel_enabled is a dict with no FIELD_SPECS entry, same as
+    datasources, but has no dedicated accordion here -- it's edited exclusively via
+    the Data Status tab's toggle switches (routes/status.py's POST endpoint). Without
+    an explicit exclusion it falls through to render_field's generic text-input
+    fallback, which stringifies the dict -- saving the Background tab's form then
+    writes that string back over the real dict and breaks GET /api/data_status
+    (channel_enabled.get(...) on a str)."""
+    resp = client.get("/config")
+    html = resp.text
+    assert 'id="data_collector__channel_enabled"' not in html
+
+
 def test_config_page_renders_fallback_section_for_gated_layers():
     """Regression guard: render_tab_group previously never emitted the
     fallback-section-X div toggleSectionVisibility() depends on, so toggling a
