@@ -24,6 +24,7 @@ from atmos_gl.routes.status import (
     get_task_classes,
     _build_layer_channel_keys,
     _serialize,
+    _display_name,
 )
 from atmos_gl.api import app
 
@@ -327,3 +328,58 @@ def test_set_channel_enabled_rejects_a_non_boolean(client, tmp_path, monkeypatch
     )
 
     assert resp.status_code == 422
+
+
+def test_display_name_matches_section_labels_for_a_real_section():
+    """Matches the Show tab's wording exactly -- section_label()'s own contract."""
+    assert _display_name("quakes") == "Earthquakes"
+    assert _display_name("pwat") == "Precipitable Water"
+    assert _display_name("satellites_collector") == "Satellites Collector"
+
+
+def test_display_name_overrides_the_three_field_collector_status_names():
+    """These aren't real config sections -- section_label()'s .title() fallback would
+    give "Gfs Atmos"/"Rtofs Currents", not proper GFS/RTOFS acronyms."""
+    assert _display_name("gfs_atmos") == "GFS Atmos"
+    assert _display_name("gfs_waves") == "GFS Waves"
+    assert _display_name("rtofs_currents") == "RTOFS Currents"
+
+
+def test_display_name_falls_back_to_title_case_for_an_unknown_key():
+    assert _display_name("totally_unknown_key") == "Totally Unknown Key"
+
+
+def test_serialize_attaches_display_name_without_touching_name():
+    out = _serialize(_BARE_STATUS, None, {})
+    assert out["name"] == "x"
+    assert out["display_name"] == "X"
+
+
+def test_data_status_groups_collector_suffixed_rows_at_the_bottom(client):
+    """satellites_collector/shipping_collector/lightning_collector run a *service*,
+    not a data source -- they should sort after every real source regardless of
+    registry definition order, with each group's own relative order preserved."""
+    _override_all_empty()
+
+    class _FakeQuakes(_StubCollector):
+        def data_status(self):
+            return {**super().data_status(), "name": "quakes"}
+
+    class _FakeSatellitesCollector(_StubCollector):
+        def data_status(self):
+            return {**super().data_status(), "name": "satellites_collector"}
+
+    class _FakeStorms(_StubCollector):
+        def data_status(self):
+            return {**super().data_status(), "name": "storms"}
+
+    # Deliberately interleaved, matching how the real registries are actually ordered.
+    app.dependency_overrides[get_collector_classes] = lambda: (
+        _FakeQuakes, _FakeSatellitesCollector, _FakeStorms,
+    )
+
+    resp = client.get("/api/data_status")
+
+    assert resp.status_code == 200
+    names = [c["name"] for c in resp.json()["data"]["collectors"]]
+    assert names == ["quakes", "storms", "satellites_collector"]

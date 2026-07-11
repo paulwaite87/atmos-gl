@@ -24,9 +24,28 @@ from atmos_gl.collectors import (
 
 from atmos_gl.layer_builder import TASK_CLASSES
 from atmos_gl.tasks.common import MapData
+from atmos_gl.routes.field_specs import section_label
 
 logger = logging.getLogger("atmos_gl.routes.status")
 router = APIRouter(prefix="/api", tags=["Data Status"])
+
+# status_name values for FieldCollectorBase subclasses ("gfs_atmos", "gfs_waves",
+# "rtofs_currents") aren't real config sections, so section_label()'s SECTION_LABELS
+# lookup (and its .title() fallback) doesn't know GFS/RTOFS should stay acronyms --
+# override here rather than teaching SECTION_LABELS about identities that aren't
+# sections at all.
+_STATUS_NAME_LABELS = {
+    "gfs_atmos": "GFS Atmos",
+    "gfs_waves": "GFS Waves",
+    "rtofs_currents": "RTOFS Currents",
+}
+
+
+def _display_name(key: str) -> str:
+    """Friendly name for a Data Status row -- matches the Show tab's wording exactly
+    for anything that's a real config section (via section_label()); the 3 field
+    collectors' status_name-only identities get their own override above."""
+    return _STATUS_NAME_LABELS.get(key, section_label(key))
 
 
 def _serialize(status: dict, channel_key: str | None, channel_enabled: dict) -> dict:
@@ -41,7 +60,11 @@ def _serialize(status: dict, channel_key: str | None, channel_enabled: dict) -> 
     CollectorBase.channel_key); channel_on is then also None (not applicable) rather
     than True, so the frontend can distinguish "no switch" from "switch, currently on".
     Defaults to True (matches the wired-in gating's own default) when a key hasn't
-    been written to channel_enabled yet, e.g. right after upgrading to this feature."""
+    been written to channel_enabled yet, e.g. right after upgrading to this feature.
+
+    Also adds display_name, a friendly version of `name` for the UI -- `name` itself
+    is left untouched (some existing tests assert it verbatim, and it's still the
+    right value for anything keying off the raw section/status_name)."""
     out = dict(status)
     for key in ("last_updated", "next_update"):
         v = out.get(key)
@@ -49,6 +72,7 @@ def _serialize(status: dict, channel_key: str | None, channel_enabled: dict) -> 
             out[key] = v.isoformat()
     out["channel_key"] = channel_key
     out["channel_on"] = channel_enabled.get(channel_key, True) if channel_key else None
+    out["display_name"] = _display_name(out["name"])
     return out
 
 
@@ -160,6 +184,13 @@ def get_data_status(
                 )
             except Exception as e:
                 logger.error(f"layer_status failed for {section}: {e}")
+
+        # Group the background-service collectors (satellites_collector,
+        # shipping_collector, lightning_collector -- named for the service they run,
+        # not the data they gather) after every real data-source row, rather than
+        # interleaved with them in whatever order the registries happen to define.
+        # Stable sort preserves each group's existing relative order.
+        collectors.sort(key=lambda c: c["name"].endswith("_collector"))
 
         return {"status": "success", "data": {"collectors": collectors, "layers": layers}}
     except Exception as e:

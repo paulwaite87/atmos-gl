@@ -597,23 +597,18 @@
             return "bad";
         }
 
-        // Friendly names for data_collector.channel_enabled keys, used only for the new
-        // toggle/"via X" copy below -- item.name (the existing per-row label) is left
-        // untouched everywhere else on this tab.
-        const CHANNEL_LABELS = {
-            gfs_atmos: "GFS Atmos",
-            gfs_waves: "GFS Waves",
-            rtofs_currents: "RTOFS Currents",
-            sst: "SST",
-            clouds: "Clouds",
-            quakes: "Quakes",
-            volcanoes: "Volcanoes",
-            satellites: "Satellites",
-        };
-
         // Last successful /api/data_status fetch, kept around so toggleChannel() can
         // re-render an optimistic update instantly without waiting on a re-fetch.
         let lastStatusData = { collectors: [], layers: [] };
+
+        // Friendly name for a channel_key, for the "via X" line below -- reuses the
+        // Collectors row's own display_name (computed server-side by
+        // routes/status.py's _display_name()) rather than a second, separately
+        // maintained label map that could drift from it.
+        function channelDisplayName(channelKey) {
+            const row = lastStatusData.collectors.find(c => c.channel_key === channelKey);
+            return row ? row.display_name : channelKey;
+        }
 
         function renderStatusRows(containerId, items, { withToggle = false } = {}) {
             const container = document.getElementById(containerId);
@@ -647,7 +642,7 @@
                     ? '<span class="badge bg-primary status-running-badge">running</span>'
                     : "";
                 const title = item.detail ? item.detail.replace(/"/g, "&quot;") : "";
-                const channelLabel = CHANNEL_LABELS[channelKey] || channelKey;
+                const channelLabel = channelDisplayName(channelKey);
 
                 // Collectors panel: a real opt-out switch per gated row, an inert spacer
                 // (keeps columns aligned) for an ungated one (storms, markers, ...).
@@ -679,7 +674,7 @@
                     <div class="status-row ${channelOn ? "" : "channel-off"}" title="${title}">
                         ${toggleHtml}
                         <div class="status-label-block">
-                            <div class="status-label">${item.name}</div>
+                            <div class="status-label">${item.display_name}</div>
                             ${viaHtml}
                         </div>
                         <div class="status-track">
