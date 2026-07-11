@@ -387,6 +387,9 @@ FIELD_SPECS = {
     ("satellites_collector", "log_level"): _LOG_LEVEL,
     # data_collector.datasources is deliberately NOT here -- see
     # render_datasources_accordion in _field_macros.html.
+    # data_collector.channel_enabled is deliberately NOT here either -- it's a per-source
+    # data-acquisition opt-out (independent of any layer's frontend `enabled`), rendered
+    # on the Data Status page rather than as a generic config-tab field.
     ("data_collector", "update_minutes"): _MINUTES,
     ("data_collector", "cache_hours"): _HOURS,
     ("data_collector", "log_level"): _LOG_LEVEL,
