@@ -130,8 +130,6 @@ class CurrentsUpdater(Updater, MultiHourRenderMixin):
         base, _ = os.path.splitext(out_for_hour)
         encode_uv(u, v, f"{base}_data.png", self.VMAX_CURRENT, lat=field0.get("lat"))
 
-        # Key is hour-independent; write once at the base name the frontend requests.
-        self.save_currents_key(self.output_path)
         logger.info(
             f"Finished Currents velocity texture "
             f"f{state.fhour:03d} (R=U, G=V)."
@@ -142,6 +140,11 @@ class CurrentsUpdater(Updater, MultiHourRenderMixin):
         # (map_data.shared_state); render_all_hours resolves its own state from the
         # catalog below, so the return value here is unused.
         self.get_rtofs_state()
+        # The legend key is cheap to draw and depends only on palette/key_fontsize
+        # settings, not forecast data. Refresh it unconditionally every run, so
+        # settings changes apply immediately instead of waiting on should_plot_for_hour's
+        # data-freshness gate below.
+        self.save_currents_key(self.output_path)
         # max_hours=1 from layer_builder's round-robin dispatch renders one hour and
         # returns, so this layer doesn't monopolise a render-pool worker.
         return self.render_all_hours(
