@@ -35,6 +35,7 @@ logger = logging.getLogger(__name__)
 
 class SstCollector(CollectorBase):
     section = "sst"
+    channel_key = "sst"
 
     def collect(self) -> None:
         """Download every OISST mode's yearly netCDF into the shared file cache the sst

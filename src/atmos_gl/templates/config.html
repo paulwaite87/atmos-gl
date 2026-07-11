@@ -14,17 +14,34 @@
         .grouping-box h5 { color: #0d6efd; border-bottom: 2px solid #dee2e6; padding-bottom: 8px; margin-bottom: 15px; font-weight: bold; }
         .form-check-input:checked { background-color: #0d6efd; border-color: #0d6efd; }
 
-        .status-row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
-        .status-label { width: 160px; flex: 0 0 160px; font-weight: 600; font-size: 0.9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .status-row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; transition: opacity 0.15s ease; }
+        .status-row.channel-off { opacity: 0.55; }
+        .status-label-block { width: 160px; flex: 0 0 160px; overflow: hidden; }
+        .status-label { font-weight: 600; font-size: 0.9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .status-via { font-size: 0.72rem; color: #6c757d; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .status-off-tag { font-size: 0.72rem; font-weight: 600; color: #6c757d; white-space: nowrap; }
         .status-track { flex: 1 1 auto; height: 18px; background-color: #e9ecef; border-radius: 9px; overflow: hidden; position: relative; }
-        .status-fill { height: 100%; border-radius: 9px; transition: width 0.4s ease; }
+        .status-fill { height: 100%; border-radius: 9px; transition: width 0.4s ease, background-color 0.2s ease; }
         .status-fill.ok { background-color: #198754; }
         .status-fill.warn { background-color: #ffc107; }
         .status-fill.bad { background-color: #dc3545; }
+        .status-fill.off { background-color: #ced4da; }
         .status-pct { width: 48px; flex: 0 0 48px; text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; font-size: 0.9rem; }
         .status-times { width: 230px; flex: 0 0 230px; font-size: 0.78rem; color: #6c757d; text-align: right; }
         .status-empty { color: #6c757d; font-size: 0.9rem; }
         .status-running-badge { flex: 0 0 auto; font-size: 0.7rem; animation: status-running-pulse 1.5s ease-in-out infinite; }
+        .status-switch, .status-switch-spacer { position: relative; flex: 0 0 34px; width: 34px; height: 20px; }
+        .status-switch input { opacity: 0; width: 0; height: 0; position: absolute; }
+        .status-switch .status-slider {
+            position: absolute; inset: 0; background: #ced4da; border-radius: 20px; cursor: pointer; transition: background 0.15s ease;
+        }
+        .status-switch .status-slider::before {
+            content: ""; position: absolute; height: 14px; width: 14px; left: 3px; top: 3px;
+            background: #fff; border-radius: 50%; transition: transform 0.15s ease; box-shadow: 0 1px 2px rgba(0,0,0,0.3);
+        }
+        .status-switch input:checked + .status-slider { background: #0d6efd; }
+        .status-switch input:checked + .status-slider::before { transform: translateX(14px); }
+        .status-switch input:focus-visible + .status-slider { outline: 2px solid #0d6efd; outline-offset: 2px; }
         @keyframes status-running-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
     </style>
 </head>
@@ -546,9 +563,11 @@
         }
 
         // -------------------------------------------------------------
-        // Data Status tab — read-only, independent of masterConfigCache /
-        // saveActiveConfig(). Nothing here uses the "dynamic-input" class or the
-        // "section__option" id convention, so it can never leak into a config save.
+        // Data Status tab — independent of masterConfigCache / saveActiveConfig().
+        // Nothing here uses the "dynamic-input" class or the "section__option" id
+        // convention, so it can never leak into a config save. The one write action,
+        // the channel opt-out switch (toggleChannel), deliberately bypasses that whole
+        // form too -- its own tiny endpoint, saved the instant it's clicked.
         // -------------------------------------------------------------
         const DATA_STATUS_API_URL = API_URL + "/data_status";
         let dataStatusTimer = null;
@@ -576,7 +595,25 @@
             return "bad";
         }
 
-        function renderStatusRows(containerId, items) {
+        // Friendly names for data_collector.channel_enabled keys, used only for the new
+        // toggle/"via X" copy below -- item.name (the existing per-row label) is left
+        // untouched everywhere else on this tab.
+        const CHANNEL_LABELS = {
+            gfs_atmos: "GFS Atmos",
+            gfs_waves: "GFS Waves",
+            rtofs_currents: "RTOFS Currents",
+            sst: "SST",
+            clouds: "Clouds",
+            quakes: "Quakes",
+            volcanoes: "Volcanoes",
+            satellites: "Satellites",
+        };
+
+        // Last successful /api/data_status fetch, kept around so toggleChannel() can
+        // re-render an optimistic update instantly without waiting on a re-fetch.
+        let lastStatusData = { collectors: [], layers: [] };
+
+        function renderStatusRows(containerId, items, { withToggle = false } = {}) {
             const container = document.getElementById(containerId);
             if (!container) return;
             if (!items || items.length === 0) {
@@ -584,8 +621,12 @@
                 return;
             }
             container.innerHTML = items.map(item => {
-                const pct = Math.max(0, Math.min(100, item.percent ?? 0));
-                const fillClass = statusFillClass(pct);
+                const channelKey = item.channel_key;
+                // channel_on is null for a row not gated by channel_enabled at all
+                // (storms, markers, shipping/lightning) -- treat that the same as "on".
+                const channelOn = item.channel_on !== false;
+                const pct = channelOn ? Math.max(0, Math.min(100, item.percent ?? 0)) : 0;
+                const fillClass = channelOn ? statusFillClass(pct) : "off";
                 const lastUpdated = formatRelativeTime(item.last_updated);
                 // next_update is only ever null for a real kill-switch (e.g. the async
                 // shipping/lightning collectors, or the data_collector master toggle) —
@@ -604,18 +645,55 @@
                     ? '<span class="badge bg-primary status-running-badge">running</span>'
                     : "";
                 const title = item.detail ? item.detail.replace(/"/g, "&quot;") : "";
+                const channelLabel = CHANNEL_LABELS[channelKey] || channelKey;
+
+                // Collectors panel: a real opt-out switch per gated row, an inert spacer
+                // (keeps columns aligned) for an ungated one (storms, markers, ...).
+                const toggleHtml = withToggle
+                    ? (channelKey
+                        ? `<label class="status-switch">
+                               <input type="checkbox" ${channelOn ? "checked" : ""} onchange="toggleChannel('${channelKey}', this.checked)">
+                               <span class="status-slider"></span>
+                           </label>`
+                        : `<span class="status-switch-spacer"></span>`)
+                    : "";
+
+                // Layers panel: no switch (opting out happens on the Collectors row
+                // upstream) -- instead, always name which channel feeds this layer, so
+                // the dependency is visible even before anything's toggled off.
+                const viaHtml = (!withToggle && channelKey)
+                    ? `<div class="status-via">${
+                        channelOn
+                            ? `via ${channelLabel}`
+                            : `<span class="status-off-tag">&#9208; ${channelLabel} off</span>`
+                      }</div>`
+                    : "";
+
+                const timesHtml = (withToggle && !channelOn)
+                    ? `<span class="status-off-tag">&#9208; opted out</span>`
+                    : `updated ${lastUpdated} &middot; next ${nextUpdate}`;
+
                 return `
-                    <div class="status-row" title="${title}">
-                        <div class="status-label">${item.name}</div>
+                    <div class="status-row ${channelOn ? "" : "channel-off"}" title="${title}">
+                        ${toggleHtml}
+                        <div class="status-label-block">
+                            <div class="status-label">${item.name}</div>
+                            ${viaHtml}
+                        </div>
                         <div class="status-track">
                             <div class="status-fill ${fillClass}" style="width: ${pct}%;"></div>
                         </div>
                         <div class="status-pct">${pct.toFixed(0)}%</div>
-                        <div class="status-times">updated ${lastUpdated} &middot; next ${nextUpdate}</div>
+                        <div class="status-times">${timesHtml}</div>
                         ${runningBadge}
                     </div>
                 `;
             }).join("");
+        }
+
+        function renderDataStatus() {
+            renderStatusRows("container-collectors-status", lastStatusData.collectors, { withToggle: true });
+            renderStatusRows("container-layers-status", lastStatusData.layers, { withToggle: false });
         }
 
         async function loadDataStatus() {
@@ -623,10 +701,39 @@
                 const res = await fetch(DATA_STATUS_API_URL);
                 const json = await res.json();
                 if (json.status !== "success") return;
-                renderStatusRows("container-collectors-status", json.data.collectors);
-                renderStatusRows("container-layers-status", json.data.layers);
+                lastStatusData = json.data;
+                renderDataStatus();
             } catch (err) {
                 console.error("Data Status fetch failed:", err);
+            }
+        }
+
+        // Opts a channel in/out immediately -- its own tiny endpoint rather than the big
+        // "Save & Overwrite System Configuration" form (see the comment above this
+        // section: the Data Status tab is deliberately independent of masterConfigCache).
+        // Updates every row sharing this channel_key (collector + every dependent layer)
+        // optimistically, then reverts on failure.
+        async function toggleChannel(channelKey, checked) {
+            for (const item of [...lastStatusData.collectors, ...lastStatusData.layers]) {
+                if (item.channel_key === channelKey) item.channel_on = checked;
+            }
+            renderDataStatus();
+            try {
+                const res = await fetch(
+                    `${API_URL}/data_status/channel_enabled/${encodeURIComponent(channelKey)}`,
+                    {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ enabled: checked }),
+                    }
+                );
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            } catch (err) {
+                console.error(`Failed to save channel_enabled.${channelKey}:`, err);
+                for (const item of [...lastStatusData.collectors, ...lastStatusData.layers]) {
+                    if (item.channel_key === channelKey) item.channel_on = !checked;
+                }
+                renderDataStatus();
             }
         }
 

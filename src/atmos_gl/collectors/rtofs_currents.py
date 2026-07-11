@@ -29,6 +29,7 @@ class RtofsCurrentsCollector(FieldCollectorBase):
     status_name = "rtofs_currents"
     datasource_key = "currents"
     baseline_key = "rtofs"
+    channel_key = "rtofs_currents"
     products = CURRENTS_UNPACKERS
 
     def resolve_baseline(self, base_url: str):

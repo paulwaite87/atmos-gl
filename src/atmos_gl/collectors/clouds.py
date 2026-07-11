@@ -33,6 +33,7 @@ _DEFAULT_GEOMETRY = "2048x1024"
 
 class CloudsCollector(CollectorBase):
     section = "clouds"
+    channel_key = "clouds"
 
     @property
     def period_s(self) -> float:
