@@ -51,7 +51,7 @@ class _StubCollector:
 class _StubGatedCollector:
     """A stub with channel_key set -- e.g. sst/quakes -- to prove the route reads and
     forwards it, and that a stub with NO channel_key attribute (_StubCollector, matching
-    a real un-gated collector like storms/markers) still serializes fine via getattr's
+    a real un-gated collector like markers) still serializes fine via getattr's
     default rather than raising."""
 
     channel_key = "stub_channel"
@@ -129,8 +129,8 @@ def test_data_status_reflects_stub_collector_and_task(client):
 
 
 def test_data_status_defaults_channel_key_to_none_when_collector_class_lacks_it(client):
-    """A real un-gated collector (storms, markers) has no channel_key attribute at
-    all -- must serialize with channel_key: null rather than raising."""
+    """A real un-gated collector (markers) has no channel_key attribute at all --
+    must serialize with channel_key: null rather than raising."""
     _override_all_empty()
     app.dependency_overrides[get_collector_classes] = lambda: (_StubCollector,)
 
@@ -235,13 +235,13 @@ def test_build_layer_channel_keys_maps_cache_collectors_by_section():
 
 
 def test_build_layer_channel_keys_skips_a_collector_with_no_channel_key():
-    """storms/markers aren't part of channel_enabled -- must not appear in the mapping
-    at all (not even as None), since a `None` value would be indistinguishable from
+    """markers isn't part of channel_enabled -- must not appear in the mapping at all
+    (not even as None), since a `None` value would be indistinguishable from
     "channel_key wasn't set" if ever iterated rather than looked up by key."""
     class _FakeUngated:
         channel_key = None
-        products = {"storms": None}
-        section = "storms"
+        products = {"markers": None}
+        section = "markers"
 
     field_mapping = _build_layer_channel_keys((_FakeUngated,), ())
     cache_mapping = _build_layer_channel_keys((), (_FakeUngated,))

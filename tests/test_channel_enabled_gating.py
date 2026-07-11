@@ -90,10 +90,11 @@ def test_drive_runs_normally_when_channel_key_absent_from_dict(mock_psa):
 
 @patch("atmos_gl.collectors.ProcessStatusAdapter")
 def test_drive_ignores_channel_enabled_for_a_collector_with_no_channel_key(mock_psa):
-    """storms/markers aren't part of the channel_enabled feature -- channel_key stays
-    None, so they always run regardless of what's in the dict."""
-    FakeCls, calls = make_fake_collector_class("storms", channel_key=None)
-    config = make_fake_config({"storms": False})
+    """markers isn't part of the channel_enabled feature (reads a local file, not a
+    remote source) -- channel_key stays None, so it always runs regardless of what's
+    in the dict."""
+    FakeCls, calls = make_fake_collector_class("markers", channel_key=None)
+    config = make_fake_config({"markers": False})
 
     _drive([FakeCls], config, {})
 
@@ -165,3 +166,12 @@ def test_collect_fields_runs_all_when_channel_enabled_missing_entirely():
         svc._collect_fields()
 
     assert gfs_atmos_calls == ["gfs_atmos"]
+
+
+def test_storms_collector_is_gated_by_the_storms_channel():
+    """storms hits an external network source (NHC/JTWC) same as quakes/volcanoes/
+    satellites, with no existing kill-switch of its own -- it belongs in
+    channel_enabled just like them (unlike markers, which reads a local file)."""
+    from atmos_gl.collectors.storms import StormsCollector
+
+    assert StormsCollector.channel_key == "storms"

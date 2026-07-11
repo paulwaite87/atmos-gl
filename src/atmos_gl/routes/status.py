@@ -37,7 +37,7 @@ def _serialize(status: dict, channel_key: str | None, channel_enabled: dict) -> 
     data_status()/layer_status() themselves -- it's a Data Status UI concern (which
     row to gray out, and what the opt-out switch should show), not something those
     methods otherwise need to know. channel_key is None for a row that isn't gated by
-    channel_enabled at all (e.g. storms, markers, shipping/lightning -- see
+    channel_enabled at all (e.g. markers, shipping/lightning -- see
     CollectorBase.channel_key); channel_on is then also None (not applicable) rather
     than True, so the frontend can distinguish "no switch" from "switch, currently on".
     Defaults to True (matches the wired-in gating's own default) when a key hasn't
