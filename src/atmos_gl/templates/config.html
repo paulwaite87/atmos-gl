@@ -16,9 +16,9 @@
 
         .status-row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; transition: opacity 0.15s ease; }
         .status-row.channel-off { opacity: 0.55; }
-        .status-label-block { width: 160px; flex: 0 0 160px; overflow: hidden; }
-        .status-label { font-weight: 600; font-size: 0.9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .status-via { font-size: 0.72rem; color: #6c757d; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .status-label-block { width: 160px; flex: 0 0 160px; }
+        .status-label { font-weight: 600; font-size: 0.9rem; overflow-wrap: break-word; }
+        .status-via { font-size: 0.72rem; color: #6c757d; overflow-wrap: break-word; }
         .status-off-tag { font-size: 0.72rem; font-weight: 600; color: #6c757d; white-space: nowrap; }
         .status-track { flex: 1 1 auto; height: 18px; background-color: #e9ecef; border-radius: 9px; overflow: hidden; position: relative; }
         .status-fill { height: 100%; border-radius: 9px; transition: width 0.4s ease, background-color 0.2s ease; }
