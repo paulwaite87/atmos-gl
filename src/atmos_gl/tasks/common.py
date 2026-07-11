@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 import os
-import sys
 import json
 import logging
 import matplotlib as mpl
@@ -397,19 +396,6 @@ class Updater:
         output_path = self.get_output_path()
         if output_path and os.path.exists(output_path) and os.path.isfile(output_path):
             os.remove(output_path)
-
-    def exit_if_disabled(self):
-        if not self.enabled:
-            logger.info(f"{self.section} task disabled; skipping")
-            output_path = self.get_output_path()
-            if output_path and os.path.dirname(output_path):
-                file_path = Path(output_path)
-                # create/truncate only non-image files
-                if file_path.suffix not in [".png", ".jpg", ".jpeg"]:
-                    os.makedirs(os.path.dirname(self.output_path), exist_ok=True)
-                    with open(self.output_path, "w") as _:
-                        pass
-            sys.exit(0)
 
     def get_db_field_at_hour(self, state: "ForecastState", product_name: str) -> dict | None:
         """Fetch a pre-processed field from the fieldstore for a specific forecast run
