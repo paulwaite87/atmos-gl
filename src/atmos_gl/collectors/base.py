@@ -240,6 +240,11 @@ class AsyncCollectorBase:
     """
 
     section: str = ""
+    # Always None -- shipping/lightning are NOT part of data_collector.channel_enabled,
+    # they keep their own real enabled kill-switch instead (see CollectorBase.channel_key
+    # for the full contract; this exists so routes/status.py can read
+    # CollectorCls.channel_key uniformly across every registry without a type check).
+    channel_key: str | None = None
     # Expected seconds between successful heartbeats (see data_status()). No is_stale/
     # period_s equivalent exists for these (they self-schedule inside run()), so each
     # subclass estimates its own from its own settings/cadence. Default is a placeholder;

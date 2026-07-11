@@ -27,6 +27,7 @@ class GfsWavesCollector(FieldCollectorBase):
     status_name = "gfs_waves"
     datasource_key = "gfs"
     baseline_key = "gfs"
+    channel_key = "gfs_waves"
     products = WAVES_UNPACKERS
 
     def resolve_baseline(self, base_url: str):

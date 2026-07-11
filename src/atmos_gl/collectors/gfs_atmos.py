@@ -27,6 +27,7 @@ class GfsAtmosCollector(FieldCollectorBase):
     status_name = "gfs_atmos"
     datasource_key = "gfs"
     baseline_key = "gfs"
+    channel_key = "gfs_atmos"
     products = ATMOS_UNPACKERS
 
     def resolve_baseline(self, base_url: str):
