@@ -51,10 +51,11 @@ class CollectorBase:
 
     # Key into data_collector.channel_enabled -- the per-source data-acquisition
     # opt-out, independent of any layer's frontend `enabled`. None (default) means this
-    # collector isn't gated by it at all (e.g. storms, markers -- not part of the
-    # channel_enabled feature). Usually equals `section`, but set explicitly where it
-    # doesn't (e.g. SatellitesCollector.section == "satellites_collector" but its
-    # channel is "satellites") -- see _drive() in collectors/__init__.py.
+    # collector isn't gated by it at all (e.g. markers -- reads a local file, not a
+    # remote source, so there's no "good citizen" opt-out to offer). Usually equals
+    # `section`, but set explicitly where it doesn't (e.g. SatellitesCollector.section
+    # == "satellites_collector" but its channel is "satellites") -- see _drive() in
+    # collectors/__init__.py.
     channel_key: str | None = None
 
     # Process-level ETag/Last-Modified cache: url -> last-seen marker string.

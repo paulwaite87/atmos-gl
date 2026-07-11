@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 
 class StormsCollector(CollectorBase):
     section = "storms"
+    channel_key = "storms"
 
     def __init__(self, config):
         super().__init__(config)
