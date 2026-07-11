@@ -148,11 +148,21 @@
         </div>
         {% if section not in ["common", "composite", "map_builder", "radio", "housekeeper"] %}
           {# toggleSectionVisibility() (config.html) hides fields-section-X and shows this
-             instead when the layer is off in the Show tab -- must exist for every gated
-             section, or the JS's `if (!fieldsDiv || !fallbackDiv) continue;` guard skips it. #}
+             instead when the section is off -- must exist for every gated section, or the
+             JS's `if (!fieldsDiv || !fallbackDiv) continue;` guard skips it. Background
+             service sections toggle from their own "Background Processes" box on this same
+             tab (config.html's background-pane), not the Show tab, so they get different
+             copy -- everything else is a real map layer, gated from the Show tab. #}
+          {% set is_background_service = section in ["shipping_collector", "lightning_collector", "satellites_collector", "data_collector"] %}
           <div class="text-center p-4 text-white-50 d-none" id="fallback-section-{{ section }}">
-            <div class="fs-4 mb-1">🚫 Layer Display Off</div>
-            <div class="small">Enable <strong>{{ section_label(section) }}</strong> in the Show tab to edit.</div>
+            <div class="fs-4 mb-1">{{ "⏸ Process Disabled" if is_background_service else "🚫 Layer Display Off" }}</div>
+            <div class="small">
+              {% if is_background_service %}
+                Enable <strong>{{ section_label(section) }}</strong> above to edit.
+              {% else %}
+                Enable <strong>{{ section_label(section) }}</strong> in the Show tab to edit.
+              {% endif %}
+            </div>
           </div>
         {% endif %}
       </div>
