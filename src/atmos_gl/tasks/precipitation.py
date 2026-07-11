@@ -145,9 +145,6 @@ class PrecipitationUpdater(Updater, MultiHourRenderMixin):
         # Per-hour output path: precipitation_f003.png (for f003 forecast hour)
         output_path_for_hour = self.get_output_path_for_hour(state.fhour)
         plot.save_figure(output_path_for_hour)
-        # Key (colourbar) is hour-independent — write at the BASE name
-        # (precipitation_key.png) that the frontend requests, not per-hour.
-        self.save_precipitation_key(self.output_path)
 
         plt_close = getattr(plot, "close", None)
         if callable(plt_close):
@@ -218,6 +215,11 @@ class PrecipitationUpdater(Updater, MultiHourRenderMixin):
         # other updaters this cycle; render_all_hours resolves its own state from the
         # catalog below, so the return value here is unused.
         self.get_gfs_state()
+        # The legend key is cheap to draw and depends only on palette/key_fontsize
+        # settings, not forecast data. Refresh it unconditionally every run, so
+        # settings changes apply immediately instead of waiting on should_plot_for_hour's
+        # data-freshness gate below.
+        self.save_precipitation_key(self.output_path)
         # Render EVERY available forecast hour (gap-filling), so the scrubber has
         # a PNG for each hour. should_plot_for_hour skips hours already fresh.
         # max_hours=1 from layer_builder's round-robin dispatch renders one hour and

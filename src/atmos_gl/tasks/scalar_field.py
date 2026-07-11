@@ -217,6 +217,21 @@ class ScalarFieldUpdater(Updater, MultiHourRenderMixin):
             spec.vmin, spec.vmax, threshold, spec.focus, palette_colors, spec.flat_color
         )
 
+    def _write_legend_key(self):
+        """Colourbar key depends only on palette/threshold/key_fontsize settings, not
+        forecast data. Refresh it unconditionally every run so config changes take
+        effect without waiting on should_plot_for_hour's data-freshness gate."""
+        cmap = self._resolve_cmap()
+        norm = mcolors.Normalize(vmin=self.spec.vmin, vmax=self.spec.vmax)
+        self.save_key_image(
+            self.output_path,
+            cmap,
+            norm,
+            self.spec.ticks,
+            self.spec.title,
+            key_fontsize=self.settings.get("key_fontsize", 8),
+        )
+
     def plot(self, field0, state: ForecastState):
         """Render the static PNG (this hour) + global data texture for one scalar field.
 
@@ -263,16 +278,6 @@ class ScalarFieldUpdater(Updater, MultiHourRenderMixin):
         # Per-hour output path
         output_path_for_hour = self.get_output_path_for_hour(state.fhour)
         plot.save_figure(output_path_for_hour)
-        # Key (colourbar) is hour-independent — write it once at the BASE name
-        # (<product>_key.png) that the frontend requests, not per-hour.
-        self.save_key_image(
-            self.output_path,
-            cmap,
-            norm,
-            self.spec.ticks,
-            self.spec.title,
-            key_fontsize=self.settings.get("key_fontsize", 8),
-        )
 
         plt_close = getattr(plot, "close", None)
         if callable(plt_close):
@@ -291,6 +296,11 @@ class ScalarFieldUpdater(Updater, MultiHourRenderMixin):
         # other updaters this cycle; render_all_hours resolves its own state from the
         # catalog below, so the return value here is unused.
         self.get_gfs_state()
+        # The legend key is cheap to draw and depends only on palette/threshold/
+        # key_fontsize settings, not forecast data. Refresh it unconditionally every
+        # run, so settings changes apply immediately instead of waiting on
+        # should_plot_for_hour's data-freshness gate below.
+        self._write_legend_key()
         # Render EVERY available forecast hour (gap-filling), so the scrubber has
         # a PNG for each hour. should_plot_for_hour skips hours already fresh.
         # max_hours=1 from layer_builder's round-robin dispatch renders one hour and

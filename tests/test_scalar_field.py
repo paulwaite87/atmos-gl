@@ -57,12 +57,9 @@ def test_plot_dispatches_spec_to_render(key):
     assert contourf.call_args.kwargs["levels"] == 20
     assert contourf.call_args.kwargs["zorder"] == 2
 
-    # The colourbar key gets this spec's ticks + title.
-    u.save_key_image.assert_called_once()
-    key_args = u.save_key_image.call_args
-    assert key_args.args[0] == u.output_path
-    assert key_args.args[3] == spec.ticks
-    assert key_args.args[4] == spec.title
+    # The colourbar key is written separately by _write_legend_key (see below),
+    # not from plot() -- it must not be gated by per-hour data freshness.
+    u.save_key_image.assert_not_called()
 
     # The data texture is scaled to this spec's value range.
     assert mock_encode.call_args.args[2] == spec.vmin
@@ -78,6 +75,27 @@ def test_plot_skips_when_field_missing():
         u.plot({"lat": [0], "lon": [0], "values": None}, state)
     MockPlot.assert_not_called()
     u.save_key_image.assert_not_called()
+
+
+@pytest.mark.parametrize("key", ["temperature", "ozone", "stormwatch", "pwat"])
+def test_write_legend_key_uses_resolved_cmap_and_spec_ticks_title(key):
+    """Regression test: key_fontsize (and palette/threshold) previously only took
+    effect when should_plot_for_hour's data-freshness gate let plot() run, so a
+    settings-only change could leave a stale key on screen indefinitely.
+    _write_legend_key must be independently callable (run() invokes it every cycle,
+    unconditionally) and must reflect the live settings."""
+    spec = SPECS[key]
+    u = make_bare_updater(spec)
+    u.settings = {"key_fontsize": 8}
+
+    u._write_legend_key()
+
+    u.save_key_image.assert_called_once()
+    key_args = u.save_key_image.call_args
+    assert key_args.args[0] == u.output_path
+    assert key_args.args[3] == spec.ticks
+    assert key_args.args[4] == spec.title
+    assert key_args.kwargs["key_fontsize"] == 8
 
 
 def test_specs_cover_the_four_scalar_fields():
