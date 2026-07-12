@@ -165,7 +165,7 @@ export async function loadLayer(map, config, fullConfig = {}) {
             }`,
         customUniforms: (cfg) => ({
             u_vmax_current: VMAX,
-            u_alpha: Number(cfg.opacity) > 0 ? Number(cfg.opacity) / 100 : 0.6,
+            u_alpha: Number.isFinite(Number(cfg.opacity)) && Number(cfg.opacity) >= 0 ? Number(cfg.opacity) / 100 : 0.6,
             // Tunable via config; defaults chosen for RTOFS (most ocean < 0.2 m/s,
             // currents of interest > ~0.3 m/s, strong jets ~1-2.5 m/s).
             u_fill_floor: Number(cfg.fill_floor) >= 0 ? Number(cfg.fill_floor) : 0.15,
