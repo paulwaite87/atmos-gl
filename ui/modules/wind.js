@@ -1,4 +1,4 @@
-import { createParticleGLLayer } from './_particles_gl.js';
+import { createCurrentParticleGLLayer } from './_currentparticles_gl.js';
 import { createFillLayer } from './_webglfill.js';
 import { replaceSlot, removeLegend } from './_legend.js';
 import { opacityUniform } from './_opacity.js';
@@ -162,16 +162,27 @@ export async function loadLayer(map, config, fullConfig = {}) {
     const colorCfg = config.particle_color != null ? config.particle_color
         : (config.vector_color != null ? config.vector_color : '#ffffff');
     const particleColor = parseColor(colorCfg);
-    const teardownParticles = createParticleGLLayer(map, {
+    // PROTOTYPE (architecture review candidate "unify wind/currents particle
+    // rendering"): swapped from _particles_gl.js's oriented-quad streaks to
+    // _currentparticles_gl.js's live streamline-ribbon integration, to see if the
+    // currents technique also reads well for wind before committing to unifying the
+    // two engines for real. landReset:0 (wind blows over land, unlike ocean currents);
+    // speedFromConfig borrows currents' own tuned 0-100 -> 0-8 range as a first pass,
+    // not yet re-tuned for how wind's speeds should feel.
+    const teardownParticles = createCurrentParticleGLLayer(map, {
         sectionKey: 'wind',
         initialConfig: config,
+        initialAnimation: fullConfig.animation || {},
+        initialCommon: fullConfig.common || {},
         vmax: VMAX_WIND,
         colormap: () => buildFlatLUT(particleColor),   // fixed colour (not speed-based)
         maxSpeedColor: () => vmaxMs,
-        staticFallback: false,           // the heatmap fill provides the static view now
-        // Lifecycle/density/speed/coherence tunables fall through to engine defaults;
-        // override via wind config (particle_count, particle_speed, flow_coherence_radius,
-        // density_zoom_*, speed_zoom_*, trail_persist, point_size, particle_color, ...).
+        landReset: () => 0.0,             // wind flows over land; currents must not
+        speedFromConfig: (cfg) => {
+            const ui = Number(cfg.particle_speed);
+            const v = isFinite(ui) ? Math.min(100, Math.max(0, ui)) : 50;
+            return (v / 100) * 8;         // first-pass guess, borrowed from currents.js
+        },
     });
 
     // Tear down both layers (particles first, then heatmap) on basemap style swap.
