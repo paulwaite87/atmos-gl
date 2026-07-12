@@ -372,11 +372,6 @@ export function createCurrentParticleGLLayer(map, opts) {
         // behaviour). ref is the zoom at which curH applies unscaled.
         lengthZoomComp = 1.0,
         lengthZoomRef = 2.0,
-        // Same idea for DRIFT speed: advection happens in fixed UV-space per frame, which
-        // maps to more screen px the more you zoom in, so a fixed step reads as
-        // accelerating as you zoom -- mirrors _particles_gl.js's speedZoomComp.
-        speedZoomComp = 1.0,
-        speedZoomRef = 2.0,
         hourDataUrl = (cfg, hour, bust) => {
             const base = cfg.outfile.replace(/\.png$/, '');
             const f = String(hour).padStart(3, '0');
@@ -418,7 +413,6 @@ export function createCurrentParticleGLLayer(map, opts) {
     // by 2^(-lengthZoomComp*(zoom-lengthZoomRef)) each frame to hold the on-screen
     // length roughly constant instead, mirroring _particles_gl.js's speedZoomComp.
     let curLengthZoomFactor = 1.0;
-    let curSpeedZoomFactor = 1.0;   // same idea, applied to u_speed -- see render()
     let bustKey = (timeline.get().refreshEpoch) || Date.now();
 
     const particleCount = (cfg) => {
@@ -650,7 +644,7 @@ export function createCurrentParticleGLLayer(map, opts) {
         gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, ageTex[src]);
         gl.uniform1i(u('u_age'), 2);
         gl.uniform1f(u('u_vmax'), vmax);
-        gl.uniform1f(u('u_speed'), curSpeed * curSpeedZoomFactor);
+        gl.uniform1f(u('u_speed'), curSpeed);
         gl.uniform1f(u('u_ageStep'), curAgeStep);
         gl.uniform1f(u('u_seed'), Math.random());
         gl.uniform1f(u('u_landReset'), curLandReset);
@@ -734,19 +728,13 @@ export function createCurrentParticleGLLayer(map, opts) {
             if (!velReady || !velTex) { map.triggerRepaint(); return; }
             if (cohActive() && cohDirty) { runCoherence(gl); cohDirty = false; }
             curBbox = viewBox();
-            let zNow = lengthZoomRef;
-            try { zNow = map.getZoom(); } catch (_) { /* keep ref */ }
             if (lengthZoomComp > 0) {
+                let zNow = lengthZoomRef;
+                try { zNow = map.getZoom(); } catch (_) { /* keep ref */ }
                 const raw = Math.pow(2, -lengthZoomComp * (zNow - lengthZoomRef));
                 curLengthZoomFactor = Math.min(4.0, Math.max(0.05, raw));
             } else {
                 curLengthZoomFactor = 1.0;
-            }
-            if (speedZoomComp > 0) {
-                const raw = Math.pow(2, -speedZoomComp * (zNow - speedZoomRef));
-                curSpeedZoomFactor = Math.min(4.0, Math.max(0.05, raw));
-            } else {
-                curSpeedZoomFactor = 1.0;
             }
             advect(gl);
             drawTrails(gl, args);
