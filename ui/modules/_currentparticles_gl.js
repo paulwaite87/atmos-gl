@@ -452,6 +452,15 @@ export function createCurrentParticleGLLayer(map, opts) {
         // behaviour). ref is the zoom at which curH applies unscaled.
         lengthZoomComp = 1.0,
         lengthZoomRef = 2.0,
+        // Zoom-adaptive drawn density (ported from _particles_gl.js): the fixed particle
+        // budget concentrates into the shrinking respawn box as you zoom in (viewBox()
+        // below), so DRAW fewer of the (randomly distributed) particles to keep on-screen
+        // density from silently climbing. densityZoomRef: zoom at/below which the full
+        // budget draws. densityZoomFalloff: drawn count halves every 1/falloff zoom levels
+        // above ref (0 disables). The update pass still advects the full budget -- only
+        // the draw count shrinks, so there's no rebuild and no respawn-rate change.
+        densityZoomRef = 3.5,
+        densityZoomFalloff = 0.5,
         hourDataUrl = (cfg, hour, bust) => {
             const base = cfg.outfile.replace(/\.png$/, '');
             const f = String(hour).padStart(3, '0');
@@ -483,6 +492,7 @@ export function createCurrentParticleGLLayer(map, opts) {
     let ageTex = [];
     let curAgeStep = 1.0 / 90;
     let RES = 96, count = RES * RES;
+    let activeCount = count;      // zoom-thinned drawn subset (<= count); see render()
     let velReady = false, pendingVelImg = null, pendingLut = null, pendingRebuild = false;
     let curCfg = initialConfig, curAnim = initialAnimation;
     let curSpeed = defaultSpeed, curThick = 2.0, curMaxSpeed = vmax, curAlpha = 0.9, curLandReset = 1.0;
@@ -574,6 +584,7 @@ export function createCurrentParticleGLLayer(map, opts) {
     };
     const buildState = (gl) => {
         RES = Math.ceil(Math.sqrt(particleCount(curCfg))); count = RES * RES;
+        activeCount = count;   // render() recomputes the zoom-thinned value before the next draw
         headTex.forEach((t) => t && gl.deleteTexture(t));
         headFbo.forEach((f) => f && gl.deleteFramebuffer(f));
         ageTex.forEach((t) => t && gl.deleteTexture(t));
@@ -777,7 +788,11 @@ export function createCurrentParticleGLLayer(map, opts) {
         gl.disable(gl.DEPTH_TEST);
         gl.enable(gl.BLEND);
         gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-        gl.drawArrays(gl.TRIANGLES, 0, count * 6 * STREAM_STEPS);
+        // Drawing the first activeCount particles is a uniform spatial sample: pid (grid
+        // index) has no correlation with a particle's actual (randomly assigned) position,
+        // so thinning by draw-count alone (not skipping/rebuilding) stays evenly
+        // distributed. The update pass above still advects the FULL budget regardless.
+        gl.drawArrays(gl.TRIANGLES, 0, activeCount * 6 * STREAM_STEPS);
     };
 
     const makeLayer = (cfg) => ({
@@ -813,13 +828,20 @@ export function createCurrentParticleGLLayer(map, opts) {
             if (!velReady || !velTex) { map.triggerRepaint(); return; }
             if (cohActive() && cohDirty) { runCoherence(gl); cohDirty = false; }
             curBbox = viewBox();
+            let zNow = lengthZoomRef;
+            try { zNow = map.getZoom(); } catch (_) { /* keep ref */ }
             if (lengthZoomComp > 0) {
-                let zNow = lengthZoomRef;
-                try { zNow = map.getZoom(); } catch (_) { /* keep ref */ }
                 const raw = Math.pow(2, -lengthZoomComp * (zNow - lengthZoomRef));
                 curLengthZoomFactor = Math.min(4.0, Math.max(0.05, raw));
             } else {
                 curLengthZoomFactor = 1.0;
+            }
+            if (densityZoomFalloff > 0) {
+                const f = Math.pow(2, -Math.max(0, zNow - densityZoomRef) * densityZoomFalloff);
+                const floorN = Math.max(256, Math.round(count * 0.06));
+                activeCount = Math.min(count, Math.max(floorN, Math.round(count * f)));
+            } else {
+                activeCount = count;
             }
             advect(gl);
             drawTrails(gl, args);
