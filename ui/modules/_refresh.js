@@ -2,6 +2,9 @@
  * Keep a raster image layer in live sync with its backend `enabled` flag.
  * config handed to loadLayer is a load-time snapshot, so we re-read live config.
  * After (re)mounting we poll fast until the PNG actually exists, then refresh slowly.
+ * A settings change (signature change) always applies immediately, even mid-chase --
+ * the image-existence chase tracks DATA freshness and must never gate frontend-only
+ * config like opacity from taking effect.
  *
  * globalKeys: extra top-level config sections (e.g. ['animation']) to read each
  * poll and pass through to mount/refresh as a second `globals` arg. They are
@@ -102,40 +105,43 @@ export function liveLayerSync(map, {
 
     const onTick = async (section, data) => {
         const globals = pickGlobals(data);
-        if (!imageReady) {
+        const sig = sigOf(section, globals);
+        if (sig !== lastSig) {
+            // Settings changed (e.g. opacity) -- apply immediately, independent of
+            // imageReady. imageReady tracks DATA freshness (does this hour's PNG exist
+            // yet); it must not gate frontend-only settings from taking effect, or a
+            // layer stuck waiting on a not-yet-rendered hour ignores live config changes.
+            refresh(section, globals);
+            lastSig = sig;
+            lastRefresh = Date.now();
+            if (imageReady) {
+                awaitingRegen = true;
+                regenDeadline = Date.now() + regenWaitMs;
+                baselineMtime = await imageMtime(section);
+            }
+        } else if (!imageReady) {
             const exists = await imageExists(section);
             if (exists) {
                 refresh(section, globals);
                 imageReady = true;
                 lastRefresh = Date.now();
-                lastSig = sigOf(section, globals);
                 console.log(`[${sectionKey}] image ready — layer shown.`);
             }
-        } else {
-            const sig = sigOf(section, globals);
-            if (sig !== lastSig) {                    // settings changed
-                refresh(section, globals);            // apply frontend-side change now
-                lastSig = sig;
+        } else if (awaitingRegen) {
+            const m = await imageMtime(section);
+            if (m && m > baselineMtime) {             // backend produced a fresh render
+                refresh(section, globals);
+                awaitingRegen = false;
                 lastRefresh = Date.now();
-                awaitingRegen = true;
-                regenDeadline = Date.now() + regenWaitMs;
-                baselineMtime = await imageMtime(section);
-            } else if (awaitingRegen) {
-                const m = await imageMtime(section);
-                if (m && m > baselineMtime) {         // backend produced a fresh render
-                    refresh(section, globals);
-                    awaitingRegen = false;
-                    lastRefresh = Date.now();
-                    console.log(`[${sectionKey}] backend re-render detected — applied.`);
-                } else if (m === 0) {
-                    refresh(section, globals);
-                    lastRefresh = Date.now();
-                }
-                if (Date.now() >= regenDeadline) awaitingRegen = false;
-            } else if (Date.now() - lastRefresh >= refreshMs) {
-                refresh(section, globals);            // unchanged config: slow cadence
-                lastRefresh = Date.now();             // (picks up regenerated PNGs)
+                console.log(`[${sectionKey}] backend re-render detected — applied.`);
+            } else if (m === 0) {
+                refresh(section, globals);
+                lastRefresh = Date.now();
             }
+            if (Date.now() >= regenDeadline) awaitingRegen = false;
+        } else if (Date.now() - lastRefresh >= refreshMs) {
+            refresh(section, globals);                // unchanged config: slow cadence
+            lastRefresh = Date.now();                 // (picks up regenerated PNGs)
         }
     };
 

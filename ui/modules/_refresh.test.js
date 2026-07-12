@@ -71,6 +71,31 @@ describe('image-existence chase', () => {
         expect(refresh).toHaveBeenCalledTimes(1);
     });
 
+    test('applies a settings change immediately even before the image first exists', async () => {
+        // Regression: a layer stuck chasing a not-yet-rendered hour (imageReady still
+        // false) must not ignore live settings changes like opacity -- those are
+        // frontend-only and unrelated to whether the backend has produced this hour's
+        // PNG yet.
+        const refresh = vi.fn();
+        mockFetch({ section: { enabled: true, opacity: 50 }, imageStatus: 404 });
+
+        liveLayerSync({}, {
+            sectionKey: SECTION_KEY, initialConfig: null,
+            mount: vi.fn(), refresh, unmount: vi.fn(),
+            imageUrl: () => 'http://test/sst.png',
+            syncMs: 1000,
+        });
+        await vi.advanceTimersByTimeAsync(1000);  // mount (lastSig seeded to opacity:50)
+        await vi.advanceTimersByTimeAsync(1000);  // still 404, imageReady stays false
+        expect(refresh).not.toHaveBeenCalled();
+
+        mockFetch({ section: { enabled: true, opacity: 0 }, imageStatus: 404 });
+        await vi.advanceTimersByTimeAsync(1000);  // settings changed, image STILL missing
+
+        expect(refresh).toHaveBeenCalledTimes(1);
+        expect(refresh.mock.calls[0][0]).toEqual({ enabled: true, opacity: 0 });
+    });
+
     test('calls onMissing when the probe 404s', async () => {
         mockFetch({ section: { enabled: true }, imageStatus: 404 });
         const onMissing = vi.fn();
