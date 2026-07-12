@@ -181,7 +181,7 @@ export async function loadLayer(map, config, fullConfig = {}) {
         speedFromConfig: (cfg) => {
             const ui = Number(cfg.particle_speed);
             const v = isFinite(ui) ? Math.min(100, Math.max(0, ui)) : 50;
-            return (v / 100) * 8;         // first-pass guess, borrowed from currents.js
+            return (v / 100) * 1.5;       // tuned down a lot from currents' 8 -- too fast for wind
         },
     });
 
