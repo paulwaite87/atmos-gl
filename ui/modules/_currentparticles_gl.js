@@ -131,19 +131,25 @@ void main(){
 }`;
 
 // Advection: head position step along u/v (reuses the wind engine's logic verbatim,
-// including landReset so trails die on land).
+// including landReset so trails die on land). MRT: also advances a per-particle age
+// (0..1, reset to 0 on respawn) into a second colour attachment -- the trail shader
+// fades alpha in/out over it instead of particles popping instantly into/out of view.
 const UPDATE_FS = `#version 300 es
 precision highp float;
-in vec2 v_uv; out vec4 fragColor;
+in vec2 v_uv;
+layout(location = 0) out vec4 o_pos;
+layout(location = 1) out vec4 o_age;
 uniform sampler2D u_particles;     // current head positions
+uniform sampler2D u_age;
 uniform sampler2D u_vel;
-uniform float u_vmax, u_speed, u_dropRate, u_dropBump, u_dropSpeed, u_seed, u_landReset;
+uniform float u_vmax, u_speed, u_dropRate, u_dropBump, u_dropSpeed, u_seed, u_landReset, u_ageStep;
 uniform vec4 u_bboxPos;
 const float PI = 3.141592653589793;
 const float STEP = 0.0005;
 ${PACK}
 void main(){
     vec2 pos = decodePos(texture(u_particles, v_uv));
+    float age = texture(u_age, v_uv).r;
     float lat = (0.5 - pos.y) * PI;
     vec4 w = texture(u_vel, pos);
     vec2 vel = (w.a < 0.5) ? vec2(0.0) : (w.rg * (2.0*u_vmax) - u_vmax);
@@ -160,6 +166,7 @@ void main(){
     if (dmag > MAX_STEP) d *= (MAX_STEP / dmag);
     vec2 npos = pos + d;
     npos.x = fract(npos.x + 1.0);
+    age += u_ageStep;
     float speed = length(vel);
     // Speed-weighted lifetime: slow water drops fast (sparse), fast water persists
     // (tight bright ribbons on strong currents).
@@ -176,11 +183,19 @@ void main(){
     // NOTE: do NOT reset particles merely for leaving the view bbox — that confines the
     // whole field to the visible disc and renders as a "petal" cluster on a globe. The
     // bbox is used only to bias where *respawns* land (density where you're looking).
-    // Particles flow freely across the globe; they only reset on the drop probability,
-    // hitting the poles, or (for ocean layers) wandering onto land.
-    bool reset = (rand(seed) < drop) || (npos.y <= 0.0) || (npos.y >= 1.0)
+    // Particles flow freely across the globe; they only reset on age expiring (the
+    // primary, smoothly-faded recycling path), the drop probability (secondary, for
+    // calm-zone declumping -- still pops, but rare), hitting the poles, or (for ocean
+    // layers) wandering onto land.
+    bool reset = (age >= 1.0) || (rand(seed) < drop) || (npos.y <= 0.0) || (npos.y >= 1.0)
                  || (u_landReset > 0.5 && w.a < 0.5);
-    fragColor = encodePos(reset ? randPos : npos);
+    if (reset) {
+        o_pos = encodePos(randPos);
+        o_age = vec4(0.0, 0.0, 0.0, 1.0);
+    } else {
+        o_pos = encodePos(npos);
+        o_age = vec4(clamp(age, 0.0, 1.0), 0.0, 0.0, 1.0);
+    }
 }`;
 
 // Trail vertex shader BODY (MapLibre projection prelude + #version + define prepended at
@@ -194,10 +209,12 @@ const TRAIL_VS_BODY = `
 precision highp float;
 uniform sampler2D u_head;     // single head-position state texture (newest positions)
 uniform sampler2D u_vel;
+uniform sampler2D u_age;      // per-particle age (0..1); drives lifecycle fade in the FS
 uniform float u_res, u_vmax, u_halfThick, u_maxspeed, u_alpha, u_H;
 uniform vec2 u_viewport;
 out float v_speed;
 out float v_t;            // 0 at tail tip .. 1 at head (for fade/taper in FS)
+out float v_age;          // this particle's lifecycle age (0..1), for fade in/out in FS
 const float CP_PI = 3.141592653589793;
 const float CP_LATMAX = 1.4844222297453324;
 const float CP_MAXSTEP = 0.005;   // per integration step clamp (tames 1/coslat near poles)
@@ -236,6 +253,7 @@ void main(){
     ivec2 tc = ivec2(int(col), int(row));
 
     vec2 head = cp_decode(texelFetch(u_head, tc, 0));
+    v_age = texelFetch(u_age, tc, 0).r;
 
     // Integrate upstream from the head to this segment's two endpoints:
     //   pB = streamline point[seg]   (head side, newer, brighter, thicker)
@@ -293,7 +311,7 @@ void main(){
 // changing every other adopter's look.
 const trailFragmentShader = (tailFadeEnd) => `#version 300 es
 precision highp float;
-in float v_speed; in float v_t;
+in float v_speed; in float v_t; in float v_age;
 out vec4 fragColor;
 uniform sampler2D u_cmap;
 uniform float u_vmax, u_maxspeed, u_alpha;
@@ -301,7 +319,12 @@ void main(){
     float s = clamp(v_speed / u_maxspeed, 0.0, 1.0);
     vec3 c = texture(u_cmap, vec2(s, 0.5)).rgb;
     // fade toward the tail (v_t=0) and slightly boost the head
-    float a = u_alpha * smoothstep(0.0, ${tailFadeEnd.toFixed(3)}, v_t) * (0.5 + 0.5*s);
+    float aTail = smoothstep(0.0, ${tailFadeEnd.toFixed(3)}, v_t) * (0.5 + 0.5*s);
+    // lifecycle fade: ease in over the particle's first 15% of age, ease out over its
+    // last 25% -- so particles never pop instantly into/out of existence.
+    float fadeIn = smoothstep(0.0, 0.15, v_age);
+    float fadeOut = 1.0 - smoothstep(0.75, 1.0, v_age);
+    float a = u_alpha * aTail * fadeIn * fadeOut;
     if (a <= 0.003) discard;
     fragColor = vec4(c, a);
 }`;
@@ -340,6 +363,12 @@ export function createCurrentParticleGLLayer(map, opts) {
             const frac = (t >= 0 && t <= 100) ? t / 100 : 0.5;
             return 2.0e-4 + frac * (1.4e-3 - 2.0e-4);   // ~2e-4 .. 1.4e-3
         },
+        // Lifecycle length in frames-to-live (ageStep = 1/N): each particle's age advances
+        // by ageStep every frame; at age>=1 it respawns. The trail shader fades alpha in
+        // over the first 15% of age and out over the last 25%, so particles ease in and
+        // out of existence instead of popping. 90 frames (~1.5s at 60fps) is a first-pass
+        // default shared by both currents and wind.
+        ageStep = (cfg) => 1.0 / 90,
         hourDataUrl = (cfg, hour, bust) => {
             const base = cfg.outfile.replace(/\.png$/, '');
             const f = String(hour).padStart(3, '0');
@@ -366,6 +395,10 @@ export function createCurrentParticleGLLayer(map, opts) {
     // head position state as a 2-texture ping-pong (advected one step per frame). The tail
     // is the streamline integrated from the head in the trail VS — no stored history ring.
     let headTex = [], headFbo = [], headIdx = 0;
+    // Age (0..1, resets to 0 on respawn) ping-ponged alongside the head position via MRT
+    // in the advection pass -- drives the fade in/out envelope in the trail shader.
+    let ageTex = [];
+    let curAgeStep = 1.0 / 90;
     let RES = 96, count = RES * RES;
     let velReady = false, pendingVelImg = null, pendingLut = null, pendingRebuild = false;
     let curCfg = initialConfig, curAnim = initialAnimation;
@@ -386,6 +419,8 @@ export function createCurrentParticleGLLayer(map, opts) {
         curH = hFromConfig(cfg);
         const newCoh = Number(coherenceRadius(cfg)) || 0;
         if (newCoh !== curCohRadius) { curCohRadius = newCoh; cohDirty = true; }
+        const newAgeStep = Number(ageStep(cfg));
+        curAgeStep = (isFinite(newAgeStep) && newAgeStep > 0) ? newAgeStep : (1.0 / 90);
     };
 
     const compile = (gl, type, src) => {
@@ -436,18 +471,30 @@ export function createCurrentParticleGLLayer(map, opts) {
         }
         return d;
     };
+    // Random initial ages (not all-zero) so particles don't all pop into existence
+    // synchronised on first load -- mirrors _particles_gl.js's randomAge().
+    const randomAge = () => {
+        const d = new Uint8Array(RES * RES * 4);
+        for (let i = 0; i < RES * RES; i++) {
+            d[i*4] = Math.floor(Math.random() * 256); d[i*4+1] = 0; d[i*4+2] = 0; d[i*4+3] = 255;
+        }
+        return d;
+    };
     const buildState = (gl) => {
         RES = Math.ceil(Math.sqrt(particleCount(curCfg))); count = RES * RES;
         headTex.forEach((t) => t && gl.deleteTexture(t));
         headFbo.forEach((f) => f && gl.deleteFramebuffer(f));
-        headTex = []; headFbo = []; headIdx = 0;
+        ageTex.forEach((t) => t && gl.deleteTexture(t));
+        headTex = []; headFbo = []; ageTex = []; headIdx = 0;
         const seed = randomState();
         for (let i = 0; i < 2; i++) {                  // ping-pong pair
             const t = makeTex(gl, RES, RES, seed, gl.NEAREST);
+            const a = makeTex(gl, RES, RES, randomAge(), gl.NEAREST);
             const fbo = gl.createFramebuffer();
             gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
             gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t, 0);
-            headTex.push(t); headFbo.push(fbo);
+            gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT1, gl.TEXTURE_2D, a, 0);
+            headTex.push(t); ageTex.push(a); headFbo.push(fbo);
         }
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     };
@@ -578,14 +625,18 @@ export function createCurrentParticleGLLayer(map, opts) {
         gl.useProgram(updateProg);
         gl.bindVertexArray(vaoUpdate);
         gl.bindFramebuffer(gl.FRAMEBUFFER, headFbo[dst]);
+        gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1]);
         gl.viewport(0, 0, RES, RES);
         const u = (n) => gl.getUniformLocation(updateProg, n);
         gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, headTex[src]);
         gl.uniform1i(u('u_particles'), 0);
         gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, activeVelTex());
         gl.uniform1i(u('u_vel'), 1);
+        gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, ageTex[src]);
+        gl.uniform1i(u('u_age'), 2);
         gl.uniform1f(u('u_vmax'), vmax);
         gl.uniform1f(u('u_speed'), curSpeed);
+        gl.uniform1f(u('u_ageStep'), curAgeStep);
         // Slow-drift particles travel less ground per lifetime, so keep them alive longer
         // (lower drop) — otherwise slow regions thin out into sparse dots. The streamline
         // tail means a near-stationary head still reads as a flowing streak.
@@ -618,14 +669,16 @@ export function createCurrentParticleGLLayer(map, opts) {
         gl.uniform4f(u('u_projection_tile_mercator_coords'),
             pd.tileMercatorCoords[0], pd.tileMercatorCoords[1],
             pd.tileMercatorCoords[2], pd.tileMercatorCoords[3]);
-        // Only the current head texture + the velocity field are sampled in the vertex
-        // stage (2 samplers total — far under the WebGL2 vertex-texture-unit floor).
+        // Head texture + velocity field + age are sampled in the vertex stage (3 samplers
+        // total — still far under the WebGL2 vertex-texture-unit floor).
         gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, headTex[headIdx]);
         gl.uniform1i(u('u_head'), 0);
         gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, activeVelTex());
         gl.uniform1i(u('u_vel'), 1);
         gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, cmapTex);
         gl.uniform1i(u('u_cmap'), 2);
+        gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D, ageTex[headIdx]);
+        gl.uniform1i(u('u_age'), 3);
         gl.uniform1f(u('u_res'), RES);
         gl.uniform1f(u('u_vmax'), vmax);
         gl.uniform1f(u('u_H'), curH);
@@ -680,11 +733,12 @@ export function createCurrentParticleGLLayer(map, opts) {
         onRemove(m, gl) {
             trailProgCache.forEach((p) => gl.deleteProgram(p)); trailProgCache.clear();
             headTex.forEach((t) => t && gl.deleteTexture(t));
+            ageTex.forEach((t) => t && gl.deleteTexture(t));
             headFbo.forEach((f) => f && gl.deleteFramebuffer(f));
             [velTex, cmapTex, velCohTex, cohTempTex].forEach((t) => t && gl.deleteTexture(t));
             if (cohFbo) gl.deleteFramebuffer(cohFbo);
             [updateProg, cohHProg, cohVProg].forEach((p) => p && gl.deleteProgram(p));
-            headTex = []; headFbo = []; velTex = cmapTex = null;
+            headTex = []; headFbo = []; ageTex = []; velTex = cmapTex = null;
             velCohTex = cohTempTex = cohFbo = null; cohW = cohH = 0;
             updateProg = cohHProg = cohVProg = null; glRef = null;
         },
