@@ -1,6 +1,7 @@
 import { createFillLayer } from './_webglfill.js';
 import { CMAP_RDYLBU_R, rgbToRgba } from './_colormaps.js';
 import { keyFilename, showLegend, removeLegend } from './_legend.js';
+import { opacityUniform } from './_opacity.js';
 
 // GPU scrubber layer. Linear RdYlBu_r ramp over [-40, 50] °C, matching the static
 // matplotlib colourbar key (TemperatureUpdater: cmap RdYlBu_r, Normalize -40..50).
@@ -31,7 +32,7 @@ export function loadLayer(map, config, fullConfig = {}) {
                 return vec4(c, u_alpha);
             }`,
         customUniforms: (cfg) => ({
-            u_alpha: Number.isFinite(Number(cfg.opacity)) && Number(cfg.opacity) >= 0 ? Number(cfg.opacity) / 100 : 0.85,
+            u_alpha: opacityUniform(cfg, 0.85),
         }),
         colormap: () => rgbToRgba(CMAP_RDYLBU_R),
         onMount: addLegend,

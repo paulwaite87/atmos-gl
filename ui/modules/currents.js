@@ -2,6 +2,7 @@ import { createFillLayer } from './_webglfill.js';
 import { createCurrentParticleGLLayer } from './_currentparticles_gl.js';
 import { timeline } from './timeline.js';
 import { keyFilename, showLegend, removeLegend } from './_legend.js';
+import { opacityUniform } from './_opacity.js';
 
 // Backend VMAX_CURRENT (m/s). Texture is R=U, G=V encoded as channel*(2*vmax)-vmax.
 const VMAX = 2.5;
@@ -135,7 +136,7 @@ export async function loadLayer(map, config, fullConfig = {}) {
         initialAnimation: fullConfig.animation || {},
         initialCommon: fullConfig.common || {},
         vmin: 0.0, vspan: 1.0,            // value channel unused; we decode u/v ourselves
-        opacity: Number(config.opacity) > 0 ? Number(config.opacity) / 100 : 0.6,
+        opacity: opacityUniform(config, 0.6),
         colormap: () => buildLUT(palette),
         hourDataUrl: currentsHourUrl,     // RTOFS-hour translated
         backfillKey: recon.backfillKey,   // RTOFS (date,run,hour) for 404 backfill
@@ -165,7 +166,7 @@ export async function loadLayer(map, config, fullConfig = {}) {
             }`,
         customUniforms: (cfg) => ({
             u_vmax_current: VMAX,
-            u_alpha: Number.isFinite(Number(cfg.opacity)) && Number(cfg.opacity) >= 0 ? Number(cfg.opacity) / 100 : 0.6,
+            u_alpha: opacityUniform(cfg, 0.6),
             // Tunable via config; defaults chosen for RTOFS (most ocean < 0.2 m/s,
             // currents of interest > ~0.3 m/s, strong jets ~1-2.5 m/s).
             u_fill_floor: Number(cfg.fill_floor) >= 0 ? Number(cfg.fill_floor) : 0.15,

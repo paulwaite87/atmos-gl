@@ -1,6 +1,7 @@
 import { createFillLayer } from './_webglfill.js';
 import { keyFilename, showLegend, removeLegend } from './_legend.js';
 import { buildThresholdLUT } from './_thresholdpalette.js';
+import { opacityUniform } from './_opacity.js';
 
 // GPU scrubber layer. Critical-zone ramp over [150, 450] Dobson Units (total column
 // ozone) -- mirrors tasks/scalar_field.py's SPECS["ozone"] (architecture review
@@ -41,7 +42,7 @@ export function loadLayer(map, config, fullConfig = {}) {
                 return vec4(c.rgb, c.a * u_alpha);
             }`,
         customUniforms: (cfg) => ({
-            u_alpha: Number.isFinite(Number(cfg.opacity)) && Number(cfg.opacity) >= 0 ? Number(cfg.opacity) / 100 : 0.85,
+            u_alpha: opacityUniform(cfg, 0.85),
         }),
         colormap: (cfg) => buildThresholdLUT({
             vmin: VMIN, vmax: VMAX,
