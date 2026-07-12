@@ -150,11 +150,31 @@ ${PACK}
 void main(){
     vec2 pos = decodePos(texture(u_particles, v_uv));
     float age = texture(u_age, v_uv).r;
-    float lat = (0.5 - pos.y) * PI;
     vec4 w = texture(u_vel, pos);
     vec2 vel = (w.a < 0.5) ? vec2(0.0) : (w.rg * (2.0*u_vmax) - u_vmax);
+
+    // RK2 (midpoint) integration. A plain Euler step (using only the STARTING velocity)
+    // overshoots at sharp direction changes -- the head jumps the full step in the OLD
+    // direction, landing somewhere the trail (re-integrated fresh each frame from the
+    // NEW head position) already shows flowing a different way, reading as the particle
+    // crabbing sideways instead of curving smoothly. Sampling the velocity again at the
+    // half-step-ahead MIDPOINT and using THAT for the full step lets the head curve into
+    // the changing flow instead (ported from _particles_gl.js, wind's original engine).
+    float lat = (0.5 - pos.y) * PI;
     float coslat = max(cos(lat), 0.05);
-    vec2 d = vec2(vel.x / coslat * 0.5, -vel.y) * (u_speed * STEP);
+    vec2 d1 = vec2(vel.x / coslat * 0.5, -vel.y) * (u_speed * STEP);
+    vec2 pmid = pos + d1 * 0.5;
+    pmid.x = fract(pmid.x + 1.0);
+    vec4 wm = texture(u_vel, pmid);
+    vec2 d;
+    if (wm.a >= 0.5) {                            // midpoint has data -> RK2 step
+        vec2 velm = wm.rg * (2.0*u_vmax) - u_vmax;
+        float latm = (0.5 - pmid.y) * PI;
+        float coslatm = max(cos(latm), 0.05);
+        d = vec2(velm.x / coslatm * 0.5, -velm.y) * (u_speed * STEP);
+    } else {
+        d = d1;                                   // midpoint off-data -> fall back to Euler
+    }
     // Cap the per-frame step magnitude. The 1/coslat term amplifies the longitude step
     // toward the poles (and for fast high-latitude currents), producing single-frame
     // jumps long enough to render as "meteor" streaks that grow with zoom. Clamping the
