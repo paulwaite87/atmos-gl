@@ -265,6 +265,9 @@ export function createCurrentParticleGLLayer(map, opts) {
             const f = String(hour).padStart(3, '0');
             return `${window.MAP_UI}/${base}_f${f}_data.png?t=${bust}`;
         },
+        // lodCount is per-consumer (mirrors _particles_gl.js's defaultParticleCount);
+        // falls back to this module's currents-tuned LOD_COUNT when not overridden.
+        lodCount = null,
         refreshMs, syncMs,
     } = opts;
 
@@ -286,7 +289,7 @@ export function createCurrentParticleGLLayer(map, opts) {
 
     const particleCount = (cfg) => {
         const explicit = parseInt(cfg.particle_count, 10);
-        return Math.max(256, explicit > 0 ? explicit : (LOD_COUNT[lodOf(cfg)] || 9000));
+        return Math.max(256, explicit > 0 ? explicit : ((lodCount || LOD_COUNT)[lodOf(cfg)] || 9000));
     };
     // Tail length is decoupled from drift speed: it is the per-step integration arc times
     // STREAM_STEPS, independent of u_speed. trail_length is a 0..100 slider mapped into a

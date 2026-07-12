@@ -183,6 +183,9 @@ export async function loadLayer(map, config, fullConfig = {}) {
             const v = isFinite(ui) ? Math.min(100, Math.max(0, ui)) : 50;
             return (v / 100) * 1.5;       // tuned down a lot from currents' 8 -- too fast for wind
         },
+        // Currents' own LOD_COUNT ({1:4000, 2:9000, 3:18000}) reads too dense for wind's
+        // long streamline ribbons -- reuse wind's own (lower) table from the old engine.
+        lodCount: { 1: 3000, 2: 6000, 3: 10000 },
     });
 
     // Tear down both layers (particles first, then heatmap) on basemap style swap.
