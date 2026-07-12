@@ -42,7 +42,10 @@ export function loadLayer(map, config, fullConfig = {}) {
             uniform float u_alpha;
             uniform float u_min;               // J/kg threshold; below -> transparent
             vec4 shade(float value, vec2 uv) {
-                if (value < u_min) discard;
+                // A threshold of exactly 0 means "any CAPE, however small" -- not
+                // "include zero-instability areas too". value<=0 (no CAPE) is always
+                // excluded, independent of u_min; u_min==0 no longer paints the whole globe.
+                if (value <= 0.0 || value < u_min) discard;
                 float t = clamp((value - ${VMIN.toFixed(1)}) / ${(VMAX - VMIN).toFixed(1)}, 0.0, 1.0);
                 vec3 c = texture(u_cmap, vec2(t, 0.5)).rgb;
                 return vec4(c, u_alpha);

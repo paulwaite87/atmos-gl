@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "test": "vitest run",
-    "test:shaders": "node tests/gl-shaders/particles_land_reset.test.js && node tests/gl-shaders/wsample_land_masking.test.js"
+    "test:shaders": "node tests/gl-shaders/particles_land_reset.test.js && node tests/gl-shaders/wsample_land_masking.test.js && node tests/gl-shaders/precipitation_zero_threshold.test.js"
   },
   "devDependencies": {
     "playwright": "^1.61.1",
