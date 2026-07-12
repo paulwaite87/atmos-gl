@@ -87,7 +87,10 @@ function fragmentBodyFor(paletteName) {
 
         vec4 shade(float value, vec2 uv) {
             float prate = value * value * ${VMAX.toFixed(1)};   // decode sqrt
-            if (prate < u_min) discard;
+            // A threshold of exactly 0 means "any precipitation, however light" --
+            // not "include the dry areas too". prate<=0 (no rain) is always excluded,
+            // independent of u_min; u_min==0 no longer paints the whole globe.
+            if (prate <= 0.0 || prate < u_min) discard;
 
             int b = bandOf(prate);
             vec3 cHere = BAND_COL[b];
