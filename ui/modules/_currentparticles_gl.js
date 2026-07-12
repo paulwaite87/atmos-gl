@@ -223,7 +223,11 @@ void main(){
     gl_Position = baseClip;
     gl_Position.xy += offNDC * baseClip.w;
 }`;
-const TRAIL_FS = `#version 300 es
+// tailFadeEnd: how far along the ribbon (0=tail tip, 1=head) the fade-in reaches full
+// opacity. Per-caller (not a module constant) so a consumer with much longer ribbons
+// (wind's streamlines vs. currents' own tuned 0.35) can fade more gradually without
+// changing every other adopter's look.
+const trailFragmentShader = (tailFadeEnd) => `#version 300 es
 precision highp float;
 in float v_speed; in float v_t;
 out vec4 fragColor;
@@ -233,7 +237,7 @@ void main(){
     float s = clamp(v_speed / u_maxspeed, 0.0, 1.0);
     vec3 c = texture(u_cmap, vec2(s, 0.5)).rgb;
     // fade toward the tail (v_t=0) and slightly boost the head
-    float a = u_alpha * smoothstep(0.0, 0.35, v_t) * (0.5 + 0.5*s);
+    float a = u_alpha * smoothstep(0.0, ${tailFadeEnd.toFixed(3)}, v_t) * (0.5 + 0.5*s);
     if (a <= 0.003) discard;
     fragColor = vec4(c, a);
 }`;
@@ -268,6 +272,7 @@ export function createCurrentParticleGLLayer(map, opts) {
         // lodCount is per-consumer (mirrors _particles_gl.js's defaultParticleCount);
         // falls back to this module's currents-tuned LOD_COUNT when not overridden.
         lodCount = null,
+        tailFadeEnd = 0.35,   // currents' own tuned default; see trailFragmentShader
         refreshMs, syncMs,
     } = opts;
 
@@ -332,7 +337,7 @@ export function createCurrentParticleGLLayer(map, opts) {
         if (trailProgCache.has(key)) return trailProgCache.get(key);
         if (trailProgFailed) return null;
         const vs = `#version 300 es\n${shaderData.vertexShaderPrelude}\n${shaderData.define}\n${TRAIL_VS_BODY}`;
-        const p = linkProg(gl, vs, TRAIL_FS);
+        const p = linkProg(gl, vs, trailFragmentShader(tailFadeEnd));
         if (!p) { trailProgFailed = true; return null; }
         trailProgCache.set(key, p);
         return p;
