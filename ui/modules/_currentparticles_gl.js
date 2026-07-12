@@ -142,7 +142,7 @@ layout(location = 1) out vec4 o_age;
 uniform sampler2D u_particles;     // current head positions
 uniform sampler2D u_age;
 uniform sampler2D u_vel;
-uniform float u_vmax, u_speed, u_dropRate, u_dropBump, u_dropSpeed, u_seed, u_landReset, u_ageStep;
+uniform float u_vmax, u_speed, u_seed, u_landReset, u_ageStep;
 uniform vec4 u_bboxPos;
 const float PI = 3.141592653589793;
 const float STEP = 0.0005;
@@ -167,10 +167,6 @@ void main(){
     vec2 npos = pos + d;
     npos.x = fract(npos.x + 1.0);
     age += u_ageStep;
-    float speed = length(vel);
-    // Speed-weighted lifetime: slow water drops fast (sparse), fast water persists
-    // (tight bright ribbons on strong currents).
-    float drop = u_dropRate + (1.0 - clamp(speed/u_dropSpeed, 0.0, 1.0)) * u_dropBump;
     vec2 seed = (pos + v_uv) * (u_seed + 1.0);
     vec2 bmin = u_bboxPos.xy, bmax = u_bboxPos.zw;
     bool lonWrap = bmin.x > bmax.x;
@@ -183,11 +179,13 @@ void main(){
     // NOTE: do NOT reset particles merely for leaving the view bbox — that confines the
     // whole field to the visible disc and renders as a "petal" cluster on a globe. The
     // bbox is used only to bias where *respawns* land (density where you're looking).
-    // Particles flow freely across the globe; they only reset on age expiring (the
-    // primary, smoothly-faded recycling path), the drop probability (secondary, for
-    // calm-zone declumping -- still pops, but rare), hitting the poles, or (for ocean
-    // layers) wandering onto land.
-    bool reset = (age >= 1.0) || (rand(seed) < drop) || (npos.y <= 0.0) || (npos.y >= 1.0)
+    // Particles flow freely across the globe; age expiring is now the ONLY "natural
+    // death" trigger, so every regular respawn fades. Poles/land remain instant --
+    // position validity, not a natural death, can't keep rendering there -- but those
+    // are rare for wind (landReset off, poles seldom reached); for ocean layers with
+    // landReset on, a coastal hit is still an unfaded pop AND the trail shader discards
+    // a head sitting on no-data outright, so fading it further wouldn't show anyway.
+    bool reset = (age >= 1.0) || (npos.y <= 0.0) || (npos.y >= 1.0)
                  || (u_landReset > 0.5 && w.a < 0.5);
     if (reset) {
         o_pos = encodePos(randPos);
@@ -637,12 +635,6 @@ export function createCurrentParticleGLLayer(map, opts) {
         gl.uniform1f(u('u_vmax'), vmax);
         gl.uniform1f(u('u_speed'), curSpeed);
         gl.uniform1f(u('u_ageStep'), curAgeStep);
-        // Slow-drift particles travel less ground per lifetime, so keep them alive longer
-        // (lower drop) — otherwise slow regions thin out into sparse dots. The streamline
-        // tail means a near-stationary head still reads as a flowing streak.
-        gl.uniform1f(u('u_dropRate'), 0.0010);
-        gl.uniform1f(u('u_dropBump'), 0.0050);
-        gl.uniform1f(u('u_dropSpeed'), 10.0);
         gl.uniform1f(u('u_seed'), Math.random());
         gl.uniform1f(u('u_landReset'), curLandReset);
         gl.uniform4f(u('u_bboxPos'), curBbox[0], curBbox[1], curBbox[2], curBbox[3]);
