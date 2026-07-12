@@ -1,6 +1,7 @@
 import { createParticleGLLayer } from './_particles_gl.js';
 import { createFillLayer } from './_webglfill.js';
 import { replaceSlot, removeLegend } from './_legend.js';
+import { opacityUniform } from './_opacity.js';
 
 const VMAX_WIND = 40.0;   // m/s velocity-texture encoding range (must match backend)
 
@@ -82,14 +83,6 @@ function buildFlatLUT(rgb) {
     return lut;
 }
 
-// Heatmap opacity 0..1 from opacity (accepts a 0-1 fraction or a 0-100 percent),
-// default 0.6. Drives BOTH the fill-mode per-pixel alpha and the static raster opacity.
-function heatmapAlpha(cfg) {
-    const op = Number(cfg.opacity);
-    if (!isFinite(op) || op < 0) return 0.6;
-    return op > 1 ? Math.min(1, op / 100) : op;
-}
-
 export async function loadLayer(map, config, fullConfig = {}) {
     // Fetch the backend-computed heatmap scale (written by wind.py after scanning all
     // hours; round-tripped as wind_meta.json). Falls back to 100 km/h if missing.
@@ -123,7 +116,7 @@ export async function loadLayer(map, config, fullConfig = {}) {
     // directly whenever config syncs.
     const applyHeatmapOpacity = (cfg) => {
         if (map.getLayer('wind-layer')) {
-            try { map.setPaintProperty('wind-layer', 'raster-opacity', heatmapAlpha(cfg)); } catch (e) {}
+            try { map.setPaintProperty('wind-layer', 'raster-opacity', opacityUniform(cfg, 0.6)); } catch (e) {}
         }
     };
 
@@ -143,7 +136,7 @@ export async function loadLayer(map, config, fullConfig = {}) {
         vmin: 0.0,
         vspan: 1.0,                      // valueDecode already returns normalised speed
         bicubic: true,
-        opacity: heatmapAlpha(config),   // static-mode raster opacity (fill mode uses u_alpha)
+        opacity: opacityUniform(config, 0.6),   // static-mode raster opacity (fill mode uses u_alpha)
         beforeId: 'wind-anim-layer',     // particle layer id -> heatmap stays underneath
         valueDecode,
         fragmentBody: `
@@ -154,7 +147,7 @@ export async function loadLayer(map, config, fullConfig = {}) {
                 return vec4(c, u_alpha);
             }`,
         customUniforms: (cfg) => ({
-            u_alpha: heatmapAlpha(cfg),   // fill-mode per-pixel opacity (live)
+            u_alpha: opacityUniform(cfg, 0.6),   // fill-mode per-pixel opacity (live)
         }),
         colormap: () => buildLUT(),
         onMount: (cfg) => { addLegend(cfg); applyHeatmapOpacity(cfg); },

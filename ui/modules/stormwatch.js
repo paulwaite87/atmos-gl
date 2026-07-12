@@ -1,5 +1,6 @@
 import { createFillLayer } from './_webglfill.js';
 import { CMAP_YLORRD, rgbToRgba } from './_colormaps.js';
+import { opacityUniform } from './_opacity.js';
 
 // GPU scrubber layer (CAPE). Linear YlOrRd ramp over [0, 5000] J/kg, matching the
 // static matplotlib key (StormwatchUpdater: cmap YlOrRd, Normalize 0..5000).
@@ -51,7 +52,7 @@ export function loadLayer(map, config, fullConfig = {}) {
                 return vec4(c, u_alpha);
             }`,
         customUniforms: (cfg) => ({
-            u_alpha: Number.isFinite(Number(cfg.opacity)) && Number(cfg.opacity) >= 0 ? Number(cfg.opacity) / 100 : 0.85,
+            u_alpha: opacityUniform(cfg, 0.85),
             u_min: Number(cfg.min_cape) >= 0 ? Number(cfg.min_cape) : 250.0,
         }),
         colormap: () => rgbToRgba(CMAP_YLORRD),

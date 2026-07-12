@@ -1,5 +1,6 @@
 import { createFillLayer } from './_webglfill.js';
 import { keyFilename, showLegend, removeLegend } from './_legend.js';
+import { opacityUniform } from './_opacity.js';
 
 // Top of the precip scale (mm/hr). MUST match VMAX_PRECIP in the backend, which
 // sqrt-encodes the data texture against it. The helper hands shade() the raw
@@ -146,7 +147,7 @@ export function loadLayer(map, config, fullConfig = {}) {
         fragmentBody: fragmentBodyFor(palette),
         customUniforms: (cfg) => ({
             u_min: Number(cfg.min_mm_hr) >= 0 ? Number(cfg.min_mm_hr) : 0.1,
-            u_alpha: Number.isFinite(Number(cfg.opacity)) && Number(cfg.opacity) >= 0 ? Number(cfg.opacity) / 100 : 0.9,
+            u_alpha: opacityUniform(cfg, 0.9),
         }),
         onMount: addLegend,
         onRefresh: addLegend,                  // re-stamp the key image
