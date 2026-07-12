@@ -367,6 +367,11 @@ export function createCurrentParticleGLLayer(map, opts) {
         // over fractions of this -- doubled from the first pass (90 -> 180, ~3s at 60fps)
         // because the transitions themselves read as too fast, not just the total cycle.
         ageStep = (cfg) => 1.0 / 180,
+        // Trail-length zoom compensation (see curLengthZoomFactor above). comp=1 holds
+        // screen-space length ~constant; comp=0 disables (the old, zoom-unaware
+        // behaviour). ref is the zoom at which curH applies unscaled.
+        lengthZoomComp = 1.0,
+        lengthZoomRef = 2.0,
         hourDataUrl = (cfg, hour, bust) => {
             const base = cfg.outfile.replace(/\.png$/, '');
             const f = String(hour).padStart(3, '0');
@@ -402,6 +407,12 @@ export function createCurrentParticleGLLayer(map, opts) {
     let curCfg = initialConfig, curAnim = initialAnimation;
     let curSpeed = defaultSpeed, curThick = 2.0, curMaxSpeed = vmax, curAlpha = 0.9, curLandReset = 1.0;
     let curH = 8.0e-4;            // streamline integration step (tail arc); set in applyParams
+    // Zoom compensation: curH is a fixed UV-space arc, but UV-space maps to
+    // ~512*2^zoom screen px -- unscaled, the ribbon's SCREEN length grows every time
+    // you zoom in, until it's stretching across the whole viewport at high zoom. Scaled
+    // by 2^(-lengthZoomComp*(zoom-lengthZoomRef)) each frame to hold the on-screen
+    // length roughly constant instead, mirroring _particles_gl.js's speedZoomComp.
+    let curLengthZoomFactor = 1.0;
     let bustKey = (timeline.get().refreshEpoch) || Date.now();
 
     const particleCount = (cfg) => {
@@ -673,7 +684,7 @@ export function createCurrentParticleGLLayer(map, opts) {
         gl.uniform1i(u('u_age'), 3);
         gl.uniform1f(u('u_res'), RES);
         gl.uniform1f(u('u_vmax'), vmax);
-        gl.uniform1f(u('u_H'), curH);
+        gl.uniform1f(u('u_H'), curH * curLengthZoomFactor);
         gl.uniform1f(u('u_halfThick'), Math.max(0.5, curThick));
         gl.uniform1f(u('u_maxspeed'), curMaxSpeed);
         gl.uniform1f(u('u_alpha'), curAlpha);
@@ -717,6 +728,14 @@ export function createCurrentParticleGLLayer(map, opts) {
             if (!velReady || !velTex) { map.triggerRepaint(); return; }
             if (cohActive() && cohDirty) { runCoherence(gl); cohDirty = false; }
             curBbox = viewBox();
+            if (lengthZoomComp > 0) {
+                let zNow = lengthZoomRef;
+                try { zNow = map.getZoom(); } catch (_) { /* keep ref */ }
+                const raw = Math.pow(2, -lengthZoomComp * (zNow - lengthZoomRef));
+                curLengthZoomFactor = Math.min(4.0, Math.max(0.05, raw));
+            } else {
+                curLengthZoomFactor = 1.0;
+            }
             advect(gl);
             drawTrails(gl, args);
             gl.bindVertexArray(null);
