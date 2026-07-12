@@ -181,7 +181,7 @@ export async function loadLayer(map, config, fullConfig = {}) {
         speedFromConfig: (cfg) => {
             const ui = Number(cfg.particle_speed);
             const v = isFinite(ui) ? Math.min(100, Math.max(0, ui)) : 50;
-            return (v / 100) * 1.5;       // 50x reduction reverted -- zoom compensation was the real fix
+            return (v / 100) * 0.15;      // 10x scaled down -- ui=50 now gives what ui=5 gave before
         },
         // Currents' own LOD_COUNT ({1:4000, 2:9000, 3:18000}) reads too dense for wind's
         // long streamline ribbons -- reuse wind's own (lower) table from the old engine.
