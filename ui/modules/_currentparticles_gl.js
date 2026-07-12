@@ -320,10 +320,11 @@ void main(){
     vec3 c = texture(u_cmap, vec2(s, 0.5)).rgb;
     // fade toward the tail (v_t=0) and slightly boost the head
     float aTail = smoothstep(0.0, ${tailFadeEnd.toFixed(3)}, v_t) * (0.5 + 0.5*s);
-    // lifecycle fade: ease in over the particle's first 15% of age, ease out over its
-    // last 25% -- so particles never pop instantly into/out of existence.
-    float fadeIn = smoothstep(0.0, 0.15, v_age);
-    float fadeOut = 1.0 - smoothstep(0.75, 1.0, v_age);
+    // lifecycle fade: ease in over the particle's first 20% of age, ease out over its
+    // last 35% -- widened (was 15%/25%) so the transitions themselves read as gradual,
+    // not just the total cycle length.
+    float fadeIn = smoothstep(0.0, 0.20, v_age);
+    float fadeOut = 1.0 - smoothstep(0.65, 1.0, v_age);
     float a = u_alpha * aTail * fadeIn * fadeOut;
     if (a <= 0.003) discard;
     fragColor = vec4(c, a);
@@ -364,11 +365,10 @@ export function createCurrentParticleGLLayer(map, opts) {
             return 2.0e-4 + frac * (1.4e-3 - 2.0e-4);   // ~2e-4 .. 1.4e-3
         },
         // Lifecycle length in frames-to-live (ageStep = 1/N): each particle's age advances
-        // by ageStep every frame; at age>=1 it respawns. The trail shader fades alpha in
-        // over the first 15% of age and out over the last 25%, so particles ease in and
-        // out of existence instead of popping. 90 frames (~1.5s at 60fps) is a first-pass
-        // default shared by both currents and wind.
-        ageStep = (cfg) => 1.0 / 90,
+        // by ageStep every frame; at age>=1 it respawns. The trail shader fades alpha in/out
+        // over fractions of this -- doubled from the first pass (90 -> 180, ~3s at 60fps)
+        // because the transitions themselves read as too fast, not just the total cycle.
+        ageStep = (cfg) => 1.0 / 180,
         hourDataUrl = (cfg, hour, bust) => {
             const base = cfg.outfile.replace(/\.png$/, '');
             const f = String(hour).padStart(3, '0');
