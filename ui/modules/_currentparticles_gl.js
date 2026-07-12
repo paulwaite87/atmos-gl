@@ -62,6 +62,55 @@ float rand(vec2 co){
     return fract((p3.x + p3.y) * p3.z);
 }`;
 
+// Velocity sample via BICUBIC B-spline interpolation with MASKED taps -- ported from
+// _particles_gl.js's sampleWindSmooth (see tests/gl-shaders/wsample_land_masking.test.js).
+// A plain bilinear/bicubic blend pulls the sampled velocity toward zero within ~1 texel
+// of any no-data (land) boundary, because encode_uv's NaN encoding (nan_to_num -> 0
+// velocity) gets blended in like real data -- measured ~17% velocity underestimation one
+// texel from shore. Excluding no-data taps from the weighted sum (and renormalising over
+// the valid taps only) fixes it. u_smoothPx=1 (native, near-crisp) unless a caller widens
+// it. Returns vec3(vx, vy, coverage).
+const VEL_SAMPLE = `
+uniform float u_smoothPx;
+vec4 cp_bsplineW(float f){
+    float f2 = f*f, f3 = f2*f;
+    return vec4(
+        (1.0 - 3.0*f + 3.0*f2 - f3) / 6.0,
+        (4.0 - 6.0*f2 + 3.0*f3)     / 6.0,
+        (1.0 + 3.0*f + 3.0*f2 - 3.0*f3) / 6.0,
+        f3 / 6.0
+    );
+}
+vec3 sampleVelSmooth(sampler2D tex, vec2 p, float vmax){
+    vec2 texSize = vec2(textureSize(tex, 0));
+    float s = max(u_smoothPx, 1.0);
+    vec2 invReal = 1.0 / texSize;
+    vec2 tc = p * (texSize / s) - 0.5;
+    vec2 base = floor(tc);
+    vec2 f = fract(tc);
+    vec4 wx = cp_bsplineW(f.x);
+    vec4 wy = cp_bsplineW(f.y);
+    vec4 c0 = texture(tex, vec2(fract(p.x + 1.0), clamp(p.y, 0.0, 1.0)));
+    vec2 sumv = vec2(0.0);
+    float wsum = 0.0;
+    for (int j = 0; j < 4; j++){
+        for (int i = 0; i < 4; i++){
+            vec2 cpos = base + vec2(float(i) - 1.0, float(j) - 1.0);
+            vec2 uv = (cpos + 0.5) * s * invReal;
+            uv.x = fract(uv.x + 1.0);
+            uv.y = clamp(uv.y, 0.0, 1.0);
+            vec4 t = texture(tex, uv);
+            float w = wx[i] * wy[j];
+            float valid = step(0.5, t.a);
+            sumv += (t.rg * (2.0*vmax) - vmax) * (w * valid);
+            wsum += w * valid;
+        }
+    }
+    if (c0.a < 0.5) return vec3(0.0, 0.0, 0.0);
+    if (wsum < 0.01) return vec3(0.0, 0.0, 0.0);
+    return vec3(sumv / wsum, 1.0);
+}`;
+
 const QUAD_VS = `#version 300 es
 in vec2 a_pos; out vec2 v_uv;
 void main(){ v_uv = a_pos; gl_Position = vec4(a_pos*2.0-1.0, 0.0, 1.0); }`;
@@ -147,11 +196,13 @@ uniform vec4 u_bboxPos;
 const float PI = 3.141592653589793;
 const float STEP = 0.0005;
 ${PACK}
+${VEL_SAMPLE}
 void main(){
     vec2 pos = decodePos(texture(u_particles, v_uv));
     float age = texture(u_age, v_uv).r;
-    vec4 w = texture(u_vel, pos);
-    vec2 vel = (w.a < 0.5) ? vec2(0.0) : (w.rg * (2.0*u_vmax) - u_vmax);
+    vec3 vs0 = sampleVelSmooth(u_vel, pos, u_vmax);
+    vec2 vel = vs0.xy;
+    float hasData = vs0.z;
 
     // RK2 (midpoint) integration. A plain Euler step (using only the STARTING velocity)
     // overshoots at sharp direction changes -- the head jumps the full step in the OLD
@@ -165,13 +216,12 @@ void main(){
     vec2 d1 = vec2(vel.x / coslat * 0.5, -vel.y) * (u_speed * STEP);
     vec2 pmid = pos + d1 * 0.5;
     pmid.x = fract(pmid.x + 1.0);
-    vec4 wm = texture(u_vel, pmid);
+    vec3 vsm = sampleVelSmooth(u_vel, pmid, u_vmax);
     vec2 d;
-    if (wm.a >= 0.5) {                            // midpoint has data -> RK2 step
-        vec2 velm = wm.rg * (2.0*u_vmax) - u_vmax;
+    if (vsm.z >= 0.5) {                           // midpoint has data -> RK2 step
         float latm = (0.5 - pmid.y) * PI;
         float coslatm = max(cos(latm), 0.05);
-        d = vec2(velm.x / coslatm * 0.5, -velm.y) * (u_speed * STEP);
+        d = vec2(vsm.x / coslatm * 0.5, -vsm.y) * (u_speed * STEP);
     } else {
         d = d1;                                   // midpoint off-data -> fall back to Euler
     }
@@ -206,7 +256,7 @@ void main(){
     // landReset on, a coastal hit is still an unfaded pop AND the trail shader discards
     // a head sitting on no-data outright, so fading it further wouldn't show anyway.
     bool reset = (age >= 1.0) || (npos.y <= 0.0) || (npos.y >= 1.0)
-                 || (u_landReset > 0.5 && w.a < 0.5);
+                 || (u_landReset > 0.5 && hasData < 0.5);
     if (reset) {
         o_pos = encodePos(randPos);
         o_age = vec4(0.0, 0.0, 0.0, 1.0);
@@ -236,6 +286,7 @@ out float v_age;          // this particle's lifecycle age (0..1), for fade in/o
 const float CP_PI = 3.141592653589793;
 const float CP_LATMAX = 1.4844222297453324;
 const float CP_MAXSTEP = 0.005;   // per integration step clamp (tames 1/coslat near poles)
+${VEL_SAMPLE}
 float cp_unpack(vec2 c){ return (c.x*255.0*256.0 + c.y*255.0)/65535.0; }
 vec2 cp_decode(vec4 c){ return vec2(cp_unpack(c.rg), cp_unpack(c.ba)); }
 vec2 cp_toMerc(vec2 p){
@@ -247,6 +298,13 @@ vec2 cp_toMerc(vec2 p){
 // head advection (vel.x/coslat*0.5, -vel.y) so the tail aligns with how the head moves.
 // Tail length therefore scales with current speed (faster water -> longer tail), while
 // the head's DRIFT speed is a separate uniform — that is the slow-drift/long-tail decouple.
+// Deliberately kept on the cheap single-tap sample, NOT sampleVelSmooth: this runs inside
+// the per-vertex loop below (up to STREAM_STEPS calls x 6 verts/segment x 40 segments), so
+// a 16-tap bicubic sample here would multiply an already-hot loop's cost 16x. Wind's
+// engine never faced this tradeoff -- it never re-integrates a live loop like this, only
+// ever samples once per vertex. The resulting coastline dampening only softens the
+// RIBBON'S SHAPE near a coastline; the particle's actual position/movement (UPDATE_FS) and
+// the discard/colour sample (wB below) already use the masked sampler.
 vec2 cp_step(vec2 p, out bool land){
     vec4 w = texture(u_vel, p);
     land = (w.a < 0.5);
@@ -287,16 +345,15 @@ void main(){
         pCur = ended ? pCur : nx;       // once on land, freeze -> coincident -> discarded
     }
 
-    vec4 wB = texture(u_vel, pB);
+    vec3 vsB = sampleVelSmooth(u_vel, pB, u_vmax);
     float dlon = abs(pA.x - pB.x);
     float dlat = abs(pA.y - pB.y);
     float seg2 = dlon*dlon + dlat*dlat;
     // discard: land, antimeridian wrap, degenerate (land-frozen coincident), stray-long.
-    if (wB.a < 0.5 || dlon > 0.5 || seg2 < 1e-12 || seg2 > (0.02*0.02)) {
+    if (vsB.z < 0.5 || dlon > 0.5 || seg2 < 1e-12 || seg2 > (0.02*0.02)) {
         v_speed = 0.0; v_t = 0.0; gl_Position = vec4(2.0,2.0,2.0,1.0); return;
     }
-    vec2 vel = wB.rg * (2.0*u_vmax) - u_vmax;
-    v_speed = length(vel);
+    v_speed = length(vsB.xy);
 
     vec4 clipA = projectTile(cp_toMerc(pA));
     vec4 clipB = projectTile(cp_toMerc(pB));
@@ -373,6 +430,9 @@ export function createCurrentParticleGLLayer(map, opts) {
         // Direction-coherence radius (texels). 0 (the default) disables the filter
         // entirely -- currents never overrides this, so it stays completely inert there.
         coherenceRadius = (cfg) => 0,
+        // Masked-bicubic coarse-cell spacing for sampleVelSmooth (see VEL_SAMPLE above).
+        // 1 = native (near-crisp); raise only if a sharp shear still tears.
+        smoothPx = (cfg) => 1.0,
         // trail_length (0-100) -> integration arc H. Currents' own tuned range; a
         // consumer with no trail_length config field (e.g. wind, which never had this
         // key) silently falls through to this range's midpoint -- override per-caller
@@ -427,6 +487,7 @@ export function createCurrentParticleGLLayer(map, opts) {
     let curCfg = initialConfig, curAnim = initialAnimation;
     let curSpeed = defaultSpeed, curThick = 2.0, curMaxSpeed = vmax, curAlpha = 0.9, curLandReset = 1.0;
     let curH = 8.0e-4;            // streamline integration step (tail arc); set in applyParams
+    let curSmoothPx = 1.0;        // sampleVelSmooth coarse-cell spacing; set in applyParams
     // Zoom compensation: curH is a fixed UV-space arc, but UV-space maps to
     // ~512*2^zoom screen px -- unscaled, the ribbon's SCREEN length grows every time
     // you zoom in, until it's stretching across the whole viewport at high zoom. Scaled
@@ -446,6 +507,8 @@ export function createCurrentParticleGLLayer(map, opts) {
         curMaxSpeed = maxSpeedColor(cfg) || vmax;
         curLandReset = landReset(cfg) > 0.5 ? 1.0 : 0.0;
         curH = hFromConfig(cfg);
+        const newSmoothPx = Number(smoothPx(cfg));
+        curSmoothPx = (isFinite(newSmoothPx) && newSmoothPx >= 1.0) ? newSmoothPx : 1.0;
         const newCoh = Number(coherenceRadius(cfg)) || 0;
         if (newCoh !== curCohRadius) { curCohRadius = newCoh; cohDirty = true; }
         const newAgeStep = Number(ageStep(cfg));
@@ -665,6 +728,7 @@ export function createCurrentParticleGLLayer(map, opts) {
         gl.uniform1i(u('u_age'), 2);
         gl.uniform1f(u('u_vmax'), vmax);
         gl.uniform1f(u('u_speed'), curSpeed);
+        gl.uniform1f(u('u_smoothPx'), curSmoothPx);
         gl.uniform1f(u('u_ageStep'), curAgeStep);
         gl.uniform1f(u('u_seed'), Math.random());
         gl.uniform1f(u('u_landReset'), curLandReset);
@@ -704,6 +768,7 @@ export function createCurrentParticleGLLayer(map, opts) {
         gl.uniform1i(u('u_age'), 3);
         gl.uniform1f(u('u_res'), RES);
         gl.uniform1f(u('u_vmax'), vmax);
+        gl.uniform1f(u('u_smoothPx'), curSmoothPx);
         gl.uniform1f(u('u_H'), curH * curLengthZoomFactor);
         gl.uniform1f(u('u_halfThick'), Math.max(0.5, curThick));
         gl.uniform1f(u('u_maxspeed'), curMaxSpeed);
