@@ -66,6 +66,70 @@ const QUAD_VS = `#version 300 es
 in vec2 a_pos; out vec2 v_uv;
 void main(){ v_uv = a_pos; gl_Position = vec4(a_pos*2.0-1.0, 0.0, 1.0); }`;
 
+// DIRECTION-COHERENCE filter, ported verbatim from _particles_gl.js (opt-in via
+// coherenceRadius; currents never sets it, so this stays completely inert there).
+// Coarse-grid fields (0.25-deg GFS wind) render a shear as an abrupt 1-cell direction
+// flip; interpolating raw Cartesian U/V across it makes opposing components cancel,
+// collapsing magnitude into a low-speed "dead zone" at the seam -- particles dwell or
+// stall there, and a per-frame re-integrated streamline (this engine's technique) visibly
+// jitters as the head drifts across it. Rewriting each cell as SPEED * smoothed-unit-
+// DIRECTION (magnitude untouched, direction averaged over a ~radius-cell Gaussian) turns
+// the flip into a gradual coherent turn. Done separably (H then V), only when the source
+// texture changes or the radius is retuned -- never per frame.
+const COH_H_FS = `#version 300 es
+precision highp float;
+in vec2 v_uv;
+out vec4 fragColor;
+uniform sampler2D u_src;
+uniform float u_vmax, u_radius;
+uniform vec2 u_texel;
+const int MAXK = 24;
+void main(){
+    vec4 c = texture(u_src, v_uv);
+    vec2 cv = c.rg * (2.0*u_vmax) - u_vmax;
+    float mag = length(cv);
+    float sig = max(u_radius, 1e-3);
+    float lim = 2.5 * sig;
+    vec2 acc = vec2(0.0); float wsum = 0.0;
+    for (int k = -MAXK; k <= MAXK; k++){
+        float fk = float(k);
+        if (abs(fk) > lim) continue;
+        float w = exp(-(fk*fk)/(2.0*sig*sig));
+        vec4 s = texture(u_src, vec2(fract(v_uv.x + fk*u_texel.x + 1.0), v_uv.y));
+        vec2 sv = s.rg * (2.0*u_vmax) - u_vmax;
+        float m = length(sv);
+        if (m > 0.01 && s.a > 0.5){ acc += w * (sv / m); wsum += w; }
+    }
+    vec2 hd = (wsum > 0.0) ? acc / wsum : (mag > 0.01 ? cv / mag : vec2(0.0));
+    fragColor = vec4(hd * 0.5 + 0.5, mag / u_vmax, c.a);
+}`;
+const COH_V_FS = `#version 300 es
+precision highp float;
+in vec2 v_uv;
+out vec4 fragColor;
+uniform sampler2D u_src;
+uniform float u_vmax, u_radius;
+uniform vec2 u_texel;
+const int MAXK = 24;
+void main(){
+    vec4 c = texture(u_src, v_uv);
+    float mag = c.b * u_vmax;
+    float sig = max(u_radius, 1e-3);
+    float lim = 2.5 * sig;
+    vec2 acc = vec2(0.0); float wsum = 0.0;
+    for (int k = -MAXK; k <= MAXK; k++){
+        float fk = float(k);
+        if (abs(fk) > lim) continue;
+        float w = exp(-(fk*fk)/(2.0*sig*sig));
+        vec4 s = texture(u_src, vec2(v_uv.x, clamp(v_uv.y + fk*u_texel.y, 0.0, 1.0)));
+        if (s.a > 0.5){ acc += w * (s.rg * 2.0 - 1.0); wsum += w; }
+    }
+    vec2 d = (wsum > 0.0) ? acc / wsum : (c.rg * 2.0 - 1.0);
+    float dl = length(d);
+    vec2 outv = (dl > 1e-4) ? mag * (d / dl) : vec2(0.0);
+    fragColor = vec4(clamp((outv + u_vmax) / (2.0*u_vmax), 0.0, 1.0), 0.0, c.a);
+}`;
+
 // Advection: head position step along u/v (reuses the wind engine's logic verbatim,
 // including landReset so trails die on land).
 const UPDATE_FS = `#version 300 es
@@ -264,6 +328,9 @@ export function createCurrentParticleGLLayer(map, opts) {
         // particle_speed as a raw multiplier (back-compat). Currents passes a mapper that
         // translates the 0-100 UI slider into its own min..max speed range.
         speedFromConfig = (cfg) => (Number(cfg.particle_speed) > 0 ? Number(cfg.particle_speed) / 500 : defaultSpeed),
+        // Direction-coherence radius (texels). 0 (the default) disables the filter
+        // entirely -- currents never overrides this, so it stays completely inert there.
+        coherenceRadius = (cfg) => 0,
         hourDataUrl = (cfg, hour, bust) => {
             const base = cfg.outfile.replace(/\.png$/, '');
             const f = String(hour).padStart(3, '0');
@@ -282,6 +349,11 @@ export function createCurrentParticleGLLayer(map, opts) {
     let updateProg = null, trailProgCache = new Map(), trailProgFailed = false;
     let screenQuad = null, vaoUpdate = null, vaoTrails = null;
     let velTex = null, cmapTex = null;
+    // Direction-coherence (opt-in via coherenceRadius). velCohTex holds the filtered
+    // field; cohTempTex is the H-pass intermediate. Rebuilt only when the source texture
+    // changes or the radius is retuned (cohDirty), never per frame.
+    let cohHProg = null, cohVProg = null, velCohTex = null, cohTempTex = null, cohFbo = null;
+    let cohW = 0, cohH = 0, curCohRadius = 0, cohDirty = false, velImgW = 0, velImgH = 0;
     // head position state as a 2-texture ping-pong (advected one step per frame). The tail
     // is the streamline integrated from the head in the trail VS — no stored history ring.
     let headTex = [], headFbo = [], headIdx = 0;
@@ -312,6 +384,8 @@ export function createCurrentParticleGLLayer(map, opts) {
         curMaxSpeed = maxSpeedColor(cfg) || vmax;
         curLandReset = landReset(cfg) > 0.5 ? 1.0 : 0.0;
         curH = hFromConfig(cfg);
+        const newCoh = Number(coherenceRadius(cfg)) || 0;
+        if (newCoh !== curCohRadius) { curCohRadius = newCoh; cohDirty = true; }
     };
 
     const compile = (gl, type, src) => {
@@ -395,6 +469,64 @@ export function createCurrentParticleGLLayer(map, opts) {
         gl.bindTexture(gl.TEXTURE_2D, velTex);
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
         velReady = true;
+        velImgW = img.naturalWidth || img.width || 0;
+        velImgH = img.naturalHeight || img.height || 0;
+        cohDirty = true;   // new raw texture -> the coherent copy is stale
+    };
+
+    // ---- direction-coherence (opt-in; see COH_H_FS/COH_V_FS above) ----
+    const cohActive = () => curCohRadius > 0.001 && cohHProg && cohVProg;
+    const activeVelTex = () => (cohActive() && velCohTex) ? velCohTex : velTex;
+    const makeCohTarget = (gl, w, h) => {
+        const t = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, t);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+        return t;
+    };
+    const ensureCohTextures = (gl, w, h) => {
+        if (velCohTex && cohW === w && cohH === h) return;
+        [velCohTex, cohTempTex].forEach((t) => t && gl.deleteTexture(t));
+        velCohTex = makeCohTarget(gl, w, h);
+        cohTempTex = makeCohTarget(gl, w, h);
+        if (!cohFbo) cohFbo = gl.createFramebuffer();
+        cohW = w; cohH = h;
+    };
+    // Build the direction-coherent copy of velTex into velCohTex via two separable passes.
+    // Runs only when the source changes or the radius is retuned (cohDirty), not per frame.
+    const runCoherence = (gl) => {
+        if (!velTex || !cohHProg || !cohVProg || velImgW <= 0 || velImgH <= 0) return;
+        ensureCohTextures(gl, velImgW, velImgH);
+        const prevFbo = gl.getParameter(gl.FRAMEBUFFER_BINDING);
+        const prevVp = gl.getParameter(gl.VIEWPORT);
+        const tx = 1.0 / velImgW, ty = 1.0 / velImgH;
+        gl.bindFramebuffer(gl.FRAMEBUFFER, cohFbo);
+        gl.viewport(0, 0, velImgW, velImgH);
+        gl.disable(gl.BLEND);
+        gl.bindVertexArray(vaoUpdate);
+        // Pass H: velTex -> cohTempTex
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, cohTempTex, 0);
+        gl.useProgram(cohHProg);
+        gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, velTex);
+        gl.uniform1i(gl.getUniformLocation(cohHProg, 'u_src'), 0);
+        gl.uniform1f(gl.getUniformLocation(cohHProg, 'u_vmax'), vmax);
+        gl.uniform1f(gl.getUniformLocation(cohHProg, 'u_radius'), curCohRadius);
+        gl.uniform2f(gl.getUniformLocation(cohHProg, 'u_texel'), tx, ty);
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+        // Pass V: cohTempTex -> velCohTex
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, velCohTex, 0);
+        gl.useProgram(cohVProg);
+        gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, cohTempTex);
+        gl.uniform1i(gl.getUniformLocation(cohVProg, 'u_src'), 0);
+        gl.uniform1f(gl.getUniformLocation(cohVProg, 'u_vmax'), vmax);
+        gl.uniform1f(gl.getUniformLocation(cohVProg, 'u_radius'), curCohRadius);
+        gl.uniform2f(gl.getUniformLocation(cohVProg, 'u_texel'), tx, ty);
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, prevFbo);
+        gl.viewport(prevVp[0], prevVp[1], prevVp[2], prevVp[3]);
     };
     const uploadColormapNow = (gl, lut) => {
         if (!lut) return;
@@ -450,7 +582,7 @@ export function createCurrentParticleGLLayer(map, opts) {
         const u = (n) => gl.getUniformLocation(updateProg, n);
         gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, headTex[src]);
         gl.uniform1i(u('u_particles'), 0);
-        gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, velTex);
+        gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, activeVelTex());
         gl.uniform1i(u('u_vel'), 1);
         gl.uniform1f(u('u_vmax'), vmax);
         gl.uniform1f(u('u_speed'), curSpeed);
@@ -490,7 +622,7 @@ export function createCurrentParticleGLLayer(map, opts) {
         // stage (2 samplers total — far under the WebGL2 vertex-texture-unit floor).
         gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, headTex[headIdx]);
         gl.uniform1i(u('u_head'), 0);
-        gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, velTex);
+        gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, activeVelTex());
         gl.uniform1i(u('u_vel'), 1);
         gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, cmapTex);
         gl.uniform1i(u('u_cmap'), 2);
@@ -524,6 +656,8 @@ export function createCurrentParticleGLLayer(map, opts) {
             vaoTrails = gl.createVertexArray();    // attributeless (gl_VertexID)
             gl.bindVertexArray(null);
             cmapTex = makeTex(gl, 1, 1, new Uint8Array([255,255,255,255]), gl.LINEAR);
+            cohHProg = linkProg(gl, QUAD_VS, COH_H_FS);
+            cohVProg = linkProg(gl, QUAD_VS, COH_V_FS);
             buildState(gl);
             applyParams(cfg);
             if (colormap) uploadColormapNow(gl, colormap(cfg));
@@ -536,6 +670,7 @@ export function createCurrentParticleGLLayer(map, opts) {
             if (pendingVelImg) { uploadVelNow(gl, pendingVelImg); pendingVelImg = null; }
             if (pendingLut) { uploadColormapNow(gl, pendingLut); pendingLut = null; }
             if (!velReady || !velTex) { map.triggerRepaint(); return; }
+            if (cohActive() && cohDirty) { runCoherence(gl); cohDirty = false; }
             curBbox = viewBox();
             advect(gl);
             drawTrails(gl, args);
@@ -546,9 +681,12 @@ export function createCurrentParticleGLLayer(map, opts) {
             trailProgCache.forEach((p) => gl.deleteProgram(p)); trailProgCache.clear();
             headTex.forEach((t) => t && gl.deleteTexture(t));
             headFbo.forEach((f) => f && gl.deleteFramebuffer(f));
-            [velTex, cmapTex].forEach((t) => t && gl.deleteTexture(t));
-            if (updateProg) gl.deleteProgram(updateProg);
-            headTex = []; headFbo = []; velTex = cmapTex = null; updateProg = null; glRef = null;
+            [velTex, cmapTex, velCohTex, cohTempTex].forEach((t) => t && gl.deleteTexture(t));
+            if (cohFbo) gl.deleteFramebuffer(cohFbo);
+            [updateProg, cohHProg, cohVProg].forEach((p) => p && gl.deleteProgram(p));
+            headTex = []; headFbo = []; velTex = cmapTex = null;
+            velCohTex = cohTempTex = cohFbo = null; cohW = cohH = 0;
+            updateProg = cohHProg = cohVProg = null; glRef = null;
         },
     });
 

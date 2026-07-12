@@ -191,6 +191,16 @@ export async function loadLayer(map, config, fullConfig = {}) {
         // Narrowed well below currents' own 0.35 instead, for a short, quick fade near
         // the tail tip.
         tailFadeEnd: 0.15,
+        // Wind's field is far noisier than ocean currents (0.25-deg GFS vs. smooth RTOFS),
+        // and this engine re-integrates each ribbon live from scratch every frame -- with
+        // no smoothing, small-scale field noise reads as trails jittering/flickering
+        // between paths frame to frame. Reuses wind's existing flow_coherence_radius
+        // config field (already had a live slider from the old engine); currents never
+        // sets this option, so its own rendering is completely unaffected.
+        coherenceRadius: (cfg) => {
+            const v = Number(cfg.flow_coherence_radius);
+            return (isFinite(v) && v > 0) ? v : 0;
+        },
     });
 
     // Tear down both layers (particles first, then heatmap) on basemap style swap.
