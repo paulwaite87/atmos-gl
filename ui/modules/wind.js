@@ -186,10 +186,11 @@ export async function loadLayer(map, config, fullConfig = {}) {
         // Currents' own LOD_COUNT ({1:4000, 2:9000, 3:18000}) reads too dense for wind's
         // long streamline ribbons -- reuse wind's own (lower) table from the old engine.
         lodCount: { 1: 3000, 2: 6000, 3: 10000 },
-        // Currents' 0.35 fade-in reaches full opacity 35% of the way along the ribbon --
-        // most of the tail reads solid. Widened a lot so wind's much longer ribbons fade
-        // gradually across most of their length, only solid near the head.
-        tailFadeEnd: 0.8,
+        // A WIDER smoothstep(0, X, v_t) means MORE of the tail shows some (even if dim)
+        // opacity, not less -- that read as a longer streak, the opposite of the goal.
+        // Narrowed well below currents' own 0.35 instead, for a short, quick fade near
+        // the tail tip.
+        tailFadeEnd: 0.15,
     });
 
     // Tear down both layers (particles first, then heatmap) on basemap style swap.
