@@ -602,15 +602,47 @@ export function createCurrentParticleGLLayer(map, opts) {
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     };
 
-    // viewBox (equirect bbox) for spawn density — whole world fallback.
+    // viewBox (equirect bbox) for spawn density -- ported from _particles_gl.js's more
+    // robust version (whole world fallback). The naive map.getBounds()-only version this
+    // replaced had three latent bugs wind's engine already found and fixed:
+    //   1. No latitude padding -- respawns land exactly at the visible edge, so new
+    //      particles visibly pop in right at the screen boundary instead of just outside it.
+    //   2. No minimum-height floor -- getBounds()'s N/S span can collapse toward zero at
+    //      high zoom, which is what made wind's particles vanish above ~zoom 7 before this
+    //      fix landed there.
+    //   3. Longitude taken directly from getBounds()'s east/west -- on a GLOBE projection
+    //      (not flat mercator), geographic bounds don't map cleanly to what's actually
+    //      visible on a rotated/tilted globe. Wind's fix instead derives the longitude span
+    //      from the ACTUAL VIEWPORT PIXEL WIDTH (worldPx = 512*2^zoom), which is
+    //      geometrically correct regardless of globe rotation.
+    // currents' viewBox() is exposed to the identical class of bug -- same globe
+    // projection, same getBounds()-based respawn biasing.
     const viewBox = () => {
         try {
             const b = map.getBounds();
-            const w = b.getWest(), e = b.getEast(), s = b.getSouth(), n = b.getNorth();
-            const toX = (lon) => ((lon + 180) / 360 + 1) % 1;
-            const toY = (lat) => 0.5 - lat / 180;
-            return [toX(w), toY(n), toX(e), toY(s)];
-        } catch { return [0, 0, 1, 1]; }
+            let n = b.getNorth(), s = b.getSouth();
+            if (!Number.isFinite(n) || !Number.isFinite(s)) return [0, 0, 1, 1];
+            const padLat = Math.max(0, n - s) * 0.15;
+            n = Math.min(89.9, n + padLat); s = Math.max(-89.9, s - padLat);
+            let yN = Math.max(0, (90 - n) / 180), yS = Math.min(1, (90 - s) / 180);
+            const MIN_H = 0.006;
+            if (yS - yN < MIN_H) {
+                const cy = Math.min(1 - MIN_H * 0.5, Math.max(MIN_H * 0.5, (yN + yS) * 0.5));
+                yN = cy - MIN_H * 0.5; yS = cy + MIN_H * 0.5;
+            }
+            const c = map.getCenter();
+            const cv = map.getCanvas();
+            const vw = (cv && cv.clientWidth) || 1024;
+            const worldPx = 512 * Math.pow(2, map.getZoom());
+            let spanLon = (vw / worldPx) * 360 * 1.4;
+            if (!Number.isFinite(spanLon) || spanLon >= 350) return [0, yN, 1, yS];
+            spanLon = Math.max(1.0, spanLon);
+            const cl = ((((c.lng + 180) % 360) + 360) % 360) / 360;
+            const half = (spanLon / 360) / 2;
+            const lonMin = ((((cl - half) % 1) + 1) % 1);
+            const lonMax = ((((cl + half) % 1) + 1) % 1);
+            return [lonMin, yN, lonMax, yS];
+        } catch (_) { return [0, 0, 1, 1]; }
     };
     let curBbox = [0, 0, 1, 1];
 
