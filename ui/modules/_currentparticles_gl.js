@@ -162,7 +162,7 @@ vec2 cp_step(vec2 p, out bool land){
     return nx;
 }
 void main(){
-    int segCount = 20;
+    int segCount = ${STREAM_STEPS};
     int pid = gl_VertexID / (6 * segCount);
     int rem = gl_VertexID - pid * (6 * segCount);
     int seg = rem / 6;                 // 0 = head segment .. segCount-1 = tail segment
