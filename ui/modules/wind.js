@@ -201,6 +201,16 @@ export async function loadLayer(map, config, fullConfig = {}) {
             const v = Number(cfg.flow_coherence_radius);
             return (isFinite(v) && v > 0) ? v : 0;
         },
+        // Currents' own trail_length config field doesn't exist for wind, so hFromConfig
+        // silently fell through to currents' tuned-for-ocean midpoint H (~8e-4) -- with
+        // STREAM_STEPS=40 that read as a "massively long strand" for wind, independent of
+        // the (correctly working) tail-fade curve. Reuse wind's existing trail_fade slider
+        // (0-100, already live) mapped into a MUCH shorter arc range instead.
+        hFromConfig: (cfg) => {
+            const t = Number(cfg.trail_fade);
+            const frac = (t >= 0 && t <= 100) ? t / 100 : 0.5;
+            return 3.0e-5 + frac * (3.0e-4 - 3.0e-5);   // ~3e-5 .. 3e-4 -- a first pass, tune live
+        },
     });
 
     // Tear down both layers (particles first, then heatmap) on basemap style swap.

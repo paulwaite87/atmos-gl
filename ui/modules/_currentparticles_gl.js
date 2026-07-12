@@ -331,6 +331,15 @@ export function createCurrentParticleGLLayer(map, opts) {
         // Direction-coherence radius (texels). 0 (the default) disables the filter
         // entirely -- currents never overrides this, so it stays completely inert there.
         coherenceRadius = (cfg) => 0,
+        // trail_length (0-100) -> integration arc H. Currents' own tuned range; a
+        // consumer with no trail_length config field (e.g. wind, which never had this
+        // key) silently falls through to this range's midpoint -- override per-caller
+        // for a genuinely different length, not just a different default frac.
+        hFromConfig = (cfg) => {
+            const t = Number(cfg.trail_length);
+            const frac = (t >= 0 && t <= 100) ? t / 100 : 0.5;
+            return 2.0e-4 + frac * (1.4e-3 - 2.0e-4);   // ~2e-4 .. 1.4e-3
+        },
         hourDataUrl = (cfg, hour, bust) => {
             const base = cfg.outfile.replace(/\.png$/, '');
             const f = String(hour).padStart(3, '0');
@@ -367,15 +376,6 @@ export function createCurrentParticleGLLayer(map, opts) {
     const particleCount = (cfg) => {
         const explicit = parseInt(cfg.particle_count, 10);
         return Math.max(256, explicit > 0 ? explicit : ((lodCount || LOD_COUNT)[lodOf(cfg)] || 9000));
-    };
-    // Tail length is decoupled from drift speed: it is the per-step integration arc times
-    // STREAM_STEPS, independent of u_speed. trail_length is a 0..100 slider mapped into a
-    // sensible arc range; faster currents still get proportionally longer tails (the arc
-    // scales with local speed inside the shader). Default ~mid.
-    const hFromConfig = (cfg) => {
-        const t = Number(cfg.trail_length);
-        const frac = (t >= 0 && t <= 100) ? t / 100 : 0.5;
-        return 2.0e-4 + frac * (1.4e-3 - 2.0e-4);   // ~2e-4 .. 1.4e-3
     };
     const applyParams = (cfg) => {
         curSpeed = speedFromConfig(cfg);

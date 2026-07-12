@@ -273,6 +273,7 @@ FIELD_SPECS = {
     ("wind", "particle_speed"): _PARTICLE_SPEED_LIKE,
     ("wind", "particle_alpha"): _PARTICLE_ALPHA,
     ("wind", "particle_size"): _PARTICLE_SIZE,
+    ("wind", "particle_count"): SliderSpec(min=200, max=6000, step=100, suffix=" particles"),
     ("wind", "trail_fade"): _TRAIL_FADE_OR_LENGTH,
     ("wind", "calm_speed"): SliderSpec(min=0.5, max=10.0, step=0.5, decimals=1, suffix=" m/s"),
     ("wind", "calm_drop"): SliderSpec(min=0.0, max=0.5, step=0.01, decimals=2),
