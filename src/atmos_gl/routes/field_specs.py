@@ -119,7 +119,10 @@ _OPACITY = SliderSpec(min=0, max=100, step=1)
 _PARTICLE_ALPHA = SliderSpec(min=0, max=100, step=5)
 _PARTICLE_SPEED_LIKE = SliderSpec(min=0, max=100, step=1)
 _PARTICLE_SIZE = SliderSpec(min=0.1, max=5.0, step=0.05, decimals=2)
-_TRAIL_FADE_OR_LENGTH = SliderSpec(min=0, max=100, step=1)
+_TRAIL_LENGTH = SliderSpec(min=0, max=100, step=1)
+# Streamline-ribbon half-thickness (_currentparticles_gl.js's curThick, shared by wind
+# and currents -- the unified engine both now render through).
+_TRAIL_THICKNESS = SliderSpec(min=0.5, max=5.0, step=0.1, decimals=1, suffix="px")
 _MIN_MAX_C = SliderSpec(min=0, max=36, step=1, suffix=" DegC")
 _CACHE_EXPIRY_DAYS = SliderSpec(
     min=0, max=30, step=1, suffix=" day", zero_label="keep forever", pluralize=True
@@ -231,6 +234,7 @@ FIELD_SPECS = {
     ("quakes", "label_fontsize"): _FONTSIZE,
     ("quakes", "min_mag"): SliderSpec(min=0, max=10, step=0.1, decimals=1, prefix="M "),
     ("quakes", "runs_per_day"): _RUNS_PER_DAY,
+    ("volcanoes", "icon_zoom"): _ICON_ZOOM,
     ("volcanoes", "significant_only"): ToggleSpec(),
     ("volcanoes", "vei_min"): _VEI_OPTIONS,
     ("volcanoes", "erupt_date_codes"): _ERUPT_DATE_CODES,
@@ -239,6 +243,8 @@ FIELD_SPECS = {
     ("satellites", "sat_names"): _SAT_NAMES,
     ("satellites", "past_minutes"): _MINUTES,
     ("satellites", "future_minutes"): _MINUTES,
+    ("satellites", "step_seconds"): SliderSpec(min=5, max=120, step=5, suffix="s"),
+    ("satellites", "color"): ColorSpec(),
     ("terminator", "opacity"): _OPACITY,
     ("terminator", "shade_color"): ColorSpec(named=False),
     ("terminator", "edge_softness"): SliderSpec(min=0, max=50, step=1),
@@ -246,6 +252,8 @@ FIELD_SPECS = {
     ("markers", "marker_fontsize"): _FONTSIZE,
     ("markers", "weather_popup"): ToggleSpec(),
     ("markers", "runs_per_day"): _RUNS_PER_DAY,
+    # --- Shipping (shipping) ---
+    ("shipping", "icon_zoom"): _ICON_ZOOM,
     # --- Atmospheric (clouds, isobars, wind, precipitation, pwat, lightning, storms) ---
     ("clouds", "threshold"): SliderSpec(
         min=0, max=100, step=1, suffix="%",
@@ -257,6 +265,7 @@ FIELD_SPECS = {
     ("clouds", "runs_per_day"): _RUNS_PER_DAY,
     ("clouds", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
     ("isobars", "level_of_detail"): _LEVEL_OF_DETAIL,
+    ("isobars", "isobar_step"): SliderSpec(min=1, max=10, step=1, suffix=" hPa"),
     ("isobars", "isobar_color"): ColorSpec(),
     ("isobars", "linewidth"): SliderSpec(min=0.1, max=5.0, step=0.1, decimals=1, suffix="px"),
     ("isobars", "opacity"): _OPACITY,
@@ -264,21 +273,19 @@ FIELD_SPECS = {
     ("isobars", "label_outline"): ToggleSpec(),
     ("isobars", "runs_per_day"): _RUNS_PER_DAY,
     ("isobars", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
+    # Ordered to mirror currents' shape below (same shared engine): resolution, colour,
+    # opacity, particle tuning, field-quality knobs, trail rendering, playback quality.
     ("wind", "level_of_detail"): _LEVEL_OF_DETAIL,
-    ("wind", "render_mode"): SelectSpec([("trails", "Trails"), ("streaks", "Streaks")]),
-    ("wind", "flow_coherence_radius"): SliderSpec(min=0.0, max=10.0, step=0.5, decimals=2),
-    ("wind", "trail_persist"): SliderSpec(min=0.8, max=1.5, step=0.01, decimals=2),
-    ("wind", "point_size"): SliderSpec(min=1, max=8, step=1, suffix="px"),
     ("wind", "vector_color"): ColorSpec(),
+    ("wind", "opacity"): _OPACITY,
     ("wind", "particle_speed"): _PARTICLE_SPEED_LIKE,
     ("wind", "particle_alpha"): _PARTICLE_ALPHA,
-    ("wind", "particle_size"): _PARTICLE_SIZE,
     ("wind", "particle_count"): SliderSpec(min=200, max=6000, step=100, suffix=" particles"),
-    ("wind", "trail_fade"): _TRAIL_FADE_OR_LENGTH,
-    ("wind", "calm_speed"): SliderSpec(min=0.5, max=10.0, step=0.5, decimals=1, suffix=" m/s"),
-    ("wind", "calm_drop"): SliderSpec(min=0.0, max=0.5, step=0.01, decimals=2),
-    ("wind", "calm_fade"): SliderSpec(min=0.0, max=1.0, step=0.05, decimals=2),
-    ("wind", "opacity"): _OPACITY,
+    ("wind", "flow_coherence_radius"): SliderSpec(min=0.0, max=10.0, step=0.5, decimals=2),
+    ("wind", "trail_length"): _TRAIL_LENGTH,
+    ("wind", "trail_thickness"): _TRAIL_THICKNESS,
+    ("wind", "temporal_blend"): ToggleSpec(),
+    ("wind", "key_fontsize"): _FONTSIZE,
     ("wind", "runs_per_day"): _RUNS_PER_DAY,
     ("wind", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
     ("precipitation", "level_of_detail"): _LEVEL_OF_DETAIL,
@@ -303,13 +310,13 @@ FIELD_SPECS = {
     ("pwat", "key_fontsize"): _FONTSIZE,
     ("pwat", "runs_per_day"): _RUNS_PER_DAY,
     ("pwat", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
+    ("lightning", "icon_zoom"): _ICON_ZOOM,
     ("lightning", "strike_recent_minutes"): _MINUTES,
     ("lightning", "strike_keep_minutes"): _MINUTES,
     ("lightning", "strike_expiry_hours"): _HOURS,
     ("storms", "expiry_days"): SliderSpec(min=0, max=60, step=1, suffix=" days expiry"),
     ("storms", "runs_per_day"): _RUNS_PER_DAY,
     # --- Climate (sst, currents, waves, temperature, ozone, stormwatch) ---
-    ("sst", "level_of_detail"): _LEVEL_OF_DETAIL,
     ("sst", "mode"): _MODE_OPTIONS,
     ("sst", "opacity"): _OPACITY,
     ("sst", "palette"): SelectSpec([
@@ -332,10 +339,16 @@ FIELD_SPECS = {
     ]),
     ("currents", "opacity"): _OPACITY,
     ("currents", "particle_speed"): _PARTICLE_SPEED_LIKE,
+    ("currents", "particle_alpha"): _PARTICLE_ALPHA,
+    ("currents", "particle_count"): SliderSpec(min=500, max=20000, step=500, suffix=" particles"),
     ("currents", "current_speed_minimum"): SliderSpec(
         min=0.0, max=5.0, step=0.1, decimals=2, suffix=" m/s"
     ),
-    ("currents", "trail_length"): _TRAIL_FADE_OR_LENGTH,
+    ("currents", "trail_length"): _TRAIL_LENGTH,
+    ("currents", "trail_thickness"): _TRAIL_THICKNESS,
+    ("currents", "fill_floor"): SliderSpec(min=0.0, max=1.0, step=0.05, decimals=2, suffix=" m/s"),
+    ("currents", "fill_knee"): SliderSpec(min=0.0, max=2.5, step=0.05, decimals=2, suffix=" m/s"),
+    ("currents", "temporal_blend"): ToggleSpec(),
     ("currents", "key_fontsize"): _FONTSIZE,
     ("currents", "runs_per_day"): _RUNS_PER_DAY,
     ("currents", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
@@ -355,13 +368,7 @@ FIELD_SPECS = {
     ("waves", "particle_alpha"): _PARTICLE_ALPHA,
     ("waves", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
     ("temperature", "level_of_detail"): _LEVEL_OF_DETAIL,
-    ("temperature", "palette"): SelectSpec([
-        ("global_thermal", "Global thermal"),
-        ("extreme_contrast", "Extreme contrast"),
-        ("twilight_gradient", "Twilight gradient"),
-    ]),
     ("temperature", "opacity"): _OPACITY,
-    ("temperature", "show_freezing_line"): ToggleSpec(),
     ("temperature", "key_fontsize"): _FONTSIZE,
     ("temperature", "runs_per_day"): _RUNS_PER_DAY,
     ("temperature", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
@@ -395,6 +402,7 @@ FIELD_SPECS = {
     # data-acquisition opt-out (independent of any layer's frontend `enabled`), rendered
     # on the Data Status page rather than as a generic config-tab field.
     ("data_collector", "update_minutes"): _MINUTES,
+    ("data_collector", "backfill_poll_seconds"): SliderSpec(min=10, max=600, step=10, suffix="s"),
     ("data_collector", "cache_hours"): _HOURS,
     ("data_collector", "log_level"): _LOG_LEVEL,
     ("housekeeper", "enabled"): ToggleSpec(),
@@ -403,6 +411,7 @@ FIELD_SPECS = {
     ),
     ("housekeeper", "field_expiry_hours"): _HOURS,
     ("housekeeper", "dry_run"): ToggleSpec(),
+    ("housekeeper", "log_level"): _LOG_LEVEL,
 }
 
 # Per-(section, option) label overrides, ported from the legacy JS's customLabelText
@@ -412,9 +421,10 @@ _LABEL_OVERRIDES = {
     ("animation", "stepping_rate"): "Forecast stepping rate",
     ("quakes", "min_mag"): "Minimum magnitude",
     ("stormwatch", "min_cape"): "Minimum CAPE Threshold",
-    ("wind", "calm_speed"): "Calm Speed Threshold",
-    ("wind", "calm_drop"): "Calm Drop Probability",
-    ("wind", "calm_fade"): "Calm Fade Strength",
+    ("currents", "fill_floor"): "Fill Floor (min speed shown)",
+    ("currents", "fill_knee"): "Fill Knee (full-opacity speed)",
+    ("wind", "temporal_blend"): "Smooth Hour Blending (playback)",
+    ("currents", "temporal_blend"): "Smooth Hour Blending (playback)",
     ("ozone", "critical_du"): "Critical Ozone Threshold (Dobson Units)",
     ("pwat", "critical_pwat"): "Critical Moisture Threshold (mm)",
 }

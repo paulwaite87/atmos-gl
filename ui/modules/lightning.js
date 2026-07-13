@@ -51,7 +51,7 @@ export function loadLayer(map, config) {
             layout: {
                 'icon-image': ['step', ['get', 'age_minutes'],
                     'bolt-white', recentMins, 'bolt-yellow', keepMins, 'bolt-red'],
-                'icon-size': 0.8,
+                'icon-size': 0.8 * (cfg.icon_zoom ?? 1.0),
                 'icon-allow-overlap': true, 'icon-ignore-placement': true,
             },
         });
