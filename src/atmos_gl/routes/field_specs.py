@@ -119,7 +119,7 @@ _OPACITY = SliderSpec(min=0, max=100, step=1)
 _PARTICLE_ALPHA = SliderSpec(min=0, max=100, step=5)
 _PARTICLE_SPEED_LIKE = SliderSpec(min=0, max=100, step=1)
 _PARTICLE_SIZE = SliderSpec(min=0.1, max=5.0, step=0.05, decimals=2)
-_TRAIL_FADE_OR_LENGTH = SliderSpec(min=0, max=100, step=1)
+_TRAIL_LENGTH = SliderSpec(min=0, max=100, step=1)
 # Streamline-ribbon half-thickness (_currentparticles_gl.js's curThick, shared by wind
 # and currents -- the unified engine both now render through).
 _TRAIL_THICKNESS = SliderSpec(min=0.5, max=5.0, step=0.1, decimals=1, suffix="px")
@@ -267,16 +267,18 @@ FIELD_SPECS = {
     ("isobars", "label_outline"): ToggleSpec(),
     ("isobars", "runs_per_day"): _RUNS_PER_DAY,
     ("isobars", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
+    # Ordered to mirror currents' shape below (same shared engine): resolution, colour,
+    # opacity, particle tuning, field-quality knobs, trail rendering, playback quality.
     ("wind", "level_of_detail"): _LEVEL_OF_DETAIL,
-    ("wind", "flow_coherence_radius"): SliderSpec(min=0.0, max=10.0, step=0.5, decimals=2),
     ("wind", "vector_color"): ColorSpec(),
+    ("wind", "opacity"): _OPACITY,
     ("wind", "particle_speed"): _PARTICLE_SPEED_LIKE,
     ("wind", "particle_alpha"): _PARTICLE_ALPHA,
     ("wind", "particle_count"): SliderSpec(min=200, max=6000, step=100, suffix=" particles"),
-    ("wind", "trail_fade"): _TRAIL_FADE_OR_LENGTH,
+    ("wind", "flow_coherence_radius"): SliderSpec(min=0.0, max=10.0, step=0.5, decimals=2),
+    ("wind", "trail_length"): _TRAIL_LENGTH,
     ("wind", "trail_thickness"): _TRAIL_THICKNESS,
     ("wind", "temporal_blend"): ToggleSpec(),
-    ("wind", "opacity"): _OPACITY,
     ("wind", "runs_per_day"): _RUNS_PER_DAY,
     ("wind", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
     ("precipitation", "level_of_detail"): _LEVEL_OF_DETAIL,
@@ -335,7 +337,7 @@ FIELD_SPECS = {
     ("currents", "current_speed_minimum"): SliderSpec(
         min=0.0, max=5.0, step=0.1, decimals=2, suffix=" m/s"
     ),
-    ("currents", "trail_length"): _TRAIL_FADE_OR_LENGTH,
+    ("currents", "trail_length"): _TRAIL_LENGTH,
     ("currents", "trail_thickness"): _TRAIL_THICKNESS,
     ("currents", "fill_floor"): SliderSpec(min=0.0, max=1.0, step=0.05, decimals=2, suffix=" m/s"),
     ("currents", "fill_knee"): SliderSpec(min=0.0, max=2.5, step=0.05, decimals=2, suffix=" m/s"),
