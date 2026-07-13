@@ -68,6 +68,14 @@ class CollectorBase:
         self.config = config
         self.process_status_adapter = ProcessStatusAdapter()
         self.settings = config.get_section(self.section) or {}
+        # Mirrors AsyncCollectorBase.refresh_settings() -- a fresh instance is
+        # constructed every _drive() cycle (collectors/__init__.py), so applying this
+        # in __init__ has the same live-update effect as that class's periodic refresh.
+        lvl = self.settings.get("log_level")
+        if lvl:
+            from atmos_gl.lib.logging import set_loglevel
+
+            set_loglevel(lvl)
 
     def datasource_url(self, key: str) -> str:
         """The configured data_collector.datasources[key] base URL, or "" if unset.

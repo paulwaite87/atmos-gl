@@ -243,6 +243,8 @@ FIELD_SPECS = {
     ("satellites", "sat_names"): _SAT_NAMES,
     ("satellites", "past_minutes"): _MINUTES,
     ("satellites", "future_minutes"): _MINUTES,
+    ("satellites", "step_seconds"): SliderSpec(min=5, max=120, step=5, suffix="s"),
+    ("satellites", "color"): ColorSpec(),
     ("terminator", "opacity"): _OPACITY,
     ("terminator", "shade_color"): ColorSpec(named=False),
     ("terminator", "edge_softness"): SliderSpec(min=0, max=50, step=1),
@@ -315,7 +317,6 @@ FIELD_SPECS = {
     ("storms", "expiry_days"): SliderSpec(min=0, max=60, step=1, suffix=" days expiry"),
     ("storms", "runs_per_day"): _RUNS_PER_DAY,
     # --- Climate (sst, currents, waves, temperature, ozone, stormwatch) ---
-    ("sst", "level_of_detail"): _LEVEL_OF_DETAIL,
     ("sst", "mode"): _MODE_OPTIONS,
     ("sst", "opacity"): _OPACITY,
     ("sst", "palette"): SelectSpec([
@@ -367,13 +368,7 @@ FIELD_SPECS = {
     ("waves", "particle_alpha"): _PARTICLE_ALPHA,
     ("waves", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
     ("temperature", "level_of_detail"): _LEVEL_OF_DETAIL,
-    ("temperature", "palette"): SelectSpec([
-        ("global_thermal", "Global thermal"),
-        ("extreme_contrast", "Extreme contrast"),
-        ("twilight_gradient", "Twilight gradient"),
-    ]),
     ("temperature", "opacity"): _OPACITY,
-    ("temperature", "show_freezing_line"): ToggleSpec(),
     ("temperature", "key_fontsize"): _FONTSIZE,
     ("temperature", "runs_per_day"): _RUNS_PER_DAY,
     ("temperature", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
@@ -407,6 +402,7 @@ FIELD_SPECS = {
     # data-acquisition opt-out (independent of any layer's frontend `enabled`), rendered
     # on the Data Status page rather than as a generic config-tab field.
     ("data_collector", "update_minutes"): _MINUTES,
+    ("data_collector", "backfill_poll_seconds"): SliderSpec(min=10, max=600, step=10, suffix="s"),
     ("data_collector", "cache_hours"): _HOURS,
     ("data_collector", "log_level"): _LOG_LEVEL,
     ("housekeeper", "enabled"): ToggleSpec(),
@@ -415,6 +411,7 @@ FIELD_SPECS = {
     ),
     ("housekeeper", "field_expiry_hours"): _HOURS,
     ("housekeeper", "dry_run"): ToggleSpec(),
+    ("housekeeper", "log_level"): _LOG_LEVEL,
 }
 
 # Per-(section, option) label overrides, ported from the legacy JS's customLabelText

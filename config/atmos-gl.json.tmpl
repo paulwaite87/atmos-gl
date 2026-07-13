@@ -101,9 +101,7 @@
   "temperature": {
     "enabled": false,
     "level_of_detail": "2",
-    "palette": "extreme_contrast",
     "opacity": 80,
-    "show_freezing_line": true,
     "key_fontsize": 8,
     "runs_per_day": 8,
     "cache_expiry_days": 3
@@ -140,7 +138,6 @@
   },
   "sst": {
     "enabled": false,
-    "level_of_detail": "3",
     "mode": "absolute",
     "opacity": 100,
     "palette": "vivid",
@@ -254,14 +251,14 @@
     "log_level": "INFO"
   },
   "layer_builder": {
-    "enabled": true,
-    "log_level": "INFO"
+    "enabled": true
   },
   "housekeeper": {
     "enabled": true,
     "days_between_runs": 1,
     "field_expiry_hours": 24,
-    "dry_run": false
+    "dry_run": false,
+    "log_level": "INFO"
   },
   "radio": {
     "sst": "on",
