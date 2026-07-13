@@ -200,6 +200,8 @@ void main(){
 // including landReset so trails die on land). MRT: also advances a per-particle age
 // (0..1, reset to 0 on respawn) into a second colour attachment -- the trail shader
 // fades alpha in/out over it instead of particles popping instantly into/out of view.
+// The age texture's g channel holds a per-particle lifetime factor (see UPDATE_FS)
+// so particles don't age out in synchronised lockstep either.
 const UPDATE_FS = `#version 300 es
 precision highp float;
 in vec2 v_uv;
@@ -216,7 +218,14 @@ ${PACK}
 ${VEL_SAMPLE}
 void main(){
     vec2 pos = decodePos(texture(u_particles, v_uv));
-    float age = texture(u_age, v_uv).r;
+    vec4 ageState = texture(u_age, v_uv);
+    float age = ageState.r;
+    // Per-particle lifetime factor in [0.5..1.5] (g channel, assigned once at spawn --
+    // see randomAge()/the reset branch below): longer-lived particles age slower, so the
+    // whole field doesn't respawn in visible synchronised waves (ported from
+    // _particles_gl.js, which found this the same way -- without it, particles seeded
+    // with similar initial ages drift back into lockstep after a few cycles).
+    float lifeFactor = ageState.g > 0.0 ? (0.5 + ageState.g) : 1.0;
     vec3 vs0 = sampleVelSmooth(u_vel, pos, u_vmax);
     vec2 vel = vs0.xy;
     float hasData = vs0.z;
@@ -253,7 +262,7 @@ void main(){
     if (dmag > MAX_STEP) d *= (MAX_STEP / dmag);
     vec2 npos = pos + d;
     npos.x = fract(npos.x + 1.0);
-    age += u_ageStep;
+    age += u_ageStep / lifeFactor;
     vec2 seed = (pos + v_uv) * (u_seed + 1.0);
     vec2 bmin = u_bboxPos.xy, bmax = u_bboxPos.zw;
     bool lonWrap = bmin.x > bmax.x;
@@ -276,10 +285,12 @@ void main(){
                  || (u_landReset > 0.5 && hasData < 0.5);
     if (reset) {
         o_pos = encodePos(randPos);
-        o_age = vec4(0.0, 0.0, 0.0, 1.0);
+        // New random lifetime factor + age reset to 0 (born fresh, will fade in).
+        float nl = rand(seed + 5.1);
+        o_age = vec4(0.0, nl, 0.0, 1.0);
     } else {
         o_pos = encodePos(npos);
-        o_age = vec4(clamp(age, 0.0, 1.0), 0.0, 0.0, 1.0);
+        o_age = vec4(clamp(age, 0.0, 1.0), ageState.g, 0.0, 1.0);
     }
 }`;
 
@@ -604,11 +615,15 @@ export function createCurrentParticleGLLayer(map, opts) {
         return d;
     };
     // Random initial ages (not all-zero) so particles don't all pop into existence
-    // synchronised on first load -- mirrors _particles_gl.js's randomAge().
+    // synchronised on first load -- mirrors _particles_gl.js's randomAge(). g = random
+    // per-particle lifetime factor (see UPDATE_FS's lifeFactor) so particles don't all
+    // die in lockstep either.
     const randomAge = () => {
         const d = new Uint8Array(RES * RES * 4);
         for (let i = 0; i < RES * RES; i++) {
-            d[i*4] = Math.floor(Math.random() * 256); d[i*4+1] = 0; d[i*4+2] = 0; d[i*4+3] = 255;
+            d[i*4] = Math.floor(Math.random() * 256);       // age
+            d[i*4+1] = Math.floor(Math.random() * 256);     // lifetime factor
+            d[i*4+2] = 0; d[i*4+3] = 255;
         }
         return d;
     };
