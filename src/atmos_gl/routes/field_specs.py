@@ -120,6 +120,9 @@ _PARTICLE_ALPHA = SliderSpec(min=0, max=100, step=5)
 _PARTICLE_SPEED_LIKE = SliderSpec(min=0, max=100, step=1)
 _PARTICLE_SIZE = SliderSpec(min=0.1, max=5.0, step=0.05, decimals=2)
 _TRAIL_FADE_OR_LENGTH = SliderSpec(min=0, max=100, step=1)
+# Streamline-ribbon half-thickness (_currentparticles_gl.js's curThick, shared by wind
+# and currents -- the unified engine both now render through).
+_TRAIL_THICKNESS = SliderSpec(min=0.5, max=5.0, step=0.1, decimals=1, suffix="px")
 _MIN_MAX_C = SliderSpec(min=0, max=36, step=1, suffix=" DegC")
 _CACHE_EXPIRY_DAYS = SliderSpec(
     min=0, max=30, step=1, suffix=" day", zero_label="keep forever", pluralize=True
@@ -265,19 +268,14 @@ FIELD_SPECS = {
     ("isobars", "runs_per_day"): _RUNS_PER_DAY,
     ("isobars", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
     ("wind", "level_of_detail"): _LEVEL_OF_DETAIL,
-    ("wind", "render_mode"): SelectSpec([("trails", "Trails"), ("streaks", "Streaks")]),
     ("wind", "flow_coherence_radius"): SliderSpec(min=0.0, max=10.0, step=0.5, decimals=2),
-    ("wind", "trail_persist"): SliderSpec(min=0.8, max=1.5, step=0.01, decimals=2),
-    ("wind", "point_size"): SliderSpec(min=1, max=8, step=1, suffix="px"),
     ("wind", "vector_color"): ColorSpec(),
     ("wind", "particle_speed"): _PARTICLE_SPEED_LIKE,
     ("wind", "particle_alpha"): _PARTICLE_ALPHA,
-    ("wind", "particle_size"): _PARTICLE_SIZE,
     ("wind", "particle_count"): SliderSpec(min=200, max=6000, step=100, suffix=" particles"),
     ("wind", "trail_fade"): _TRAIL_FADE_OR_LENGTH,
-    ("wind", "calm_speed"): SliderSpec(min=0.5, max=10.0, step=0.5, decimals=1, suffix=" m/s"),
-    ("wind", "calm_drop"): SliderSpec(min=0.0, max=0.5, step=0.01, decimals=2),
-    ("wind", "calm_fade"): SliderSpec(min=0.0, max=1.0, step=0.05, decimals=2),
+    ("wind", "trail_thickness"): _TRAIL_THICKNESS,
+    ("wind", "temporal_blend"): ToggleSpec(),
     ("wind", "opacity"): _OPACITY,
     ("wind", "runs_per_day"): _RUNS_PER_DAY,
     ("wind", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
@@ -332,10 +330,16 @@ FIELD_SPECS = {
     ]),
     ("currents", "opacity"): _OPACITY,
     ("currents", "particle_speed"): _PARTICLE_SPEED_LIKE,
+    ("currents", "particle_alpha"): _PARTICLE_ALPHA,
+    ("currents", "particle_count"): SliderSpec(min=500, max=20000, step=500, suffix=" particles"),
     ("currents", "current_speed_minimum"): SliderSpec(
         min=0.0, max=5.0, step=0.1, decimals=2, suffix=" m/s"
     ),
     ("currents", "trail_length"): _TRAIL_FADE_OR_LENGTH,
+    ("currents", "trail_thickness"): _TRAIL_THICKNESS,
+    ("currents", "fill_floor"): SliderSpec(min=0.0, max=1.0, step=0.05, decimals=2, suffix=" m/s"),
+    ("currents", "fill_knee"): SliderSpec(min=0.0, max=2.5, step=0.05, decimals=2, suffix=" m/s"),
+    ("currents", "temporal_blend"): ToggleSpec(),
     ("currents", "key_fontsize"): _FONTSIZE,
     ("currents", "runs_per_day"): _RUNS_PER_DAY,
     ("currents", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
@@ -412,9 +416,10 @@ _LABEL_OVERRIDES = {
     ("animation", "stepping_rate"): "Forecast stepping rate",
     ("quakes", "min_mag"): "Minimum magnitude",
     ("stormwatch", "min_cape"): "Minimum CAPE Threshold",
-    ("wind", "calm_speed"): "Calm Speed Threshold",
-    ("wind", "calm_drop"): "Calm Drop Probability",
-    ("wind", "calm_fade"): "Calm Fade Strength",
+    ("currents", "fill_floor"): "Fill Floor (min speed shown)",
+    ("currents", "fill_knee"): "Fill Knee (full-opacity speed)",
+    ("wind", "temporal_blend"): "Smooth Hour Blending (playback)",
+    ("currents", "temporal_blend"): "Smooth Hour Blending (playback)",
     ("ozone", "critical_du"): "Critical Ozone Threshold (Dobson Units)",
     ("pwat", "critical_pwat"): "Critical Moisture Threshold (mm)",
 }
