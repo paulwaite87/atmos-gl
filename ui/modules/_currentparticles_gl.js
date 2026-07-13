@@ -179,6 +179,23 @@ void main(){
     fragColor = vec4(clamp((outv + u_vmax) / (2.0*u_vmax), 0.0, 1.0), 0.0, c.a);
 }`;
 
+// Temporal hour-blending (ported from _particles_gl.js): the forecast field only has one
+// texture per hour, but playback advances curFrac continuously between them, so we lerp
+// the current and next hour's textures into velBlendTex each frame and sample that single
+// blended texture -- the rest of the advection/draw path is unchanged. Encoded R/G are an
+// AFFINE map of velocity (v = ch*2*vmax - vmax), so a linear mix of the encoded channels
+// equals a linear mix of the decoded velocity -- the raw textures can be lerped directly.
+const BLEND_FS = `#version 300 es
+precision highp float;
+in vec2 v_uv;
+out vec4 fragColor;
+uniform sampler2D u_a;      // current hour
+uniform sampler2D u_b;      // next hour
+uniform float u_blend;      // frac toward next hour, 0..1
+void main(){
+    fragColor = mix(texture(u_a, v_uv), texture(u_b, v_uv), u_blend);
+}`;
+
 // Advection: head position step along u/v (reuses the wind engine's logic verbatim,
 // including landReset so trails die on land). MRT: also advances a per-particle age
 // (0..1, reset to 0 on respawn) into a second colour attachment -- the trail shader
@@ -461,6 +478,11 @@ export function createCurrentParticleGLLayer(map, opts) {
         // the draw count shrinks, so there's no rebuild and no respawn-rate change.
         densityZoomRef = 3.5,
         densityZoomFalloff = 0.5,
+        // Temporal hour-blending (ported from _particles_gl.js): cross-fades the current
+        // and next forecast-hour textures by the timeline's playback frac, so playback
+        // shows a continuous field instead of a once-per-hour "snap". Default on; disable
+        // with temporal_blend:false. Config: temporal_blend.
+        temporalBlend = (cfg) => String(cfg.temporal_blend) !== 'false',
         hourDataUrl = (cfg, hour, bust) => {
             const base = cfg.outfile.replace(/\.png$/, '');
             const f = String(hour).padStart(3, '0');
@@ -482,8 +504,15 @@ export function createCurrentParticleGLLayer(map, opts) {
     // Direction-coherence (opt-in via coherenceRadius). velCohTex holds the filtered
     // field; cohTempTex is the H-pass intermediate. Rebuilt only when the source texture
     // changes or the radius is retuned (cohDirty), never per frame.
-    let cohHProg = null, cohVProg = null, velCohTex = null, cohTempTex = null, cohFbo = null;
-    let cohW = 0, cohH = 0, curCohRadius = 0, cohDirty = false, velImgW = 0, velImgH = 0;
+    let cohHProg = null, cohVProg = null, velCohTex = null, velCohNextTex = null, cohTempTex = null, cohFbo = null;
+    let cohW = 0, cohH = 0, curCohRadius = 0, cohDirty = false, cohNextDirty = false, velImgW = 0, velImgH = 0;
+    // Temporal hour-blending (opt-in via temporalBlend; default on). Mirrors
+    // _particles_gl.js's windTexNext/windBlendTex/blendWind/loadWindNext/curFrac.
+    let velTexNext = null, velBlendTex = null, velBlendFbo = null, blendProg = null;
+    let velNextReady = false, pendingVelNextImg = null;
+    let blendW = 0, blendH = 0;
+    let curFrac = 0, lastVelNextHour = -1, curTemporalBlend = true;
+    let velNextRetryTimer = null;
     // head position state as a 2-texture ping-pong (advected one step per frame). The tail
     // is the streamline integrated from the head in the trail VS — no stored history ring.
     let headTex = [], headFbo = [], headIdx = 0;
@@ -523,6 +552,7 @@ export function createCurrentParticleGLLayer(map, opts) {
         if (newCoh !== curCohRadius) { curCohRadius = newCoh; cohDirty = true; }
         const newAgeStep = Number(ageStep(cfg));
         curAgeStep = (isFinite(newAgeStep) && newAgeStep > 0) ? newAgeStep : (1.0 / 90);
+        curTemporalBlend = temporalBlend(cfg);
     };
 
     const compile = (gl, type, src) => {
@@ -655,10 +685,21 @@ export function createCurrentParticleGLLayer(map, opts) {
         velImgH = img.naturalHeight || img.height || 0;
         cohDirty = true;   // new raw texture -> the coherent copy is stale
     };
+    const uploadVelNextNow = (gl, img) => {
+        if (velTexNext) gl.deleteTexture(velTexNext);
+        velTexNext = makeTex(gl, 2, 2, new Uint8Array(16), gl.LINEAR);
+        gl.bindTexture(gl.TEXTURE_2D, velTexNext);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
+        velNextReady = true;
+        cohNextDirty = true;
+    };
 
     // ---- direction-coherence (opt-in; see COH_H_FS/COH_V_FS above) ----
     const cohActive = () => curCohRadius > 0.001 && cohHProg && cohVProg;
-    const activeVelTex = () => (cohActive() && velCohTex) ? velCohTex : velTex;
+    // Set once per frame in render() (raw, coherent, or blended -- whichever applies);
+    // advect()/drawTrails() both just read this rather than recomputing it twice.
+    let activeVelTexRef = null;
+    const activeVelTex = () => activeVelTexRef || velTex;
     const makeCohTarget = (gl, w, h) => {
         const t = gl.createTexture();
         gl.bindTexture(gl.TEXTURE_2D, t);
@@ -671,16 +712,34 @@ export function createCurrentParticleGLLayer(map, opts) {
     };
     const ensureCohTextures = (gl, w, h) => {
         if (velCohTex && cohW === w && cohH === h) return;
-        [velCohTex, cohTempTex].forEach((t) => t && gl.deleteTexture(t));
+        [velCohTex, velCohNextTex, cohTempTex].forEach((t) => t && gl.deleteTexture(t));
         velCohTex = makeCohTarget(gl, w, h);
+        velCohNextTex = makeCohTarget(gl, w, h);
         cohTempTex = makeCohTarget(gl, w, h);
         if (!cohFbo) cohFbo = gl.createFramebuffer();
         cohW = w; cohH = h;
     };
-    // Build the direction-coherent copy of velTex into velCohTex via two separable passes.
-    // Runs only when the source changes or the radius is retuned (cohDirty), not per frame.
-    const runCoherence = (gl) => {
-        if (!velTex || !cohHProg || !cohVProg || velImgW <= 0 || velImgH <= 0) return;
+    // Lazily (re)create the blend output texture + FBO to match the velocity texture size.
+    const ensureBlendTex = (gl, w, h) => {
+        if (velBlendTex && blendW === w && blendH === h) return;
+        if (velBlendTex) gl.deleteTexture(velBlendTex);
+        velBlendTex = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, velBlendTex);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+        if (!velBlendFbo) velBlendFbo = gl.createFramebuffer();
+        blendW = w; blendH = h;
+    };
+    // Build the direction-coherent copy of srcTex into dstTex via two separable passes.
+    // Runs only when the source changes or the radius is retuned (cohDirty/cohNextDirty),
+    // not per frame. Generalised to explicit (src,dst) params (rather than a single
+    // hardcoded velTex->velCohTex) so it can serve BOTH the current-hour and next-hour
+    // textures independently -- coherence-then-blend needs both filtered before mixing.
+    const runCoherence = (gl, srcTex, dstTex) => {
+        if (!srcTex || !cohHProg || !cohVProg || velImgW <= 0 || velImgH <= 0) return;
         ensureCohTextures(gl, velImgW, velImgH);
         const prevFbo = gl.getParameter(gl.FRAMEBUFFER_BINDING);
         const prevVp = gl.getParameter(gl.VIEWPORT);
@@ -689,23 +748,43 @@ export function createCurrentParticleGLLayer(map, opts) {
         gl.viewport(0, 0, velImgW, velImgH);
         gl.disable(gl.BLEND);
         gl.bindVertexArray(vaoUpdate);
-        // Pass H: velTex -> cohTempTex
+        // Pass H: srcTex -> cohTempTex
         gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, cohTempTex, 0);
         gl.useProgram(cohHProg);
-        gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, velTex);
+        gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, srcTex);
         gl.uniform1i(gl.getUniformLocation(cohHProg, 'u_src'), 0);
         gl.uniform1f(gl.getUniformLocation(cohHProg, 'u_vmax'), vmax);
         gl.uniform1f(gl.getUniformLocation(cohHProg, 'u_radius'), curCohRadius);
         gl.uniform2f(gl.getUniformLocation(cohHProg, 'u_texel'), tx, ty);
         gl.drawArrays(gl.TRIANGLES, 0, 6);
-        // Pass V: cohTempTex -> velCohTex
-        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, velCohTex, 0);
+        // Pass V: cohTempTex -> dstTex
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, dstTex, 0);
         gl.useProgram(cohVProg);
         gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, cohTempTex);
         gl.uniform1i(gl.getUniformLocation(cohVProg, 'u_src'), 0);
         gl.uniform1f(gl.getUniformLocation(cohVProg, 'u_vmax'), vmax);
         gl.uniform1f(gl.getUniformLocation(cohVProg, 'u_radius'), curCohRadius);
         gl.uniform2f(gl.getUniformLocation(cohVProg, 'u_texel'), tx, ty);
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, prevFbo);
+        gl.viewport(prevVp[0], prevVp[1], prevVp[2], prevVp[3]);
+    };
+    // One blend pass: velBlendTex = mix(srcA, srcB, curFrac). Saves/restores FBO.
+    const blendVel = (gl, srcA, srcB) => {
+        ensureBlendTex(gl, velImgW, velImgH);
+        const prevFbo = gl.getParameter(gl.FRAMEBUFFER_BINDING);
+        const prevVp = gl.getParameter(gl.VIEWPORT);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, velBlendFbo);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, velBlendTex, 0);
+        gl.viewport(0, 0, blendW, blendH);
+        gl.disable(gl.BLEND);
+        gl.useProgram(blendProg);
+        gl.bindVertexArray(vaoUpdate);
+        gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, srcA);
+        gl.uniform1i(gl.getUniformLocation(blendProg, 'u_a'), 0);
+        gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, srcB);
+        gl.uniform1i(gl.getUniformLocation(blendProg, 'u_b'), 1);
+        gl.uniform1f(gl.getUniformLocation(blendProg, 'u_blend'), curFrac);
         gl.drawArrays(gl.TRIANGLES, 0, 6);
         gl.bindFramebuffer(gl.FRAMEBUFFER, prevFbo);
         gl.viewport(prevVp[0], prevVp[1], prevVp[2], prevVp[3]);
@@ -742,6 +821,31 @@ export function createCurrentParticleGLLayer(map, opts) {
                 if (timeline.get().hour === hour) loadVelocity(cfg, Date.now());
             }, 15000);
         };
+        img.src = url;
+    };
+
+    // Preload the NEXT forecast hour for temporal blending. Clamped at maxHour (no hour
+    // beyond the end; the timeline loops to minHour there, so we just hold the last hour
+    // and let curFrac be a no-op until the wrap). A miss here is quiet -- loadVelocity
+    // already flags backfill for the CURRENT hour; the blend simply stays off (falls back
+    // to the raw current-hour texture) until the next hour's texture arrives on its own.
+    const loadVelocityNext = (cfg, snap) => {
+        if (!curTemporalBlend) return;
+        const nextHour = snap.hour < snap.maxHour ? snap.hour + 1 : snap.hour;
+        if (nextHour === lastVelNextHour && velNextReady) return;
+        const url = hourDataUrl(cfg, nextHour, bustKey);
+        if (!url) {
+            if (!velNextRetryTimer) velNextRetryTimer = setTimeout(() => {
+                velNextRetryTimer = null;
+                loadVelocityNext(cfg, timeline.get());
+            }, 2000);
+            return;
+        }
+        lastVelNextHour = nextHour;
+        velNextReady = false;
+        const img = new Image(); img.crossOrigin = 'anonymous';
+        img.onload = () => { pendingVelNextImg = img; map.triggerRepaint(); };
+        img.onerror = () => { /* next-hour miss: blend simply stays off until it arrives */ };
         img.src = url;
     };
 
@@ -846,19 +950,21 @@ export function createCurrentParticleGLLayer(map, opts) {
             cmapTex = makeTex(gl, 1, 1, new Uint8Array([255,255,255,255]), gl.LINEAR);
             cohHProg = linkProg(gl, QUAD_VS, COH_H_FS);
             cohVProg = linkProg(gl, QUAD_VS, COH_V_FS);
+            blendProg = linkProg(gl, QUAD_VS, BLEND_FS);
             buildState(gl);
             applyParams(cfg);
             if (colormap) uploadColormapNow(gl, colormap(cfg));
             loadVelocity(cfg);
+            loadVelocityNext(cfg, timeline.get());   // preload next hour for blending
             map.triggerRepaint();
         },
         render(gl, args) {
             if (webglFailed || !updateProg) return;
             if (pendingRebuild) { buildState(gl); pendingRebuild = false; }
             if (pendingVelImg) { uploadVelNow(gl, pendingVelImg); pendingVelImg = null; }
+            if (pendingVelNextImg) { uploadVelNextNow(gl, pendingVelNextImg); pendingVelNextImg = null; }
             if (pendingLut) { uploadColormapNow(gl, pendingLut); pendingLut = null; }
             if (!velReady || !velTex) { map.triggerRepaint(); return; }
-            if (cohActive() && cohDirty) { runCoherence(gl); cohDirty = false; }
             curBbox = viewBox();
             let zNow = lengthZoomRef;
             try { zNow = map.getZoom(); } catch (_) { /* keep ref */ }
@@ -875,6 +981,25 @@ export function createCurrentParticleGLLayer(map, opts) {
             } else {
                 activeCount = count;
             }
+            // Temporal interpolation: when playing (curFrac>0) and the next hour is loaded,
+            // lerp current->next into velBlendTex and advect/draw against that. Paused or
+            // next-not-ready -> sample the current hour directly (the old hard-cut path).
+            // Live direction-coherence: rebuild the coherent texture(s) only when a source
+            // changed or the radius was retuned, then blend/sample those instead of the raw.
+            let sCur = velTex, sNext = velTexNext;
+            if (cohActive()) {
+                if (cohDirty && velTex) { runCoherence(gl, velTex, velCohTex); cohDirty = false; }
+                if (cohNextDirty && velTexNext) { runCoherence(gl, velTexNext, velCohNextTex); cohNextDirty = false; }
+                if (velCohTex) sCur = velCohTex;
+                if (velCohNextTex && velNextReady) sNext = velCohNextTex;
+            }
+            if (curTemporalBlend && blendProg && velNextReady && sNext
+                && curFrac > 0.001 && velImgW > 0) {
+                blendVel(gl, sCur, sNext);
+                activeVelTexRef = velBlendTex;
+            } else {
+                activeVelTexRef = sCur;
+            }
             advect(gl);
             drawTrails(gl, args);
             gl.bindVertexArray(null);
@@ -885,12 +1010,19 @@ export function createCurrentParticleGLLayer(map, opts) {
             headTex.forEach((t) => t && gl.deleteTexture(t));
             ageTex.forEach((t) => t && gl.deleteTexture(t));
             headFbo.forEach((f) => f && gl.deleteFramebuffer(f));
-            [velTex, cmapTex, velCohTex, cohTempTex].forEach((t) => t && gl.deleteTexture(t));
+            [velTex, cmapTex, velCohTex, velCohNextTex, cohTempTex,
+                velTexNext, velBlendTex].forEach((t) => t && gl.deleteTexture(t));
             if (cohFbo) gl.deleteFramebuffer(cohFbo);
-            [updateProg, cohHProg, cohVProg].forEach((p) => p && gl.deleteProgram(p));
+            if (velBlendFbo) gl.deleteFramebuffer(velBlendFbo);
+            [updateProg, cohHProg, cohVProg, blendProg].forEach((p) => p && gl.deleteProgram(p));
             headTex = []; headFbo = []; ageTex = []; velTex = cmapTex = null;
-            velCohTex = cohTempTex = cohFbo = null; cohW = cohH = 0;
-            updateProg = cohHProg = cohVProg = null; glRef = null;
+            velCohTex = velCohNextTex = cohTempTex = cohFbo = null; cohW = cohH = 0;
+            updateProg = cohHProg = cohVProg = blendProg = null;
+            velTexNext = velBlendTex = velBlendFbo = activeVelTexRef = null;
+            velNextReady = false; pendingVelNextImg = null;
+            blendW = blendH = 0; curFrac = 0; lastVelNextHour = -1;
+            if (velNextRetryTimer) { clearTimeout(velNextRetryTimer); velNextRetryTimer = null; }
+            glRef = null;
         },
     });
 
@@ -907,7 +1039,7 @@ export function createCurrentParticleGLLayer(map, opts) {
         if (colormap) pendingLut = colormap(cfg);
         // reload the velocity texture for the (reconciled) current hour
         bustKey = timeline.get().refreshEpoch || bustKey;
-        if (glRef) loadVelocity(cfg);
+        if (glRef) { loadVelocity(cfg); loadVelocityNext(cfg, timeline.get()); }
         if (parseInt(cfg.particle_count, 10) && glRef) pendingRebuild = true;
         map.triggerRepaint();
     };
@@ -924,12 +1056,14 @@ export function createCurrentParticleGLLayer(map, opts) {
     // the trails decay into slow, near-static bright dots after a play cycle.
     let lastLoadedHour = -1;
     const unsubscribeTimeline = timeline.subscribe((snap) => {
+        curFrac = snap.frac || 0;   // every frame while playing; 0 when paused
         const epochChanged = snap.refreshEpoch !== bustKey;
         if (epochChanged) bustKey = snap.refreshEpoch;
         if (!glRef || !velReady) return;
         if (snap.hour !== lastLoadedHour || epochChanged) {
             lastLoadedHour = snap.hour;
             loadVelocity(curCfg);
+            loadVelocityNext(curCfg, snap);
         }
     });
 
