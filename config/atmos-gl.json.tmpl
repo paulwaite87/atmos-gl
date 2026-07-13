@@ -31,6 +31,7 @@
   "isobars": {
     "enabled": true,
     "level_of_detail": "3",
+    "isobar_step": 4,
     "isobar_color": "White",
     "linewidth": 1,
     "opacity": 100,
@@ -51,6 +52,7 @@
     "trail_length": 80,
     "trail_thickness": 2.0,
     "temporal_blend": true,
+    "key_fontsize": 11,
     "runs_per_day": 8,
     "cache_expiry_days": 3
   },
@@ -152,12 +154,12 @@
     "enabled": true,
     "jtwc_url": "https://www.ssd.noaa.gov/PS/TROP/DATA/ATCF/JTWC/",
     "nhc_url": "https://ftp.nhc.noaa.gov/atcf/fst/",
-    "storm_icon": "images/storm_symbol.png",
     "expiry_days": 4,
     "runs_per_day": 8
   },
   "lightning": {
     "enabled": true,
+    "icon_zoom": 1.0,
     "strike_recent_minutes": 15,
     "strike_keep_minutes": 30,
     "strike_expiry_hours": 4
@@ -165,8 +167,6 @@
   "quakes": {
     "enabled": false,
     "icon_zoom": 0.7,
-    "marker_symbol_new": "earthquake_new.png",
-    "marker_symbol_old": "earthquake_old.png",
     "recent_activity_hours": 3,
     "expiry_hours": 36,
     "label_fontsize": 12,
@@ -175,6 +175,7 @@
   },
   "volcanoes": {
     "enabled": false,
+    "icon_zoom": 1.0,
     "significant_only": true,
     "vei_min": 4,
     "erupt_date_codes": [
@@ -183,7 +184,8 @@
     "runs_per_day": 1
   },
   "shipping": {
-    "enabled": true
+    "enabled": true,
+    "icon_zoom": 1.0
   },
   "satellites": {
     "enabled": true,

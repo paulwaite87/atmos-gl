@@ -234,6 +234,7 @@ FIELD_SPECS = {
     ("quakes", "label_fontsize"): _FONTSIZE,
     ("quakes", "min_mag"): SliderSpec(min=0, max=10, step=0.1, decimals=1, prefix="M "),
     ("quakes", "runs_per_day"): _RUNS_PER_DAY,
+    ("volcanoes", "icon_zoom"): _ICON_ZOOM,
     ("volcanoes", "significant_only"): ToggleSpec(),
     ("volcanoes", "vei_min"): _VEI_OPTIONS,
     ("volcanoes", "erupt_date_codes"): _ERUPT_DATE_CODES,
@@ -249,6 +250,8 @@ FIELD_SPECS = {
     ("markers", "marker_fontsize"): _FONTSIZE,
     ("markers", "weather_popup"): ToggleSpec(),
     ("markers", "runs_per_day"): _RUNS_PER_DAY,
+    # --- Shipping (shipping) ---
+    ("shipping", "icon_zoom"): _ICON_ZOOM,
     # --- Atmospheric (clouds, isobars, wind, precipitation, pwat, lightning, storms) ---
     ("clouds", "threshold"): SliderSpec(
         min=0, max=100, step=1, suffix="%",
@@ -260,6 +263,7 @@ FIELD_SPECS = {
     ("clouds", "runs_per_day"): _RUNS_PER_DAY,
     ("clouds", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
     ("isobars", "level_of_detail"): _LEVEL_OF_DETAIL,
+    ("isobars", "isobar_step"): SliderSpec(min=1, max=10, step=1, suffix=" hPa"),
     ("isobars", "isobar_color"): ColorSpec(),
     ("isobars", "linewidth"): SliderSpec(min=0.1, max=5.0, step=0.1, decimals=1, suffix="px"),
     ("isobars", "opacity"): _OPACITY,
@@ -279,6 +283,7 @@ FIELD_SPECS = {
     ("wind", "trail_length"): _TRAIL_LENGTH,
     ("wind", "trail_thickness"): _TRAIL_THICKNESS,
     ("wind", "temporal_blend"): ToggleSpec(),
+    ("wind", "key_fontsize"): _FONTSIZE,
     ("wind", "runs_per_day"): _RUNS_PER_DAY,
     ("wind", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
     ("precipitation", "level_of_detail"): _LEVEL_OF_DETAIL,
@@ -303,6 +308,7 @@ FIELD_SPECS = {
     ("pwat", "key_fontsize"): _FONTSIZE,
     ("pwat", "runs_per_day"): _RUNS_PER_DAY,
     ("pwat", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
+    ("lightning", "icon_zoom"): _ICON_ZOOM,
     ("lightning", "strike_recent_minutes"): _MINUTES,
     ("lightning", "strike_keep_minutes"): _MINUTES,
     ("lightning", "strike_expiry_hours"): _HOURS,

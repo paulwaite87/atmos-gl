@@ -85,7 +85,7 @@ export function loadLayer(map, config) {
             </div>`;
     };
 
-    const mount = async () => {
+    const mount = async (cfg) => {
         await Promise.all(shipIcons.map(async (ic) => {
             if (map.hasImage(ic.id)) return;
             const res = await fetch(`${window.location.origin}${ic.url}`);
@@ -106,7 +106,7 @@ export function loadLayer(map, config) {
                     80,'ship-red',81,'ship-red',82,'ship-red',83,'ship-red',84,'ship-red',85,'ship-red',86,'ship-red',87,'ship-red',88,'ship-red',89,'ship-red',
                     70,'ship-green',71,'ship-green',72,'ship-green',73,'ship-green',74,'ship-green',75,'ship-green',76,'ship-green',77,'ship-green',78,'ship-green',79,'ship-green',
                     'ship-purple'],
-                'icon-size': 0.6,
+                'icon-size': 0.6 * (cfg.icon_zoom ?? 1.0),
                 'icon-rotate': ['get', 'heading'],
                 'icon-rotation-alignment': 'map',
                 'icon-allow-overlap': true, 'icon-ignore-placement': true,

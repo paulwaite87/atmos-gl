@@ -13,7 +13,7 @@ export function loadLayer(map, config) {
         // false); codes is always present (the API requires it; empty string is fine).
         const params = new URLSearchParams();
         params.set('vei_min', String(Number(cfg.vei_min) || 0));
-        params.set('significant', cfg.significant ? 'true' : 'false');
+        params.set('significant', cfg.significant_only ? 'true' : 'false');
         params.set('codes', (cfg.erupt_date_codes || []).join(','));
         params.set('t', String(Date.now()));
         return `${window.WM_API}/volcanoes/geojson?${params.toString()}`;
@@ -46,7 +46,7 @@ export function loadLayer(map, config) {
         map.addLayer({
             id: layerId, type: 'symbol', source: sourceId,
             layout: {
-                'icon-image': 'volcano-icon', 'icon-size': 0.6,
+                'icon-image': 'volcano-icon', 'icon-size': 0.6 * (cfg.icon_zoom ?? 1.0),
                 'icon-allow-overlap': true, 'icon-ignore-placement': true,
             },
         });

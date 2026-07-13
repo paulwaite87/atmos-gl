@@ -101,11 +101,16 @@ export async function loadLayer(map, config, fullConfig = {}) {
     const addLegend = (cfg) => {
         const vmaxKph = heatmapMaxKph;
         const ticks = [0, 0.25, 0.5, 0.75, 1].map(f => Math.round(vmaxKph * f));
+        // key_fontsize (shared with every other layer's backend-rendered key PNG): wind's
+        // legend is a client-built HTML gradient bar instead of an image, so the same
+        // setting scales its title/tick text directly rather than a matplotlib figure.
+        const titlePx = Math.max(6, Number(cfg.key_fontsize) || 11);
+        const tickPx = Math.max(6, titlePx - 1);
         replaceSlot(slotId, (slot) => {
             slot.innerHTML = `
-                <div style="font-size:11px;color:#fff;font-weight:600;margin-bottom:3px;">Wind speed (km/h)</div>
+                <div style="font-size:${titlePx}px;color:#fff;font-weight:600;margin-bottom:3px;">Wind speed (km/h)</div>
                 <div style="height:10px;border-radius:2px;background:linear-gradient(to right, ${gradient()});"></div>
-                <div style="display:flex;justify-content:space-between;font-size:10px;color:rgba(255,255,255,0.8);margin-top:2px;">
+                <div style="display:flex;justify-content:space-between;font-size:${tickPx}px;color:rgba(255,255,255,0.8);margin-top:2px;">
                     ${ticks.map(t => `<span>${t}</span>`).join('')}
                 </div>`;
         });
