@@ -191,9 +191,9 @@ export async function loadLayer(map, config, fullConfig = {}) {
         // Currents' own LOD_COUNT ({1:4000, 2:9000, 3:18000}) reads too dense for wind's
         // long streamline ribbons -- wind gets its own (lower) table instead. No longer
         // overridable via a separate particle_count setting (removed -- level_of_detail
-        // is the only density control now, so the two can't disagree). Doubled from the
-        // first LOD-derived pass (800/1500/3000) -- that read too sparse live.
-        lodCount: { 1: 1600, 2: 3000, 3: 6000 },
+        // is the only density control now, so the two can't disagree). Doubled twice now
+        // from the first LOD-derived pass (800/1500/3000) -- that read too sparse live.
+        lodCount: { 1: 3200, 2: 6000, 3: 12000 },
         // A WIDER smoothstep(0, X, v_t) means MORE of the tail shows some (even if dim)
         // opacity, not less -- that read as a longer streak, the opposite of the goal.
         // Narrowed well below currents' own 0.35 instead, for a short, quick fade near
