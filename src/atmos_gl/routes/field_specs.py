@@ -280,7 +280,6 @@ FIELD_SPECS = {
     ("wind", "opacity"): _OPACITY,
     ("wind", "particle_speed"): _PARTICLE_SPEED_LIKE,
     ("wind", "particle_alpha"): _PARTICLE_ALPHA,
-    ("wind", "particle_count"): SliderSpec(min=200, max=6000, step=100, suffix=" particles"),
     ("wind", "flow_coherence_radius"): SliderSpec(min=0.0, max=10.0, step=0.5, decimals=2),
     ("wind", "trail_length"): _TRAIL_LENGTH,
     ("wind", "trail_thickness"): _TRAIL_THICKNESS,
@@ -340,7 +339,6 @@ FIELD_SPECS = {
     ("currents", "opacity"): _OPACITY,
     ("currents", "particle_speed"): _PARTICLE_SPEED_LIKE,
     ("currents", "particle_alpha"): _PARTICLE_ALPHA,
-    ("currents", "particle_count"): SliderSpec(min=500, max=20000, step=500, suffix=" particles"),
     ("currents", "current_speed_minimum"): SliderSpec(
         min=0.0, max=5.0, step=0.1, decimals=2, suffix=" m/s"
     ),

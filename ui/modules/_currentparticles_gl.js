@@ -34,8 +34,10 @@ import { flagBackfill } from './_backfill.js';
  * createCurrentParticleGLLayer(map, opts) — opts mirror the wind/waves layer's NAMES
  * where useful (sectionKey, initialConfig, vmax, colormap, hourDataUrl, maxSpeedColor,
  * landReset), for consistency configuring similar-sounding concepts — not because the
- * rendering code is shared. Plus tunables unique to this technique (particle_count,
- * particle_speed=drift, trail_length=tail arc, etc.).
+ * rendering code is shared. Plus tunables unique to this technique (particle_speed=drift,
+ * trail_length=tail arc, etc.). particle_count is NOT independently configurable -- it's
+ * derived from level_of_detail (see LOD_COUNT/lodCount below) so the two settings can't
+ * disagree with each other.
  */
 
 const STREAM_STEPS = 40;        // streamline integration segments (tail = STREAM_STEPS+1 points)
@@ -546,9 +548,10 @@ export function createCurrentParticleGLLayer(map, opts) {
     let curLengthZoomFactor = 1.0;
     let bustKey = (timeline.get().refreshEpoch) || Date.now();
 
+    // Driven entirely by level_of_detail -- no independent particle_count override, so
+    // the two settings can never disagree (see LOD_COUNT/lodCount above).
     const particleCount = (cfg) => {
-        const explicit = parseInt(cfg.particle_count, 10);
-        return Math.max(256, explicit > 0 ? explicit : ((lodCount || LOD_COUNT)[lodOf(cfg)] || 9000));
+        return Math.max(256, (lodCount || LOD_COUNT)[lodOf(cfg)] || 9000);
     };
     const applyParams = (cfg) => {
         curSpeed = speedFromConfig(cfg);
@@ -1055,7 +1058,7 @@ export function createCurrentParticleGLLayer(map, opts) {
         // reload the velocity texture for the (reconciled) current hour
         bustKey = timeline.get().refreshEpoch || bustKey;
         if (glRef) { loadVelocity(cfg); loadVelocityNext(cfg, timeline.get()); }
-        if (parseInt(cfg.particle_count, 10) && glRef) pendingRebuild = true;
+        if (parseInt(cfg.level_of_detail, 10) && glRef) pendingRebuild = true;
         map.triggerRepaint();
     };
     const unmount = () => {
