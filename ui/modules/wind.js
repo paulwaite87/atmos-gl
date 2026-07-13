@@ -1,4 +1,4 @@
-import { createParticleGLLayer } from './_particles_gl.js';
+import { createCurrentParticleGLLayer } from './_currentparticles_gl.js';
 import { createFillLayer } from './_webglfill.js';
 import { replaceSlot, removeLegend } from './_legend.js';
 import { opacityUniform } from './_opacity.js';
@@ -162,16 +162,55 @@ export async function loadLayer(map, config, fullConfig = {}) {
     const colorCfg = config.particle_color != null ? config.particle_color
         : (config.vector_color != null ? config.vector_color : '#ffffff');
     const particleColor = parseColor(colorCfg);
-    const teardownParticles = createParticleGLLayer(map, {
+    // PROTOTYPE (architecture review candidate "unify wind/currents particle
+    // rendering"): swapped from _particles_gl.js's oriented-quad streaks to
+    // _currentparticles_gl.js's live streamline-ribbon integration, to see if the
+    // currents technique also reads well for wind before committing to unifying the
+    // two engines for real. landReset:0 (wind blows over land, unlike ocean currents);
+    // speedFromConfig borrows currents' own tuned 0-100 -> 0-8 range as a first pass,
+    // not yet re-tuned for how wind's speeds should feel.
+    const teardownParticles = createCurrentParticleGLLayer(map, {
         sectionKey: 'wind',
         initialConfig: config,
+        initialAnimation: fullConfig.animation || {},
+        initialCommon: fullConfig.common || {},
         vmax: VMAX_WIND,
         colormap: () => buildFlatLUT(particleColor),   // fixed colour (not speed-based)
         maxSpeedColor: () => vmaxMs,
-        staticFallback: false,           // the heatmap fill provides the static view now
-        // Lifecycle/density/speed/coherence tunables fall through to engine defaults;
-        // override via wind config (particle_count, particle_speed, flow_coherence_radius,
-        // density_zoom_*, speed_zoom_*, trail_persist, point_size, particle_color, ...).
+        landReset: () => 0.0,             // wind flows over land; currents must not
+        speedFromConfig: (cfg) => {
+            const ui = Number(cfg.particle_speed);
+            const v = isFinite(ui) ? Math.min(100, Math.max(0, ui)) : 50;
+            return (v / 100) * 0.15;      // 10x scaled down -- ui=50 now gives what ui=5 gave before
+        },
+        // Currents' own LOD_COUNT ({1:4000, 2:9000, 3:18000}) reads too dense for wind's
+        // long streamline ribbons -- reuse wind's own (lower) table from the old engine.
+        lodCount: { 1: 3000, 2: 6000, 3: 10000 },
+        // A WIDER smoothstep(0, X, v_t) means MORE of the tail shows some (even if dim)
+        // opacity, not less -- that read as a longer streak, the opposite of the goal.
+        // Narrowed well below currents' own 0.35 instead, for a short, quick fade near
+        // the tail tip.
+        tailFadeEnd: 0.15,
+        // Wind's field is far noisier than ocean currents (0.25-deg GFS vs. smooth RTOFS),
+        // and this engine re-integrates each ribbon live from scratch every frame -- with
+        // no smoothing, small-scale field noise reads as trails jittering/flickering
+        // between paths frame to frame. Reuses wind's existing flow_coherence_radius
+        // config field (already had a live slider from the old engine); currents never
+        // sets this option, so its own rendering is completely unaffected.
+        coherenceRadius: (cfg) => {
+            const v = Number(cfg.flow_coherence_radius);
+            return (isFinite(v) && v > 0) ? v : 0;
+        },
+        // Currents' own trail_length config field doesn't exist for wind, so hFromConfig
+        // silently fell through to currents' tuned-for-ocean midpoint H (~8e-4) -- with
+        // STREAM_STEPS=40 that read as a "massively long strand" for wind, independent of
+        // the (correctly working) tail-fade curve. Reuse wind's existing trail_fade slider
+        // (0-100, already live) mapped into a MUCH shorter arc range instead.
+        hFromConfig: (cfg) => {
+            const t = Number(cfg.trail_fade);
+            const frac = (t >= 0 && t <= 100) ? t / 100 : 0.5;
+            return 3.0e-5 + frac * (3.0e-4 - 3.0e-5);   // ~3e-5 .. 3e-4 -- a first pass, tune live
+        },
     });
 
     // Tear down both layers (particles first, then heatmap) on basemap style swap.
