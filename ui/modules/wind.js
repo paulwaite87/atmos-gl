@@ -185,7 +185,7 @@ export async function loadLayer(map, config, fullConfig = {}) {
         landReset: () => 0.0,             // wind flows over land; currents must not
         speedFromConfig: (cfg) => {
             const ui = Number(cfg.particle_speed);
-            const v = isFinite(ui) ? Math.min(100, Math.max(0, ui)) : 50;
+            const v = (isFinite(ui) && ui >= 10 && ui <= 100) ? ui : 50;
             return (v / 100) * 0.15;      // 10x scaled down -- ui=50 now gives what ui=5 gave before
         },
         // Currents' own LOD_COUNT ({1:4000, 2:9000, 3:18000}) reads too dense for wind's
