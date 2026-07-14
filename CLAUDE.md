@@ -68,6 +68,35 @@ When your changes create orphans:
 
 The test: Every changed line should trace directly to the user's request.
 
+## Deepening Template-Method Hierarchies
+
+**When a base class already owns control flow and lets subclasses override hooks,
+extend those hooks — don't pull newly discovered duplication out as a narrow,
+free-standing helper sitting alongside them.**
+
+If a class hierarchy already uses the template-method pattern (a base class defining
+the control flow, subclasses overriding hook methods — e.g. `FieldCollectorBase`'s
+`resolve_baseline()`, `_expected_fhour_end()`, `backfill_hour()`), and you find
+duplication in the surrounding control flow across subclasses, lift that control flow
+into the base class too, exposing whatever varies as another override hook. Don't
+extract just the innermost duplicated body as a standalone helper and leave two
+near-identical control-flow shells sitting in the subclasses either side of it.
+
+Two ~90%-identical loop/control-flow bodies in sibling subclasses are harder to audit
+for drift than one control-flow body in the base class with each subclass's override
+list visible at a glance — the override list *is* the domain-difference
+documentation. A narrow helper extraction also tends to leave existing duplication
+bugs in place rather than surfacing them: if a subclass already recomputes a value
+independently in two places (once in an existing hook, once inline in the method
+you're deepening), pulling that method's control flow into the base forces it through
+the existing hook instead, fixing the duplication as a side effect.
+
+This only applies where template-method structure already governs the modules in
+question. Where no such structure exists — a handful of leaf modules just doing
+similar-looking things — a narrow, local extraction (or no extraction at all) is the
+right call; don't invent a base class/hook hierarchy from scratch to justify one.
+See `docs/adr/0002-dont-extend-hoverpopup-for-markers.md` for that other case.
+
 ## Goal-Driven Execution
 
 **Define success criteria. Loop until verified.**
@@ -92,7 +121,8 @@ For multi-step tasks, state a brief plan:
 src/atmos_gl/               ← PYTHONPATH root (PYTHONPATH=/opt/project/src)
   collectors/               ← ALL data-collection code lives here
     base.py                 ← CollectorBase, AsyncCollectorBase
-    field_base.py           ← FieldCollectorBase(CollectorBase), CycleContext, drain_backfill()
+    field_base.py           ← FieldCollectorBase(CollectorBase), SingleFileFieldCollector,
+                              CycleContext, drain_backfill()
     gfs_atmos.py            ← GfsAtmosCollector
     gfs_waves.py            ← GfsWavesCollector
     rtofs_currents.py       ← RtofsCurrentsCollector
@@ -227,9 +257,24 @@ shared `products` registry and `_valid_time()` on `FieldCollectorBase`), and
 `CollectorService.run()` calls each poll — the `FieldCollectorBase` counterpart to
 `collectors/__init__.py`'s `_drive()`.
 
-Adding a fourth field source is now "one file + one registry entry": subclass
-`FieldCollectorBase`, implement `resolve_baseline()`/`collect(ctx)`/`backfill_hour()`, set
-`products`, and add the class to `service.py`'s `_FIELD_COLLECTOR_CLASSES` list.
+`GfsWavesCollector` and `RtofsCurrentsCollector` further share a concrete `collect()`/
+`backfill_hour()` via `SingleFileFieldCollector(FieldCollectorBase)` (also in
+`field_base.py`) — both fetch one whole file per forecast hour for a single product,
+differing only in URL resolution/fallback (`_resolve_download_url()`), tempfile suffix,
+and (RTOFS only) an f072 window cap/abort (`_expected_fhour_end()`/`_guard_cycle()`).
+`GfsAtmosCollector`'s multi-product byte-range fetch is a genuinely different shape
+(two axes of variance at once, not one) and stays its own `FieldCollectorBase`
+subclass — see "Deepening Template-Method Hierarchies" above for why the split was
+drawn there.
+
+Adding a fourth field source is now "one file + one registry entry": if it fetches one
+whole file per forecast hour for a single product, subclass `SingleFileFieldCollector`
+and implement `resolve_baseline()`/`_resolve_download_url()`, set `products`/
+`tempfile_suffix` (override `_expected_fhour_end()`/`_guard_cycle()` only if the source
+needs to cap or abort its window). Otherwise — multi-product, byte-range, or any other
+fetch shape — subclass `FieldCollectorBase` directly and implement `resolve_baseline()`/
+`collect(ctx)`/`backfill_hour()` in full, as `GfsAtmosCollector` does. Either way, add
+the class to `service.py`'s `_FIELD_COLLECTOR_CLASSES` list.
 
 ---
 
