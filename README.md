@@ -51,11 +51,12 @@ data the map needs, then creates a `.env` and `config/atmos-gl.json` for you (bo
 left alone on future re-runs, so it's always safe to run this again later to pick up
 updates to everything else).
 
-Edit `.env` and fill in your API keys — see
-[Obtaining an API Key for Shipping data](#obtaining-an-api-key-for-shipping-data),
-[Obtaining an API Key for Weather/Lightning Strikes](#obtaining-an-api-key-for-weatherlightning-strikes)
-and [Map Tiles](#map-tiles) below. Shipping and lightning are optional (you can enable them
-later once you have keys); the map tiles key is needed for the globe's basemap to render at all.
+Edit `.env` and fill in your API keys — see [Map Tiles API Key](#map-tiles-api-key),
+[Shipping Data API Key](#shipping-data-api-key),
+[Lightning Strikes API Key](#lightning-strikes-api-key)
+
+The map tiles key is MANDATORY for the globe's basemap to render at all. Shipping and lightning 
+are optional (you can enable them later once you have keys).
 
 Then start everything:
 
@@ -98,13 +99,15 @@ restart the backend to pick it up:
 
     ./atmos-gl.sh restart
 
-### Map Tiles API Key (required)
+### Map Tiles API Key
+This is MANDATORY.
 The globe's basemap imagery (satellite/street tiles) is served by MapTiler, and needs its own
 free API key. Sign up at https://www.maptiler.com/, grab a key from your account dashboard,
 and put it in `.env` as `MAPTILER_API_KEY`. Without this the globe has nothing to render its
 basemap with.
 
-### Shipping data API Key (optional)
+### Shipping Data API Key
+This is optional.
 The `shipping_collector` needs an API Key to access the AIS stream carrying shipping messages.
 
 To obtain one, head on over to https://aisstream.io/documentation on that page you will see
@@ -117,10 +120,12 @@ file named `.env` and replace the `AIS_API_KEY` placeholder there with your newl
 API Key. You will now be able to go into the Atmos GL Configurator and on the `Show` tab
 in the `Background Processes` group enable either or both the Shipping and Lightning processes.
 
-### Lightning Strikes API Key (optional)
-This is for the `lightning_collector` and it's a similar deal, but also easy. You just need to
-create an account on https://openweathermap.org and the link to acquire an API Key is right
-there on the homepage. Just be aware it will take some hours before the key is made active.
+### Lightning Strikes API Key
+This is optional.
+It is the API keyfor the `lightning_collector` and it's a similar deal, but also easy. 
+You just need to create an account on https://openweathermap.org and the link to acquire 
+an API Key is right there on the homepage. Just be aware it will take some hours before 
+the key is made active.
 
 In your `.env` file do as above and put the key in for the `OPENWEATHER_API_KEY` setting.
 No quotes around the key are required.
