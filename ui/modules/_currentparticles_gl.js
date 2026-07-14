@@ -47,11 +47,16 @@ const lodOf = (cfg) => { const n = parseInt(cfg.level_of_detail, 10); return (n 
 
 // 16-bit position packing across two 8-bit channels (no float-texture extension).
 const PACK = `
+#ifdef POS_FLOAT
+vec2 decodePos(vec4 c){ return c.xy; }
+vec4 encodePos(vec2 p){ return vec4(p, 0.0, 1.0); }
+#else
 vec2 packPos(float x){ float e = floor(clamp(x,0.0,1.0)*65535.0 + 0.5);
   return vec2(floor(e/256.0)/255.0, mod(e,256.0)/255.0); }
 float unpackPos(vec2 c){ return (c.x*255.0*256.0 + c.y*255.0)/65535.0; }
 vec2 decodePos(vec4 c){ return vec2(unpackPos(c.rg), unpackPos(c.ba)); }
 vec4 encodePos(vec2 p){ return vec4(packPos(p.x), packPos(p.y)); }
+#endif
 float rand(vec2 co){
     // Dave Hoskins hash (https://www.shadertoy.com/view/4djSRW), copied from
     // _particles_gl.js. The classic fract(sin(dot(co, vec2(12.9898,78.233)))*43758.5)
@@ -317,8 +322,12 @@ const float CP_PI = 3.141592653589793;
 const float CP_LATMAX = 1.4844222297453324;
 const float CP_MAXSTEP = 0.005;   // per integration step clamp (tames 1/coslat near poles)
 ${VEL_SAMPLE}
+#ifdef POS_FLOAT
+vec2 cp_decode(vec4 c){ return c.xy; }
+#else
 float cp_unpack(vec2 c){ return (c.x*255.0*256.0 + c.y*255.0)/65535.0; }
 vec2 cp_decode(vec4 c){ return vec2(cp_unpack(c.rg), cp_unpack(c.ba)); }
+#endif
 vec2 cp_toMerc(vec2 p){
     float lat = clamp((0.5 - p.y) * CP_PI, -CP_LATMAX, CP_LATMAX);
     float my = log(tan(CP_PI*0.25 + lat*0.5));
@@ -463,10 +472,10 @@ export function createCurrentParticleGLLayer(map, opts) {
         // Masked-bicubic coarse-cell spacing for sampleVelSmooth (see VEL_SAMPLE above).
         // 1 = native (near-crisp); raise only if a sharp shear still tears.
         smoothPx = (cfg) => 1.0,
-        // trail_length (0-100) -> integration arc H. Currents' own tuned range; a
-        // consumer with no trail_length config field (e.g. wind, which never had this
-        // key) silently falls through to this range's midpoint -- override per-caller
-        // for a genuinely different length, not just a different default frac.
+        // trail_length (0-100) -> integration arc H. Generic fallback range, not tuned
+        // for either current consumer -- both wind and currents now set their own
+        // hFromConfig (see wind.js/currents.js). A future consumer with no trail_length
+        // config field falls through to this range's midpoint.
         hFromConfig = (cfg) => {
             const t = Number(cfg.trail_length);
             const frac = (t >= 0 && t <= 100) ? t / 100 : 0.5;
@@ -542,6 +551,16 @@ export function createCurrentParticleGLLayer(map, opts) {
     let blendW = 0, blendH = 0;
     let curFrac = 0, lastVelNextHour = -1, curTemporalBlend = true;
     let velNextRetryTimer = null;
+    // Full-precision particle positions: requires rendering to a float color buffer.
+    // With EXT_color_buffer_float, RGBA32F is color-renderable (spec guarantee), so
+    // positions store raw [0,1] floats (~1e-7 quantum) instead of the 16-bit packed
+    // RGBA8 path (~1.5e-5 quantum) -- at low advection speed (small per-frame step)
+    // the packed path's rounding-to-nearest-quantum reads as erratic, jittery
+    // "crabbing" instead of smooth motion once the step gets close to that quantum.
+    // Ported from _particles_gl.js's floatPos, which hit and fixed this exact issue.
+    // Falls back to the 16-bit path where the extension is absent. Detected once in
+    // onAdd, before any shader compiles (shaders need to know at compile time).
+    let floatPos = false;
     // head position state as a 2-texture ping-pong (advected one step per frame). The tail
     // is the streamline integrated from the head in the trail VS — no stored history ring.
     let headTex = [], headFbo = [], headIdx = 0;
@@ -593,6 +612,13 @@ export function createCurrentParticleGLLayer(map, opts) {
         return sh;
     };
     const linkProg = (gl, vsSrc, fsSrc) => {
+        if (floatPos) {
+            // Every program goes through here, including ones (coherence, blend) that
+            // never reference PACK/decodePos -- an unused #define is harmless, so no
+            // need to special-case which programs actually need it.
+            const inj = (src) => src.replace('#version 300 es\n', '#version 300 es\n#define POS_FLOAT 1\n');
+            vsSrc = inj(vsSrc); fsSrc = inj(fsSrc);
+        }
         const v = compile(gl, gl.VERTEX_SHADER, vsSrc), f = compile(gl, gl.FRAGMENT_SHADER, fsSrc);
         if (!v || !f) return null;
         const p = gl.createProgram(); gl.attachShader(p, v); gl.attachShader(p, f);
@@ -624,7 +650,28 @@ export function createCurrentParticleGLLayer(map, opts) {
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
         return t;
     };
+    // Position state texture: RGBA32F (full float precision) when supported, else the
+    // 16-bit packed RGBA8 path (see floatPos above). NEAREST sampled either way (exact
+    // per-particle fetch), so no float-linear extension is needed.
+    const makeStateTex = (gl, w, h, data) => {
+        if (!floatPos) return makeTex(gl, w, h, data, gl.NEAREST);
+        const t = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, t);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, w, h, 0, gl.RGBA, gl.FLOAT, data);
+        return t;
+    };
     const randomState = () => {
+        if (floatPos) {                                  // raw [0,1] positions, full precision
+            const d = new Float32Array(RES * RES * 4);
+            for (let i = 0; i < RES * RES; i++) {
+                d[i*4] = Math.random(); d[i*4+1] = Math.random(); d[i*4+2] = 0.0; d[i*4+3] = 1.0;
+            }
+            return d;
+        }
         const d = new Uint8Array(RES * RES * 4);
         for (let i = 0; i < d.length; i += 4) {
             const x = Math.random(), y = Math.random();
@@ -655,7 +702,7 @@ export function createCurrentParticleGLLayer(map, opts) {
         headTex = []; headFbo = []; ageTex = []; headIdx = 0;
         const seed = randomState();
         for (let i = 0; i < 2; i++) {                  // ping-pong pair
-            const t = makeTex(gl, RES, RES, seed, gl.NEAREST);
+            const t = makeStateTex(gl, RES, RES, seed);
             const a = makeTex(gl, RES, RES, randomAge(), gl.NEAREST);
             const fbo = gl.createFramebuffer();
             gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
@@ -973,6 +1020,9 @@ export function createCurrentParticleGLLayer(map, opts) {
         id: A_LYR, type: 'custom', renderingMode: '2d',
         onAdd(m, gl) {
             glRef = gl;
+            // Must be detected before any shader compiles -- linkProg's #define
+            // injection reads this flag.
+            floatPos = !!gl.getExtension('EXT_color_buffer_float');
             updateProg = linkProg(gl, QUAD_VS, UPDATE_FS);
             if (!updateProg) { webglFailed = true; return; }
             screenQuad = gl.createBuffer();

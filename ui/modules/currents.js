@@ -208,6 +208,15 @@ export async function loadLayer(map, config, fullConfig = {}) {
             const v = isFinite(ui) ? Math.min(100, Math.max(0, ui)) : 50;
             return Math.pow(v / 100, 2) * 3.2;
         },
+        // The engine's default hFromConfig (currents' own tuned range, ~2e-4..1.4e-3)
+        // read too short even at the trail_length slider's max -- scaled up 5x (now
+        // ~1e-3..7e-3) rather than tweaking the shared default, matching wind's own
+        // explicit hFromConfig override elsewhere in this engine.
+        hFromConfig: (cfg) => {
+            const t = Number(cfg.trail_length);
+            const frac = (t >= 0 && t <= 100) ? t / 100 : 0.5;
+            return 1.0e-3 + frac * (7.0e-3 - 1.0e-3);
+        },
         hourDataUrl: currentsHourUrl,     // RTOFS-hour translated (shared with fill)
         backfillKey: recon.backfillKey,   // RTOFS (date,run,hour) for 404 backfill
     });
