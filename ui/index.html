@@ -80,6 +80,7 @@
     <div id="legend-stack"></div>
     <a href="http://localhost:9000/config" id="settingsBtn" target="_blank">Configuration Control</a>
     <div id="basemap-picker-host"></div>
+    <div id="zoomDisplay"></div>
 
     <div id="globeViz"></div>
 
@@ -121,6 +122,15 @@
                     zoom: 2.5,
                     projection: 'globe' // Start with a spherical projection
                 });
+
+                // Live zoom-level readout (bottom-left overlay; #zoomDisplay in the <style>
+                // block above already had its styling -- this is the element + wiring).
+                const zoomDisplay = document.getElementById('zoomDisplay');
+                const updateZoom = () => {
+                    zoomDisplay.innerText = `Zoom: ${map.getZoom().toFixed(2)}`;
+                };
+                map.on('zoom', updateZoom);
+                map.on('load', updateZoom);
 
                 // ---- Layer mounting + teardown registry (HOISTED) -------------------
                 const ALL_LAYERS = [
