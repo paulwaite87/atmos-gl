@@ -190,13 +190,23 @@ export async function loadLayer(map, config, fullConfig = {}) {
         maxSpeedColor: () => VMAX,        // speed tint scaled to current speeds
         landReset: () => 1.0,             // currents must NOT flow over land
         // Map the config UI's 0-100 particle_speed slider to the currents advection
-        // multiplier. The pleasant flow we tuned is ~4, so the slider midpoint (50) lands
-        // there; 100 -> 8 (fast); 0 -> static particles (the fill shows through, no
-        // motion). Default to 50 when unset.
+        // multiplier. Live tuning found the useful speed sitting right at the slider's
+        // old value of 10 (under a since-abandoned ui/100 mapping, ~0.8) -- an earlier
+        // rescale (ui/500) stretched that anchor out to the new midpoint (50) for finer
+        // control, and 50 -> 0.8 is now the confirmed sweet spot.
+        // Quadratic, not linear (ui/100)^2 * 3.2, so widening the ceiling doesn't also
+        // double that established midpoint: (50/100)^2*3.2 = 0.8, unchanged, while
+        // 100 -> 3.2 (2x the old ui/500 ceiling of 1.6). Since automatic zoom-speed
+        // compensation was reverted (see _currentparticles_gl.js), this gives manual
+        // headroom to dial speed up yourself at high zoom -- biased toward the low end
+        // of the slider (quadratic compresses low values, so most of the slider's
+        // travel still reads as fine adjustment around the known-good area, and the
+        // extra range only opens up approaching 100). 0 stays 0 -> static particles
+        // (the fill shows through, no motion). Default to 50 when unset.
         speedFromConfig: (cfg) => {
             const ui = Number(cfg.particle_speed);
             const v = isFinite(ui) ? Math.min(100, Math.max(0, ui)) : 50;
-            return (v / 100) * 8;
+            return Math.pow(v / 100, 2) * 3.2;
         },
         hourDataUrl: currentsHourUrl,     // RTOFS-hour translated (shared with fill)
         backfillKey: recon.backfillKey,   // RTOFS (date,run,hour) for 404 backfill
