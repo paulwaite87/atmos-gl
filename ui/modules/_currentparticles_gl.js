@@ -486,20 +486,16 @@ export function createCurrentParticleGLLayer(map, opts) {
         // over fractions of this -- doubled from the first pass (90 -> 180, ~3s at 60fps)
         // because the transitions themselves read as too fast, not just the total cycle.
         ageStep = (cfg) => 1.0 / 180,
-        // Trail-length zoom compensation (see curLengthZoomFactor above). comp=1 holds
-        // screen-space length ~constant; comp=0 disables (the old, zoom-unaware
-        // behaviour). ref is the zoom at which curH applies unscaled. NOT applied to
-        // advection speed -- see the note at u_speed in advect(). Three separate
-        // attempts at a speed-side equivalent (full-strength from zoom 2; half-strength
-        // from zoom 5; full-strength from zoom 5) each produced their own visual
-        // defects (far-too-slow, still-visibly-speeding-up, then stationary/crabbing/
-        // boundary-collecting particles above zoom 5) and were all reverted -- the
-        // globe projection's own zoom-to-screen-scale relationship isn't the flat
-        // "512*2^zoom" this formula assumes (MapLibre's globe projection transitions
-        // to Mercator-equivalent scaling around zoom 5, which is suspiciously exactly
-        // where the artifacts appeared), so getting this right would need matching
-        // that transition, not just retuning comp/ref. Not attempted again without a
-        // deeper look at the actual globe projection math.
+        // Trail-length (and, again, advection-speed -- see the note at u_speed in
+        // advect()) zoom compensation. comp=1 holds screen-space length/speed
+        // ~constant; comp=0 disables (the old, zoom-unaware behaviour). ref is the
+        // zoom at which curH/curSpeed apply unscaled. Applying this to speed was tried
+        // and reverted three times before (full-strength from zoom 2; half-strength
+        // from zoom 5; full-strength from zoom 5), each producing its own visual
+        // defect -- since diagnosed as 16-bit position quantization noise dominating
+        // an advection step the compensation had shrunk too far, not a flaw in this
+        // curve itself. Retrying full-strength from zoom 2 now that floatPos (above)
+        // gives positions enough precision to avoid that.
         lengthZoomComp = 1.0,
         lengthZoomRef = 2.0,
         // Zoom-adaptive drawn density (ported from _particles_gl.js): the fixed particle
@@ -575,11 +571,14 @@ export function createCurrentParticleGLLayer(map, opts) {
     let curSpeed = defaultSpeed, curThick = 2.0, curMaxSpeed = vmax, curAlpha = 0.9, curLandReset = 1.0;
     let curH = 8.0e-4;            // streamline integration step (tail arc); set in applyParams
     let curSmoothPx = 1.0;        // sampleVelSmooth coarse-cell spacing; set in applyParams
-    // Zoom compensation: curH is a fixed UV-space arc, but UV-space maps to
-    // ~512*2^zoom screen px -- unscaled, the ribbon's SCREEN length grows every time
-    // you zoom in, until it's stretching across the whole viewport at high zoom. Scaled
-    // by 2^(-lengthZoomComp*(zoom-lengthZoomRef)) each frame to hold the on-screen
-    // length roughly constant instead, mirroring _particles_gl.js's speedZoomComp.
+    // Zoom compensation: curH (trail arc) and curSpeed (per-frame advection step) are
+    // both fixed UV-space distances, but UV-space maps to ~512*2^zoom screen px --
+    // unscaled, both the ribbon's SCREEN length and the particle's SCREEN speed grow
+    // every time you zoom in. Scaled by 2^(-lengthZoomComp*(zoom-lengthZoomRef)) each
+    // frame to hold both roughly constant on-screen instead, mirroring
+    // _particles_gl.js's speedZoomComp -- applied to curH in drawTrails() and to
+    // curSpeed in advect(), same factor, since both are just UV distances projected to
+    // the same zoom-dependent screen scale.
     let curLengthZoomFactor = 1.0;
     let bustKey = (timeline.get().refreshEpoch) || Date.now();
 
@@ -955,11 +954,14 @@ export function createCurrentParticleGLLayer(map, opts) {
         gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, ageTex[src]);
         gl.uniform1i(u('u_age'), 2);
         gl.uniform1f(u('u_vmax'), vmax);
-        // NOT scaled by any zoom factor -- see the note at lengthZoomComp above for
-        // why (three attempts at zoom-compensated speed each produced their own
-        // artifacts, likely from the globe projection's own zoom-to-scale curve, not
-        // this formula's comp/ref tuning).
-        gl.uniform1f(u('u_speed'), curSpeed);
+        // Scaled by curLengthZoomFactor (same curve as the trail ribbon, full strength
+        // from lengthZoomRef) -- fourth attempt at zoom-compensated speed. The first
+        // three (see lengthZoomComp above) produced stationary-looking particles,
+        // fast particles piling up at boundaries, and crabbing; all three are now
+        // understood to be symptoms of 16-bit position quantization noise dominating
+        // an advection step shrunk small enough by the compensation -- exactly the bug
+        // floatPos above fixes. Retrying now that positions are full-precision.
+        gl.uniform1f(u('u_speed'), curSpeed * curLengthZoomFactor);
         gl.uniform1f(u('u_smoothPx'), curSmoothPx);
         gl.uniform1f(u('u_ageStep'), curAgeStep);
         gl.uniform1f(u('u_seed'), Math.random());
