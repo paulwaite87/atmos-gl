@@ -231,14 +231,36 @@ their data every few hours at most anyway. Data collection itself, though, alway
 background regardless of whether a layer is switched on — so the moment you enable
 something it's ready to display rather than waiting for a fresh fetch.
 
-### Precipitation
+### Atmospheric
+This group loosely comprises day-to-day atmospheric activity. We generally just lump
+this into the category "weather", and the layers we have here are usually the most
+interesting from the point of view of direct daily impact on our activities.
+
+Of these clouds are the outlier in that it isn't a true data layer (see below). For
+the rest the data is measured by satellites every 6 hours ('runs' termed 00Z, 06Z, 12Z, 18Z).
+After each set of measurements has been downloaded, super-computers get to work
+generating an hourly forecast using sophisticated models for each element measured
+ending up with up to 384 hours prediction into the future for some of the data.
+
+#### Clouds
+Clouds are a global image built up over 24 hours by NOAA satellites photographing a 
+'slice' of Earth from space. At any given time, therefore, we have a partial image 
+of how the clouds look right now, depending on where the satellite is in its sweep. 
+So to make sure we always have a full global image we grab imagery from 24h in the 
+past guarnteeing a full sweep is available.
+
+Clouds are therefore regarded as 'eye candy' and the images we have won't perfectly
+reflect the more up to date real data (precipitation, isobars etc) that we have.
+![Clouds](docs/atmos-gl-clouds.png)
+
+#### Precipitation
 Often mis-labelled as rainfall, even though that's what it mostly is, it does also
 cover snow, sleet, hail etc. It's probably one of the most interesting layers from
 the point of view of the amateur meteorologist given it often affects our daily plans
 in life! Given it can be displayed forecasted, it's quite useful in that regard.
 ![Precipitation](docs/atmos-gl-precipitation.png)
 
-### Precipitable Water
+#### Precipitable Water
 This shows the total amount of water vapour sitting in a column of atmosphere — not rain
 itself, but the fuel that heavy rain and atmospheric rivers need. Rather than colourising
 the whole globe, it only highlights potential problem areas: anywhere below a configurable
@@ -249,40 +271,25 @@ shown together, though a couple of other palettes are available if you'd prefer 
 distinct.
 ![Precipitable Water](docs/atmos-gl-precipitable-water.png)
 
-### Isobars
+#### Isobars
 The cornerstone of meteorology it shows what the pressure is doing in the atmosphere
 and hence how the air masses are moving. Coupled with wind and precipitation
 layers it really does show you how the weather is shaping up. Once again it can be
 forecasted which makes it very useful. You can see examples of isobars in the Precipitation
 image above.
 
-### Volcanoes
-Volcanoes are pretty much static day-to-day and can end up just cluttering up the map,
-so I generally don't display them. There are also a lot of them, depending on which
-options you set in the configuration. Each volcano will appear on the map
-as this symbol ![Volcano](ui/images/volcano_symbol.png)
+#### Wind
+Wind is depicted windy.com-style: animated flowing particle trails over a colourised
+speed heatmap, so you can see both direction and intensity of the wind at a glance. This
+layer is quite good paired with isobars where you can see the effect of differing air
+pressure. If you want to see Precipitation at the same time as Wind then I recommend
+you set `Heatmap opacity` of the underlying wind speed canvas to zero.
+![Wind](docs/atmos-gl-wind.png)
 
-One useful option for these is the option `Specific volcano by name` if a particular
-volcano on the planet has a big eruption and you want to display it. That field can
-take a comma-separated list too, if you have several you want to display.
-
-### Earthquakes
-These are one of the most interesting elements to put onto the map because it allows
-you to visualise clusters of quakes appearing and providing a pattern of activity.
-The symbol used comes in two colours, one for a very recent earthquake and one for
-those older. You can set the `Recent activity hours` which determines this switch in
-the configuration UI. The expiry hours can also be set there. Symbols:
-* ![EQ recent](ui/images/earthquake_new.png) Recent earthquake activity
-* ![EQ older](ui/images/earthquake_old.png) Older earthquakes
-![Earthquakes](docs/atmos-gl-quakes.png)
-
-### Storms
-Storms will drop off the map when the `Expiry days` is exceeded. Quite often the NOAA
-site will simply stop updating a storm if it loses strength and becomes a tropical low
-or similar. This expiry stops it hanging around too long once the updates stop.
-
+#### Storm Tracks
 A storm is depicted as a track history followed by a prediction cone showing where
-the storm might go next according to the computational models.
+the storm might go next according to the computational models. You can hover over
+the storm track to see its name and various other details.
 
 To get the data we scan two sources:
 * NHC (National Hurricane Center)
@@ -304,7 +311,7 @@ There are a lot of configurable items on the panel for storms, so you can get
 these looking how you like to see them.
 ![Storms](docs/atmos-gl-storms.png)
 
-### Lightning
+#### Lightning
 Lightning strikes are of course very brief, so we need a shorter expiry for them to
 avoid them building up and obliterating parts of the map. You have an `Expiry hours`
 slider in the configuration panel for these to let you tune that. Having them show
@@ -314,6 +321,29 @@ We also have a colour code to give an idea of timing:
 * ![Bolt New](ui/images/bolt_yellow.png) Within the last hour
 * ![Bolt New](ui/images/bolt_red.png) Older than an hour (but not yet expired)
 ![Lightning](docs/atmos-gl-lightning.png)
+
+### Events
+These are one-off events and cover Earthquakes and Volcanoes.
+
+#### Earthquakes
+These are one of the most interesting elements to put onto the map because it allows
+you to visualise clusters of quakes appearing and providing a pattern of activity.
+The symbol used comes in two colours, one for a very recent earthquake and one for
+those older. You can set the `Recent activity hours` which determines this switch in
+the configuration UI. The expiry hours can also be set there. Symbols:
+* ![EQ recent](ui/images/earthquake_new.png) Recent earthquake activity
+* ![EQ older](ui/images/earthquake_old.png) Older earthquakes
+![Earthquakes](docs/atmos-gl-quakes.png)
+
+#### Volcanoes
+Volcanoes are pretty much static, historical artifacts and can end up just cluttering
+up the map, so I generally don't display them. There are also a lot of them, depending 
+on which options you set in the configuration. Each volcano will appear on the map
+as this symbol ![Volcano](ui/images/volcano_symbol.png)
+
+Useful if you want to research volcano activity in past times using the filtering
+options. Obviously if one erupts in the present you can also view it, but the way
+these things are catalogued isn't like Earthquakes and the filtering is crude.
 
 ### Climate
 This area is quite fascinating as it covers the entire planet. The data is sourced
@@ -376,18 +406,6 @@ Potential Energy) above it. Combining both gives us a reasonable idea of the
 actual potential for storm formation.
 ![Storm Watch](docs/atmos-gl-stormwatch.png)
 
-### Wind
-Wind is depicted windy.com-style: animated flowing particle trails over a colourised
-speed heatmap, so you can see both direction and intensity of the wind at a glance. This
-layer is quite good paired with isobars where you can see the effect of differing air
-pressure. Note that in the below example I have set `Opacity` of the underlying wind
-speed canvas to zero because I am showing Precipitation which would otherwise just be 
-obscured.
-![Wind](docs/atmos-gl-wind.png)
-Here is another example where I don't have Preciptation showing, and increased the
-wind `Opacity` to 50 so you can see overall windspeed concentrations.
-![Wind with Canvas](docs/atmos-gl-wind-with-canvas.png)
-
 ### Shipping
 Ships are shown as small icons pointing in their current heading, colour-coded
 by vessel type: red for tankers, green for cargo, and violet/purple for passenger and
@@ -425,10 +443,6 @@ If it doesn't find an existing `ships` record it creates a `shadow` record with 
 the ship, basically just the name and the `mmsi` identifier. At some point we would hope to
 back-fill that data when a `ShipStaticData` is acquired for it.
 
-The `layer_builder` (see above) is independent of all this and just displays ships in the database
-which happen to be in the region(s) you have specified you want to display (or the whole World
-if you left that list empty).
-
 ### Data Collector
 The data collector is a separate background process which collects data for:
 * Quakes
@@ -451,7 +465,13 @@ The data collector is a separate background process which collects data for:
 * Markers (Cities, Towns etc)
 
 There is a status page in the configuration UI which shows the amount of data currently
-collected, and also how much of that data has been crunched into front-end content.
+collected, and also how much of that data has been crunched into front-end content. You
+can also opt out of collecting data for them, depending on what you are interested in
+seeing. Be aware though, that data generally takes some hours to collect, so if you
+enable something don't expect to be seeing anything on the globe for a while. If you have
+everything enabled the system is configured to be a light footprint in terms of remote
+download requests, so all you scarifice there is some disk space. That said, if you are
+genuinely never going to look at some of the data, it makes no sense to collect it.
 ![Data Status](docs/atmos-gl-conf-status.png)
 
 ### Satellites
