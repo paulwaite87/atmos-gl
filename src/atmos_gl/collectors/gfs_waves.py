@@ -1,114 +1,49 @@
 #!/usr/bin/env python3
-# Validated: ast.parse clean (2026-07-02).
+# Validated: ast.parse clean (2026-07-15).
 """GfsWavesCollector — the per-hour GFS-Wave global 0p25 swell field, extracted from the
 now-deleted field_ingest.py's _collect_gfs_waves as the second per-source
 FieldCollectorBase subclass (Phase 3, complete).
+
+A SingleFileFieldCollector (field_base.py): whole-file per-hour download, single
+product, no fallback when the forecast hour isn't published yet (unlike
+RtofsCurrentsCollector, which falls back to a nowcast) -- so collect()/backfill_hour()
+are inherited; only _resolve_download_url() and the baseline/tempfile settings are
+this source's own.
 
 Runs on the SAME GFS run + forecast-hour cadence as GfsAtmosCollector, so it shares the
 baseline (CycleContext key "gfs") rather than probing NOMADS a second time — see
 field_base.CycleContext.
 """
 import logging
-from datetime import datetime, timedelta, timezone
 
 from atmos_gl.lib.gfs import (
     resolve_gfs_baseline_with_coverage,
-    download_whole,
     remote_exists,
     build_wave_url,
 )
 from atmos_gl.lib.unpack import WAVES_UNPACKERS
-from .field_base import FieldCollectorBase, CycleContext, with_tempfile
+from .field_base import SingleFileFieldCollector
 
 logger = logging.getLogger("atmos_gl.collectors.gfs_waves")
 
 
-class GfsWavesCollector(FieldCollectorBase):
+class GfsWavesCollector(SingleFileFieldCollector):
     status_name = "gfs_waves"
     datasource_key = "gfs"
     baseline_key = "gfs"
     channel_key = "gfs_waves"
     products = WAVES_UNPACKERS
+    tempfile_suffix = ".grib2"
+    cleanup_idx = True
 
     def resolve_baseline(self, base_url: str):
         return resolve_gfs_baseline_with_coverage(base_url, self.cache_hours)
 
-    def collect(self, ctx: CycleContext) -> None:
-        base_url = self.base_url()
-        if not base_url:
-            logger.warning("gfs_waves: no 'gfs' datasource configured")
-            return
-
-        baseline = ctx.baseline(self.baseline_key, lambda: self.resolve_baseline(base_url))
-        if not baseline:
-            logger.warning(
-                "Data Collector: could not resolve a GFS baseline for waves; will retry."
-            )
-            return
-
-        run_date_str, run_id, run_timestamp = (
-            baseline["date_str"],
-            baseline["run"],
-            baseline["timestamp"],
-        )
-        now = datetime.now(timezone.utc)
-        hours_since_run = int(round((now - run_timestamp).total_seconds() / 3600.0))
-        fhour_0 = max(0, hours_since_run)  # forecast hour valid 'now'
-        fhour_end = fhour_0 + self.cache_hours
-
-        product, unpacker = next(iter(WAVES_UNPACKERS.items()))
-        stored = 0
-
-        for fhour in range(fhour_0, fhour_end):
-            if self.store.field_exists(run_date_str, run_id, fhour, product):
-                continue
-
-            valid = run_timestamp + timedelta(hours=fhour)
-            url = build_wave_url(base_url, run_date_str, run_id, fhour)
-            if not remote_exists(url):
-                logger.debug(f"waves f{fhour:03d}: not published yet")
-                continue
-
-            try:
-                data = download_whole(url)
-                if not data:
-                    continue
-            except Exception as e:
-                logger.debug(f"waves f{fhour:03d} download skipped: {e}")
-                continue
-
-            try:
-                with with_tempfile(data, ".grib2", cleanup_idx=True) as tmp_path:
-                    fields = unpacker(tmp_path)
-                    self.store.store_field(
-                        run_date_str, run_id, fhour, product, fields, valid
-                    )
-                    stored += 1
-            except Exception as e:
-                logger.debug(f"waves f{fhour:03d} unpack/store failed: {e}")
-
-        logger.info(
-            f"Data Collector (waves): {run_date_str} {run_id}Z, "
-            f"hours {fhour_0:03d}..{fhour_end - 1:03d}; stored {stored} field(s)."
-        )
-        try:
-            self.store.prune_except_run(run_date_str, run_id, products=[product])
-        except Exception as e:
-            logger.debug(f"waves prune skipped: {e}")
-
-    def backfill_hour(self, run_date: str, run_id: str, fhour: int, product: str) -> bool:
-        """Fetch the GFS-Wave global 0p25 GRIB for one hour (whole-file), mirroring
-        collect()'s inner body for exactly one hour."""
-        base_url = self.base_url()
-        unpacker = WAVES_UNPACKERS[product]
-        url = build_wave_url(base_url, run_date, run_id, fhour)
+    def _resolve_download_url(
+        self, base_url, run_date_str, run_id, fhour, *, allow_fallback
+    ):
+        url = build_wave_url(base_url, run_date_str, run_id, fhour)
         if not remote_exists(url):
-            return False
-        data = download_whole(url)
-        if not data:
-            return False
-        valid = self._valid_time(run_date, run_id, fhour)
-        with with_tempfile(data, ".grib2", cleanup_idx=True) as tmp_path:
-            fields = unpacker(tmp_path)
-            self.store.store_field(run_date, run_id, fhour, product, fields, valid)
-            return True
+            logger.debug(f"waves f{fhour:03d}: not published yet")
+            return None
+        return url

@@ -14,6 +14,12 @@ boundary/level layers (isobars, precipitation's `BoundaryNorm`), and SST's
 runtime-computed range — those do not share the scalar-field renderer or its spec
 shape.
 
+## Backend collectors
+
+| Term | Definition | Aliases to avoid |
+| ---- | ---------- | ---------------- |
+| **Single-file field collector** | A `FieldCollectorBase` subclass (`SingleFileFieldCollector`, `collectors/field_base.py`) that fetches one whole file per forecast hour for a single product — `GfsWavesCollector`, `RtofsCurrentsCollector` — sharing one `collect()`/`backfill_hour()` implementation behind `_resolve_download_url()`/`_guard_cycle()` hooks. Distinct from `GfsAtmosCollector`'s multi-product byte-range fetch, which stays its own implementation, subclassing `FieldCollectorBase` directly. | multi-file collector |
+
 ## Data conventions
 
 | Term | Definition | Aliases to avoid |

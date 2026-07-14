@@ -3,6 +3,13 @@
 """FieldCollectorBase + CycleContext — shared scaffolding for the GFS/RTOFS forecast-field
 collectors (gfs_atmos.py, gfs_waves.py, rtofs_currents.py — Phase 3, complete).
 
+SingleFileFieldCollector(FieldCollectorBase) further shares a concrete collect()/
+backfill_hour() between GfsWavesCollector and RtofsCurrentsCollector -- both fetch one
+whole file per forecast hour for a single product, differing only in URL resolution
+(plus fallback), tempfile suffix, and (for RTOFS) an f072 window cap/abort. See its
+class docstring below. GfsAtmosCollector's multi-product byte-range fetch stays its own
+implementation, subclassing FieldCollectorBase directly.
+
 CollectorBase's is_stale/has_new_data scheduling contract doesn't fit these sources: they
 aren't polled on their own cadence, they're driven every full-refresh cycle (already gated by
 data_collector.enabled + update_minutes at the service level) and self-gate per forecast hour
@@ -36,6 +43,7 @@ from datetime import datetime, timedelta, timezone
 
 from .base import CollectorBase
 from atmos_gl.lib.data_status import estimate_next_update, read_process_status, build_status
+from atmos_gl.lib.gfs import download_whole
 
 logger = logging.getLogger(__name__)
 
@@ -46,12 +54,11 @@ def with_tempfile(data: bytes, suffix: str, cleanup_idx: bool = False):
     (plus any `*.idx` cfgrib sidecars, if `cleanup_idx`), even if the body raises.
 
     Owns only the tempfile's lifecycle — not the download (already source-specific in
-    lib/gfs.py/lib/rtofs.py) or the unpack/store/error-handling that follows (which
-    genuinely differs: gfs_atmos.collect() unpacks several products from one tempfile,
-    each with its own try/except, while the other five call sites unpack a single
-    product). Architecture review candidate "collapse the field-collector download ->
-    unpack -> store mechanic" — this is the part of that mechanic that was identical
-    across all three collectors' collect()/backfill_hour() pairs.
+    lib/gfs.py/lib/rtofs.py) or the unpack/store/error-handling that follows. For
+    GfsWavesCollector/RtofsCurrentsCollector that surrounding mechanic is now shared via
+    SingleFileFieldCollector, below; GfsAtmosCollector still calls this directly since
+    it unpacks several products from one tempfile, each with its own try/except --
+    genuinely different from the other two's single-product case, not copy-paste.
     """
     tmp = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
     tmp.write(data)
@@ -218,6 +225,144 @@ class FieldCollectorBase(CollectorBase):
         raise NotImplementedError(
             f"{type(self).__name__}.backfill_hour() not implemented"
         )
+
+
+class SingleFileFieldCollector(FieldCollectorBase):
+    """FieldCollectorBase subclass for sources that fetch one whole file per forecast
+    hour for a single product -- GfsWavesCollector, RtofsCurrentsCollector -- as opposed
+    to GfsAtmosCollector's multi-product byte-range fetch, which stays its own
+    collect()/backfill_hour() implementation (the two shapes differ on two axes at
+    once: product cardinality per fetch, and byte-range vs whole-file download).
+
+    Subclasses set `tempfile_suffix` (and `cleanup_idx` if GRIB .idx sidecars need
+    sweeping) and implement `_resolve_download_url()`; override `_guard_cycle()` and/or
+    `_expected_fhour_end()` only if a source needs to cap or abort its window, as
+    RtofsCurrentsCollector does for its f072 hourly limit.
+    """
+
+    tempfile_suffix: str = ""  # override in every subclass -- e.g. ".grib2", ".nc"
+    cleanup_idx: bool = False  # override to True for GRIB sources with .idx sidecars
+
+    def _guard_cycle(self, fhour_0: int, fhour_end: int) -> bool:
+        """Called once before collect()'s per-hour loop; return False (having logged
+        why) to abort the whole cycle. Default: always proceed. Override when a
+        source's window can run past what upstream could ever have published."""
+        return True
+
+    def _resolve_download_url(
+        self,
+        base_url: str,
+        run_date_str: str,
+        run_id: str,
+        fhour: int,
+        *,
+        allow_fallback: bool,
+    ) -> str | None:
+        """Return the URL to fetch for this (run, hour), or None if unavailable this
+        cycle. Encapsulates the remote-exists check and any fallback (e.g. RTOFS's
+        nowcast) per source. `allow_fallback` is True unconditionally from
+        backfill_hour() -- a backfill request is for one specific missing hour, so any
+        fallback is better than nothing -- but only for fhour == fhour_0 from
+        collect()'s window loop, since later hours should wait for their own forecast
+        rather than silently reuse 'now'. Override per source."""
+        raise NotImplementedError(
+            f"{type(self).__name__}._resolve_download_url() not implemented"
+        )
+
+    def collect(self, ctx: CycleContext) -> None:
+        base_url = self.base_url()
+        if not base_url:
+            logger.warning(
+                f"{self.status_name}: no '{self.datasource_key}' datasource configured"
+            )
+            return
+
+        baseline = ctx.baseline(self.baseline_key, lambda: self.resolve_baseline(base_url))
+        if not baseline:
+            logger.warning(
+                f"Data Collector: could not resolve a {self.baseline_key} baseline for "
+                f"{self.status_name}; will retry."
+            )
+            return
+
+        run_date_str, run_id, run_timestamp = (
+            baseline["date_str"],
+            baseline["run"],
+            baseline["timestamp"],
+        )
+        now = datetime.now(timezone.utc)
+        fhour_0 = max(0, int(round((now - run_timestamp).total_seconds() / 3600.0)))
+        fhour_end = self._expected_fhour_end(fhour_0)
+
+        if not self._guard_cycle(fhour_0, fhour_end):
+            return
+
+        product, unpacker = next(iter(self.products.items()))
+        stored = 0
+
+        for fhour in range(fhour_0, fhour_end):
+            if self.store.field_exists(run_date_str, run_id, fhour, product):
+                continue
+
+            url = self._resolve_download_url(
+                base_url, run_date_str, run_id, fhour, allow_fallback=(fhour == fhour_0)
+            )
+            if not url:
+                continue
+
+            valid = run_timestamp + timedelta(hours=fhour)
+            try:
+                data = download_whole(url)
+                if not data:
+                    continue
+            except Exception as e:
+                logger.debug(f"{self.status_name} f{fhour:03d} download skipped: {e}")
+                continue
+
+            try:
+                with with_tempfile(
+                    data, self.tempfile_suffix, cleanup_idx=self.cleanup_idx
+                ) as tmp_path:
+                    fields = unpacker(tmp_path)
+                    self.store.store_field(
+                        run_date_str, run_id, fhour, product, fields, valid
+                    )
+                    stored += 1
+            except Exception as e:
+                logger.debug(f"{self.status_name} f{fhour:03d} unpack/store failed: {e}")
+
+        logger.info(
+            f"Data Collector ({self.status_name}): {run_date_str} {run_id}Z, "
+            f"hours {fhour_0:03d}..{fhour_end - 1:03d}; stored {stored} field(s)."
+        )
+        try:
+            self.store.prune_except_run(
+                run_date_str, run_id, products=list(self.products.keys())
+            )
+        except Exception as e:
+            logger.debug(f"{self.status_name} prune skipped: {e}")
+
+    def backfill_hour(self, run_date: str, run_id: str, fhour: int, product: str) -> bool:
+        """Fetch + store a single (run_date, run_id, fhour, product) hour on demand --
+        the same body as collect()'s loop iteration, but with allow_fallback=True
+        unconditionally (see _resolve_download_url)."""
+        base_url = self.base_url()
+        unpacker = self.products[product]
+        url = self._resolve_download_url(
+            base_url, run_date, run_id, fhour, allow_fallback=True
+        )
+        if not url:
+            return False
+        data = download_whole(url)
+        if not data:
+            return False
+        valid = self._valid_time(run_date, run_id, fhour)
+        with with_tempfile(
+            data, self.tempfile_suffix, cleanup_idx=self.cleanup_idx
+        ) as tmp_path:
+            fields = unpacker(tmp_path)
+            self.store.store_field(run_date, run_id, fhour, product, fields, valid)
+            return True
 
 
 def drain_backfill(config, store, collector_classes, field_catalog_adapter) -> None:

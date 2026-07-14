@@ -1,8 +1,15 @@
 #!/usr/bin/env python3
-# Validated: ast.parse clean (2026-07-02).
+# Validated: ast.parse clean (2026-07-15).
 """RtofsCurrentsCollector — RTOFS daily-run hourly surface u/v (to f072), extracted from the
 now-deleted field_ingest.py's _collect_rtofs_currents as the third and final per-source
 FieldCollectorBase subclass (Phase 3, complete).
+
+A SingleFileFieldCollector (field_base.py): whole-file per-hour download, single
+product -- so collect()/backfill_hour() are inherited. This source overrides three
+hooks beyond the baseline/tempfile settings: _expected_fhour_end() (the f072 hourly
+cap), _guard_cycle() (abort once the run is too old for that cap), and
+_resolve_download_url() (the nowcast fallback -- see its docstring for the
+collect()-vs-backfill_hour() distinction).
 
 Uses its own baseline (CycleContext key "rtofs") since it's a different model on a
 different cadence to the GFS pair — no probe is shared here, but the same per-cycle
@@ -10,7 +17,6 @@ memoisation still applies if something else ever needs the RTOFS baseline too. S
 field_base.CycleContext.
 """
 import logging
-from datetime import datetime, timedelta, timezone
 
 from atmos_gl.lib.rtofs import (
     resolve_rtofs_baseline,
@@ -18,128 +24,56 @@ from atmos_gl.lib.rtofs import (
     build_currents_nowcast_url,
     RTOFS_MAX_HOURLY_FHOUR,
 )
-from atmos_gl.lib.gfs import download_whole, remote_exists
+from atmos_gl.lib.gfs import remote_exists
 from atmos_gl.lib.unpack import CURRENTS_UNPACKERS
-from .field_base import FieldCollectorBase, CycleContext, with_tempfile
+from .field_base import SingleFileFieldCollector
 
 logger = logging.getLogger("atmos_gl.collectors.rtofs_currents")
 
 
-class RtofsCurrentsCollector(FieldCollectorBase):
+class RtofsCurrentsCollector(SingleFileFieldCollector):
     status_name = "rtofs_currents"
     datasource_key = "currents"
     baseline_key = "rtofs"
     channel_key = "rtofs_currents"
     products = CURRENTS_UNPACKERS
+    tempfile_suffix = ".nc"
 
     def resolve_baseline(self, base_url: str):
         return resolve_rtofs_baseline(base_url)
 
     def _expected_fhour_end(self, fhour_0: int) -> int:
-        """RTOFS surface files are hourly only to f072 (see collect()'s own window cap);
-        data_status() must expect the same ceiling or it would report < 100% forever
-        once the window runs past what RTOFS could ever publish hourly."""
+        """RTOFS surface files are hourly only to f072; collect()'s window and
+        data_status()'s expectation must share this ceiling or collect() would request
+        non-existent (3-hourly) hours and data_status() would report < 100% forever."""
         return min(fhour_0 + self.cache_hours, RTOFS_MAX_HOURLY_FHOUR + 1)
 
-    def collect(self, ctx: CycleContext) -> None:
-        base_url = self.base_url()
-        if not base_url:
-            logger.warning("rtofs_currents: no 'currents' datasource configured")
-            return
-
-        baseline = ctx.baseline(self.baseline_key, lambda: self.resolve_baseline(base_url))
-        if not baseline:
-            logger.warning(
-                "Data Collector: could not resolve an RTOFS baseline; will retry."
-            )
-            return
-
-        date_str, run, ts = (
-            baseline["date_str"],
-            baseline["run"],
-            baseline["timestamp"],
-        )
-        now = datetime.now(timezone.utc)
-        hours_since_run = int(round((now - ts).total_seconds() / 3600.0))
-        fhour_0 = max(0, hours_since_run)  # forecast hour valid 'now'
-
-        # RTOFS surface files are hourly only to f072; cap the cache window so the simple
-        # hourly loop never requests a non-existent (3-hourly) hour.
-        fhour_end = min(fhour_0 + self.cache_hours, RTOFS_MAX_HOURLY_FHOUR + 1)
+    def _guard_cycle(self, fhour_0: int, fhour_end: int) -> bool:
+        """Abort the cycle once the run is older than RTOFS's hourly limit -- otherwise
+        _expected_fhour_end's cap alone would silently produce an empty (and
+        increasingly backwards-looking) window with no explanation in the logs."""
         if fhour_0 > RTOFS_MAX_HOURLY_FHOUR:
             logger.warning(
-                f"RTOFS run {date_str} is {fhour_0}h old (> {RTOFS_MAX_HOURLY_FHOUR}h "
-                f"hourly limit); a newer run should appear shortly."
+                f"RTOFS run is {fhour_0}h old (> {RTOFS_MAX_HOURLY_FHOUR}h hourly "
+                f"limit); a newer run should appear shortly."
             )
-            return
-
-        product, unpacker = next(iter(CURRENTS_UNPACKERS.items()))
-        stored = 0
-
-        for fhour in range(fhour_0, fhour_end):
-            if self.store.field_exists(date_str, run, fhour, product):
-                continue
-
-            valid = ts + timedelta(hours=fhour)
-            url = build_currents_url(base_url, date_str, fhour)
-            # Fall back to the nowcast (present conditions) if this forecast hour isn't
-            # published yet; better a current 'now' field than a gap.
-            if not remote_exists(url):
-                fallback = build_currents_nowcast_url(base_url, date_str)
-                if fhour == fhour_0 and remote_exists(fallback):
-                    logger.debug(f"currents f{fhour:03d} missing; using n000 nowcast")
-                    url = fallback
-                else:
-                    logger.debug(f"currents f{fhour:03d}: not published yet")
-                    continue
-
-            try:
-                data = download_whole(url)
-                if not data:
-                    continue
-            except Exception as e:
-                logger.debug(f"currents f{fhour:03d} download skipped: {e}")
-                continue
-
-            try:
-                with with_tempfile(data, ".nc") as tmp_path:
-                    fields = unpacker(tmp_path)
-                    self.store.store_field(date_str, run, fhour, product, fields, valid)
-                    stored += 1
-            except Exception as e:
-                logger.debug(f"currents f{fhour:03d} unpack/store failed: {e}")
-
-        logger.info(
-            f"Data Collector (currents): {date_str} {run}Z, hours "
-            f"{fhour_0:03d}..{fhour_end - 1:03d}; stored {stored} field(s)."
-        )
-        try:
-            self.store.prune_except_run(
-                date_str, run, products=list(CURRENTS_UNPACKERS.keys())
-            )
-        except Exception as e:
-            logger.debug(f"currents prune skipped: {e}")
-
-    def backfill_hour(self, run_date: str, run_id: str, fhour: int, product: str) -> bool:
-        """Fetch a single RTOFS currents hour on demand. RTOFS URLs key off date + fhour (one
-        daily cycle), with the nowcast as a fallback when the forecast hour isn't published
-        — unconditionally here (unlike collect()'s window loop, which only falls back for
-        fhour_0): a backfill request is for one specific missing hour, so a nowcast is still
-        better than nothing for it."""
-        base_url = self.base_url()
-        unpacker = CURRENTS_UNPACKERS[product]
-        url = build_currents_url(base_url, run_date, fhour)
-        if not remote_exists(url):
-            fallback = build_currents_nowcast_url(base_url, run_date)
-            if remote_exists(fallback):
-                url = fallback
-            else:
-                return False
-        data = download_whole(url)
-        if not data:
             return False
-        valid = self._valid_time(run_date, run_id, fhour)
-        with with_tempfile(data, ".nc") as tmp_path:
-            fields = unpacker(tmp_path)
-            self.store.store_field(run_date, run_id, fhour, product, fields, valid)
-            return True
+        return True
+
+    def _resolve_download_url(
+        self, base_url, run_date_str, run_id, fhour, *, allow_fallback
+    ):
+        """Forecast-hour file, falling back to the nowcast (present conditions) if not
+        yet published. `allow_fallback` is False for every collect()-loop hour after
+        fhour_0 (later hours should wait for their own forecast, not silently reuse
+        'now') but always True from backfill_hour() (a backfill request is for one
+        specific missing hour, so a nowcast is still better than nothing for it)."""
+        url = build_currents_url(base_url, run_date_str, fhour)
+        if remote_exists(url):
+            return url
+        fallback = build_currents_nowcast_url(base_url, run_date_str)
+        if allow_fallback and remote_exists(fallback):
+            logger.debug(f"currents f{fhour:03d} missing; using n000 nowcast")
+            return fallback
+        logger.debug(f"currents f{fhour:03d}: not published yet")
+        return None
