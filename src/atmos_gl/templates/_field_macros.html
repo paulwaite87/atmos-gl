@@ -26,7 +26,7 @@
       </div>
       <input type="range" class="form-range dynamic-input {{ spec.extra_class }}" id="{{ dom_id }}"
              min="{{ spec.min }}" max="{{ spec.max }}" step="{{ spec.step }}" value="{{ clamped }}"
-             oninput="updateSliderBadge('badge-{{ dom_id }}', this.value, {{ 'null' if spec.decimals is none else spec.decimals }}, '{{ spec.prefix }}', '{{ spec.suffix }}', {{ 'null' if spec.zero_label is none else spec.zero_label|tojson }}, {{ 'true' if spec.pluralize else 'false' }})">
+             oninput="updateSliderBadge('badge-{{ dom_id }}', this.value, {{ 'null' if spec.decimals is none else spec.decimals }}, '{{ spec.prefix }}', '{{ spec.suffix }}', {{ 'null' if spec.zero_label is none else ("'" ~ spec.zero_label ~ "'") }}, {{ 'true' if spec.pluralize else 'false' }})">
     </div>
   {% elif spec and spec.kind == "select" %}
     <div class="col-md-6">

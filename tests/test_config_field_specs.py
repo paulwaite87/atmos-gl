@@ -355,7 +355,7 @@ def test_shared_constants_reused_across_many_sections():
         is FIELD_SPECS[("stormwatch", "level_of_detail")]
     )
     assert (
-        FIELD_SPECS[("wind", "particle_speed")]
+        FIELD_SPECS[("currents", "particle_speed")]
         is FIELD_SPECS[("animation", "stepping_rate")]
     )
 

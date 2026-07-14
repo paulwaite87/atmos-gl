@@ -209,14 +209,27 @@ export async function loadLayer(map, config, fullConfig = {}) {
             const v = Number(cfg.flow_coherence_radius);
             return (isFinite(v) && v > 0) ? v : 0;
         },
-        // trail_length (0-100): the SAME config key and slider as currents (both read the
-        // engine's shared arc-length concept), but mapped into a much shorter range --
-        // currents' own tuned midpoint H (~8e-4) read as a "massively long strand" for
-        // wind's noisier, higher-STREAM_STEPS ribbon.
+        // trail_length: the SAME config key as currents (both read the engine's shared
+        // arc-length concept), but mapped into a much shorter range -- currents' own
+        // tuned midpoint H (~8e-4) read as a "massively long strand" for wind's noisier,
+        // higher-STREAM_STEPS ribbon. UI slider is now 10-100, 5x-compressed relative to
+        // currents' plain 0-100 (frac = t/500, not t/100): live tuning found every
+        // useful value sitting in the bottom ~1/5 of the old 0-100 range (the rest was
+        // always "too long"), so the useful sub-range was stretched across the whole
+        // slider for finer control -- old value 10 (the sweet spot) now reads as 50.
         hFromConfig: (cfg) => {
             const t = Number(cfg.trail_length);
-            const frac = (t >= 0 && t <= 100) ? t / 100 : 0.5;
+            const frac = (t >= 10 && t <= 100) ? t / 500 : 0.1;
             return 3.0e-5 + frac * (3.0e-4 - 3.0e-5);   // ~3e-5 .. 3e-4 -- a first pass, tune live
+        },
+        // trail_thickness UI slider is 1-5 (integer, no unit) rather than currents' raw
+        // px. First pass mapped slider max (5) to 2.5px (v/2) -- read too fat live.
+        // Narrowed so the same 5-step slider covers a smaller px range: 1 -> 0.5px
+        // (unchanged floor) .. 5 -> 1.5px (what the old scale's "3" used to give).
+        thicknessFromConfig: (cfg) => {
+            const t = Number(cfg.trail_thickness);
+            const v = (isFinite(t) && t >= 1 && t <= 5) ? t : 3;
+            return (v + 1) / 4;
         },
     });
 

@@ -479,7 +479,8 @@ export function createCurrentParticleGLLayer(map, opts) {
         ageStep = (cfg) => 1.0 / 180,
         // Trail-length zoom compensation (see curLengthZoomFactor above). comp=1 holds
         // screen-space length ~constant; comp=0 disables (the old, zoom-unaware
-        // behaviour). ref is the zoom at which curH applies unscaled.
+        // behaviour). ref is the zoom at which curH applies unscaled. NOT applied to
+        // advection speed -- see the note at u_speed in advect().
         lengthZoomComp = 1.0,
         lengthZoomRef = 2.0,
         // Zoom-adaptive drawn density (ported from _particles_gl.js): the fixed particle
@@ -493,9 +494,14 @@ export function createCurrentParticleGLLayer(map, opts) {
         densityZoomFalloff = 0.5,
         // Temporal hour-blending (ported from _particles_gl.js): cross-fades the current
         // and next forecast-hour textures by the timeline's playback frac, so playback
-        // shows a continuous field instead of a once-per-hour "snap". Default on; disable
-        // with temporal_blend:false. Config: temporal_blend.
-        temporalBlend = (cfg) => String(cfg.temporal_blend) !== 'false',
+        // shows a continuous field instead of a once-per-hour "snap". Always on -- no
+        // longer a config-exposed toggle (removed; nobody wanted it off).
+        temporalBlend = () => true,
+        // trail_thickness (px, ribbon half-thickness) -> curThick. Default reads the
+        // config value directly as px; a consumer wanting a different UI scale (e.g. a
+        // small integer slider) overrides this to convert, same pattern as
+        // hFromConfig/speedFromConfig.
+        thicknessFromConfig = (cfg) => Number(cfg.trail_thickness) > 0 ? Number(cfg.trail_thickness) : 2.0,
         hourDataUrl = (cfg, hour, bust) => {
             const base = cfg.outfile.replace(/\.png$/, '');
             const f = String(hour).padStart(3, '0');
@@ -545,6 +551,8 @@ export function createCurrentParticleGLLayer(map, opts) {
     // you zoom in, until it's stretching across the whole viewport at high zoom. Scaled
     // by 2^(-lengthZoomComp*(zoom-lengthZoomRef)) each frame to hold the on-screen
     // length roughly constant instead, mirroring _particles_gl.js's speedZoomComp.
+    // Deliberately NOT applied to curSpeed (advection) -- tried that, reintroduced
+    // crabbing and read far too slow; see the note at u_speed in advect().
     let curLengthZoomFactor = 1.0;
     let bustKey = (timeline.get().refreshEpoch) || Date.now();
 
@@ -555,7 +563,7 @@ export function createCurrentParticleGLLayer(map, opts) {
     };
     const applyParams = (cfg) => {
         curSpeed = speedFromConfig(cfg);
-        curThick = Number(cfg.trail_thickness) > 0 ? Number(cfg.trail_thickness) : 2.0;
+        curThick = thicknessFromConfig(cfg);
         curAlpha = Number(cfg.particle_alpha) > 0 ? Number(cfg.particle_alpha) / 100 : 0.9;
         curMaxSpeed = maxSpeedColor(cfg) || vmax;
         curLandReset = landReset(cfg) > 0.5 ? 1.0 : 0.0;
@@ -892,6 +900,12 @@ export function createCurrentParticleGLLayer(map, opts) {
         gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, ageTex[src]);
         gl.uniform1i(u('u_age'), 2);
         gl.uniform1f(u('u_vmax'), vmax);
+        // NOT scaled by curLengthZoomFactor: tried applying the same zoom compensation
+        // to advection speed (constant screen-space speed, matching the trail ribbon),
+        // but it reintroduced the "crabbing" artifact this engine's RK2 port was meant
+        // to fix, and read far too slow well before reaching the zoom levels where the
+        // ribbon-length compensation actually matters. Reverted -- speed stays a raw,
+        // zoom-unaware UV-space rate.
         gl.uniform1f(u('u_speed'), curSpeed);
         gl.uniform1f(u('u_smoothPx'), curSmoothPx);
         gl.uniform1f(u('u_ageStep'), curAgeStep);
@@ -988,7 +1002,12 @@ export function createCurrentParticleGLLayer(map, opts) {
             try { zNow = map.getZoom(); } catch (_) { /* keep ref */ }
             if (lengthZoomComp > 0) {
                 const raw = Math.pow(2, -lengthZoomComp * (zNow - lengthZoomRef));
-                curLengthZoomFactor = Math.min(4.0, Math.max(0.05, raw));
+                // Floor was 0.05, which stops compensating (and lets the ribbon's screen
+                // length start growing again) above ~zoom 6.3 -- easily reached by
+                // normal navigation. Dropped to 1e-6 so compensation keeps working up to
+                // ~zoom 22 (MapLibre's default ceiling); a nonzero floor is kept only as
+                // a guard against a literal zero-length/NaN ribbon.
+                curLengthZoomFactor = Math.min(4.0, Math.max(1e-6, raw));
             } else {
                 curLengthZoomFactor = 1.0;
             }
