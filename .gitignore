@@ -2,6 +2,7 @@
 # Ignore various data files
 data/*
 files/
+
 # The live, locally-running config -- config/atmos-gl.json.tmpl is the tracked
 # template; this file is where settings actually get changed/tested day to day.
 # See CLAUDE.md's "Settings changes" section for the tmpl <-> live workflow.
@@ -44,6 +45,9 @@ Thumbs.db
 *.swp
 *~
 
+# Codegraph/MCP
+.codegraph/
+.mcp.json
 
 # --- Ship Data / XPlanet Artifacts ---
 # This catches any loose index or backup files in the root
