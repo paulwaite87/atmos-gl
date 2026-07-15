@@ -1,11 +1,12 @@
 import json
 import logging
 
-from sqlalchemy import cast, func, select, text
+from sqlalchemy import cast, func, select
 from sqlalchemy.dialects.postgresql import JSONB, insert as pg_insert
 from sqlalchemy.types import Text as SqlText
 
 from atmos_gl.db.engine import Session
+from atmos_gl.db.geojson import as_feature_collection, EMPTY_FEATURE_COLLECTION
 from atmos_gl.db.models import Volcano
 
 logger = logging.getLogger(__name__)
@@ -54,12 +55,7 @@ class VolcanoAdapter:
                 Volcano.erupt_date_code,
             ),
         )
-        collection = func.jsonb_build_object(
-            "type",
-            "FeatureCollection",
-            "features",
-            func.coalesce(func.jsonb_agg(feature), text("'[]'::jsonb")),
-        )
+        collection = as_feature_collection(feature)
         conditions = [
             Volcano.vei >= vei_min,
             Volcano.erupt_date_code.in_(list(date_codes)),
@@ -67,9 +63,13 @@ class VolcanoAdapter:
         if significant:
             conditions.append(Volcano.significant == True)  # noqa: E712
         stmt = select(cast(collection, SqlText)).where(*conditions)
-        with Session() as session:
-            result = session.scalar(stmt)
-            return result if result is not None else '{"type":"FeatureCollection","features":[]}'
+        try:
+            with Session() as session:
+                result = session.scalar(stmt)
+                return result if result is not None else EMPTY_FEATURE_COLLECTION
+        except Exception as e:
+            logger.error(f"Error building volcano GeoJSON: {e}")
+            return EMPTY_FEATURE_COLLECTION
 
 
 class FakeVolcanoAdapter:

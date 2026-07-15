@@ -1,10 +1,11 @@
 import logging
 
-from sqlalchemy import bindparam, cast, delete, func, select, text
+from sqlalchemy import bindparam, cast, delete, func, select
 from sqlalchemy.dialects.postgresql import JSONB, insert as pg_insert
 from sqlalchemy.types import Text as SqlText
 
 from atmos_gl.db.engine import Session
+from atmos_gl.db.geojson import as_feature_collection, EMPTY_FEATURE_COLLECTION
 from atmos_gl.db.models import Marker
 
 logger = logging.getLogger(__name__)
@@ -120,20 +121,15 @@ class MarkerAdapter:
                 Marker.wx_valid_time,
             ),
         )
-        collection = func.jsonb_build_object(
-            "type",
-            "FeatureCollection",
-            "features",
-            func.coalesce(func.jsonb_agg(feature), text("'[]'::jsonb")),
-        )
+        collection = as_feature_collection(feature)
         stmt = select(cast(collection, SqlText)).select_from(Marker)
         try:
             with Session() as session:
                 result = session.scalar(stmt)
-                return result if result is not None else '{"type":"FeatureCollection","features":[]}'
+                return result if result is not None else EMPTY_FEATURE_COLLECTION
         except Exception as e:
             logger.error(f"Error building markers GeoJSON: {e}")
-            return '{"type":"FeatureCollection","features":[]}'
+            return EMPTY_FEATURE_COLLECTION
 
 
 class FakeMarkerAdapter:

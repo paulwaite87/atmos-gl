@@ -1,11 +1,12 @@
 import logging
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import and_, case, cast, delete, func, select, text
+from sqlalchemy import and_, case, cast, delete, func, select
 from sqlalchemy.dialects.postgresql import JSONB, insert as pg_insert
 from sqlalchemy.types import Text as SqlText
 
 from atmos_gl.db.engine import Session
+from atmos_gl.db.geojson import as_feature_collection, EMPTY_FEATURE_COLLECTION
 from atmos_gl.db.models import Ship, ShipPosition
 from atmos_gl.lib.shipping import get_vessel_class_from_type
 
@@ -193,20 +194,15 @@ class ShipAdapter:
                 func.to_jsonb(Ship.last_position_update),
             ),
         )
-        collection = func.jsonb_build_object(
-            "type",
-            "FeatureCollection",
-            "features",
-            func.coalesce(func.jsonb_agg(feature), text("'[]'::jsonb")),
-        )
+        collection = as_feature_collection(feature)
         stmt = select(cast(collection, SqlText)).where(Ship.geom.isnot(None))
         try:
             with Session() as session:
                 result = session.scalar(stmt)
-                return result if result is not None else '{"type":"FeatureCollection","features":[]}'
+                return result if result is not None else EMPTY_FEATURE_COLLECTION
         except Exception as e:
             logger.error(f"Error building native fleet GeoJSON layer: {e}")
-            return '{"type":"FeatureCollection","features":[]}'
+            return EMPTY_FEATURE_COLLECTION
 
     def get_ship_track(self, mmsi, limit=100):
         """Historical positions for a specific ship, newest first."""

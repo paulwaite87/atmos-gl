@@ -1,11 +1,12 @@
 import logging
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import cast, delete, func, select, text
+from sqlalchemy import cast, delete, func, select
 from sqlalchemy.dialects.postgresql import JSONB, insert as pg_insert
 from sqlalchemy.types import Text as SqlText
 
 from atmos_gl.db.engine import Session
+from atmos_gl.db.geojson import as_feature_collection, EMPTY_FEATURE_COLLECTION
 from atmos_gl.db.models import LightningStrike
 
 logger = logging.getLogger(__name__)
@@ -73,21 +74,16 @@ class LightningAdapter:
                 func.to_char(LightningStrike.acquired_at, "HH24:MI"),
             ),
         )
-        collection = func.jsonb_build_object(
-            "type",
-            "FeatureCollection",
-            "features",
-            func.coalesce(func.jsonb_agg(feature), text("'[]'::jsonb")),
-        )
+        collection = as_feature_collection(feature)
         cutoff = func.now() - timedelta(hours=expiry_hours)
         stmt = select(cast(collection, SqlText)).where(LightningStrike.acquired_at >= cutoff)
         try:
             with Session() as session:
                 result = session.scalar(stmt)
-                return result if result is not None else '{"type":"FeatureCollection","features":[]}'
+                return result if result is not None else EMPTY_FEATURE_COLLECTION
         except Exception as e:
             logger.error(f"Error building lightning GeoJSON: {e}")
-            return '{"type":"FeatureCollection","features":[]}'
+            return EMPTY_FEATURE_COLLECTION
 
     def prune_lightning(self, expiry_hours=24):
         """Deletes old lightning data to keep the table performant."""
