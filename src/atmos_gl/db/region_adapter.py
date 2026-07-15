@@ -30,15 +30,6 @@ class RegionAdapter:
                 "lat_max": row.lat_max,
             }
 
-    def is_in_region(self, lat, lon, region_label):
-        """Quick boolean check if a point is inside a specific region."""
-        point = func.ST_SetSRID(func.ST_MakePoint(lon, lat), 4326)
-        stmt = select(1).where(
-            MapRegion.label == region_label, func.ST_Contains(MapRegion.boundary, point)
-        )
-        with Session() as session:
-            return session.execute(stmt).first() is not None
-
     def get_priority_region_list(self, primary_region_label):
         """Returns all regions from the database, ordered so the primary_region_label
         is first. Includes bounding box coordinates."""
@@ -82,15 +73,6 @@ class FakeRegionAdapter:
     def get_region_definition(self, label):
         region = self._regions.get(label)
         return dict(region) if region else None
-
-    def is_in_region(self, lat, lon, region_label):
-        region = self._regions.get(region_label)
-        if region is None:
-            return False
-        return (
-            region["lon_min"] <= lon <= region["lon_max"]
-            and region["lat_min"] <= lat <= region["lat_max"]
-        )
 
     def get_priority_region_list(self, primary_region_label):
         labels = sorted(self._regions.keys())

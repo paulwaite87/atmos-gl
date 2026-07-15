@@ -25,11 +25,14 @@ import { flagBackfill } from './_backfill.js';
  * reset-bridge "meteor" class of artifact structurally impossible: a reset just relocates
  * the head and the tail re-integrates from the new spot next frame — no history to bridge.
  *
- * Isolated module — wind and waves (_particles_gl.js, an oriented-quad streak/bar
- * engine) are untouched. This is a deliberate, permanent split, not a stale fork: this
+ * wind.js also uses this engine now (see its own PROTOTYPE note — it swapped off
+ * _particles_gl.js's oriented-quad STREAKS to try this streamline-ribbon technique, not
+ * yet committed to permanently). waves.js remains on _particles_gl.js: its BAR primitive
+ * marks swell-crest orientation at a point, not a flow trail, so it has no streamline
+ * equivalent here — see docs/adr/0003-keep-waves-on-the-oriented-quad-engine.md. This
  * file's streamline-ribbon technique is geometrically distinct from an oriented quad and
- * isn't reproducible by _particles_gl.js's primitive modes, so currents keeps its own
- * implementation rather than migrating onto the shared engine.
+ * isn't reproducible by _particles_gl.js's primitive modes, which is why currents (and
+ * now wind) use this dedicated implementation instead of that shared one.
  *
  * createCurrentParticleGLLayer(map, opts) — opts mirror the wind/waves layer's NAMES
  * where useful (sectionKey, initialConfig, vmax, colormap, hourDataUrl, maxSpeedColor,
