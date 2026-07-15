@@ -8,9 +8,11 @@ import xarray as xr
 import matplotlib as mpl
 import matplotlib.colors as mcolors
 import cartopy.crs as ccrs
+from scipy.ndimage import distance_transform_edt
 
 # Internal imports
 from atmos_gl.lib.config import AtmosGLConfig
+from atmos_gl.lib.coastline import coastline_land_mask
 from .common import Updater, MapData
 from .plotting import Plot
 
@@ -21,6 +23,13 @@ class SSTUpdater(Updater):
     def __init__(self, config: AtmosGLConfig, map_data: MapData):
         super().__init__(config, "sst", map_data)
         self.mode = self.settings.get("mode", "absolute").strip().lower()
+        # Fixed at the finest LOD tier -- same regrid_for_lod tier precipitation/wind/
+        # scalar_field use for their own smoothing, needed here to get OISST's coarse
+        # native 0.25 deg grid fine enough for coastline_land_mask (see plot()) to cut
+        # a crisp coastline instead of tracing native-grid-sized blocks. Fixed, not a
+        # setting -- SST's raw data doesn't warrant user-facing detail control.
+        self.level_of_detail = 3
+        self.lod_desc = None
 
     def _output_path_for_mode(self, mode: str) -> str:
         """Per-mode, ALWAYS-kept-fresh output path: 'data/sst.png' -> e.g.
@@ -32,7 +41,6 @@ class SSTUpdater(Updater):
 
     def plot(self, mode: str, nc_path: str, output_path: str):
         alpha = float(self.settings.get("opacity", 40) / 100)
-        bbox = self.map_region_bbox
 
         # --- Data Loading ---
         ds = xr.open_dataset(nc_path, chunks={"time": 1})
@@ -53,18 +61,32 @@ class SSTUpdater(Updater):
         lon_norm = lon_norm[lon_sort_idx]
         raw_matrix = raw_matrix[:, lon_sort_idx]
 
-        # Create localized clipping masks matching the current dashboard view limits
-        lon_mask = (lon_norm >= bbox[0] - 1.0) & (lon_norm <= bbox[2] + 1.0)
-        lat_mask = (lat_raw >= bbox[1] - 1.0) & (lat_raw <= bbox[3] + 1.0)
-
-        # Slice grid matrices to current boundary context
-        lons_clipped = lon_norm[lon_mask]
-        lats_clipped = lat_raw[lat_mask]
-        display_data = raw_matrix[lat_mask, :][:, lon_mask]
-
         ds.close()
         del ds
         gc.collect()
+
+        # Nearest-fill NaN (native OISST land cells) before regridding -- same technique
+        # raster_tiles.bake_field uses for waves/wind tiles -- so the interpolation below
+        # doesn't blur a blank halo around the coast; the true coastline geometry below
+        # is what actually determines the rendered land/sea boundary, not this fill.
+        raw_matrix = np.asarray(raw_matrix, dtype=np.float64)
+        bad = ~np.isfinite(raw_matrix)
+        if bad.any() and not bad.all():
+            idx = distance_transform_edt(bad, return_distances=False, return_indices=True)
+            raw_matrix = raw_matrix[tuple(idx)]
+
+        # LOD regrid off OISST's coarse native 0.25 deg grid (same regrid_for_lod
+        # precipitation/wind/scalar_field use), then cut the true coastline the same way
+        # currents.py does -- see docs/adr/0004-render-bbox-clipping-is-dead-code.md.
+        new_lats, new_lons, display_data = self.regrid_for_lod(
+            raw_matrix, lat_raw, lon_norm, fill_value=np.nan
+        )
+        mesh_lon, mesh_lat = np.meshgrid(new_lons, new_lats)
+        land = coastline_land_mask(
+            mesh_lon, mesh_lat, -180.0, -90.0, 180.0, 90.0, res="50m"
+        )
+        if land is not None and land.shape == display_data.shape:
+            display_data[land] = np.nan
 
         # --- Dynamic Mode Styling Pipeline ---
         if mode == "anomaly":
@@ -105,8 +127,8 @@ class SSTUpdater(Updater):
 
         # Render complete mapped geographic array using exact pixel cell boundaries
         plot.ax.pcolormesh(
-            lons_clipped,
-            lats_clipped,
+            new_lons,
+            new_lats,
             display_data,
             transform=ccrs.PlateCarree(),
             cmap=cmap,

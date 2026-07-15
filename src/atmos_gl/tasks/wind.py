@@ -60,10 +60,8 @@ class WindUpdater(Updater, MultiHourRenderMixin):
         lons = field0["lon"]
         speed = np.hypot(u, v)
 
-        # --- regional windspeed heatmap (mirrors TemperatureUpdater.plot) ---
-        new_lats, new_lons, spd_smooth = self.regrid_for_lod(
-            speed, lats, lons, self.map_region_bbox
-        )
+        # --- windspeed heatmap (mirrors TemperatureUpdater.plot) ---
+        new_lats, new_lons, spd_smooth = self.regrid_for_lod(speed, lats, lons)
 
         plot = Plot(self.map_data.region)
         plot.get_figure()

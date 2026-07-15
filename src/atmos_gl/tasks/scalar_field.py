@@ -253,10 +253,8 @@ class ScalarFieldUpdater(Updater, MultiHourRenderMixin):
         lons = field0["lon"]
         values = field0["values"]
 
-        # Regional clipping + LOD interpolation
-        new_lats, new_lons, values_smooth = self.regrid_for_lod(
-            values, lats, lons, self.map_region_bbox
-        )
+        # LOD interpolation
+        new_lats, new_lons, values_smooth = self.regrid_for_lod(values, lats, lons)
 
         plot = Plot(self.map_data.region)
         plot.get_figure()
