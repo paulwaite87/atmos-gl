@@ -133,6 +133,37 @@ def test_regrid_for_lod_cap_is_still_a_backstop_beyond_world_scale(monkeypatch):
     assert len(new_lats) * len(new_lons) <= 1_000 * 1.25
 
 
+def test_regrid_for_lod_step_override_ignores_level_of_detail():
+    # step_override takes a fixed step regardless of self.level_of_detail, and leaves
+    # lod_desc unset -- none of "high"/"medium"/"low" describe a fixed step.
+    updater = make_bare_updater(level_of_detail=1)
+    lats = np.arange(0.0, 6.0)
+    lons = np.arange(0.0, 6.0)
+    field = _linear_field(lats, lons)
+
+    new_lats, new_lons, _ = updater.regrid_for_lod(field, lats, lons, step_override=0.08)
+
+    assert updater.lod_desc is None
+    assert np.isclose(np.diff(new_lats)[0], 0.08)
+
+
+def test_regrid_for_lod_step_override_bypasses_the_cap():
+    # step_override is a deliberate, caller-chosen fixed resolution (e.g. SST's
+    # coastline-crispness regrid) -- it must NOT be coarsened by _MAX_LOD_GRID_POINTS
+    # the way the level_of_detail tiers are, even for a world-spanning field where a
+    # fine step_override would vastly exceed the shared budget.
+    updater = make_bare_updater(level_of_detail=3)
+    lats = np.arange(-90.0, 91.0, 1.0)
+    lons = np.arange(-180.0, 181.0, 1.0)
+    field = _linear_field(lats, lons)
+
+    new_lats, new_lons, _ = updater.regrid_for_lod(field, lats, lons, step_override=0.08)
+
+    step = new_lats[1] - new_lats[0]
+    assert np.isclose(step, 0.08)  # not scaled up despite exceeding _MAX_LOD_GRID_POINTS
+    assert len(new_lats) * len(new_lons) > _MAX_LOD_GRID_POINTS
+
+
 def test_regrid_for_lod_custom_fill_value_outside_domain():
     # step (0.25 at level_of_detail=1) doesn't evenly divide a 2.1-wide span, so
     # np.arange's last grid point genuinely overshoots the data's real max -> that

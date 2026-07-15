@@ -8,6 +8,7 @@ import xarray as xr
 import matplotlib as mpl
 import matplotlib.colors as mcolors
 import cartopy.crs as ccrs
+import cartopy.feature as cfeature
 from scipy.ndimage import distance_transform_edt
 
 # Internal imports
@@ -18,18 +19,27 @@ from .plotting import Plot
 
 logger = logging.getLogger(__name__)
 
+# Fixed regrid step for SST's coastline-crispness pass -- finer than any regrid_for_lod
+# LOD tier gives (needed since OISST's native 0.25 deg/~28km grid is much coarser than
+# other fields), not a user setting (SST's raw data doesn't warrant detail control).
+# Chosen empirically: at world scale 0.05 deg (~5.6km) took ~4 minutes for regrid+mask
+# alone (25.9M points) -- impractical for a periodic render. 0.08 deg (~8.9km) completes
+# a full render (regrid+mask+pcolormesh+savefig) in ~45s, comparable to the old 0.15 deg
+# tier's production timing, while resolving roughly twice as fine.
+_SST_REGRID_STEP_DEG = 0.08
+
+# Land tint drawn beneath the data (see plot()) so the coastline reads clearly
+# regardless of the active colormap -- anomaly mode's coolwarm renders near-zero
+# values close to white, which is visually indistinguishable from bare (transparent)
+# land without this. A neutral, unsaturated gray reads as "land" against both magma
+# (absolute) and coolwarm (anomaly).
+_LAND_TINT_COLOR = "#5a5a5a"
+
 
 class SSTUpdater(Updater):
     def __init__(self, config: AtmosGLConfig, map_data: MapData):
         super().__init__(config, "sst", map_data)
         self.mode = self.settings.get("mode", "absolute").strip().lower()
-        # Fixed at the finest LOD tier -- same regrid_for_lod tier precipitation/wind/
-        # scalar_field use for their own smoothing, needed here to get OISST's coarse
-        # native 0.25 deg grid fine enough for coastline_land_mask (see plot()) to cut
-        # a crisp coastline instead of tracing native-grid-sized blocks. Fixed, not a
-        # setting -- SST's raw data doesn't warrant user-facing detail control.
-        self.level_of_detail = 3
-        self.lod_desc = None
 
     def _output_path_for_mode(self, mode: str) -> str:
         """Per-mode, ALWAYS-kept-fresh output path: 'data/sst.png' -> e.g.
@@ -75,11 +85,12 @@ class SSTUpdater(Updater):
             idx = distance_transform_edt(bad, return_distances=False, return_indices=True)
             raw_matrix = raw_matrix[tuple(idx)]
 
-        # LOD regrid off OISST's coarse native 0.25 deg grid (same regrid_for_lod
-        # precipitation/wind/scalar_field use), then cut the true coastline the same way
-        # currents.py does -- see docs/adr/0004-render-bbox-clipping-is-dead-code.md.
+        # LOD regrid off OISST's coarse native 0.25 deg grid down to _SST_REGRID_STEP_DEG,
+        # then cut the true coastline the same way currents.py does -- see
+        # docs/adr/0004-render-bbox-clipping-is-dead-code.md.
         new_lats, new_lons, display_data = self.regrid_for_lod(
-            raw_matrix, lat_raw, lon_norm, fill_value=np.nan
+            raw_matrix, lat_raw, lon_norm, fill_value=np.nan,
+            step_override=_SST_REGRID_STEP_DEG,
         )
         mesh_lon, mesh_lat = np.meshgrid(new_lons, new_lats)
         land = coastline_land_mask(
@@ -124,6 +135,16 @@ class SSTUpdater(Updater):
         # --- Canvas Initialization ---
         plot = Plot(self.map_data.region)
         plot.get_figure()
+
+        # Flat land tint UNDER the data (zorder below the pcolormesh's) so masked
+        # (transparent) cells read as clearly "land" regardless of what colour the
+        # nearby ocean data happens to be -- see _LAND_TINT_COLOR.
+        plot.ax.add_feature(
+            cfeature.NaturalEarthFeature("physical", "land", "50m"),
+            facecolor=_LAND_TINT_COLOR,
+            edgecolor="none",
+            zorder=1,
+        )
 
         # Render complete mapped geographic array using exact pixel cell boundaries
         plot.ax.pcolormesh(
