@@ -1,6 +1,7 @@
 import { liveDataSync } from './_datasync.js';
 import { hoverPopup } from './_hoverpopup.js';
 import { startPulse } from './_pulse.js';
+import { fetchOrThrow, popupCard } from './_feedhelpers.js';
 
 export function loadLayer(map, config) {
     const sourceId = 'satellites-source';
@@ -9,20 +10,19 @@ export function loadLayer(map, config) {
     let stopPulse = null;
 
     const urlFor = () => `${window.WM_API}/satellites/geojson?t=${Date.now()}`;
-    const fetchData = async () => {
-        const r = await fetch(urlFor());
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return r.json();
-    };
+    const fetchData = () => fetchOrThrow(urlFor());
 
     const popupHtml = (f) => {
         const p = f.properties;
-        return `<div style="font-family:sans-serif;font-size:12px;color:#000;padding:4px;">
-                <strong style="color:#222;font-size:14px;">${p.name}</strong>
-                <hr style="border:0;border-top:1px solid #ccc;margin:4px 0;">
-                <div><span style="color:#666;width:50px;display:inline-block;">NORAD:</span> <strong>${p.norad_id}</strong></div>
-                <div><span style="color:#666;width:50px;display:inline-block;">Alt:</span> <strong>${p.alt_km} km</strong></div>
-            </div>`;
+        return popupCard({
+            title: p.name,
+            titleColor: '#222',
+            titleSize: 14,
+            rows: [
+                { label: 'NORAD', value: p.norad_id, width: 50 },
+                { label: 'Alt', value: `${p.alt_km} km`, width: 50 },
+            ],
+        });
     };
 
     const mount = async () => {
