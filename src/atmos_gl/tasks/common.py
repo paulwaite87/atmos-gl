@@ -182,11 +182,6 @@ class MapRegion:
         self.centre_longitude = 0.0
         self.set_map_region_data(region)
 
-    def is_in_region(self, lat: float, lon: float):
-        return (
-            self.bbox[1] <= lat <= self.bbox[3] and self.bbox[0] <= lon <= self.bbox[2]
-        )
-
     def set_map_region_data(self, region: str | list[float] | None):
         bbox = None
         bbox_prefix = "region_"

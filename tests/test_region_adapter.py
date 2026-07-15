@@ -22,23 +22,6 @@ def test_get_region_definition_missing_label_returns_none():
     assert adapter.get_region_definition("Nonexistent") is None
 
 
-def test_is_in_region_true_when_point_inside_bbox():
-    adapter = FakeRegionAdapter()
-    _add(adapter, "NZ", 165.0, -47.0, 179.0, -34.0)
-    assert adapter.is_in_region(-41.28, 174.77, "NZ") is True
-
-
-def test_is_in_region_false_when_point_outside_bbox():
-    adapter = FakeRegionAdapter()
-    _add(adapter, "NZ", 165.0, -47.0, 179.0, -34.0)
-    assert adapter.is_in_region(51.5, -0.1, "NZ") is False
-
-
-def test_is_in_region_false_when_label_missing():
-    adapter = FakeRegionAdapter()
-    assert adapter.is_in_region(-41.28, 174.77, "Nonexistent") is False
-
-
 def test_get_priority_region_list_orders_primary_first():
     adapter = FakeRegionAdapter()
     _add(adapter, "Alpha", 0, 0, 1, 1)
