@@ -98,6 +98,17 @@ float rand(vec2 co){
 // Returns vec3(vx, vy, coverage).
 const WSAMPLE = `
 uniform float u_smoothPx;
+// Live minimum-magnitude threshold (0 = disabled, the default for every consumer that
+// doesn't set it -- e.g. wind). Folded into hasData here, ONE place, rather than
+// duplicated as a separate check in every caller (UPDATE_FS's reset test, the
+// streak/bar draw shader's discard, POINT_VS_BODY's discard) -- they all already
+// branch on hasData<0.5, so this makes below-threshold cells behave exactly like
+// land/no-data everywhere, automatically, for any consumer that sets it (e.g. waves'
+// min_wave_height). A live client-side uniform rather than baked into the texture: an
+// instant update on a config change, no server re-render needed, and it can never go
+// stale the way should_plot_for_hour's data-only freshness check would leave a
+// texture-baked threshold.
+uniform float u_minValue;
 vec4 bsplineW(float f){
     float f2 = f*f, f3 = f2*f;
     return vec4(
@@ -143,7 +154,9 @@ vec3 sampleWindSmooth(sampler2D tex, vec2 p, float vmax){
     }
     if (c0.a < 0.5) return vec3(0.0, 0.0, 0.0);
     if (wsum < 0.01) return vec3(0.0, 0.0, 0.0);  // no valid neighbours at all -> no-data
-    return vec3(sumv / wsum, 1.0);
+    vec2 v = sumv / wsum;
+    if (u_minValue > 0.0 && length(v) < u_minValue) return vec3(0.0, 0.0, 0.0);
+    return vec3(v, 1.0);
 }`;
 
 // Advection in equirectangular [0,1] space. Wind propagates ALONG the encoded velocity
@@ -648,6 +661,11 @@ export function createParticleGLController(map, opts) {
         maxSpeedColor = defaultMaxSpeedColor,
         useViewDensity = true,
         landReset = defaultLandReset,
+        // Live minimum-magnitude threshold (real units, e.g. metres for waves' swell
+        // height): below it, a cell is treated as no-data everywhere sampleWindSmooth
+        // is used (reset test, both draw shaders) -- same as land. 0 (the default)
+        // disables it entirely; wind never sets this.
+        minValue = () => 0.0,
         eps = 0.0015,
         onMount = () => {}, onRefresh = () => {}, onUnmount = () => {},
     } = opts;
@@ -702,7 +720,7 @@ export function createParticleGLController(map, opts) {
     let pointProgFailed = false;
 
     let curSpeed = 0.25, curAlpha = 0.9, curMaxSpeed = 30.0, curStreakLen = 9, curThick = 1.5,
-        curAgeStep = 0.0167, curSmoothPx = 1.0, curLandReset = 0.0,
+        curAgeStep = 0.0167, curSmoothPx = 1.0, curLandReset = 0.0, curMinValue = 0.0,
         curCalmSpeed = 2.5, curCalmDrop = 0.06, curCalmFade = 0.6,
         curRenderMode = 'trails', curPointSize = 2.0, curFadeOpacity = 0.96;
     let curTemporalBlend = true;
@@ -717,6 +735,7 @@ export function createParticleGLController(map, opts) {
         curAgeStep = ageStep(cfg); curSmoothPx = smoothPx(cfg);
         curCalmSpeed = calmSpeed(cfg); curCalmDrop = calmDrop(cfg); curCalmFade = calmFade(cfg);
         curLandReset = landReset(cfg) > 0.5 ? 1.0 : 0.0;
+        curMinValue = Number(minValue(cfg)) || 0.0;
         curRenderMode = renderMode(cfg); curPointSize = pointSize(cfg); curFadeOpacity = fadeOpacity(cfg);
         curTemporalBlend = temporalBlend(cfg);
         curDensityZoomRef = densityZoomRef(cfg); curDensityFalloff = densityZoomFalloff(cfg);
@@ -995,6 +1014,7 @@ export function createParticleGLController(map, opts) {
         gl.uniform1f(u('u_calmSpeed'), curCalmSpeed);
         gl.uniform1f(u('u_calmDrop'), curCalmDrop);
         gl.uniform1f(u('u_landReset'), curLandReset);
+        gl.uniform1f(u('u_minValue'), curMinValue);
         gl.uniform4f(u('u_bboxPos'), curBbox[0], curBbox[1], curBbox[2], curBbox[3]);
         gl.uniform1f(u('u_seed'), Math.random());
         gl.drawArrays(gl.TRIANGLES, 0, 6);
@@ -1035,6 +1055,7 @@ export function createParticleGLController(map, opts) {
         gl.uniform1f(u('u_lenSpeedScale'), lenSpeedScale);
         gl.uniform1f(u('u_maxspeed'), curMaxSpeed);
         gl.uniform1f(u('u_smoothPx'), curSmoothPx);
+        gl.uniform1f(u('u_minValue'), curMinValue);
         gl.uniform1f(u('u_calmFade'), curCalmFade);
         gl.uniform1f(u('u_alpha'), curAlpha);
         gl.disable(gl.DEPTH_TEST);
@@ -1118,6 +1139,7 @@ export function createParticleGLController(map, opts) {
         gl.uniform1f(u('u_maxspeed'), curMaxSpeed);
         gl.uniform1f(u('u_pointSize'), curPointSize);
         gl.uniform1f(u('u_smoothPx'), curSmoothPx);
+        gl.uniform1f(u('u_minValue'), curMinValue);
         gl.uniform1f(u('u_calmFade'), curCalmFade);
         gl.uniform1f(u('u_alpha'), curAlpha);
         gl.drawArrays(gl.POINTS, 0, activeCount);

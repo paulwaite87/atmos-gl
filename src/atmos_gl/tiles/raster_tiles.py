@@ -506,6 +506,11 @@ WAVES_SPEC = TileSpec(
 
 # Registry keyed by section, so the API can serve any layer generically.
 # Additional layers are added here as each is wired to tiles.
-SPECS: dict[str, TileSpec] = {
-    "waves": WAVES_SPEC,
-}
+#
+# Empty as of the waves->createFillLayer migration (experimental branch): waves was
+# this registry's only entry and now renders its heat fill client-side instead (see
+# tasks/waves.py, ui/modules/waves.js). This module and routes/tiles.py are left in
+# place, un-registered rather than deleted, so the generic tile engine remains
+# available if a future layer's requirements (e.g. live exact-geometry masking with
+# no server-side bake) genuinely call for it.
+SPECS: dict[str, TileSpec] = {}

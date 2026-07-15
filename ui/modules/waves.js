@@ -1,21 +1,61 @@
 import { liveLayerSync } from './_refresh.js';
+import { createFillLayer } from './_webglfill.js';
 import { createParticleGLController } from './_particles_gl.js';
 import { keyFilename, showLegend, removeLegend } from './_legend.js';
+import { opacityUniform } from './_opacity.js';
 
 /**
- * Waves layer = Web-Mercator heat tiles (significant wave height) + an animated swell
- * field drawn as short bars perpendicular to the wave direction (the windy.com look).
+ * Waves layer = a per-pixel GPU heat fill (significant wave height) + an animated
+ * swell field drawn as short bars perpendicular to the wave direction (the windy.com
+ * look). EXPERIMENTAL: migrated off the raster tile engine (routes/tiles.py) onto
+ * createFillLayer (_webglfill.js), the same client-side GPU-shaded-mesh architecture
+ * every other animated layer already uses (wind, currents, precipitation, isobars,
+ * ozone, ...) -- waves was the tile engine's only remaining caller. See
+ * docs/adr for the reasoning (bicubic vs the tile engine's bilinear sampling, native
+ * temporal cross-fade between forecast hours, instant live-config updates, simpler
+ * backend) and tasks/waves.py's _masked_uv for how coastline masking moved from a
+ * live per-tile-pixel STRtree cut to a baked-once-per-hour regrid+mask, shared with
+ * the swell texture the bars already used.
  *
- * The heat tiles are pre-rendered + published by the backend and fetched as {z}/{x}/{y}
- * (see routes/tiles.py). The animation is the shared oriented-quad particle engine
- * (_particles_gl.js, primitive: 'bar') advecting particles along a global swell-velocity
- * texture (data/waves_data.png). The bars are a MapLibre CUSTOM WEBGL LAYER: they're
- * drawn directly with the map's projection each frame, so they're sharp and scale
- * naturally on the globe instead of being a fixed image stretched over the sphere.
- * The bars sit ABOVE the heat tiles. Both are driven by one liveLayerSync.
+ * Both the heat fill and the bars decode from the SAME per-hour swell velocity
+ * texture (waves_f{NNN}_data.png) -- the fill via valueDecode (length(u,v), exactly
+ * mirroring wind.js's speed fill), the bars via the shared particle engine
+ * (_particles_gl.js, primitive: 'bar'). min_wave_height is a live client-side
+ * uniform on both (u_minWave on the fill, minValue on the particle engine), not baked
+ * into the texture -- see _particles_gl.js's WSAMPLE docstring for why.
  */
 
 export const VMAX_WAVES = 8.0;   // must match backend tasks/waves.py VMAX_WAVES
+
+// Heat-fill gradients, mirroring PALETTES in tasks/waves.py (itself still sourced from
+// raster_tiles.WAVES_PALETTES -- that module is left in place, just un-registered from
+// SPECS, purely to avoid duplicating the constant server-side). Duplicated here the
+// same way wind.js/precipitation.js mirror their own backend palettes client-side.
+const PALETTES = {
+    ocean_storm: [
+        [0.0, 0.2, 0.4], [0.0, 0.6, 0.3], [0.9, 0.7, 0.0], [0.8, 0.2, 0.0], [0.9, 0.9, 0.9],
+    ],
+    neon_surge: [
+        [0.0, 0.8, 1.0], [0.0, 0.95, 0.4], [1.0, 0.9, 0.0], [1.0, 0.3, 0.0], [0.9, 0.0, 0.5], [0.6, 0.0, 0.7],
+    ],
+    solar_flare: [
+        [0.6, 1.0, 0.9], [0.0, 1.0, 0.0], [1.0, 1.0, 0.0], [1.0, 0.65, 0.0], [1.0, 0.2, 0.1], [1.0, 0.0, 1.0],
+    ],
+};
+
+function buildLUT(paletteName) {
+    const palette = PALETTES[paletteName] || PALETTES.ocean_storm;
+    const lut = new Uint8Array(256 * 4);
+    for (let i = 0; i < 256; i++) {
+        const fp = (i / 255) * (palette.length - 1);
+        const lo = Math.floor(fp), hi = Math.min(lo + 1, palette.length - 1), f = fp - lo;
+        const o = i * 4;
+        for (let j = 0; j < 3; j++)
+            lut[o + j] = Math.round((palette[lo][j] * (1 - f) + palette[hi][j] * f) * 255);
+        lut[o + 3] = 255;
+    }
+    return lut;
+}
 
 // Bar colour by wave height — light, translucent ticks that read over the heat field.
 const BAR_PALETTE = [
@@ -36,60 +76,57 @@ function buildBarLUT() {
     return lut;
 }
 
-export function loadLayer(map, config) {
-    const sourceId = 'waves-source';
-    const layerId  = 'waves-layer';
-    const animLayerId = 'waves-anim-layer';   // created by the particle controller
-    const slotId   = 'waves-legend-slot';
-
-    let currentVersion = null;
+export function loadLayer(map, config, fullConfig = {}) {
+    const slotId = 'waves-legend-slot';
 
     const setLegend = (cfg) => {
         showLegend(slotId, `${window.MAP_UI}/${keyFilename(cfg.outfile)}?t=${Date.now()}`);
     };
 
-    const tilesUrl = (version) =>
-        `${window.WM_API}/tiles/waves/{z}/{x}/{y}.png?v=${version}`;
+    // Heat fill: decode swell magnitude from the per-hour swell texture (already
+    // regridded + true-coastline-masked server-side -- tasks/waves.py's _masked_uv),
+    // the same texture the bars below advect along. Mirrors wind.js's speed fill
+    // exactly (length(u,v) normalised by vmax).
+    const dec = (2 * VMAX_WAVES).toFixed(1), neg = VMAX_WAVES.toFixed(1);
+    const valueDecode = `length(vec2(d.r*${dec} - ${neg}, d.g*${dec} - ${neg})) / ${VMAX_WAVES.toFixed(1)}`;
 
-    const applyVersion = (cfg, version, maxzoom) => {
-        const src = map.getSource(sourceId);
-        if (src && typeof src.setTiles === 'function') {
-            src.setTiles([tilesUrl(version)]);
-        } else {
-            if (map.getLayer(layerId))   map.removeLayer(layerId);
-            if (map.getSource(sourceId)) map.removeSource(sourceId);
-            map.addSource(sourceId, {
-                type: 'raster', tiles: [tilesUrl(version)],
-                tileSize: 256, minzoom: 0, maxzoom: maxzoom ?? 9,
-            });
-            // Keep the heat tiles UNDER the animated bars if the bars layer exists.
-            const beforeId = map.getLayer(animLayerId) ? animLayerId : undefined;
-            map.addLayer({
-                id: layerId, type: 'raster', source: sourceId,
-                paint: { 'raster-opacity': 0.85, 'raster-fade-duration': 0 },
-            }, beforeId);
-        }
-        currentVersion = version;
-        setLegend(cfg);
-    };
+    const teardownHeatmap = createFillLayer(map, {
+        sectionKey: 'waves',
+        initialConfig: config,
+        initialAnimation: fullConfig.animation || {},
+        initialCommon: fullConfig.common || {},
+        vmin: 0.0,
+        vspan: 1.0,                      // valueDecode already returns normalised magnitude
+        bicubic: true,
+        opacity: opacityUniform(config, 0.7),
+        beforeId: 'waves-anim-layer',     // particle layer id -> heatmap stays underneath
+        valueDecode,
+        fragmentBody: `
+            uniform float u_alpha;
+            uniform float u_minWave;            // metres; below -> transparent (live, real units)
+            vec4 shade(float value, vec2 uv) {
+                float waveH = value * ${VMAX_WAVES.toFixed(1)};
+                if (waveH < u_minWave) discard;
+                float t = clamp(value, 0.0, 1.0);
+                vec3 c = texture(u_cmap, vec2(t, 0.5)).rgb;
+                return vec4(c, u_alpha);
+            }`,
+        customUniforms: (cfg) => ({
+            u_alpha: opacityUniform(cfg, 0.7),
+            u_minWave: Math.max(0, Number(cfg.min_wave_height) || 0),
+        }),
+        colormap: (cfg) => buildLUT(cfg.palette || 'ocean_storm'),
+        onMount: setLegend,
+        onRefresh: setLegend,
+        onUnmount: () => removeLegend(slotId),
+    });
 
-    const syncTiles = (cfg) => {
-        fetch(`${window.WM_API}/tiles/waves/meta?t=${Date.now()}`)
-            .then((r) => (r.ok ? r.json() : null))
-            .then((j) => {
-                const d = j && j.data;
-                if (!d || !d.available) { setLegend(cfg); return; }
-                if (d.version !== currentVersion) applyVersion(cfg, d.version, d.maxzoom);
-                else setLegend(cfg);
-            })
-            .catch(() => { /* keep current tiles on failure */ });
-    };
-
-    // Animated swell bars (GPU custom layer). Driven from this module's liveLayerSync.
-    // Uses the shared particle engine with primitive:'bar' (crest perpendicular to flow,
-    // fixed length). Forecast-stepped like wind: the engine subscribes to the shared
-    // timeline and loads per-hour swell fields (waves_f{NNN}_data.png) via the default
-    // hourDataUrl.
+    // Animated swell bars (GPU custom layer). Uses the shared particle engine with
+    // primitive:'bar' (crest perpendicular to flow, fixed length). Forecast-stepped
+    // like wind: the engine subscribes to the shared timeline and loads per-hour
+    // swell fields (waves_f{NNN}_data.png) via the default hourDataUrl. Unlike
+    // createFillLayer, this engine doesn't self-manage config sync -- driven below by
+    // this module's own liveLayerSync, same as the pre-migration version.
     const bars = createParticleGLController(map, {
         sectionKey: 'waves',
         primitive: 'bar',                   // perpendicular crest bars (windy.com swell look)
@@ -113,6 +150,11 @@ export function loadLayer(map, config) {
         // it to a random ocean-eligible position immediately). Matches currents, which
         // has always had this set.
         landReset: () => 1.0,
+        // Live minimum-wave-height threshold: below it, a cell is treated as no-data
+        // for the particles too, same as land (WSAMPLE folds this into hasData) -- a
+        // deliberate behaviour change from the pre-migration tile engine, where
+        // min_wave_height only ever hid the heat fill, never affected the bars.
+        minValue: (cfg) => Math.max(0, Number(cfg.min_wave_height) || 0),
         // Bars are FIXED length (not speed-scaled like wind streaks), sized from the
         // bar_length config key (1..20 px, default 7) to match the old wave engine.
         lenSpeedScale: 0,
@@ -124,25 +166,15 @@ export function loadLayer(map, config) {
         // field the collector now writes (GFS-Wave global 0p25, forecast-stepped).
     });
 
-    const mount = (cfg) => {
-        currentVersion = null;
-        syncTiles(cfg);
-        bars.mount(cfg);
-    };
-    const refresh = (cfg) => {
-        syncTiles(cfg);
-        bars.refresh(cfg);
-    };
-    const unmount = () => {
-        currentVersion = null;
-        bars.unmount();
-        if (map.getLayer(layerId))   map.removeLayer(layerId);
-        if (map.getSource(sourceId)) map.removeSource(sourceId);
-        removeLegend(slotId);
-    };
-
-    return liveLayerSync(map, {
+    const unsubBars = liveLayerSync(map, {
         sectionKey: 'waves', initialConfig: config,
-        mount, refresh, unmount,
+        mount: (cfg) => bars.mount(cfg),
+        refresh: (cfg) => bars.refresh(cfg),
+        unmount: () => bars.unmount(),
     });
+
+    return () => {
+        try { unsubBars && unsubBars(); } catch (e) {}
+        try { teardownHeatmap && teardownHeatmap(); } catch (e) {}
+    };
 }
