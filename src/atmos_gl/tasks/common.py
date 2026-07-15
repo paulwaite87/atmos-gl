@@ -296,11 +296,18 @@ class Updater(PlottingMixin):
             )
             return None
 
-    def regrid_for_lod(self, field, lats, lons, fill_value=np.nan):
+    def regrid_for_lod(self, field, lats, lons, fill_value=np.nan, step_override=None):
         """Resample `field` (lat x lon 2D array) onto a finer grid via
         RegularGridInterpolator. Step size is driven by self.level_of_detail (3=high/
-        0.15°, 2=medium/0.20°, else low/0.25°). Also sets self.lod_desc to the matching
-        "high"/"medium"/"low" string as a side effect (some layers log it).
+        0.15°, 2=medium/0.20°, else low/0.25°), or fixed directly via `step_override`
+        for a caller that needs a resolution unrelated to the level_of_detail tiers
+        (e.g. SST's coastline-crispness regrid, which needs finer than any LOD tier
+        gives and isn't user-configurable). `step_override` bypasses the
+        _MAX_LOD_GRID_POINTS budget below entirely -- it's a deliberate, caller-chosen
+        fixed resolution, not a tier this method should second-guess by coarsening it.
+        Also sets self.lod_desc to the matching "high"/"medium"/"low" string as a side
+        effect (some layers log it) -- left unset when step_override is given, since
+        none of those labels describe a fixed step.
 
         Renders are always global now (regions are reporting-only -- see docs/adr/
         0004-render-bbox-clipping-is-dead-code.md), so this no longer clips to a bbox
@@ -313,7 +320,9 @@ class Updater(PlottingMixin):
         Returns (new_lats, new_lons, field_smooth) — the LOD grid axes and the
         resampled field, ready to hand to contourf.
         """
-        if self.level_of_detail == 3:
+        if step_override is not None:
+            step = step_override
+        elif self.level_of_detail == 3:
             step = 0.15
             self.lod_desc = "high"
         elif self.level_of_detail == 2:
@@ -323,17 +332,18 @@ class Updater(PlottingMixin):
             step = 0.25
             self.lod_desc = "low"
 
-        lat_span = lats.max() - lats.min()
-        lon_span = lons.max() - lons.min()
-        estimated_points = (lat_span / step + 1) * (lon_span / step + 1)
-        if estimated_points > _MAX_LOD_GRID_POINTS:
-            scale = (estimated_points / _MAX_LOD_GRID_POINTS) ** 0.5
-            logger.debug(
-                f"{self.section}: LOD grid ({int(estimated_points):,} pts) exceeds "
-                f"budget ({_MAX_LOD_GRID_POINTS:,}); scaling step {step:.3f}° -> "
-                f"{step * scale:.3f}°"
-            )
-            step *= scale
+        if step_override is None:
+            lat_span = lats.max() - lats.min()
+            lon_span = lons.max() - lons.min()
+            estimated_points = (lat_span / step + 1) * (lon_span / step + 1)
+            if estimated_points > _MAX_LOD_GRID_POINTS:
+                scale = (estimated_points / _MAX_LOD_GRID_POINTS) ** 0.5
+                logger.debug(
+                    f"{self.section}: LOD grid ({int(estimated_points):,} pts) exceeds "
+                    f"budget ({_MAX_LOD_GRID_POINTS:,}); scaling step {step:.3f}° -> "
+                    f"{step * scale:.3f}°"
+                )
+                step *= scale
 
         new_lats = np.arange(lats.min(), lats.max() + step, step)
         new_lons = np.arange(lons.min(), lons.max() + step, step)
