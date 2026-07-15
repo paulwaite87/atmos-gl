@@ -5,10 +5,17 @@ import { flagBackfill, clearBackfillFlag } from './_backfill.js';
 
 /**
  * Generic u/v-field oriented-quad PARTICLE engine — a MapLibre v5 CUSTOM WEBGL LAYER
- * (sharp, globe-correct), shared by any layer whose visible primitive is a STREAK
- * (along-flow, speed-scaled, comet fade — wind) or a BAR (perpendicular crest, fixed
- * length — waves). The consumer picks behaviour via opts (sectionKey, hourDataUrl,
- * colormap, landReset, vmax, primitive, ...).
+ * (sharp, globe-correct). Two primitive modes: a STREAK (along-flow, speed-scaled,
+ * comet fade) and a BAR (perpendicular crest, fixed length — waves' swell-crest look).
+ * The consumer picks behaviour via opts (sectionKey, hourDataUrl, colormap, landReset,
+ * vmax, primitive, ...).
+ *
+ * Only waves.js uses this engine now — wind.js moved onto _currentparticles_gl.js's
+ * streamline-ribbon engine (see that file's docstring; still labeled PROTOTYPE in
+ * wind.js as of this writing, so the STREAK primitive mode below stays in place rather
+ * than being deleted). waves.js is NOT a candidate for the same move: its BAR primitive
+ * marks swell-crest orientation at a point, not a flow trail, so it has no streamline
+ * equivalent — see docs/adr/0003-keep-waves-on-the-oriented-quad-engine.md.
  *
  * NOT used by currents: ocean currents render as flowing STREAMLINE ribbon trails
  * (a geometrically distinct technique — see _currentparticles_gl.js's own docstring),
@@ -22,16 +29,16 @@ import { flagBackfill, clearBackfillFlag } from './_backfill.js';
  * screen resolution and follow the globe exactly, staying crisp at any zoom.
  *
  * Each particle is drawn as a short oriented quad every frame — a STREAK ALONG the flow
- * (wind) whose length scales with speed and whose opacity fades from a bright leading
- * edge to a faint tail, or a fixed-length BAR PERPENDICULAR to the flow (waves' swell
- * crest look). Sharp, zoom-scaling, no smear.
+ * whose length scales with speed and whose opacity fades from a bright leading edge to
+ * a faint tail, or a fixed-length BAR PERPENDICULAR to the flow (waves' swell crest
+ * look). Sharp, zoom-scaling, no smear.
  *
  * Animated path = the custom WebGL layer. Static path = the source PNG raster layer
  * (fallback when animation is off or WebGL is unavailable). Consumed via
  * createParticleGLLayer (mount/refresh/unmount driven by liveLayerSync).
  *
- * Consumers: wind.js, waves.js. land masking is opt-in per consumer through landReset
- * (default 0.0 = ignore land).
+ * Consumers: waves.js. land masking is opt-in per consumer through landReset (default
+ * 0.0 = ignore land).
  */
 
 const MERCATOR_CORNERS = [
@@ -575,8 +582,9 @@ void main(){
 // ---- config-to-uniform mapping functions ----------------------------------
 // Named and exported (rather than left as anonymous destructuring defaults) so they
 // can be unit tested directly: each does real clamping/defaulting/unit-conversion on a
-// plain config object, no GL or DOM needed. Consumers (wind.js, waves.js) override any
-// of these by passing their own function of the same (cfg) -> number shape.
+// plain config object, no GL or DOM needed. Consumers (waves.js; wind.js before its
+// PROTOTYPE move to _currentparticles_gl.js) override any of these by passing their own
+// function of the same (cfg) -> number shape.
 
 // particle_speed: 0-100 -> internal advection multiplier (wind's original scale).
 export function defaultSpeed(cfg) {
