@@ -116,7 +116,16 @@ vec3 sampleWindSmooth(sampler2D tex, vec2 p, float vmax){
     vec2 f = fract(tc);
     vec4 wx = bsplineW(f.x);
     vec4 wy = bsplineW(f.y);
-    vec4 c0 = texture(tex, vec2(fract(p.x + 1.0), clamp(p.y, 0.0, 1.0)));  // centre = coverage
+    // Exact (unfiltered) nearest-texel fetch for the coverage/land test. texture()
+    // would apply the texture's own LINEAR filtering (needed for smooth velocity in
+    // the tap loop below) even at this single lookup, softening the land/sea alpha
+    // edge across ~half a texel and letting particles survive marginally onto visible
+    // land near a coastline. texelFetch always reads exactly one texel, ignoring the
+    // sampler's filter mode.
+    vec2 pw = vec2(fract(p.x + 1.0), clamp(p.y, 0.0, 1.0));
+    ivec2 texSizeI = ivec2(texSize);
+    ivec2 c0px = clamp(ivec2(floor(pw * texSize)), ivec2(0), texSizeI - 1);
+    vec4 c0 = texelFetch(tex, c0px, 0);  // centre = coverage
     vec2 sumv = vec2(0.0);
     float wsum = 0.0;
     for (int j = 0; j < 4; j++){
