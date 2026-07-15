@@ -101,7 +101,15 @@ vec3 sampleVelSmooth(sampler2D tex, vec2 p, float vmax){
     vec2 f = fract(tc);
     vec4 wx = cp_bsplineW(f.x);
     vec4 wy = cp_bsplineW(f.y);
-    vec4 c0 = texture(tex, vec2(fract(p.x + 1.0), clamp(p.y, 0.0, 1.0)));
+    // Exact (unfiltered) nearest-texel fetch for the coverage/land test -- see
+    // _particles_gl.js's sampleWindSmooth (WSAMPLE) for why texture() here would leak
+    // particles marginally onto land near a coastline via the texture's own LINEAR
+    // filtering. texelFetch always reads exactly one texel, ignoring the sampler's
+    // filter mode.
+    vec2 pw = vec2(fract(p.x + 1.0), clamp(p.y, 0.0, 1.0));
+    ivec2 texSizeI = ivec2(texSize);
+    ivec2 c0px = clamp(ivec2(floor(pw * texSize)), ivec2(0), texSizeI - 1);
+    vec4 c0 = texelFetch(tex, c0px, 0);
     vec2 sumv = vec2(0.0);
     float wsum = 0.0;
     for (int j = 0; j < 4; j++){
