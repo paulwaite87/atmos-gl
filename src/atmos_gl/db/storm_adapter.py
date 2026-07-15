@@ -2,11 +2,12 @@ import json
 import logging
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import cast, delete, func, insert, select, text
+from sqlalchemy import cast, delete, func, insert, select
 from sqlalchemy.dialects.postgresql import JSONB, aggregate_order_by, insert as pg_insert
 from sqlalchemy.types import Text as SqlText
 
 from atmos_gl.db.engine import Session
+from atmos_gl.db.geojson import as_feature_collection, EMPTY_FEATURE_COLLECTION
 from atmos_gl.db.models import Storm, StormTrack
 
 logger = logging.getLogger(__name__)
@@ -146,12 +147,7 @@ class StormAdapter:
         )
 
         subquery = cone_features.union_all(track_past, track_forecast, point_features).subquery()
-        collection = func.jsonb_build_object(
-            "type",
-            "FeatureCollection",
-            "features",
-            func.coalesce(func.jsonb_agg(subquery.c.feature), text("'[]'::jsonb")),
-        )
+        collection = as_feature_collection(subquery.c.feature)
         stmt = select(cast(collection, SqlText)).select_from(subquery)
         try:
             with Session() as session:
@@ -160,7 +156,7 @@ class StormAdapter:
                     return result
         except Exception as e:
             logger.error(f"Error fetching storms geojson: {e}")
-        return '{"type":"FeatureCollection","features":[]}'
+        return EMPTY_FEATURE_COLLECTION
 
     def prune_expired_storms(self, expiry_days=4):
         """Removes storms that haven't been updated recently (storm_track rows cascade
