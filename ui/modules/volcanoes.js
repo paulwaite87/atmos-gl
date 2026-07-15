@@ -1,5 +1,6 @@
 import { liveDataSync } from './_datasync.js';
 import { hoverPopup } from './_hoverpopup.js';
+import { fetchOrThrow, popupCard } from './_feedhelpers.js';
 
 export function loadLayer(map, config) {
     const sourceId = 'volcanoes-source';
@@ -19,20 +20,18 @@ export function loadLayer(map, config) {
         return `${window.WM_API}/volcanoes/geojson?${params.toString()}`;
     };
 
-    const fetchData = async (cfg) => {
-        const r = await fetch(urlFor(cfg));
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return r.json();
-    };
+    const fetchData = (cfg) => fetchOrThrow(urlFor(cfg));
 
     const popupHtml = (f) => {
         const p = f.properties;
-        return `<div style="font-family:sans-serif;font-size:12px;color:#000;padding:3px;">
-                <strong style="font-size:13px;color:#333;">${p.name || 'Unknown Volcano'}</strong>
-                <hr style="border:0;border-top:1px solid #ccc;margin:4px 0;">
-                <div><span style="color:#666;width:45px;display:inline-block;">VEI:</span> <strong>${p.vei}</strong></div>
-                <div><span style="color:#666;width:45px;display:inline-block;">Code:</span> <strong>${p.code || 'N/A'}</strong></div>
-            </div>`;
+        return popupCard({
+            title: p.name || 'Unknown Volcano',
+            padding: 3,
+            rows: [
+                { label: 'VEI', value: p.vei },
+                { label: 'Code', value: p.code || 'N/A' },
+            ],
+        });
     };
 
     const mount = async (cfg) => {

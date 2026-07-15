@@ -1,5 +1,6 @@
 import { liveDataSync } from './_datasync.js';
 import { hoverPopup } from './_hoverpopup.js';
+import { fetchOrThrow, preloadIcons } from './_feedhelpers.js';
 
 // Helper function: Parses time difference into '3d 13h 20 mins ago' formats
 function formatLastUpdate(lastUpdateStr) {
@@ -44,9 +45,7 @@ export function loadLayer(map, config) {
     const urlFor = () => `${window.WM_API}/ships/geojson?t=${Date.now()}`;
 
     const fetchData = async () => {
-        const r = await fetch(urlFor());
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        const geojson = await r.json();
+        const geojson = await fetchOrThrow(urlFor());
 
         // Calculate the absolute cutoff time in milliseconds
         const cutoffTimeMs = Date.now() - (maxAgeDays * 24 * 60 * 60 * 1000);
@@ -86,12 +85,7 @@ export function loadLayer(map, config) {
     };
 
     const mount = async (cfg) => {
-        await Promise.all(shipIcons.map(async (ic) => {
-            if (map.hasImage(ic.id)) return;
-            const res = await fetch(`${window.location.origin}${ic.url}`);
-            if (!res.ok) throw new Error(`Could not load ${ic.id}`);
-            map.addImage(ic.id, await createImageBitmap(await res.blob()));
-        }));
+        await preloadIcons(map, shipIcons);
 
         const data = await fetchData();
         if (map.getSource(sourceId)) return;

@@ -1,5 +1,6 @@
 import { liveDataSync } from './_datasync.js';
 import { hoverPopup } from './_hoverpopup.js';
+import { fetchOrThrow, preloadIcons } from './_feedhelpers.js';
 
 export function loadLayer(map, config) {
     const sourceId = 'lightning-source';
@@ -14,11 +15,7 @@ export function loadLayer(map, config) {
     const urlFor = (cfg) => `${window.WM_API}/lightning/geojson`
         + `?expiry_hours=${cfg.strike_expiry_hours ?? 2}&t=${Date.now()}`;
 
-    const fetchData = async (cfg) => {
-        const r = await fetch(urlFor(cfg));
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return r.json();
-    };
+    const fetchData = (cfg) => fetchOrThrow(urlFor(cfg));
 
     const popupHtml = (f) => {
         const recentMins = config.strike_recent_minutes ?? 15;
@@ -37,12 +34,7 @@ export function loadLayer(map, config) {
     const mount = async (cfg) => {
         const recentMins = cfg.strike_recent_minutes ?? 15;
         const keepMins   = cfg.strike_keep_minutes ?? 60;
-        await Promise.all(boltIcons.map(async (ic) => {
-            if (map.hasImage(ic.id)) return;
-            const res = await fetch(`${window.location.origin}${ic.url}`);
-            if (!res.ok) throw new Error(`Could not load ${ic.id}`);
-            map.addImage(ic.id, await createImageBitmap(await res.blob()));
-        }));
+        await preloadIcons(map, boltIcons);
         const data = await fetchData(cfg);
         if (map.getSource(sourceId)) return;
         map.addSource(sourceId, { type: 'geojson', data });

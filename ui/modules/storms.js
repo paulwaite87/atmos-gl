@@ -1,6 +1,7 @@
 import { liveDataSync } from './_datasync.js';
 import { hoverPopup } from './_hoverpopup.js';
 import { startPulse } from './_pulse.js';
+import { fetchOrThrow, popupCard } from './_feedhelpers.js';
 
 export function loadLayer(map, config) {
     const sourceId = 'storms-source';
@@ -13,23 +14,18 @@ export function loadLayer(map, config) {
 
     const urlFor = () => `${window.WM_API}/storms/geojson?t=${Date.now()}`;
 
-    const fetchData = async () => {
-        const r = await fetch(urlFor());
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return r.json();
-    };
+    const fetchData = () => fetchOrThrow(urlFor());
 
     const popupHtml = (f) => {
         const p = f.properties;
         const dateStr = new Date(p.dt).toLocaleString(undefined,
             { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-        return `<div style="font-family:sans-serif;font-size:12px;color:#000;padding:4px;">
-                <strong style="color:#ff4a4a;font-size:14px;">${p.name || p.sid}</strong>
-                <hr style="border:0;border-top:1px solid #ccc;margin:4px 0;">
-                <div><span style="color:#666;width:45px;display:inline-block;">Type:</span> <strong>${p.record_type}</strong></div>
-                <div><span style="color:#666;width:45px;display:inline-block;">Time:</span> <strong>${dateStr}</strong></div>
-                ${p.tau > 0 ? `<div><span style="color:#666;width:45px;display:inline-block;">Hour:</span> <strong>+${p.tau}</strong></div>` : ''}
-            </div>`;
+        const rows = [
+            { label: 'Type', value: p.record_type },
+            { label: 'Time', value: dateStr },
+        ];
+        if (p.tau > 0) rows.push({ label: 'Hour', value: `+${p.tau}` });
+        return popupCard({ title: p.name || p.sid, titleColor: '#ff4a4a', titleSize: 14, rows });
     };
 
     const mount = async () => {

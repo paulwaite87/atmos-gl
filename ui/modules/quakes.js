@@ -1,5 +1,6 @@
 import { liveDataSync } from './_datasync.js';
 import { hoverPopup } from './_hoverpopup.js';
+import { fetchOrThrow, preloadIcons } from './_feedhelpers.js';
 
 export function loadLayer(map, config) {
     const sourceId = 'quakes-source';
@@ -15,11 +16,7 @@ export function loadLayer(map, config) {
         + `&expiry_hours=${cfg.expiry_hours ?? 12}`
         + `&recent_hours=${cfg.recent_activity_hours ?? 3}&t=${Date.now()}`;
 
-    const fetchData = async (cfg) => {
-        const r = await fetch(urlFor(cfg));
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return r.json();
-    };
+    const fetchData = (cfg) => fetchOrThrow(urlFor(cfg));
 
     const popupHtml = (f) => {
         const d = f.properties;
@@ -32,11 +29,7 @@ export function loadLayer(map, config) {
     };
 
     const mount = async (cfg) => {
-        await Promise.all(quakeIcons.map(async (ic) => {
-            if (map.hasImage(ic.id)) return;
-            const blob = await (await fetch(`${window.location.origin}${ic.url}`)).blob();
-            map.addImage(ic.id, await createImageBitmap(blob));
-        }));
+        await preloadIcons(map, quakeIcons);
         const data = await fetchData(cfg);
         if (map.getSource(sourceId)) return;          // guard against races
         map.addSource(sourceId, { type: 'geojson', data });
