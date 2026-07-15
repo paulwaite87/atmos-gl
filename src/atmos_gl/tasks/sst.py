@@ -11,7 +11,8 @@ import cartopy.crs as ccrs
 
 # Internal imports
 from atmos_gl.lib.config import AtmosGLConfig
-from .common import Updater, MapData, Plot
+from .common import Updater, MapData
+from .plotting import Plot
 
 logger = logging.getLogger(__name__)
 

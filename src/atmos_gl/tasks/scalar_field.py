@@ -29,7 +29,8 @@ import cartopy.crs as ccrs
 
 from atmos_gl.lib.config import AtmosGLConfig
 from atmos_gl.lib.texture import encode_frames
-from .common import Updater, MapData, Plot, MultiHourRenderMixin, ForecastState
+from .common import Updater, MapData, MultiHourRenderMixin, ForecastState
+from .plotting import Plot
 
 logging.getLogger("cfgrib").setLevel(logging.ERROR)
 
