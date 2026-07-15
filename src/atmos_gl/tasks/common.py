@@ -235,7 +235,6 @@ class Updater(PlottingMixin):
         self.map_region_identifier = map_data.region.region_identifier
         self.centre_longitude = map_data.region.centre_longitude
         self.centre_latitude = map_data.region.centre_latitude
-        self.map_region_bbox = map_data.region.bbox
 
         # Always set these, which can be over-ridden later if required.
         # If the updater doesn't have an outfile defined, this does nothing.
@@ -297,33 +296,23 @@ class Updater(PlottingMixin):
             )
             return None
 
-    def regrid_for_lod(self, field, lats, lons, bbox, fill_value=np.nan):
-        """Clip `field` (lat x lon 2D array) to `bbox` (lon_min, lat_min, lon_max,
-        lat_max) with a 1-degree buffer, then resample onto a level-of-detail grid via
+    def regrid_for_lod(self, field, lats, lons, fill_value=np.nan):
+        """Resample `field` (lat x lon 2D array) onto a finer grid via
         RegularGridInterpolator. Step size is driven by self.level_of_detail (3=high/
-        0.15°, 2=medium/0.20°, else low/0.25°); also sets self.lod_desc to the matching
+        0.15°, 2=medium/0.20°, else low/0.25°). Also sets self.lod_desc to the matching
         "high"/"medium"/"low" string as a side effect (some layers log it).
 
-        These step sizes are tuned for a WORLD-VIEW bbox, the dominant case here (the
-        frontend always projects onto a MapLibre globe; regional bboxes are supported
-        but secondary) — "high" lands at ~73% of _MAX_LOD_GRID_POINTS at world scale,
-        so normal operation has headroom and doesn't routinely hit the cap below.
-        The cap itself still scales the step up (coarser) as a backstop if the clipped
-        region is large enough to exceed the budget regardless — see that constant's
-        docstring. lod_desc still reflects the CONFIGURED level; only the effective
-        step size is adjusted.
+        Renders are always global now (regions are reporting-only -- see docs/adr/
+        0004-render-bbox-clipping-is-dead-code.md), so this no longer clips to a bbox
+        first; step sizes are tuned assuming a world-scale field -- "high" lands at
+        ~73% of _MAX_LOD_GRID_POINTS at world scale, so normal operation has headroom
+        and doesn't routinely hit the cap below. The cap itself still scales the step
+        up (coarser) as a backstop if the field is large enough to exceed the budget
+        regardless — see that constant's docstring.
 
         Returns (new_lats, new_lons, field_smooth) — the LOD grid axes and the
         resampled field, ready to hand to contourf.
         """
-        lon_min, lat_min, lon_max, lat_max = bbox
-        buf = 1.0
-        lon_idx = (lons >= lon_min - buf) & (lons <= lon_max + buf)
-        lat_idx = (lats >= lat_min - buf) & (lats <= lat_max + buf)
-        field_clip = field[np.ix_(lat_idx, lon_idx)]
-        lons_clip = lons[lon_idx]
-        lats_clip = lats[lat_idx]
-
         if self.level_of_detail == 3:
             step = 0.15
             self.lod_desc = "high"
@@ -334,8 +323,8 @@ class Updater(PlottingMixin):
             step = 0.25
             self.lod_desc = "low"
 
-        lat_span = lats_clip.max() - lats_clip.min()
-        lon_span = lons_clip.max() - lons_clip.min()
+        lat_span = lats.max() - lats.min()
+        lon_span = lons.max() - lons.min()
         estimated_points = (lat_span / step + 1) * (lon_span / step + 1)
         if estimated_points > _MAX_LOD_GRID_POINTS:
             scale = (estimated_points / _MAX_LOD_GRID_POINTS) ** 0.5
@@ -346,16 +335,16 @@ class Updater(PlottingMixin):
             )
             step *= scale
 
-        new_lats = np.arange(lats_clip.min(), lats_clip.max() + step, step)
-        new_lons = np.arange(lons_clip.min(), lons_clip.max() + step, step)
+        new_lats = np.arange(lats.min(), lats.max() + step, step)
+        new_lons = np.arange(lons.min(), lons.max() + step, step)
 
-        if lats_clip[0] > lats_clip[-1]:
-            lats_inc, field_inc = lats_clip[::-1], field_clip[::-1, :]
+        if lats[0] > lats[-1]:
+            lats_inc, field_inc = lats[::-1], field[::-1, :]
         else:
-            lats_inc, field_inc = lats_clip, field_clip
+            lats_inc, field_inc = lats, field
 
         fn = RegularGridInterpolator(
-            (lats_inc, lons_clip), field_inc, bounds_error=False, fill_value=fill_value
+            (lats_inc, lons), field_inc, bounds_error=False, fill_value=fill_value
         )
         mesh_lats, mesh_lons = np.meshgrid(new_lats, new_lons, indexing="ij")
         field_smooth = fn((mesh_lats, mesh_lons))

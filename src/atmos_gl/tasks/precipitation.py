@@ -108,10 +108,10 @@ class PrecipitationUpdater(Updater, MultiHourRenderMixin):
         prate = field0["values"].copy()
         prate[prate < min_rate] = 0.0
 
-        # Regional clipping + LOD interpolation (fill_value=0: gaps read as "no rain").
-        # Level-of-detail also drives the post-interpolation smoothing strength below.
+        # LOD interpolation (fill_value=0: gaps read as "no rain"). Level-of-detail
+        # also drives the post-interpolation smoothing strength below.
         new_lats, new_lons, prate_smooth = self.regrid_for_lod(
-            prate, lats, lons, self.map_region_bbox, fill_value=0
+            prate, lats, lons, fill_value=0
         )
         filter_sigma = {"high": 1.2, "medium": 0.8}.get(self.lod_desc, 0.0)
 
