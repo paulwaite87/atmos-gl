@@ -2,6 +2,7 @@ import { liveLayerSync } from './_refresh.js';
 import { timeline } from './timeline.js';
 import { scrubber } from './scrubber.js';
 import { flagBackfill } from './_backfill.js';
+import { linkProg, makeTex, makeStateTex, randomAge, QUAD_VS, COH_H_FS, COH_V_FS, BLEND_FS } from './_particlegl_primitives.js';
 
 /**
  * Ocean-current FLOWING STREAMLINE particles as a MapLibre v5 CUSTOM WEBGL LAYER.
@@ -121,90 +122,14 @@ vec3 sampleVelSmooth(sampler2D tex, vec2 p, float vmax){
     return vec3(sumv / wsum, 1.0);
 }`;
 
-const QUAD_VS = `#version 300 es
-in vec2 a_pos; out vec2 v_uv;
-void main(){ v_uv = a_pos; gl_Position = vec4(a_pos*2.0-1.0, 0.0, 1.0); }`;
+// DIRECTION-COHERENCE filter (opt-in via coherenceRadius; currents never sets it, so this
+// stays completely inert there). See _particlegl_primitives.js's COH_H_FS/COH_V_FS
+// docstring for how the two-pass separable Gaussian works; runCoherence() below drives them.
 
-// DIRECTION-COHERENCE filter, ported verbatim from _particles_gl.js (opt-in via
-// coherenceRadius; currents never sets it, so this stays completely inert there).
-// Coarse-grid fields (0.25-deg GFS wind) render a shear as an abrupt 1-cell direction
-// flip; interpolating raw Cartesian U/V across it makes opposing components cancel,
-// collapsing magnitude into a low-speed "dead zone" at the seam -- particles dwell or
-// stall there, and a per-frame re-integrated streamline (this engine's technique) visibly
-// jitters as the head drifts across it. Rewriting each cell as SPEED * smoothed-unit-
-// DIRECTION (magnitude untouched, direction averaged over a ~radius-cell Gaussian) turns
-// the flip into a gradual coherent turn. Done separably (H then V), only when the source
-// texture changes or the radius is retuned -- never per frame.
-const COH_H_FS = `#version 300 es
-precision highp float;
-in vec2 v_uv;
-out vec4 fragColor;
-uniform sampler2D u_src;
-uniform float u_vmax, u_radius;
-uniform vec2 u_texel;
-const int MAXK = 24;
-void main(){
-    vec4 c = texture(u_src, v_uv);
-    vec2 cv = c.rg * (2.0*u_vmax) - u_vmax;
-    float mag = length(cv);
-    float sig = max(u_radius, 1e-3);
-    float lim = 2.5 * sig;
-    vec2 acc = vec2(0.0); float wsum = 0.0;
-    for (int k = -MAXK; k <= MAXK; k++){
-        float fk = float(k);
-        if (abs(fk) > lim) continue;
-        float w = exp(-(fk*fk)/(2.0*sig*sig));
-        vec4 s = texture(u_src, vec2(fract(v_uv.x + fk*u_texel.x + 1.0), v_uv.y));
-        vec2 sv = s.rg * (2.0*u_vmax) - u_vmax;
-        float m = length(sv);
-        if (m > 0.01 && s.a > 0.5){ acc += w * (sv / m); wsum += w; }
-    }
-    vec2 hd = (wsum > 0.0) ? acc / wsum : (mag > 0.01 ? cv / mag : vec2(0.0));
-    fragColor = vec4(hd * 0.5 + 0.5, mag / u_vmax, c.a);
-}`;
-const COH_V_FS = `#version 300 es
-precision highp float;
-in vec2 v_uv;
-out vec4 fragColor;
-uniform sampler2D u_src;
-uniform float u_vmax, u_radius;
-uniform vec2 u_texel;
-const int MAXK = 24;
-void main(){
-    vec4 c = texture(u_src, v_uv);
-    float mag = c.b * u_vmax;
-    float sig = max(u_radius, 1e-3);
-    float lim = 2.5 * sig;
-    vec2 acc = vec2(0.0); float wsum = 0.0;
-    for (int k = -MAXK; k <= MAXK; k++){
-        float fk = float(k);
-        if (abs(fk) > lim) continue;
-        float w = exp(-(fk*fk)/(2.0*sig*sig));
-        vec4 s = texture(u_src, vec2(v_uv.x, clamp(v_uv.y + fk*u_texel.y, 0.0, 1.0)));
-        if (s.a > 0.5){ acc += w * (s.rg * 2.0 - 1.0); wsum += w; }
-    }
-    vec2 d = (wsum > 0.0) ? acc / wsum : (c.rg * 2.0 - 1.0);
-    float dl = length(d);
-    vec2 outv = (dl > 1e-4) ? mag * (d / dl) : vec2(0.0);
-    fragColor = vec4(clamp((outv + u_vmax) / (2.0*u_vmax), 0.0, 1.0), 0.0, c.a);
-}`;
-
-// Temporal hour-blending (ported from _particles_gl.js): the forecast field only has one
-// texture per hour, but playback advances curFrac continuously between them, so we lerp
-// the current and next hour's textures into velBlendTex each frame and sample that single
-// blended texture -- the rest of the advection/draw path is unchanged. Encoded R/G are an
-// AFFINE map of velocity (v = ch*2*vmax - vmax), so a linear mix of the encoded channels
-// equals a linear mix of the decoded velocity -- the raw textures can be lerped directly.
-const BLEND_FS = `#version 300 es
-precision highp float;
-in vec2 v_uv;
-out vec4 fragColor;
-uniform sampler2D u_a;      // current hour
-uniform sampler2D u_b;      // next hour
-uniform float u_blend;      // frac toward next hour, 0..1
-void main(){
-    fragColor = mix(texture(u_a, v_uv), texture(u_b, v_uv), u_blend);
-}`;
+// Temporal hour-blending: the forecast field only has one texture per hour, but playback
+// advances curFrac continuously between them, so we lerp the current and next hour's
+// textures into velBlendTex each frame and sample that single blended texture -- the rest
+// of the advection/draw path is unchanged. See _particlegl_primitives.js's BLEND_FS.
 
 // Advection: head position step along u/v (reuses the wind engine's logic verbatim,
 // including landReset so trails die on land). MRT: also advances a per-particle age
@@ -606,66 +531,20 @@ export function createCurrentParticleGLLayer(map, opts) {
         curTemporalBlend = temporalBlend(cfg);
     };
 
-    const compile = (gl, type, src) => {
-        const sh = gl.createShader(type); gl.shaderSource(sh, src); gl.compileShader(sh);
-        if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) {
-            console.warn(`[${sectionKey} trails] shader:`, gl.getShaderInfoLog(sh)); return null;
-        }
-        return sh;
-    };
-    const linkProg = (gl, vsSrc, fsSrc) => {
-        if (floatPos) {
-            // Every program goes through here, including ones (coherence, blend) that
-            // never reference PACK/decodePos -- an unused #define is harmless, so no
-            // need to special-case which programs actually need it.
-            const inj = (src) => src.replace('#version 300 es\n', '#version 300 es\n#define POS_FLOAT 1\n');
-            vsSrc = inj(vsSrc); fsSrc = inj(fsSrc);
-        }
-        const v = compile(gl, gl.VERTEX_SHADER, vsSrc), f = compile(gl, gl.FRAGMENT_SHADER, fsSrc);
-        if (!v || !f) return null;
-        const p = gl.createProgram(); gl.attachShader(p, v); gl.attachShader(p, f);
-        gl.linkProgram(p); gl.deleteShader(v); gl.deleteShader(f);
-        if (!gl.getProgramParameter(p, gl.LINK_STATUS)) {
-            console.warn(`[${sectionKey} trails] link:`, gl.getProgramInfoLog(p)); return null;
-        }
-        return p;
-    };
-    // Trail program needs MapLibre's projection prelude (varies by render variant).
+    // compile/linkProg/makeTex/makeStateTex/randomAge are shared with _particles_gl.js via
+    // _particlegl_primitives.js; randomState stays here -- see that module's docstring for
+    // why. Trail program needs MapLibre's projection prelude (varies by render variant).
     const getTrailProg = (gl, shaderData) => {
         const key = shaderData.variantName || '__default__';
         if (trailProgCache.has(key)) return trailProgCache.get(key);
         if (trailProgFailed) return null;
         const vs = `#version 300 es\n${shaderData.vertexShaderPrelude}\n${shaderData.define}\n${TRAIL_VS_BODY}`;
-        const p = linkProg(gl, vs, trailFragmentShader(tailFadeEnd));
+        const p = linkProg(gl, vs, trailFragmentShader(tailFadeEnd), floatPos, sectionKey);
         if (!p) { trailProgFailed = true; return null; }
         trailProgCache.set(key, p);
         return p;
     };
 
-    const makeTex = (gl, w, h, data, filter) => {
-        const t = gl.createTexture();
-        gl.bindTexture(gl.TEXTURE_2D, t);
-        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, data);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filter);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filter);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-        return t;
-    };
-    // Position state texture: RGBA32F (full float precision) when supported, else the
-    // 16-bit packed RGBA8 path (see floatPos above). NEAREST sampled either way (exact
-    // per-particle fetch), so no float-linear extension is needed.
-    const makeStateTex = (gl, w, h, data) => {
-        if (!floatPos) return makeTex(gl, w, h, data, gl.NEAREST);
-        const t = gl.createTexture();
-        gl.bindTexture(gl.TEXTURE_2D, t);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, w, h, 0, gl.RGBA, gl.FLOAT, data);
-        return t;
-    };
     const randomState = () => {
         if (floatPos) {                                  // raw [0,1] positions, full precision
             const d = new Float32Array(RES * RES * 4);
@@ -682,19 +561,6 @@ export function createCurrentParticleGLLayer(map, opts) {
         }
         return d;
     };
-    // Random initial ages (not all-zero) so particles don't all pop into existence
-    // synchronised on first load -- mirrors _particles_gl.js's randomAge(). g = random
-    // per-particle lifetime factor (see UPDATE_FS's lifeFactor) so particles don't all
-    // die in lockstep either.
-    const randomAge = () => {
-        const d = new Uint8Array(RES * RES * 4);
-        for (let i = 0; i < RES * RES; i++) {
-            d[i*4] = Math.floor(Math.random() * 256);       // age
-            d[i*4+1] = Math.floor(Math.random() * 256);     // lifetime factor
-            d[i*4+2] = 0; d[i*4+3] = 255;
-        }
-        return d;
-    };
     const buildState = (gl) => {
         RES = Math.ceil(Math.sqrt(particleCount(curCfg))); count = RES * RES;
         activeCount = count;   // render() recomputes the zoom-thinned value before the next draw
@@ -704,8 +570,8 @@ export function createCurrentParticleGLLayer(map, opts) {
         headTex = []; headFbo = []; ageTex = []; headIdx = 0;
         const seed = randomState();
         for (let i = 0; i < 2; i++) {                  // ping-pong pair
-            const t = makeStateTex(gl, RES, RES, seed);
-            const a = makeTex(gl, RES, RES, randomAge(), gl.NEAREST);
+            const t = makeStateTex(gl, RES, RES, seed, floatPos);
+            const a = makeTex(gl, RES, RES, randomAge(RES), gl.NEAREST);
             const fbo = gl.createFramebuffer();
             gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
             gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t, 0);
@@ -1028,7 +894,7 @@ export function createCurrentParticleGLLayer(map, opts) {
             // Must be detected before any shader compiles -- linkProg's #define
             // injection reads this flag.
             floatPos = !!gl.getExtension('EXT_color_buffer_float');
-            updateProg = linkProg(gl, QUAD_VS, UPDATE_FS);
+            updateProg = linkProg(gl, QUAD_VS, UPDATE_FS, floatPos, sectionKey);
             if (!updateProg) { webglFailed = true; return; }
             screenQuad = gl.createBuffer();
             gl.bindBuffer(gl.ARRAY_BUFFER, screenQuad);
@@ -1041,9 +907,9 @@ export function createCurrentParticleGLLayer(map, opts) {
             vaoTrails = gl.createVertexArray();    // attributeless (gl_VertexID)
             gl.bindVertexArray(null);
             cmapTex = makeTex(gl, 1, 1, new Uint8Array([255,255,255,255]), gl.LINEAR);
-            cohHProg = linkProg(gl, QUAD_VS, COH_H_FS);
-            cohVProg = linkProg(gl, QUAD_VS, COH_V_FS);
-            blendProg = linkProg(gl, QUAD_VS, BLEND_FS);
+            cohHProg = linkProg(gl, QUAD_VS, COH_H_FS, floatPos, sectionKey);
+            cohVProg = linkProg(gl, QUAD_VS, COH_V_FS, floatPos, sectionKey);
+            blendProg = linkProg(gl, QUAD_VS, BLEND_FS, floatPos, sectionKey);
             buildState(gl);
             applyParams(cfg);
             if (colormap) uploadColormapNow(gl, colormap(cfg));
