@@ -7,7 +7,8 @@ import numpy as np
 # Internal imports
 from atmos_gl.lib.config import AtmosGLConfig
 from atmos_gl.lib.texture import encode_uv
-from .common import Updater, MapData, _opaque_cmap, MultiHourRenderMixin, ForecastState
+from .common import Updater, MapData, MultiHourRenderMixin, ForecastState
+from .plotting import opaque_cmap
 from atmos_gl.tiles import raster_tiles as rt
 
 warnings.filterwarnings("ignore")
@@ -54,7 +55,7 @@ class WavesUpdater(Updater, MultiHourRenderMixin):
 
         self.save_key_image(
             output_path,
-            _opaque_cmap(cmap),
+            opaque_cmap(cmap),
             norm,
             [0, 2, 4, 6, 8],
             title,
@@ -68,11 +69,11 @@ class WavesUpdater(Updater, MultiHourRenderMixin):
         self, mesh_lon, mesh_lat, lon_min, lat_min, lon_max, lat_max, res
     ):
         """Boolean land mask at grid resolution, cut from true coastline geometry.
-        Thin wrapper over the shared common.coastline_land_mask (also used by currents)
-        so the Natural Earth read/union is cached once across layers. Returns None on
-        geometry-load failure so the caller falls back to the data-derived mask.
+        Thin wrapper over the shared lib.coastline.coastline_land_mask (also used by
+        currents) so the Natural Earth read/union is cached once across layers. Returns
+        None on geometry-load failure so the caller falls back to the data-derived mask.
         """
-        from .common import coastline_land_mask
+        from atmos_gl.lib.coastline import coastline_land_mask
 
         return coastline_land_mask(
             mesh_lon, mesh_lat, lon_min, lat_min, lon_max, lat_max, res

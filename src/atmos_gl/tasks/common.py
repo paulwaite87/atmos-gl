@@ -2,14 +2,8 @@
 import os
 import json
 import logging
-import matplotlib as mpl
-from matplotlib.figure import Figure
-from matplotlib.backends.backend_agg import FigureCanvasAgg
-import cartopy.crs as ccrs
-import cartopy.mpl.geoaxes as geoaxes
 import numpy as np
 from scipy.interpolate import RegularGridInterpolator
-from typing import cast
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -27,11 +21,9 @@ from atmos_gl.lib.data_status import (
     read_process_status,
     build_status,
 )
+from .plotting import PlottingMixin
 
 logger = logging.getLogger(__name__)
-
-WEB_MERCATOR = ccrs.Mercator.GOOGLE  # EPSG:3857
-MERCATOR_LAT_LIMIT = 85.0511  # NOTE: just *inside* GOOGLE's 85.0511288 max
 
 # Seconds between layer_builder's fan-out cycles (every cycle dispatches every updater).
 # Canonical home is here, not layer_builder.py, so Updater.layer_status() can use it for
@@ -48,75 +40,6 @@ LAYER_CYCLE_SECONDS = 15
 # a backstop for that failure mode, not the primary mechanism — regrid_for_lod scales
 # its step up (coarser) only if the clipped region is large enough to exceed it anyway.
 _MAX_LOD_GRID_POINTS = 4_000_000
-
-
-# Cache the unioned Natural Earth land geometry per (resolution, rounded bbox) so we
-# read the shapefile and union it once, then reuse across hours and across layers
-# (waves + currents share this). Module-level so it survives per-hour Updater instances.
-_COAST_GEOM_CACHE = {}
-
-
-def coastline_land_mask(mesh_lon, mesh_lat, lon_min, lat_min, lon_max, lat_max, res="10m"):
-    """Boolean land mask (True over land) sampled at the given mesh, cut from true
-    Natural Earth coastline geometry at resolution `res` ('10m' / '50m' / '110m').
-
-    Shared by any layer that needs to remove land from an ocean field (waves, currents):
-    a data-derived NaN mask only knows where the model lacked data, so model values can
-    smear up to the interpolation cap onto the coast; cutting against real coastline
-    polygons clips the field to the actual shoreline. Returns None if the geometry can't
-    be loaded (e.g. no network for the Natural Earth download) so callers can fall back
-    to whatever data-derived mask they have.
-
-    Pick `res` to match the target grid: 10m for fine regional grids, 50m for coarser
-    global grids (cheaper, and finer than the texture can show anyway).
-    """
-    try:
-        import cartopy.feature as cfeature
-        from shapely.ops import unary_union
-
-        key = (
-            res,
-            round(lon_min, 2),
-            round(lat_min, 2),
-            round(lon_max, 2),
-            round(lat_max, 2),
-        )
-        land_geom = _COAST_GEOM_CACHE.get(key)
-        if land_geom is None:
-            land = cfeature.NaturalEarthFeature("physical", "land", res)
-            geoms = list(
-                land.intersecting_geometries([lon_min, lon_max, lat_min, lat_max])
-            )
-            if not geoms:
-                # No land in this region -> everything is water.
-                return np.zeros(np.shape(mesh_lon), dtype=bool)
-            land_geom = unary_union(geoms)
-            _COAST_GEOM_CACHE[key] = land_geom
-
-        try:
-            import shapely
-
-            mask = shapely.contains_xy(land_geom, mesh_lon, mesh_lat)
-        except (ImportError, AttributeError):
-            import shapely.vectorized as shpvec
-
-            mask = shpvec.contains(land_geom, mesh_lon, mesh_lat)
-        return np.asarray(mask, dtype=bool)
-    except Exception as exc:  # network/data/parse failure -> graceful fallback
-        logger.warning(
-            f"Coastline geometry unavailable ({exc!r}); land mask skipped."
-        )
-        return None
-
-
-def _opaque_cmap(cmap, n=256):
-    """Return an opaque copy of a colormap (alpha forced to 1.0)."""
-    import numpy as np
-    import matplotlib.colors as mcolors
-
-    colors = cmap(np.linspace(0, 1, n))  # (n, 4) RGBA
-    colors[:, 3] = 1.0
-    return mcolors.ListedColormap(colors)
 
 
 def stringify_bbox(bbox):
@@ -241,44 +164,6 @@ class MapData:
         self.region = MapRegion(target_geometry=target_geometry)
 
 
-class Plot:
-    def __init__(self, region: MapRegion, projection=WEB_MERCATOR):
-        self.region = region
-        self.projection = projection
-        self.fig = None
-        self.ax = None
-
-    def get_figure(self):
-        plot_target_width = float(self.region.target_width) / 100
-        plot_target_height = float(self.region.target_height) / 100
-        # OO figure with an explicit Agg canvas — no pyplot, no global state, thread-safe.
-        self.fig = Figure(figsize=(plot_target_width, plot_target_height), dpi=100)
-        FigureCanvasAgg(self.fig)
-        self.ax = cast(
-            geoaxes.GeoAxes, self.fig.add_axes((0, 0, 1, 1), projection=self.projection)
-        )
-        bbox = self.region.bbox
-        lat_lo = max(bbox[1], -MERCATOR_LAT_LIMIT)
-        lat_hi = min(bbox[3], MERCATOR_LAT_LIMIT)
-        # extent is ALWAYS given in lon/lat degrees, regardless of axes projection
-        self.ax.set_extent([bbox[0], bbox[2], lat_lo, lat_hi], crs=ccrs.PlateCarree())
-        self.ax.set_aspect("auto", adjustable="box")
-
-    def save_figure(self, output_path: str):
-        self.ax.set_axis_off()
-        self.ax.patch.set_alpha(0)
-        self.fig.patch.set_alpha(0)
-
-        # Atomic write/move to avoid timing issues
-        base, ext = os.path.splitext(output_path)
-        tmp_img = f"{base}.tmp{ext}"
-        self.fig.savefig(tmp_img, transparent=True, bbox_inches=None, pad_inches=0)
-        os.replace(tmp_img, output_path)
-
-        # No global figure registry to close; just release the artists.
-        self.fig.clear()
-
-
 @dataclass(frozen=True)
 class ForecastState:
     """Which forecast run + hour a render call operates on (GFS or RTOFS; the same
@@ -304,7 +189,7 @@ class ForecastState:
         return cls(run_date_str, run_id, f"{int(fhour):03d}")
 
 
-class Updater:
+class Updater(PlottingMixin):
     def __init__(self, config: AtmosGLConfig, section: str, map_data: MapData):
         self.config = config
         self.map_data = map_data
@@ -475,55 +360,6 @@ class Updater:
         mesh_lats, mesh_lons = np.meshgrid(new_lats, new_lons, indexing="ij")
         field_smooth = fn((mesh_lats, mesh_lons))
         return new_lats, new_lons, field_smooth
-
-    def save_key_image(
-        self,
-        output_path,
-        cmap,
-        norm,
-        ticks,
-        title,
-        *,
-        key_fontsize=8,
-        labelsize=6,
-        tick_format=None,
-        weight=None,
-        decorate=None,
-    ):
-        """Render a standalone horizontal colourbar key PNG at `<base>_key<ext>`.
-
-        Shared scaffold absorbed from the near-identical save_*_key methods every
-        legend-bearing layer (ozone/temperature/stormwatch/precipitation/currents/sst/
-        waves) built independently. Callers supply their own cmap/norm (often reused
-        from their contourf() call) plus the layer-specific ticks and title.
-        `decorate`, if given, is called with the built colourbar before its title/
-        ticks are styled, for callers that annotate the bar itself (e.g. waves'
-        below-threshold shading).
-        """
-        base, ext = os.path.splitext(output_path)
-        key_path = f"{base}_key{ext}"
-
-        fig = Figure(figsize=(4, 0.3))
-        FigureCanvasAgg(fig)
-        ax = fig.subplots()
-        cbar = fig.colorbar(
-            mpl.cm.ScalarMappable(norm=norm, cmap=cmap),
-            cax=ax,
-            orientation="horizontal",
-            ticks=ticks,
-        )
-        if tick_format is not None:
-            from matplotlib.ticker import FormatStrFormatter
-
-            cbar.ax.xaxis.set_major_formatter(FormatStrFormatter(tick_format))
-        if decorate is not None:
-            decorate(cbar)
-        cbar.ax.set_title(title, color="white", fontsize=key_fontsize, pad=2, weight=weight)
-        cbar.ax.tick_params(colors="white", labelsize=labelsize)
-
-        fig.savefig(key_path, transparent=True, bbox_inches="tight")
-        fig.clear()
-        logger.debug(f"{self.section}: saved key to {key_path}")
 
     def layer_status(self) -> dict:
         """Read-only snapshot for the Config UI's Data Status tab — the layer-task

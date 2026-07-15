@@ -12,7 +12,8 @@ from scipy.interpolate import RegularGridInterpolator
 # Internal imports
 from atmos_gl.lib.config import AtmosGLConfig
 from atmos_gl.lib.texture import encode_frames
-from .common import Updater, MapData, Plot, MultiHourRenderMixin, ForecastState
+from .common import Updater, MapData, MultiHourRenderMixin, ForecastState
+from .plotting import Plot
 
 # Silence warnings
 warnings.filterwarnings("ignore", message=".*missingValue.*")

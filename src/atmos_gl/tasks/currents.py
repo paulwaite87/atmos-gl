@@ -7,7 +7,9 @@ import matplotlib.colors as mcolors
 
 from atmos_gl.lib.config import AtmosGLConfig
 from atmos_gl.lib.texture import encode_uv
-from .common import Updater, MapData, _opaque_cmap, coastline_land_mask, MultiHourRenderMixin, ForecastState
+from .common import Updater, MapData, MultiHourRenderMixin, ForecastState
+from .plotting import opaque_cmap
+from atmos_gl.lib.coastline import coastline_land_mask
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +67,7 @@ class CurrentsUpdater(Updater, MultiHourRenderMixin):
 
         self.save_key_image(
             output_path,
-            _opaque_cmap(cmap),
+            opaque_cmap(cmap),
             norm,
             ticks,
             "Current Speed (m/s)",
