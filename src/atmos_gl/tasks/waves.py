@@ -65,20 +65,6 @@ class WavesUpdater(Updater, MultiHourRenderMixin):
             decorate=_mark_threshold,
         )
 
-    def _coastline_mask(
-        self, mesh_lon, mesh_lat, lon_min, lat_min, lon_max, lat_max, res
-    ):
-        """Boolean land mask at grid resolution, cut from true coastline geometry.
-        Thin wrapper over the shared lib.coastline.coastline_land_mask (also used by
-        currents) so the Natural Earth read/union is cached once across layers. Returns
-        None on geometry-load failure so the caller falls back to the data-derived mask.
-        """
-        from atmos_gl.lib.coastline import coastline_land_mask
-
-        return coastline_land_mask(
-            mesh_lon, mesh_lat, lon_min, lat_min, lon_max, lat_max, res
-        )
-
     def plot_swell(self, field0, state: ForecastState):
         """Write the per-hour swell velocity texture (R=U east, G=V north) from a
         fieldstore field. The collector already derived u/v from swh + wave direction
