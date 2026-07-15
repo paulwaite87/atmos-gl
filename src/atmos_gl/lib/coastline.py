@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Coastline land-masking, split out of tasks/common.py (architecture review
 candidate "tasks/common.py bundles six unrelated concerns"): a pure geometry
-function with no Updater/MapRegion coupling, used by waves.py and currents.py to
-remove land from ocean fields.
+function with no Updater/MapRegion coupling, used by currents.py and sst.py to
+remove land from ocean fields. waves.py's own coastline masking runs through the
+raster tile engine (tiles/raster_tiles.py's land_mask()) instead -- a separate,
+per-output-pixel STRtree query rather than a pre-computed raster mask.
 """
 import logging
 
@@ -12,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 # Cache the unioned Natural Earth land geometry per (resolution, rounded bbox) so we
 # read the shapefile and union it once, then reuse across hours and across layers
-# (waves + currents share this). Module-level so it survives per-hour Updater instances.
+# (currents + sst share this). Module-level so it survives per-hour Updater instances.
 _COAST_GEOM_CACHE = {}
 
 
@@ -20,7 +22,7 @@ def coastline_land_mask(mesh_lon, mesh_lat, lon_min, lat_min, lon_max, lat_max, 
     """Boolean land mask (True over land) sampled at the given mesh, cut from true
     Natural Earth coastline geometry at resolution `res` ('10m' / '50m' / '110m').
 
-    Shared by any layer that needs to remove land from an ocean field (waves, currents):
+    Shared by any layer that needs to remove land from an ocean field (currents, sst):
     a data-derived NaN mask only knows where the model lacked data, so model values can
     smear up to the interpolation cap onto the coast; cutting against real coastline
     polygons clips the field to the actual shoreline. Returns None if the geometry can't
