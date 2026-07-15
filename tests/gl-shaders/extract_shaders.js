@@ -53,6 +53,14 @@ export function captureParticleControllerOpts(path, exportedFn = "loadLayer") {
       captured.opts = opts;
       return () => {};
     },
+    // waves.js (and others) also call createFillLayer for their heat fill, alongside
+    // the particle controller this helper actually cares about -- stub it so
+    // evaluating the module doesn't throw ReferenceError.
+    createFillLayer: () => () => {},
+    // Real opacityUniform behaviour isn't needed here (this helper only cares about
+    // the particle-controller opts object) -- a passthrough of the fallback is enough
+    // to let modules that call it (waves.js, wind.js, ...) evaluate without throwing.
+    opacityUniform: (_cfg, fallback) => fallback,
     liveLayerSync: () => () => {},
   };
   vm.createContext(context);
