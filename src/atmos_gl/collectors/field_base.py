@@ -12,7 +12,7 @@ implementation, subclassing FieldCollectorBase directly.
 
 CollectorBase's is_stale/has_new_data scheduling contract doesn't fit these sources: they
 aren't polled on their own cadence, they're driven every full-refresh cycle (already gated by
-data_collector.enabled + update_minutes at the service level) and self-gate per forecast hour
+data_collector.enabled + runs_per_day at the service level) and self-gate per forecast hour
 via fieldstore.field_exists(). What they DO need from CollectorBase is the config/db/settings
 plumbing, so FieldCollectorBase stays a subclass but replaces the per-source scheduling with:
 
@@ -42,7 +42,12 @@ from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 
 from .base import CollectorBase
-from atmos_gl.lib.data_status import estimate_next_update, read_process_status, build_status
+from atmos_gl.lib.data_status import (
+    estimate_next_update,
+    period_s_from_runs_per_day,
+    read_process_status,
+    build_status,
+)
 from atmos_gl.lib.gfs import download_whole
 
 logger = logging.getLogger(__name__)
@@ -153,12 +158,10 @@ class FieldCollectorBase(CollectorBase):
         return fhour_0 + self.cache_hours
 
     def _service_period_s(self) -> float:
-        """How often CollectorService._collect_fields() runs (data_collector.update_minutes,
-        falling back to legacy update_hours) — mirrors CollectorService.refresh_settings's
-        own fallback so data_status()'s next_update matches the real cadence."""
-        if self.settings.get("update_minutes") is not None:
-            return float(self.settings.get("update_minutes")) * 60
-        return float(self.settings.get("update_hours", 12)) * 3600
+        """How often CollectorService._collect_fields() runs (data_collector.runs_per_day)
+        — mirrors CollectorService.refresh_settings's own formula so data_status()'s
+        next_update matches the real cadence."""
+        return period_s_from_runs_per_day(self.settings.get("runs_per_day", 96))
 
     def data_status(self) -> dict:
         """Coverage-based override of CollectorBase.data_status(): percent is the fraction

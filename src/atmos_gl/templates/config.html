@@ -27,9 +27,16 @@
         .status-fill.bad { background-color: #dc3545; }
         .status-fill.off { background-color: #ced4da; }
         .status-pct { width: 48px; flex: 0 0 48px; text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; font-size: 0.9rem; }
+        .status-runs-select, .status-runs-select-spacer { width: 74px; flex: 0 0 74px; }
+        .status-runs-select { font-size: 0.78rem; padding: 2px 6px; }
         .status-times { width: 230px; flex: 0 0 230px; font-size: 0.78rem; color: #6c757d; text-align: right; }
         .status-empty { color: #6c757d; font-size: 0.9rem; }
-        .status-running-badge { flex: 0 0 auto; font-size: 0.7rem; animation: status-running-pulse 1.5s ease-in-out infinite; }
+        /* Fixed-width slot, always reserved (see the spacer fallback below) -- .status-track
+           is the only flex:1 item in the row, so a badge appended without a reserved slot
+           shrinks it (and shifts every column after it left) only on rows where it's
+           showing, throwing that row out of alignment with the rest. */
+        .status-running-badge, .status-running-badge-spacer { flex: 0 0 60px; width: 60px; }
+        .status-running-badge { font-size: 0.7rem; text-align: center; animation: status-running-pulse 1.5s ease-in-out infinite; }
         .status-switch, .status-switch-spacer { position: relative; flex: 0 0 34px; width: 34px; height: 20px; }
         .status-switch input { opacity: 0; width: 0; height: 0; position: absolute; }
         .status-switch .status-slider {
@@ -384,6 +391,20 @@
         }
 
         async function saveActiveConfig() {
+            // masterConfigCache is a page-load-time snapshot -- refetch first so fields
+            // with no dynamic-input DOM element (channel_enabled, runs_per_day; both
+            // edited exclusively via the Data Status tab's own save-immediately
+            // endpoints) are captured at their CURRENT value rather than silently
+            // reverted to whatever was cached when this page loaded. Everything below
+            // still only overrides what's actually visible in the form.
+            try {
+                const freshResponse = await fetch(CONFIG_API_URL);
+                const freshJson = await freshResponse.json();
+                if (freshJson.status === "success") masterConfigCache = freshJson.data;
+            } catch (err) {
+                console.error("Failed to refresh config before saving; using last-known copy.", err);
+            }
+
             const payload = JSON.parse(JSON.stringify(masterConfigCache));
 
             ['clouds', 'isobars', 'wind', 'precipitation', 'pwat', 'lightning', 'storms', 'quakes', 'volcanoes', 'fires', 'satellites', 'terminator', 'markers', 'shipping', 'shipping_collector', 'lightning_collector', 'satellites_collector', 'data_collector'].forEach(layer => {
@@ -574,6 +595,9 @@
         // form too -- its own tiny endpoint, saved the instant it's clicked.
         // -------------------------------------------------------------
         const DATA_STATUS_API_URL = API_URL + "/data_status";
+        // Mirrors lib/data_status.py's RUNS_PER_DAY_CHOICES -- the only values the
+        // per-row cadence widget below offers.
+        const RUNS_PER_DAY_CHOICES = [1, 4, 6, 12, 24, 48, 96];
         let dataStatusTimer = null;
 
         function formatRelativeTime(isoString, { future = false } = {}) {
@@ -642,9 +666,25 @@
                 // just sitting on a stale reading until the run finishes.
                 const runningBadge = item.status === "running"
                     ? '<span class="badge bg-primary status-running-badge">running</span>'
-                    : "";
+                    : '<span class="status-running-badge-spacer"></span>';
                 const title = item.detail ? item.detail.replace(/"/g, "&quot;") : "";
                 const channelLabel = channelDisplayName(channelKey);
+
+                // Cadence widget: only Collectors-panel rows carry runs_per_day (null for
+                // layers and every row not migrated onto it -- see routes/status.py's
+                // RUNS_PER_DAY_SECTIONS). The gfs_atmos row's value is data_collector's,
+                // shared with gfs_waves/rtofs_currents -- saved under "data_collector",
+                // not "gfs_atmos" (see updateRunsPerDay below).
+                const runsPerDaySection = item.name === "gfs_atmos" ? "data_collector" : item.name;
+                const runsPerDayHtml = (withToggle && item.runs_per_day != null)
+                    ? `<select class="form-select form-select-sm status-runs-select"
+                               title="${item.name === "gfs_atmos" ? "Governs GFS Atmos, GFS Waves &amp; RTOFS Currents together" : "Runs per day"}"
+                               onchange="updateRunsPerDay('${runsPerDaySection}', this.value)">
+                           ${RUNS_PER_DAY_CHOICES.map(v =>
+                               `<option value="${v}" ${v === item.runs_per_day ? "selected" : ""}>${v}/day</option>`
+                           ).join("")}
+                       </select>`
+                    : (withToggle ? `<span class="status-runs-select-spacer"></span>` : "");
 
                 // Collectors panel: a real opt-out switch per gated row, an inert spacer
                 // (keeps columns aligned) for an ungated one (storms, markers, ...).
@@ -683,6 +723,7 @@
                             <div class="status-fill ${fillClass}" style="width: ${pct}%;"></div>
                         </div>
                         <div class="status-pct">${pct.toFixed(0)}%</div>
+                        ${runsPerDayHtml}
                         <div class="status-times">${timesHtml}</div>
                         ${runningBadge}
                     </div>
@@ -731,6 +772,39 @@
                 console.error(`Failed to save channel_enabled.${channelKey}:`, err);
                 for (const item of [...lastStatusData.collectors, ...lastStatusData.layers]) {
                     if (item.channel_key === channelKey) item.channel_on = !checked;
+                }
+                renderDataStatus();
+            }
+        }
+
+        // Saves a row's cadence immediately -- its own tiny endpoint, same rationale as
+        // toggleChannel above. `section` is "data_collector" for the gfs_atmos row
+        // (shared cadence with gfs_waves/rtofs_currents) and the row's own name for
+        // every other collector.
+        async function updateRunsPerDay(section, value) {
+            const runsPerDay = Number(value);
+            const previous = {};
+            for (const item of lastStatusData.collectors) {
+                if (item.name === section || (section === "data_collector" && item.name === "gfs_atmos")) {
+                    previous[item.name] = item.runs_per_day;
+                    item.runs_per_day = runsPerDay;
+                }
+            }
+            renderDataStatus();
+            try {
+                const res = await fetch(
+                    `${API_URL}/data_status/runs_per_day/${encodeURIComponent(section)}`,
+                    {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ runs_per_day: runsPerDay }),
+                    }
+                );
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            } catch (err) {
+                console.error(`Failed to save ${section}.runs_per_day:`, err);
+                for (const item of lastStatusData.collectors) {
+                    if (item.name in previous) item.runs_per_day = previous[item.name];
                 }
                 renderDataStatus();
             }

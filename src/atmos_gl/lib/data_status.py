@@ -61,6 +61,12 @@ def period_s_from_runs_per_day(runs_per_day) -> float:
     return 86400.0 / max(rpd, 0.01)
 
 
+# The only runs_per_day values selectable from the Data Status page's per-collector
+# widget (routes/status.py's set_runs_per_day endpoint) -- 96 = every 15 minutes,
+# matching data_collector's historical update_minutes default.
+RUNS_PER_DAY_CHOICES = (1, 4, 6, 12, 24, 48, 96)
+
+
 def read_process_status(process_status_adapter, name: str):
     """(last_updated, last_error, status) for `name`'s most recent process_status row,
     or (None, None, None) if it has none yet. The same read every data_status()/

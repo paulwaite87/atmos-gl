@@ -9,9 +9,8 @@ Its endpoint lives in data_collector.datasources (key "clouds"), same as every o
 source -- see CollectorBase.datasource_url().
 
 Freshness is two-layered:
-  * is_stale()  — orchestrator cadence; period_s is derived from expiry_hours here (the
-                  clouds config has no runs_per_day), so it's checked ~once per expiry
-                  window instead of the base default of once per day.
+  * is_stale()  — orchestrator cadence; period_s comes from CollectorBase's default
+                  runs_per_day-derived formula, same as quakes/volcanoes/storms/etc.
   * collect()   — owns the real skip decision via the cache-age vs expiry_hours check,
                   so a due-but-still-fresh cache costs an mtime stat and no download.
 
@@ -34,15 +33,6 @@ _DEFAULT_GEOMETRY = "2048x1024"
 class CloudsCollector(CollectorBase):
     section = "clouds"
     channel_key = "clouds"
-
-    @property
-    def period_s(self) -> float:
-        """Check cadence = expiry_hours (clouds has no runs_per_day). Falls back to the
-        CollectorBase runs_per_day default only if expiry_hours is absent."""
-        expiry_hours = self.settings.get("expiry_hours")
-        if expiry_hours is not None:
-            return max(float(expiry_hours), 0.1) * 3600.0
-        return super().period_s
 
     def collect(self) -> None:
         """Fetch the global GIBS cloud image into the shared cache the clouds layer reads,

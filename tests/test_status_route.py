@@ -25,6 +25,7 @@ from atmos_gl.routes.status import (
     _build_layer_channel_keys,
     _serialize,
     _display_name,
+    RUNS_PER_DAY_SECTIONS,
 )
 from atmos_gl.api import app
 
@@ -383,3 +384,180 @@ def test_data_status_groups_collector_suffixed_rows_at_the_bottom(client):
     assert resp.status_code == 200
     names = [c["name"] for c in resp.json()["data"]["collectors"]]
     assert names == ["quakes", "storms", "satellites_collector"]
+
+
+# --- runs_per_day: _serialize(), get_data_status() row attachment, and the
+# save endpoint ---
+
+
+def test_serialize_attaches_the_given_runs_per_day():
+    out = _serialize(_BARE_STATUS, None, {}, 12)
+    assert out["runs_per_day"] == 12
+
+
+def test_serialize_defaults_runs_per_day_to_none():
+    out = _serialize(_BARE_STATUS, None, {})
+    assert out["runs_per_day"] is None
+
+
+def _write_runs_per_day_config(tmp_path, **extra_sections):
+    path = tmp_path / "atmos-gl.json"
+    config = {
+        "common": {"workdir": "."},
+        "data_collector": {"channel_enabled": {}, "runs_per_day": 96},
+        **extra_sections,
+    }
+    path.write_text(json.dumps(config))
+    return path
+
+
+def test_data_status_attaches_runs_per_day_for_a_migrated_section(client, tmp_path, monkeypatch):
+    """quakes is in RUNS_PER_DAY_SECTIONS -- its row must carry the configured value."""
+    _override_all_empty()
+
+    class _FakeQuakes(_StubCollector):
+        section = "quakes"
+
+        def data_status(self):
+            return {**super().data_status(), "name": "quakes"}
+
+    app.dependency_overrides[get_collector_classes] = lambda: (_FakeQuakes,)
+    config_path = _write_runs_per_day_config(tmp_path, quakes={"runs_per_day": 12})
+    monkeypatch.setenv("CONFIG_PATH", str(config_path))
+
+    resp = client.get("/api/data_status")
+
+    assert resp.status_code == 200
+    assert resp.json()["data"]["collectors"][0]["runs_per_day"] == 12
+
+
+def test_data_status_defaults_runs_per_day_to_1_when_key_absent_from_config(
+    client, tmp_path, monkeypatch
+):
+    """A section in RUNS_PER_DAY_SECTIONS always gets a widget -- if the key is
+    missing from config (e.g. an unmigrated live file), the row must show the real
+    effective default (CollectorBase.period_s's own fallback of 1), not None, or the
+    frontend's `item.runs_per_day != null` gate hides the widget entirely."""
+    _override_all_empty()
+
+    class _FakeQuakes(_StubCollector):
+        section = "quakes"
+
+        def data_status(self):
+            return {**super().data_status(), "name": "quakes"}
+
+    app.dependency_overrides[get_collector_classes] = lambda: (_FakeQuakes,)
+    config_path = _write_runs_per_day_config(tmp_path)  # no quakes.runs_per_day set
+    monkeypatch.setenv("CONFIG_PATH", str(config_path))
+
+    resp = client.get("/api/data_status")
+
+    assert resp.status_code == 200
+    assert resp.json()["data"]["collectors"][0]["runs_per_day"] == 1
+
+
+def test_data_status_omits_runs_per_day_for_a_non_migrated_section(client, tmp_path, monkeypatch):
+    """isobars is vestigial (never had a real runs_per_day) -- its row must not carry
+    one even if a stray key happens to be in config."""
+    _override_all_empty()
+
+    class _FakeIsobars(_StubCollector):
+        section = "isobars"
+
+        def data_status(self):
+            return {**super().data_status(), "name": "isobars"}
+
+    app.dependency_overrides[get_collector_classes] = lambda: (_FakeIsobars,)
+    config_path = _write_runs_per_day_config(tmp_path, isobars={"runs_per_day": 12})
+    monkeypatch.setenv("CONFIG_PATH", str(config_path))
+
+    resp = client.get("/api/data_status")
+
+    assert resp.status_code == 200
+    assert resp.json()["data"]["collectors"][0]["runs_per_day"] is None
+
+
+def test_data_status_attaches_data_collectors_runs_per_day_only_to_gfs_atmos_row(
+    client, tmp_path, monkeypatch
+):
+    """gfs_atmos, gfs_waves, and rtofs_currents share data_collector.runs_per_day, but
+    only the gfs_atmos row surfaces it -- see RUNS_PER_DAY_SECTIONS' docstring."""
+    _override_all_empty()
+
+    class _FakeGfsAtmos(_StubCollector):
+        status_name = "gfs_atmos"
+
+        def data_status(self):
+            return {**super().data_status(), "name": "gfs_atmos"}
+
+    class _FakeGfsWaves(_StubCollector):
+        status_name = "gfs_waves"
+
+        def data_status(self):
+            return {**super().data_status(), "name": "gfs_waves"}
+
+    app.dependency_overrides[get_field_collector_classes] = lambda: (
+        _FakeGfsAtmos, _FakeGfsWaves,
+    )
+    config_path = _write_runs_per_day_config(tmp_path)
+    monkeypatch.setenv("CONFIG_PATH", str(config_path))
+
+    resp = client.get("/api/data_status")
+
+    assert resp.status_code == 200
+    collectors = {c["name"]: c["runs_per_day"] for c in resp.json()["data"]["collectors"]}
+    assert collectors == {"gfs_atmos": 96, "gfs_waves": None}
+
+
+def test_runs_per_day_sections_excludes_data_collector_itself():
+    """data_collector isn't a section with its own row -- its value is attached to
+    the gfs_atmos row specifically (see the field_collector_classes loop above)."""
+    assert "data_collector" not in RUNS_PER_DAY_SECTIONS
+
+
+def test_set_runs_per_day_persists_a_valid_value(client, tmp_path, monkeypatch):
+    config_path = _write_runs_per_day_config(tmp_path, quakes={"runs_per_day": 24})
+    monkeypatch.setenv("CONFIG_PATH", str(config_path))
+
+    resp = client.post("/api/data_status/runs_per_day/quakes", json={"runs_per_day": 6})
+
+    assert resp.status_code == 200
+    assert resp.json() == {"status": "success", "section": "quakes", "runs_per_day": 6}
+    saved = json.loads(config_path.read_text())
+    assert saved["quakes"]["runs_per_day"] == 6
+
+
+def test_set_runs_per_day_persists_under_data_collector_for_the_gfs_atmos_row(
+    client, tmp_path, monkeypatch
+):
+    config_path = _write_runs_per_day_config(tmp_path)
+    monkeypatch.setenv("CONFIG_PATH", str(config_path))
+
+    resp = client.post(
+        "/api/data_status/runs_per_day/data_collector", json={"runs_per_day": 48}
+    )
+
+    assert resp.status_code == 200
+    saved = json.loads(config_path.read_text())
+    assert saved["data_collector"]["runs_per_day"] == 48
+
+
+def test_set_runs_per_day_rejects_a_value_outside_the_choice_set(client, tmp_path, monkeypatch):
+    config_path = _write_runs_per_day_config(tmp_path)
+    monkeypatch.setenv("CONFIG_PATH", str(config_path))
+
+    resp = client.post("/api/data_status/runs_per_day/quakes", json={"runs_per_day": 8})
+
+    assert resp.status_code == 422
+
+
+def test_set_runs_per_day_rejects_a_boolean():
+    """1 == True in Python -- guard against a JSON boolean silently passing the `in
+    RUNS_PER_DAY_CHOICES` membership check."""
+    from atmos_gl.routes.status import set_runs_per_day
+    from fastapi import HTTPException
+    import pytest
+
+    with pytest.raises(HTTPException) as exc_info:
+        set_runs_per_day("quakes", {"runs_per_day": True})
+    assert exc_info.value.status_code == 422

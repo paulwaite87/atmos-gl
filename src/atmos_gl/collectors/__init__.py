@@ -9,10 +9,10 @@ entry", not a new branch in a monolith:
 Synchronous event feeds  (COLLECTORS)        — write straight to the DB
 --------------------------------------------------------------------------
   quakes     — USGS earthquake CSV, runs_per_day=24 (every ~hour)
-  storms     — NHC/JTWC ATCF b/a-deck files, runs_per_day=8
+  storms     — NHC/JTWC ATCF b/a-deck files, runs_per_day=6
   volcanoes  — NOAA HazEL REST API, runs_per_day=1
   fires      — NASA FIRMS VIIRS_NOAA20_NRT active-fire CSV, runs_per_day=24 (every ~hour)
-  satellites — CelesTrak OMM JSON, period derived from update_hours (default 12h)
+  satellites — CelesTrak OMM JSON, runs_per_day=6
   markers    — LOCAL markers.geojson -> DB 'markers' table (mtime-gated, not remote)
 
 Synchronous file caches  (CACHE_COLLECTORS)  — write an image/netCDF under {workdir}/data

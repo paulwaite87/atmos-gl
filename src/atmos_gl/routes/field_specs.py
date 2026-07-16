@@ -114,7 +114,6 @@ _ICON_ZOOM = SliderSpec(min=0.1, max=5.0, step=0.1, decimals=1, suffix="x")
 _HOURS = SliderSpec(min=0, max=96, step=1, suffix="h")
 _MINUTES = SliderSpec(min=0, max=120, step=1, suffix="mins")
 _FONTSIZE = SliderSpec(min=6, max=24, step=1, suffix="px")
-_RUNS_PER_DAY = SliderSpec(min=1, max=24, step=1, suffix=" runs")
 _OPACITY = SliderSpec(min=0, max=100, step=1)
 _PARTICLE_ALPHA = SliderSpec(min=0, max=100, step=5)
 _PARTICLE_SPEED_LIKE = SliderSpec(min=0, max=100, step=1)
@@ -244,16 +243,13 @@ FIELD_SPECS = {
     ("quakes", "expiry_hours"): _HOURS,
     ("quakes", "label_fontsize"): _FONTSIZE,
     ("quakes", "min_mag"): SliderSpec(min=0, max=10, step=0.1, decimals=1, prefix="M "),
-    ("quakes", "runs_per_day"): _RUNS_PER_DAY,
     ("volcanoes", "icon_zoom"): _ICON_ZOOM,
     ("volcanoes", "significant_only"): ToggleSpec(),
     ("volcanoes", "vei_min"): _VEI_OPTIONS,
     ("volcanoes", "erupt_date_codes"): _ERUPT_DATE_CODES,
-    ("volcanoes", "runs_per_day"): _RUNS_PER_DAY,
     ("fires", "expiry_hours"): _HOURS,
     ("fires", "min_confidence"): _FIRE_CONFIDENCE,
     ("fires", "max_frp"): _FIRE_MAX_FRP,
-    ("fires", "runs_per_day"): _RUNS_PER_DAY,
     # Fire Weather Index heatmap (tasks/fire_weather.py) -- same "fires" section as the
     # FIRMS hotspot settings above, so the Show tab needs only one "Wildfires" toggle.
     ("fires", "level_of_detail"): _LEVEL_OF_DETAIL,
@@ -273,7 +269,6 @@ FIELD_SPECS = {
     ("markers", "marker_color"): ColorSpec(),
     ("markers", "marker_fontsize"): _FONTSIZE,
     ("markers", "weather_popup"): ToggleSpec(),
-    ("markers", "runs_per_day"): _RUNS_PER_DAY,
     # --- Shipping (shipping) ---
     ("shipping", "icon_zoom"): _ICON_ZOOM,
     # --- Atmospheric (clouds, isobars, wind, precipitation, pwat, lightning, storms) ---
@@ -284,7 +279,6 @@ FIELD_SPECS = {
     ("clouds", "gamma"): SliderSpec(min=0.1, max=3.0, step=0.05, decimals=2, prefix="γ "),
     ("clouds", "offset_days"): SliderSpec(min=0, max=7, step=1, suffix=" days"),
     ("clouds", "expiry_hours"): _HOURS,
-    ("clouds", "runs_per_day"): _RUNS_PER_DAY,
     ("clouds", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
     ("isobars", "level_of_detail"): _LEVEL_OF_DETAIL,
     ("isobars", "isobar_step"): SliderSpec(min=1, max=10, step=1, suffix=" hPa"),
@@ -293,7 +287,6 @@ FIELD_SPECS = {
     ("isobars", "opacity"): _OPACITY,
     ("isobars", "label_fontsize"): _FONTSIZE,
     ("isobars", "label_outline"): ToggleSpec(),
-    ("isobars", "runs_per_day"): _RUNS_PER_DAY,
     ("isobars", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
     # Ordered to mirror currents' shape below (same shared engine): resolution, colour,
     # opacity, particle tuning, field-quality knobs, trail rendering, playback quality.
@@ -310,7 +303,6 @@ FIELD_SPECS = {
     ("wind", "trail_length"): SliderSpec(min=10, max=100, step=1),
     ("wind", "trail_thickness"): SliderSpec(min=1, max=5, step=1),
     ("wind", "key_fontsize"): _FONTSIZE,
-    ("wind", "runs_per_day"): _RUNS_PER_DAY,
     ("wind", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
     ("precipitation", "level_of_detail"): _LEVEL_OF_DETAIL,
     ("precipitation", "min_mm_hr"): SliderSpec(min=0.0, max=10.0, step=0.1, decimals=1),
@@ -321,7 +313,6 @@ FIELD_SPECS = {
         ("high_contrast", "High contrast"),
     ]),
     ("precipitation", "key_fontsize"): _FONTSIZE,
-    ("precipitation", "runs_per_day"): _RUNS_PER_DAY,
     ("precipitation", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
     ("pwat", "level_of_detail"): _LEVEL_OF_DETAIL,
     ("pwat", "palette"): SelectSpec([
@@ -332,14 +323,12 @@ FIELD_SPECS = {
     ("pwat", "critical_pwat"): SliderSpec(min=0.0, max=80.0, step=5.0, decimals=0, suffix="mm"),
     ("pwat", "opacity"): _OPACITY,
     ("pwat", "key_fontsize"): _FONTSIZE,
-    ("pwat", "runs_per_day"): _RUNS_PER_DAY,
     ("pwat", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
     ("lightning", "icon_zoom"): _ICON_ZOOM,
     ("lightning", "strike_recent_minutes"): _MINUTES,
     ("lightning", "strike_keep_minutes"): _MINUTES,
     ("lightning", "strike_expiry_hours"): _HOURS,
     ("storms", "expiry_days"): SliderSpec(min=0, max=60, step=1, suffix=" days expiry"),
-    ("storms", "runs_per_day"): _RUNS_PER_DAY,
     # --- Climate (sst, currents, waves, temperature, ozone, stormwatch) ---
     ("sst", "mode"): _MODE_OPTIONS,
     ("sst", "opacity"): _OPACITY,
@@ -352,7 +341,6 @@ FIELD_SPECS = {
     ("sst", "min_c"): _MIN_MAX_C,
     ("sst", "max_c"): _MIN_MAX_C,
     ("sst", "key_fontsize"): _FONTSIZE,
-    ("sst", "runs_per_day"): _RUNS_PER_DAY,
     ("sst", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
     ("currents", "level_of_detail"): _LEVEL_OF_DETAIL,
     ("currents", "palette"): SelectSpec([
@@ -372,7 +360,6 @@ FIELD_SPECS = {
     ("currents", "fill_floor"): SliderSpec(min=0.0, max=1.0, step=0.05, decimals=2, suffix=" m/s"),
     ("currents", "fill_knee"): SliderSpec(min=0.0, max=2.5, step=0.05, decimals=2, suffix=" m/s"),
     ("currents", "key_fontsize"): _FONTSIZE,
-    ("currents", "runs_per_day"): _RUNS_PER_DAY,
     ("currents", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
     ("waves", "level_of_detail"): _LEVEL_OF_DETAIL,
     ("waves", "palette"): SelectSpec([
@@ -383,7 +370,6 @@ FIELD_SPECS = {
     ("waves", "opacity"): _OPACITY,
     ("waves", "min_wave_height"): SliderSpec(min=0, max=5, step=0.25, suffix=" m", zero_label="off"),
     ("waves", "key_fontsize"): _FONTSIZE,
-    ("waves", "runs_per_day"): _RUNS_PER_DAY,
     ("waves", "particle_speed"): _PARTICLE_SPEED_LIKE,
     ("waves", "particle_size"): _PARTICLE_SIZE,
     ("waves", "bar_length"): SliderSpec(min=1, max=8, step=1),
@@ -392,7 +378,6 @@ FIELD_SPECS = {
     ("temperature", "level_of_detail"): _LEVEL_OF_DETAIL,
     ("temperature", "opacity"): _OPACITY,
     ("temperature", "key_fontsize"): _FONTSIZE,
-    ("temperature", "runs_per_day"): _RUNS_PER_DAY,
     ("temperature", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
     ("ozone", "level_of_detail"): _LEVEL_OF_DETAIL,
     ("ozone", "palette"): SelectSpec([
@@ -402,28 +387,24 @@ FIELD_SPECS = {
     ("ozone", "critical_du"): SliderSpec(min=150.0, max=500.0, step=10.0, decimals=1, suffix="du"),
     ("ozone", "opacity"): _OPACITY,
     ("ozone", "key_fontsize"): _FONTSIZE,
-    ("ozone", "runs_per_day"): _RUNS_PER_DAY,
     ("ozone", "stormwatch"): ToggleSpec(),
     ("ozone", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
     ("stormwatch", "level_of_detail"): _LEVEL_OF_DETAIL,
     ("stormwatch", "min_cape"): SliderSpec(min=0, max=5000, step=100, suffix="J/Kg"),
     ("stormwatch", "opacity"): _OPACITY,
     ("stormwatch", "key_fontsize"): _FONTSIZE,
-    ("stormwatch", "runs_per_day"): _RUNS_PER_DAY,
     ("stormwatch", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
     # --- Background (shipping_collector, lightning_collector, satellites_collector,
     # data_collector, housekeeper) ---
     ("shipping_collector", "log_level"): _LOG_LEVEL,
     ("lightning_collector", "expiry_hours"): _HOURS,
     ("lightning_collector", "log_level"): _LOG_LEVEL,
-    ("satellites_collector", "update_hours"): _HOURS,
     ("satellites_collector", "log_level"): _LOG_LEVEL,
     # data_collector.datasources is deliberately NOT here -- see
     # render_datasources_accordion in _field_macros.html.
     # data_collector.channel_enabled is deliberately NOT here either -- it's a per-source
     # data-acquisition opt-out (independent of any layer's frontend `enabled`), rendered
     # on the Data Status page rather than as a generic config-tab field.
-    ("data_collector", "update_minutes"): _MINUTES,
     ("data_collector", "backfill_poll_seconds"): SliderSpec(min=10, max=600, step=10, suffix="s"),
     ("data_collector", "cache_hours"): _HOURS,
     ("data_collector", "log_level"): _LOG_LEVEL,

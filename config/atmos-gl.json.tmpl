@@ -37,7 +37,6 @@
     "opacity": 100,
     "label_fontsize": 12,
     "label_outline": false,
-    "runs_per_day": 24,
     "cache_expiry_days": 3
   },
   "wind": {
@@ -51,7 +50,6 @@
     "trail_length": 50,
     "trail_thickness": 3,
     "key_fontsize": 11,
-    "runs_per_day": 8,
     "cache_expiry_days": 3
   },
   "precipitation": {
@@ -61,7 +59,6 @@
     "opacity": 40,
     "palette": "standard",
     "key_fontsize": 8,
-    "runs_per_day": 24,
     "cache_expiry_days": 3
   },
   "currents": {
@@ -77,7 +74,6 @@
     "fill_floor": 0.15,
     "fill_knee": 0.5,
     "key_fontsize": 8,
-    "runs_per_day": 2,
     "cache_expiry_days": 3
   },
   "waves": {
@@ -87,7 +83,6 @@
     "opacity": 80,
     "min_wave_height": 0.5,
     "key_fontsize": 8,
-    "runs_per_day": 2,
     "particle_speed": 51,
     "particle_size": 1.25,
     "bar_length": 5,
@@ -99,7 +94,6 @@
     "level_of_detail": "2",
     "opacity": 80,
     "key_fontsize": 8,
-    "runs_per_day": 8,
     "cache_expiry_days": 3
   },
   "ozone": {
@@ -109,7 +103,6 @@
     "critical_du": 220,
     "opacity": 45,
     "key_fontsize": 8,
-    "runs_per_day": 2,
     "stormwatch": true,
     "cache_expiry_days": 3
   },
@@ -119,7 +112,6 @@
     "min_cape": 1200,
     "opacity": 50,
     "key_fontsize": 8,
-    "runs_per_day": 2,
     "cache_expiry_days": 3
   },
   "pwat": {
@@ -129,7 +121,6 @@
     "critical_pwat": 20,
     "opacity": 45,
     "key_fontsize": 8,
-    "runs_per_day": 2,
     "cache_expiry_days": 3
   },
   "sst": {
@@ -140,7 +131,7 @@
     "min_c": 20,
     "max_c": 32,
     "key_fontsize": 8,
-    "runs_per_day": 2,
+    "runs_per_day": 1,
     "cache_expiry_days": 3
   },
   "storms": {
@@ -148,7 +139,7 @@
     "jtwc_url": "https://www.ssd.noaa.gov/PS/TROP/DATA/ATCF/JTWC/",
     "nhc_url": "https://ftp.nhc.noaa.gov/atcf/fst/",
     "expiry_days": 4,
-    "runs_per_day": 8
+    "runs_per_day": 6
   },
   "lightning": {
     "enabled": true,
@@ -237,7 +228,7 @@
       "satellites": true,
       "storms": true
     },
-    "update_minutes": 15,
+    "runs_per_day": 96,
     "backfill_poll_seconds": 60,
     "cache_hours": 48,
     "log_level": "DEBUG"
@@ -245,7 +236,7 @@
   "satellites_collector": {
     "enabled": true,
     "groups": "stations,weather,science,resource",
-    "update_hours": 12,
+    "runs_per_day": 6,
     "log_level": "INFO"
   },
   "shipping_collector": {

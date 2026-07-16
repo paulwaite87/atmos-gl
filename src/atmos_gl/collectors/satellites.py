@@ -6,7 +6,8 @@ frontend reads them via the /api/satellites route.
 
 Converted from async (aiohttp) to synchronous (requests) so it can join the periodic
 collect_event_feeds() loop inside DataCollector instead of running as a separate service.
-With update_hours=12 there is no benefit to async I/O here.
+With runs_per_day driving a several-times-a-day cadence there is no benefit to async I/O
+here.
 
 HEAD check: we probe the stations-group URL as a freshness proxy for the whole dataset
 (CelesTrak updates all groups together). If Last-Modified/ETag is unchanged we skip the
@@ -29,12 +30,6 @@ class SatellitesCollector(CollectorBase):
     def __init__(self, config):
         super().__init__(config)
         self.satellite_adapter = SatelliteAdapter()
-
-    @property
-    def period_s(self) -> float:
-        """Derive period from update_hours config key (keeps existing config compatible)."""
-        hours = float(self.settings.get("update_hours", 12))
-        return hours * 3600.0
 
     def _groups(self) -> list[str]:
         raw = self.settings.get("groups", "stations,weather,science,resource")
