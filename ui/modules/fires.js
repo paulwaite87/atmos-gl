@@ -13,7 +13,8 @@ export function loadLayer(map, config) {
 
     const urlFor = (cfg) => `${window.WM_API}/fires/geojson`
         + `?min_confidence=${cfg.min_confidence ?? 'nominal'}`
-        + `&expiry_hours=${cfg.expiry_hours ?? 24}&t=${Date.now()}`;
+        + `&expiry_hours=${cfg.expiry_hours ?? 24}`
+        + `&max_frp=${cfg.max_frp ?? 5000}&t=${Date.now()}`;
 
     const fetchData = (cfg) => fetchOrThrow(urlFor(cfg));
 

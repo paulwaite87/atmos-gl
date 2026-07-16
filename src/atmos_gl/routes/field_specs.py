@@ -165,6 +165,11 @@ _FIRE_CONFIDENCE = SelectSpec([
     ("high", "High - saturated pixels only"),
 ])
 
+# Real wildfire fronts, even the most extreme recorded, top out in the low-thousands of
+# MW per pixel -- readings far above that are far more likely a gas flare/industrial
+# source than an actual fire (see FireAdapter.get_fires_as_geojson's docstring).
+_FIRE_MAX_FRP = SliderSpec(min=500, max=20000, step=100, suffix=" MW")
+
 _ERUPT_DATE_CODES = MultiSelectSpec([
     ("D1", "D1 - 1964 or later"),
     ("D2", "D2 - 1900 to 1963"),
@@ -247,6 +252,7 @@ FIELD_SPECS = {
     ("volcanoes", "runs_per_day"): _RUNS_PER_DAY,
     ("fires", "expiry_hours"): _HOURS,
     ("fires", "min_confidence"): _FIRE_CONFIDENCE,
+    ("fires", "max_frp"): _FIRE_MAX_FRP,
     ("fires", "runs_per_day"): _RUNS_PER_DAY,
     # --- Misc (satellites, terminator, markers) ---
     ("satellites", "sat_names"): _SAT_NAMES,

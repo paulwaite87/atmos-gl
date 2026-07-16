@@ -85,6 +85,20 @@ def test_get_fires_as_geojson_filters_by_expiry_hours():
     assert ids == {"recent"}
 
 
+def test_get_fires_as_geojson_filters_by_max_frp():
+    adapter = FakeFireAdapter()
+    now = datetime.now(timezone.utc)
+    adapter.upsert_fires(
+        [
+            _row("plausible", -40.0, 175.0, 330.0, 800.0, "high", "N", "D", _iso(now)),
+            _row("flare", -40.0, 175.0, 330.0, 12444.0, "nominal", "N", "N", _iso(now)),
+        ]
+    )
+    geojson = _fires(adapter, max_frp=5000.0)
+    ids = {f["properties"]["id"] for f in geojson["features"]}
+    assert ids == {"plausible"}
+
+
 def test_get_fires_as_geojson_shape():
     adapter = FakeFireAdapter()
     now = datetime.now(timezone.utc)

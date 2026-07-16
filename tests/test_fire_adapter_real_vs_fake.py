@@ -6,6 +6,7 @@ satellite/daynight/acq_time stay immutable), so if they ever diverge, nothing el
 catch it. tests/test_fire_adapter.py exercises only the Fake.
 """
 import contextlib
+import json
 from unittest.mock import patch
 
 import pytest
@@ -72,3 +73,22 @@ def test_lat_lon_immutable_on_conflict(kind, real_db):
 
     assert row["lat"] == pytest.approx(-36.8)
     assert row["lon"] == pytest.approx(174.7)
+
+
+@pytest.mark.parametrize("kind", ["real", "fake"])
+def test_get_fires_as_geojson_max_frp_filter_matches_between_real_and_fake(kind, real_db):
+    """get_fires_as_geojson's WHERE-clause FRP ceiling (real: SQL `Fire.frp <= max_frp`)
+    must exclude the same rows as the Fake's independent Python re-implementation."""
+    suffix = kind
+    adapter, ctx = _make_adapter(kind, real_db)
+
+    with ctx:
+        adapter.upsert_fires([
+            _fire_row(f"plausible-{suffix}", -36.8, 174.7, 330.0, 800.0, "nominal", "2026-01-01T00:00:00+00:00"),
+            _fire_row(f"flare-{suffix}", -36.8, 174.7, 330.0, 12444.0, "nominal", "2026-01-01T00:00:00+00:00"),
+        ])
+        geojson = json.loads(adapter.get_fires_as_geojson(max_frp=5000.0, expiry_hours=999999))
+
+    ids = {f["properties"]["id"] for f in geojson["features"]}
+    assert f"plausible-{suffix}" in ids
+    assert f"flare-{suffix}" not in ids

@@ -44,3 +44,20 @@ def test_fires_geojson_passes_query_params_through_to_the_adapter(client):
 
     ids = {f["properties"]["id"] for f in resp.json()["features"]}
     assert ids == {"hi"}
+
+
+def test_fires_geojson_passes_max_frp_through_to_the_adapter(client):
+    fake = FakeFireAdapter()
+    now = datetime.now(timezone.utc).isoformat()
+    fake.upsert_fires([
+        {"id": "plausible", "lat": -40.0, "lon": 175.0, "brightness": 330.0, "frp": 800.0,
+         "confidence": "nominal", "satellite": "N", "daynight": "D", "acq_time": now},
+        {"id": "flare", "lat": -40.0, "lon": 175.0, "brightness": 330.0, "frp": 12444.0,
+         "confidence": "nominal", "satellite": "N", "daynight": "N", "acq_time": now},
+    ])
+    app.dependency_overrides[get_fire_adapter] = lambda: fake
+
+    resp = client.get("/api/fires/geojson", params={"max_frp": 5000})
+
+    ids = {f["properties"]["id"] for f in resp.json()["features"]}
+    assert ids == {"plausible"}
