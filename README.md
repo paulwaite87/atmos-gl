@@ -53,7 +53,8 @@ updates to everything else).
 
 Edit `.env` and fill in your API keys — see [Map Tiles API Key](#map-tiles-api-key),
 [Shipping Data API Key](#shipping-data-api-key),
-[Lightning Strikes API Key](#lightning-strikes-api-key)
+[Lightning Strikes API Key](#lightning-strikes-api-key),
+[NASA FIRMS API Key](#nasa-firms-api-key)
 
 The map tiles key is MANDATORY for the globe's basemap to render at all. Shipping and lightning 
 are optional (you can enable them later once you have keys).
@@ -99,14 +100,21 @@ restart the backend to pick it up:
 
     ./atmos-gl.sh restart
 
-### Map Tiles API Key
+### API Keys
+Some of the data resources we are lucky enough to have free access to are only available
+if you have an API Key. This is perfectly reasonable because it allows the folks running
+and maintaining the resource to rate-limit data being served. None of the API Keys used
+in this project are hard to obtain, but even so it is entirely optional apart from the
+first one below, which is needed for you to see the map.
+
+#### Map Tiles API Key
 This is MANDATORY.
 The globe's basemap imagery (satellite/street tiles) is served by MapTiler, and needs its own
 free API key. Sign up at https://www.maptiler.com/, grab a key from your account dashboard,
 and put it in `.env` as `MAPTILER_API_KEY`. Without this the globe has nothing to render its
 basemap with.
 
-### Shipping Data API Key
+#### Shipping Data API Key
 This is optional.
 The `shipping_collector` needs an API Key to access the AIS stream carrying shipping messages.
 
@@ -120,7 +128,7 @@ file named `.env` and replace the `AIS_API_KEY` placeholder there with your newl
 API Key. You will now be able to go into the Atmos GL Configurator and on the `Show` tab
 in the `Background Processes` group enable either or both the Shipping and Lightning processes.
 
-### Lightning Strikes API Key
+#### Lightning Strikes API Key
 This is optional.
 It is the API keyfor the `lightning_collector` and it's a similar deal, but also easy. 
 You just need to create an account on https://openweathermap.org and the link to acquire 
@@ -133,6 +141,21 @@ No quotes around the key are required.
 Once the `lightning_collector` process is enabled and running, you will find that the table
 in the database called `lightning_strikes` will acquire data, though it also gets culled
 every few hours (`strike_expiry_hours` setting in that section) so won't get too populated.
+
+#### NASA FIRMS API Key
+This is optional.
+It's for the `Wildfires` layer, sourced from NASA's FIRMS (Fire Information for Resource
+Management System) — near-real-time active-fire detections from satellite, updated
+roughly hourly.
+
+Sign up for a free key at https://firms.modaps.eosdis.nasa.gov/api/map_key/ — just an
+email address, no approval wait, the key is generated and emailed to you instantly.
+Back in the root directory edit `.env` and put the key in for the `FIRMS_API_KEY`
+setting, same as the others above.
+
+With climate change seemingly setting various regions of the planet on fire, this one
+is a really informative layer to have running. Once the key is in place, enable
+`Wildfires` in the Atmos GL Configurator's `Show` tab, under the `Events` group.
 
 ### Forecasting
 The map has a time scrubber built right into it — play, step forward/back, or drag through
