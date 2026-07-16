@@ -391,6 +391,20 @@
         }
 
         async function saveActiveConfig() {
+            // masterConfigCache is a page-load-time snapshot -- refetch first so fields
+            // with no dynamic-input DOM element (channel_enabled, runs_per_day; both
+            // edited exclusively via the Data Status tab's own save-immediately
+            // endpoints) are captured at their CURRENT value rather than silently
+            // reverted to whatever was cached when this page loaded. Everything below
+            // still only overrides what's actually visible in the form.
+            try {
+                const freshResponse = await fetch(CONFIG_API_URL);
+                const freshJson = await freshResponse.json();
+                if (freshJson.status === "success") masterConfigCache = freshJson.data;
+            } catch (err) {
+                console.error("Failed to refresh config before saving; using last-known copy.", err);
+            }
+
             const payload = JSON.parse(JSON.stringify(masterConfigCache));
 
             ['clouds', 'isobars', 'wind', 'precipitation', 'pwat', 'lightning', 'storms', 'quakes', 'volcanoes', 'fires', 'satellites', 'terminator', 'markers', 'shipping', 'shipping_collector', 'lightning_collector', 'satellites_collector', 'data_collector'].forEach(layer => {
