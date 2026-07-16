@@ -26,4 +26,5 @@ OUTFILES = {
     "pwat": "data/pwat.png",
     "sst": "data/sst.png",
     "clouds": "data/cloud_map.png",
+    "fires": "data/fire_weather.png",
 }

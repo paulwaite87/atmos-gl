@@ -250,6 +250,93 @@ def stormwatch_data_unpack(path):
     return out
 
 
+def fosberg_ffwi(temp_c, rh_pct, wind_ms):
+    """Fosberg Fire Weather Index from 2m temperature (C), 2m relative humidity (%),
+    and wind speed (m/s) -- an established NWS/USFS fire-danger index (verified against
+    published NWS/USFS sources, not derived). 0-100 is the normal range; a wind speed of
+    30 mph with 0% equilibrium moisture content (bone dry, gale-force) returns exactly
+    100, the index's own "extreme" reference point. Rare extreme conditions can exceed
+    100 slightly.
+
+    EMC (equilibrium moisture content) is piecewise on RH; below it's how "damp" the
+    fuel's moisture content would equilibrate to given the current temp/humidity, which
+    the moisture-damping coefficient (eta) then converts into a 0-1 dampening factor
+    fire spread. Wind then amplifies that dry/damp baseline into the final index.
+    """
+    temp_c = np.asarray(temp_c, dtype=np.float64)
+    rh_pct = np.clip(np.asarray(rh_pct, dtype=np.float64), 0.0, 100.0)
+    wind_ms = np.asarray(wind_ms, dtype=np.float64)
+
+    temp_f = temp_c * 9.0 / 5.0 + 32.0
+
+    emc_low = 0.03229 + 0.281073 * rh_pct - 0.000578 * rh_pct * temp_f
+    emc_mid = 2.22749 + 0.160107 * rh_pct - 0.01478 * temp_f
+    emc_high = (
+        21.0606
+        + 0.005565 * rh_pct**2
+        - 0.00035 * rh_pct * temp_f
+        - 0.483199 * rh_pct
+    )
+    emc = np.select(
+        [rh_pct < 10.0, rh_pct <= 50.0, rh_pct > 50.0],
+        [emc_low, emc_mid, emc_high],
+    )
+
+    m = emc / 30.0
+    eta = 1.0 - 2.0 * m + 1.5 * m**2 - 0.5 * m**3
+
+    wind_mph = wind_ms * 2.23694
+    return eta * np.sqrt(1.0 + wind_mph**2) / 0.3002
+
+
+def fire_weather_data_unpack(path):
+    """Fosberg Fire Weather Index, derived from TMP+RH @2m and UGRD/VGRD @10m -- unlike
+    every other unpacker here, this one combines TWO independently-filtered opens of the
+    same shared union file (2m level for temperature/humidity, 10m level for wind,
+    mirroring stormwatch_data_unpack's two-open-calls-in-one-function shape for CAPE/CIN).
+
+    Both opens are explicitly sorted north-first before extracting arrays -- wind_data_unpack
+    already does this for its own vector-texture contract; this function additionally
+    NEEDS it to guarantee the 2m and 10m grids are row-aligned before combining them
+    element-wise, since nothing otherwise proves cfgrib's native row order agrees between
+    two separately-filtered opens of the same file.
+    """
+    ds2m = xr.open_dataset(
+        path,
+        engine="cfgrib",
+        backend_kwargs={"filter_by_keys": {"typeOfLevel": "heightAboveGround", "level": 2}},
+    )
+    ds2m = ds2m.sortby("latitude", ascending=False)
+    key_t = "t2m" if "t2m" in ds2m else "2t"
+    key_rh = next((k for k in ("r2", "r", "rh", "relative_humidity") if k in ds2m), None)
+    if key_rh is None:
+        ds2m.close()
+        raise KeyError("RH @2m variable not found in GRIB subset")
+    temp_c = ds2m[key_t].values.squeeze() - 273.15
+    rh_pct = ds2m[key_rh].values.squeeze()
+    lats = ds2m["latitude"].values
+    lon_raw = ds2m["longitude"].values
+    ds2m.close()
+
+    ds10m = xr.open_dataset(
+        path,
+        engine="cfgrib",
+        backend_kwargs={"filter_by_keys": {"typeOfLevel": "heightAboveGround", "level": 10}},
+    )
+    ds10m = ds10m.sortby("latitude", ascending=False)
+    u = ds10m["u10"].values.squeeze()
+    v = ds10m["v10"].values.squeeze()
+    ds10m.close()
+
+    wind_ms = np.hypot(u, v)
+    ffwi = fosberg_ffwi(temp_c, rh_pct, wind_ms)
+
+    lons, (ffwi,) = _standardize_lon(lon_raw, ffwi)
+    out = _blank()
+    out.update(lat=np.asarray(lats), lon=lons, values=ffwi)
+    return out
+
+
 # Registry: product name -> unpack function. The collector iterates this for everything
 # carried by the atmospheric (pgrb2.0p25) union file. waves (GFS wave product) and the
 # non-GFS sources (currents=RTOFS, sst=OISST) get their own unpackers in later passes.
@@ -416,6 +503,7 @@ ATMOS_UNPACKERS = {
     "pwat": pwat_data_unpack,
     "wind": wind_data_unpack,
     "stormwatch": stormwatch_data_unpack,
+    "fire_weather": fire_weather_data_unpack,
 }
 
 # RTOFS (ocean) products are downloaded per-file (NetCDF), not from the GFS atmos

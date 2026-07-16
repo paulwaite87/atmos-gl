@@ -37,6 +37,7 @@ ALLOWED_PRODUCTS = {
     "stormwatch",
     "currents",
     "waves",
+    "fire_weather",
 }
 
 _RUN_RE = re.compile(r"^(00|06|12|18)$")

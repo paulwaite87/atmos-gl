@@ -254,6 +254,13 @@ FIELD_SPECS = {
     ("fires", "min_confidence"): _FIRE_CONFIDENCE,
     ("fires", "max_frp"): _FIRE_MAX_FRP,
     ("fires", "runs_per_day"): _RUNS_PER_DAY,
+    # Fire Weather Index heatmap (tasks/fire_weather.py) -- same "fires" section as the
+    # FIRMS hotspot settings above, so the Show tab needs only one "Wildfires" toggle.
+    ("fires", "level_of_detail"): _LEVEL_OF_DETAIL,
+    ("fires", "opacity"): _OPACITY,
+    ("fires", "key_fontsize"): _FONTSIZE,
+    ("fires", "min_risk_display"): SliderSpec(min=0, max=100, step=5, suffix=""),
+    ("fires", "min_risk_filter"): SliderSpec(min=0, max=100, step=5, suffix="", zero_label="off"),
     # --- Misc (satellites, terminator, markers) ---
     ("satellites", "sat_names"): _SAT_NAMES,
     ("satellites", "past_minutes"): _MINUTES,

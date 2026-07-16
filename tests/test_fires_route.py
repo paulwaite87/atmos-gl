@@ -4,6 +4,9 @@ FireAdapter is injected via Depends(get_fire_adapter), so a test can override it
 FakeFireAdapter and exercise the real route end-to-end.
 """
 from datetime import datetime, timezone
+from unittest.mock import patch, MagicMock
+
+import numpy as np
 
 from atmos_gl.db.fire_adapter import FakeFireAdapter
 from atmos_gl.routes.fires import get_fire_adapter
@@ -61,3 +64,60 @@ def test_fires_geojson_passes_max_frp_through_to_the_adapter(client):
 
     ids = {f["properties"]["id"] for f in resp.json()["features"]}
     assert ids == {"plausible"}
+
+
+def _fake_fire_weather_store():
+    """A 2x2 grid: (lat=0,lon=0) -> row=1,col=0 -> risk 80; (lat=10,lon=10) ->
+    row=0,col=1 -> risk 5. Mirrors _sample_nearest's row/col arithmetic in
+    routes/fires.py."""
+    field = {
+        "lat": np.array([10.0, 0.0]),
+        "lon": np.array([0.0, 10.0]),
+        "values": np.array([[0.0, 5.0], [80.0, 0.0]]),
+    }
+    store = MagicMock()
+    store.field_catalog_adapter.get_latest_run_hours.return_value = {
+        "run_date": "2026-01-01", "run_id": "00", "hours": [0],
+    }
+    store.get_field.return_value = field
+    return store
+
+
+def test_fires_geojson_min_risk_filters_out_low_risk_detections(client):
+    fake_adapter = FakeFireAdapter()
+    now = datetime.now(timezone.utc).isoformat()
+    fake_adapter.upsert_fires([
+        {"id": "risky", "lat": 0.0, "lon": 0.0, "brightness": 330.0, "frp": 10.0,
+         "confidence": "nominal", "satellite": "N", "daynight": "D", "acq_time": now},
+        {"id": "safe", "lat": 10.0, "lon": 10.0, "brightness": 330.0, "frp": 10.0,
+         "confidence": "nominal", "satellite": "N", "daynight": "D", "acq_time": now},
+    ])
+    app.dependency_overrides[get_fire_adapter] = lambda: fake_adapter
+
+    with patch("atmos_gl.routes.fires.load_config") as mock_load_config, patch(
+        "atmos_gl.routes.fires.fieldstore.get_store", return_value=_fake_fire_weather_store()
+    ):
+        mock_load_config.return_value.get_setting.return_value = "."
+        resp = client.get("/api/fires/geojson", params={"min_risk": 50})
+
+    ids = {f["properties"]["id"] for f in resp.json()["features"]}
+    assert ids == {"risky"}
+
+
+def test_fires_geojson_min_risk_zero_skips_the_filter_entirely(client):
+    """min_risk=0 (the default) must not touch the fieldstore at all -- it's an
+    opt-in filter, not something every request pays the cost of."""
+    fake_adapter = FakeFireAdapter()
+    now = datetime.now(timezone.utc).isoformat()
+    fake_adapter.upsert_fires([
+        {"id": "f1", "lat": 0.0, "lon": 0.0, "brightness": 330.0, "frp": 10.0,
+         "confidence": "nominal", "satellite": "N", "daynight": "D", "acq_time": now},
+    ])
+    app.dependency_overrides[get_fire_adapter] = lambda: fake_adapter
+
+    with patch("atmos_gl.routes.fires.fieldstore.get_store") as mock_get_store:
+        resp = client.get("/api/fires/geojson")
+
+    mock_get_store.assert_not_called()
+    ids = {f["properties"]["id"] for f in resp.json()["features"]}
+    assert ids == {"f1"}

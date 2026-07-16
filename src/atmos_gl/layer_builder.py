@@ -27,6 +27,7 @@ from atmos_gl.tasks.currents import CurrentsUpdater
 from atmos_gl.tasks.waves import WavesUpdater
 from atmos_gl.tasks.scalar_field import ScalarFieldUpdater, SPECS
 from atmos_gl.tasks.markers import MarkerUpdater
+from atmos_gl.tasks.fire_weather import FireWeatherUpdater
 
 logger = logging.getLogger("atmos_gl.layer_builder")
 
@@ -53,6 +54,7 @@ TASK_CLASSES = {
     "stormwatch": partial(ScalarFieldUpdater, spec=SPECS["stormwatch"]),
     "pwat": partial(ScalarFieldUpdater, spec=SPECS["pwat"]),
     "markers": MarkerUpdater,
+    "fires": FireWeatherUpdater,
 }
 
 
