@@ -159,6 +159,12 @@ _VEI_OPTIONS = SelectSpec([
     ("8", "8 - Super colossal"),
 ])
 
+_FIRE_CONFIDENCE = SelectSpec([
+    ("low", "Low - include all detections"),
+    ("nominal", "Nominal - filter out low-confidence noise"),
+    ("high", "High - saturated pixels only"),
+])
+
 _ERUPT_DATE_CODES = MultiSelectSpec([
     ("D1", "D1 - 1964 or later"),
     ("D2", "D2 - 1900 to 1963"),
@@ -239,6 +245,9 @@ FIELD_SPECS = {
     ("volcanoes", "vei_min"): _VEI_OPTIONS,
     ("volcanoes", "erupt_date_codes"): _ERUPT_DATE_CODES,
     ("volcanoes", "runs_per_day"): _RUNS_PER_DAY,
+    ("fires", "expiry_hours"): _HOURS,
+    ("fires", "min_confidence"): _FIRE_CONFIDENCE,
+    ("fires", "runs_per_day"): _RUNS_PER_DAY,
     # --- Misc (satellites, terminator, markers) ---
     ("satellites", "sat_names"): _SAT_NAMES,
     ("satellites", "past_minutes"): _MINUTES,
@@ -461,6 +470,7 @@ SECTION_LABELS = {
     "stormwatch": "Storm Watch",
     "quakes": "Earthquakes",
     "volcanoes": "Volcanoes",
+    "fires": "Wildfires",
     "satellites": "Satellites",
     "terminator": "Terminator Night/day Shade",
     "markers": "Place Markers",

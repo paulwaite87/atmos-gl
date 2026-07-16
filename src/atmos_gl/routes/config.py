@@ -224,6 +224,7 @@ def _build_config_data() -> dict:
     ais_key = os.getenv("AIS_API_KEY", "").strip()
     owm_key = os.getenv("OPENWEATHER_API_KEY", "").strip()
     maptiler_key = os.getenv("MAPTILER_API_KEY", "").strip()
+    firms_key = os.getenv("FIRMS_API_KEY", "").strip()
 
     if "shipping_collector" in data:
         if not ais_key:
@@ -238,6 +239,11 @@ def _build_config_data() -> dict:
     if "common" in data:
         if not maptiler_key:
             data["common"]["RULE__missing_maptiler"] = True
+
+    if "fires" in data:
+        if not firms_key:
+            data["fires"]["enabled"] = False
+            data["fires"]["RULE__missing_firms_apikey"] = True
 
     # Not stored in config.json, not user-editable (see lib/output_files.py) -- injected
     # here so the frontend can still read cfg.outfile exactly as before, just sourced
@@ -274,6 +280,8 @@ async def update_config(payload: dict):
         payload["lightning_collector"].pop("RULE__missing_openweather_apikey", None)
     if "common" in payload:
         payload["common"].pop("RULE__missing_maptiler", None)
+    if "fires" in payload:
+        payload["fires"].pop("RULE__missing_firms_apikey", None)
 
     config.config = payload
     config.save()

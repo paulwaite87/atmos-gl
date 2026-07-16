@@ -152,6 +152,29 @@ class Volcano(Base):
     geom: Mapped[str | None] = mapped_column(Geometry("POINT", srid=4326, spatial_index=False))
 
 
+class Fire(Base):
+    """NASA FIRMS VIIRS_SNPP_NRT active-fire detections. id is synthesised
+    (satellite|lat|lon|acq_date|acq_time) -- FIRMS assigns no detection-level id of its
+    own, unlike USGS quakes/NOAA volcanoes."""
+
+    __tablename__ = "fires"
+    __table_args__ = (
+        Index("idx_fires_geom", "geom", postgresql_using="gist"),
+        Index("idx_fires_acq_time", "acq_time"),
+    )
+
+    id: Mapped[str] = mapped_column(String(80), primary_key=True)
+    lat: Mapped[float | None] = mapped_column(REAL)
+    lon: Mapped[float | None] = mapped_column(REAL)
+    brightness: Mapped[float | None] = mapped_column(REAL)
+    frp: Mapped[float | None] = mapped_column(REAL)
+    confidence: Mapped[str | None] = mapped_column(String(10))
+    satellite: Mapped[str | None] = mapped_column(String(20))
+    daynight: Mapped[str | None] = mapped_column(String(1))
+    acq_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    geom: Mapped[str | None] = mapped_column(Geometry("POINT", srid=4326, spatial_index=False))
+
+
 class Storm(Base):
     __tablename__ = "storms"
 
