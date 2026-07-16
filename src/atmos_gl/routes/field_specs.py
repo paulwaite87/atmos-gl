@@ -452,6 +452,8 @@ _LABEL_OVERRIDES = {
     ("currents", "opacity"): "Heatmap opacity",
     ("ozone", "critical_du"): "Critical Ozone Threshold (Dobson Units)",
     ("pwat", "critical_pwat"): "Critical Moisture Threshold (mm)",
+    ("fires", "opacity"): "Heatmap opacity",
+    ("fires", "min_risk_filter"): "Fire Weather Index Threshold",
 }
 
 
