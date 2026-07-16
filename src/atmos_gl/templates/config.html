@@ -583,7 +583,7 @@
         const DATA_STATUS_API_URL = API_URL + "/data_status";
         // Mirrors lib/data_status.py's RUNS_PER_DAY_CHOICES -- the only values the
         // per-row cadence widget below offers.
-        const RUNS_PER_DAY_CHOICES = [1, 6, 12, 24, 48, 96];
+        const RUNS_PER_DAY_CHOICES = [1, 4, 6, 12, 24, 48, 96];
         let dataStatusTimer = null;
 
         function formatRelativeTime(isoString, { future = false } = {}) {
