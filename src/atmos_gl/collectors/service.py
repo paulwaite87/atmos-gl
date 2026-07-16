@@ -12,8 +12,9 @@ collaborator, so adding a source never touches this file:
   * Async collectors (shipping/lightning) -> supervised in-process asyncio tasks
 
 Two cadences (identical semantics to the old DataCollector.run()):
-  * Full refresh every update_period_s (update_minutes / legacy update_hours): the
-    synchronous collectors run in a worker thread (asyncio.to_thread) so their blocking,
+  * Full refresh every update_period_s (data_collector.runs_per_day, same
+    period_s_from_runs_per_day() formula every other collector uses): the synchronous
+    collectors run in a worker thread (asyncio.to_thread) so their blocking,
     GIL-releasing downloads don't starve the embedded async collectors' event loop.
   * Backfill drain every backfill_poll_seconds so frontend-flagged (404) missing hours
     fill within ~a minute rather than waiting for the next full cycle.
@@ -33,6 +34,7 @@ import logging
 from atmos_gl.lib.config import AtmosGLConfig
 from atmos_gl.lib.logging import setup_logging, set_loglevel
 from atmos_gl.lib import fieldstore
+from atmos_gl.lib.data_status import period_s_from_runs_per_day
 from atmos_gl.lib.scheduling import interval_elapsed
 from atmos_gl.db.process_status_adapter import ProcessStatusAdapter
 from atmos_gl.db.field_catalog_adapter import FieldCatalogAdapter
@@ -75,12 +77,10 @@ class CollectorService:
     def refresh_settings(self):
         self.config.load()
         self.settings = self.config.get_section("data_collector") or {}
-        # Full-refresh cadence. Prefer update_minutes (finer control); fall back to the
-        # legacy update_hours for existing configs. Stored as seconds.
-        if self.settings.get("update_minutes") is not None:
-            self.update_period_s = int(self.settings.get("update_minutes")) * 60
-        else:
-            self.update_period_s = int(self.settings.get("update_hours", 12)) * 3600
+        # Full-refresh cadence, same runs_per_day formula every other collector uses.
+        self.update_period_s = period_s_from_runs_per_day(
+            self.settings.get("runs_per_day", 96)
+        )
         log_level = self.settings.get("log_level")
         if log_level:
             set_loglevel(log_level)

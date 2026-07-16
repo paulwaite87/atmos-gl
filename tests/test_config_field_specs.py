@@ -121,13 +121,18 @@ def test_format_slider_badge_applies_prefix():
     assert format_slider_badge(spec, 4.5) == "M 4.5"
 
 
-def test_shared_slider_shape_reused_across_sections():
-    """runs_per_day is the same widget shape everywhere it appears -- registered
-    once and shared, not re-declared per section."""
-    assert (
-        FIELD_SPECS[("quakes", "runs_per_day")]
-        is FIELD_SPECS[("markers", "runs_per_day")]
-    )
+def test_runs_per_day_has_no_field_specs_entry_anywhere():
+    """runs_per_day moved to the Data Status page's per-row widget (routes/status.py's
+    set_runs_per_day) -- it must not have a FIELD_SPECS entry for any section, whether
+    still-real (quakes, clouds, ...) or fully vestigial (isobars, wind, ...)."""
+    assert not any(option == "runs_per_day" for _, option in FIELD_SPECS)
+
+
+def test_satellites_collector_and_data_collector_lost_their_bespoke_cadence_specs():
+    """update_hours/update_minutes were replaced by runs_per_day (also not in
+    FIELD_SPECS -- see test_runs_per_day_has_no_field_specs_entry_anywhere)."""
+    assert ("satellites_collector", "update_hours") not in FIELD_SPECS
+    assert ("data_collector", "update_minutes") not in FIELD_SPECS
 
 
 def test_initial_color_render_resolves_named_color_to_hex():
@@ -457,6 +462,17 @@ def test_config_page_never_renders_channel_enabled_as_a_generic_field():
     resp = client.get("/config")
     html = resp.text
     assert 'id="data_collector__channel_enabled"' not in html
+
+
+def test_config_page_never_renders_runs_per_day_as_a_generic_field():
+    """Regression guard: runs_per_day still lives in quakes'/clouds'/etc. config dict
+    (just edited via the Data Status tab now, not here), so without the
+    _field_macros.html exclusion it would fall through to the generic number-input
+    fallback and reappear on the Settings tab."""
+    resp = client.get("/config")
+    html = resp.text
+    assert 'id="quakes__runs_per_day"' not in html
+    assert 'id="clouds__runs_per_day"' not in html
 
 
 def test_config_page_renders_fallback_section_for_gated_layers():

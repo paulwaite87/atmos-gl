@@ -12,6 +12,7 @@ from fastapi import APIRouter, HTTPException, Depends
 
 from atmos_gl.db.field_catalog_adapter import FieldCatalogAdapter
 from atmos_gl.lib import fieldstore
+from atmos_gl.lib.data_status import RUNS_PER_DAY_CHOICES
 from atmos_gl.routes.config import load_config
 
 from atmos_gl.collectors import (
@@ -48,7 +49,23 @@ def _display_name(key: str) -> str:
     return _STATUS_NAME_LABELS.get(key, section_label(key))
 
 
-def _serialize(status: dict, channel_key: str | None, channel_enabled: dict) -> dict:
+# Sections whose runs_per_day is edited via this page's per-row widget instead of their
+# own Settings tab (see _field_macros.html's exclusion list). data_collector isn't a
+# section with its own row -- its runs_per_day is attached to the gfs_atmos row
+# specifically in get_data_status() below, since that's the one field-collector row
+# with real percent/next_update math already derived from the shared cadence.
+RUNS_PER_DAY_SECTIONS = {
+    "quakes", "volcanoes", "storms", "fires", "markers", "sst",
+    "clouds", "satellites_collector",
+}
+
+
+def _serialize(
+    status: dict,
+    channel_key: str | None,
+    channel_enabled: dict,
+    runs_per_day: int | None = None,
+) -> dict:
     """JSON-safe copy of a data_status()/layer_status() dict: datetimes -> ISO 8601.
 
     channel_key (data_collector.channel_enabled's key, e.g. "gfs_atmos") and the
@@ -64,7 +81,10 @@ def _serialize(status: dict, channel_key: str | None, channel_enabled: dict) -> 
 
     Also adds display_name, a friendly version of `name` for the UI -- `name` itself
     is left untouched (some existing tests assert it verbatim, and it's still the
-    right value for anything keying off the raw section/status_name)."""
+    right value for anything keying off the raw section/status_name).
+
+    runs_per_day is the row's current cadence value if it's edited via this page's
+    widget (see RUNS_PER_DAY_SECTIONS), else None so the frontend renders no widget."""
     out = dict(status)
     for key in ("last_updated", "next_update"):
         v = out.get(key)
@@ -73,6 +93,7 @@ def _serialize(status: dict, channel_key: str | None, channel_enabled: dict) -> 
     out["channel_key"] = channel_key
     out["channel_on"] = channel_enabled.get(channel_key, True) if channel_key else None
     out["display_name"] = _display_name(out["name"])
+    out["runs_per_day"] = runs_per_day
     return out
 
 
@@ -148,7 +169,17 @@ def get_data_status(
             try:
                 channel_key = getattr(CollectorCls, "channel_key", None)
                 status = CollectorCls(config).data_status()
-                collectors.append(_serialize(status, channel_key, channel_enabled))
+                section = getattr(CollectorCls, "section", None)
+                # Falls back to 1 (CollectorBase.period_s's own default), not None --
+                # a section in RUNS_PER_DAY_SECTIONS always gets the widget, showing
+                # whatever value is actually in effect rather than hiding when the key
+                # happens to be absent from config.
+                runs_per_day = (
+                    config.get_setting(section, "runs_per_day", 1)
+                    if section in RUNS_PER_DAY_SECTIONS
+                    else None
+                )
+                collectors.append(_serialize(status, channel_key, channel_enabled, runs_per_day))
             except Exception as e:
                 logger.error(f"data_status failed for {CollectorCls.__name__}: {e}")
 
@@ -156,7 +187,16 @@ def get_data_status(
             try:
                 channel_key = getattr(CollectorCls, "channel_key", None)
                 status = CollectorCls(config, store).data_status()
-                collectors.append(_serialize(status, channel_key, channel_enabled))
+                # data_collector's runs_per_day governs gfs_atmos + gfs_waves +
+                # rtofs_currents together; surfaced only on the gfs_atmos row (see
+                # RUNS_PER_DAY_SECTIONS docstring above). Falls back to 96 (matching
+                # CollectorService.refresh_settings's own default), not None.
+                runs_per_day = (
+                    config.get_setting("data_collector", "runs_per_day", 96)
+                    if getattr(CollectorCls, "status_name", None) == "gfs_atmos"
+                    else None
+                )
+                collectors.append(_serialize(status, channel_key, channel_enabled, runs_per_day))
             except Exception as e:
                 logger.error(f"data_status failed for {CollectorCls.__name__}: {e}")
 
@@ -215,3 +255,23 @@ def set_channel_enabled(channel_key: str, payload: dict):
     config.config["data_collector"]["channel_enabled"][channel_key] = enabled
     config.save()
     return {"status": "success", "channel_key": channel_key, "enabled": enabled}
+
+
+@router.post("/data_status/runs_per_day/{section}")
+def set_runs_per_day(section: str, payload: dict):
+    """Set one section's runs_per_day and save immediately -- same rationale as
+    set_channel_enabled above: an operational cadence change should take effect the
+    instant it's picked, independent of /api/config's whole-config replace. `section`
+    is "data_collector" for the GFS/RTOFS field collectors (see RUNS_PER_DAY_SECTIONS'
+    docstring) and the section name itself for every other row."""
+    runs_per_day = payload.get("runs_per_day")
+    if isinstance(runs_per_day, bool) or runs_per_day not in RUNS_PER_DAY_CHOICES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"runs_per_day must be one of {sorted(RUNS_PER_DAY_CHOICES)}",
+        )
+
+    config = load_config()
+    config.config.setdefault(section, {})["runs_per_day"] = runs_per_day
+    config.save()
+    return {"status": "success", "section": section, "runs_per_day": runs_per_day}

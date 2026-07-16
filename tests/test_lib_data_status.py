@@ -14,6 +14,7 @@ from atmos_gl.lib.data_status import (
     period_s_from_runs_per_day,
     read_process_status,
     build_status,
+    RUNS_PER_DAY_CHOICES,
 )
 
 
@@ -97,6 +98,13 @@ def test_period_s_from_runs_per_day_100_per_day():
 def test_period_s_from_runs_per_day_floors_tiny_values_at_001():
     # A near-zero runs_per_day shouldn't produce a runaway-large period.
     assert period_s_from_runs_per_day(0.0001) == 86400.0 / 0.01
+
+
+def test_runs_per_day_choices_max_value_matches_15_minute_cadence():
+    """96/day is data_collector's default, matching its historical 15-minute
+    update_minutes cadence exactly."""
+    assert RUNS_PER_DAY_CHOICES[-1] == 96
+    assert period_s_from_runs_per_day(96) == 900.0
 
 
 # --- read_process_status ---
