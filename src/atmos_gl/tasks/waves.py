@@ -11,7 +11,6 @@ from atmos_gl.lib.texture import encode_uv
 from atmos_gl.lib.coastline import coastline_land_mask
 from .common import Updater, MapData, MultiHourRenderMixin, ForecastState
 from .plotting import opaque_cmap
-from atmos_gl.tiles import raster_tiles as rt
 
 warnings.filterwarnings("ignore")
 logger = logging.getLogger(__name__)
@@ -27,11 +26,33 @@ VMAX_WAVES = 8.0
 # needs a fine enough grid to snap to. Not a user setting, for the same reason.
 _WAVES_REGRID_STEP_DEG = 0.08
 
-# Wave-height gradients. Still sourced from the tile engine's registry (raster_tiles.py
-# is left in place, un-registered from SPECS -- see docs/adr on the createFillLayer
-# migration) purely to avoid duplicating this constant; re-exported here for the
-# legend key renderer and the frontend's matching palette.
-PALETTES = rt.WAVES_PALETTES
+# Wave-height gradients for the legend key renderer, mirrored client-side in waves.js
+# for the createFillLayer palette (see docs/adr/0005-retire-raster-tile-engine.md).
+PALETTES = {
+    "ocean_storm": [
+        (0.0, 0.2, 0.4),
+        (0.0, 0.6, 0.3),
+        (0.9, 0.7, 0.0),
+        (0.8, 0.2, 0.0),
+        (0.9, 0.9, 0.9),
+    ],
+    "neon_surge": [
+        (0.0, 0.8, 1.0),
+        (0.0, 0.95, 0.4),
+        (1.0, 0.9, 0.0),
+        (1.0, 0.3, 0.0),
+        (0.9, 0.0, 0.5),
+        (0.6, 0.0, 0.7),
+    ],
+    "solar_flare": [
+        (0.6, 1.0, 0.9),
+        (0.0, 1.0, 0.0),
+        (1.0, 1.0, 0.0),
+        (1.0, 0.65, 0.0),
+        (1.0, 0.2, 0.1),
+        (1.0, 0.0, 1.0),
+    ],
+}
 
 
 

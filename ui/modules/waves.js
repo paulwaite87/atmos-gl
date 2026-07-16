@@ -7,15 +7,15 @@ import { opacityUniform } from './_opacity.js';
 /**
  * Waves layer = a per-pixel GPU heat fill (significant wave height) + an animated
  * swell field drawn as short bars perpendicular to the wave direction (the windy.com
- * look). EXPERIMENTAL: migrated off the raster tile engine (routes/tiles.py) onto
- * createFillLayer (_webglfill.js), the same client-side GPU-shaded-mesh architecture
- * every other animated layer already uses (wind, currents, precipitation, isobars,
- * ozone, ...) -- waves was the tile engine's only remaining caller. See
- * docs/adr for the reasoning (bicubic vs the tile engine's bilinear sampling, native
- * temporal cross-fade between forecast hours, instant live-config updates, simpler
- * backend) and tasks/waves.py's _masked_uv for how coastline masking moved from a
- * live per-tile-pixel STRtree cut to a baked-once-per-hour regrid+mask, shared with
- * the swell texture the bars already used.
+ * look). Migrated off the (now-retired) raster tile engine onto createFillLayer
+ * (_webglfill.js), the same client-side GPU-shaded-mesh architecture every other
+ * animated layer already uses (wind, currents, precipitation, isobars, ozone, ...) --
+ * waves was the tile engine's only remaining caller. See
+ * docs/adr/0005-retire-raster-tile-engine.md for the reasoning (bicubic vs the tile
+ * engine's bilinear sampling, native temporal cross-fade between forecast hours,
+ * instant live-config updates, simpler backend) and tasks/waves.py's _masked_uv for
+ * how coastline masking moved from a live per-tile-pixel STRtree cut to a
+ * baked-once-per-hour regrid+mask, shared with the swell texture the bars already used.
  *
  * Both the heat fill and the bars decode from the SAME per-hour swell velocity
  * texture (waves_f{NNN}_data.png) -- the fill via valueDecode (length(u,v), exactly
@@ -27,10 +27,8 @@ import { opacityUniform } from './_opacity.js';
 
 export const VMAX_WAVES = 8.0;   // must match backend tasks/waves.py VMAX_WAVES
 
-// Heat-fill gradients, mirroring PALETTES in tasks/waves.py (itself still sourced from
-// raster_tiles.WAVES_PALETTES -- that module is left in place, just un-registered from
-// SPECS, purely to avoid duplicating the constant server-side). Duplicated here the
-// same way wind.js/precipitation.js mirror their own backend palettes client-side.
+// Heat-fill gradients, mirroring PALETTES in tasks/waves.py. Duplicated here the same
+// way wind.js/precipitation.js mirror their own backend palettes client-side.
 const PALETTES = {
     ocean_storm: [
         [0.0, 0.2, 0.4], [0.0, 0.6, 0.3], [0.9, 0.7, 0.0], [0.8, 0.2, 0.0], [0.9, 0.9, 0.9],
