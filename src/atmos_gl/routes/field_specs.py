@@ -453,7 +453,8 @@ _LABEL_OVERRIDES = {
     ("ozone", "critical_du"): "Critical Ozone Threshold (Dobson Units)",
     ("pwat", "critical_pwat"): "Critical Moisture Threshold (mm)",
     ("fires", "opacity"): "Heatmap opacity",
-    ("fires", "min_risk_filter"): "Fire Weather Index Threshold",
+    ("fires", "min_risk_display"): "Heatmap minimum fire risk",
+    ("fires", "min_risk_filter"): "Fire risk display threshold",
 }
 
 
