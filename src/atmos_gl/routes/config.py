@@ -283,6 +283,13 @@ async def update_config(payload: dict):
     if "fires" in payload:
         payload["fires"].pop("RULE__missing_firms_apikey", None)
 
+    # outfile is injected read-time-only by _build_config_data() (see OUTFILES/
+    # lib/output_files.py) -- never a real stored setting. Strip it the same way the
+    # RULE__ flags above are, so a save doesn't persist a client-echoed copy to disk.
+    for section in OUTFILES:
+        if section in payload:
+            payload[section].pop("outfile", None)
+
     config.config = payload
     config.save()
     return {"status": "success", "message": "Configuration updated successfully."}
