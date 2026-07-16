@@ -368,6 +368,22 @@ Useful if you want to research volcano activity in past times using the filterin
 options. Obviously if one erupts in the present you can also view it, but the way
 these things are catalogued isn't like Earthquakes and the filtering is crude.
 
+#### Wildfires
+If you have a [NASA FIRMS API Key](#nasa-firms-api-key) then you can enable the
+`Wildfires` layer in the `Events` tab. The configuration settings for this allow you
+to tune the underlying heatmap (showing fire risk) visibility, and also filter out
+wildfire detections so the map isn't swamped with them. The satellite which is the
+source of this data is simply measuring heat anomalies and the radiative power of
+them, so it isn't a guarantee an actual fire is burning at that location. Position
+is also fairly crude, being a 375 square meter area for each blob on the map.
+
+That said it does provide a very interesting view of how dry the vegetation is across
+the globe and hence how high the fire risk is, as well as highlighting areas where
+fires are most probably burning. When you see a group of many together spread across
+a line or in a cluster, there is a high probability is is a wildfire.
+![Wildfires](docs/atmos-gl-wildfires.png)
+
+
 ### Climate
 This area is quite fascinating as it covers the entire planet. The data is sourced
 from https://nomads.ncep.noaa.gov/ which contains a staggering amount of publicly
