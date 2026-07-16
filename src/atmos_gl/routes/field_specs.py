@@ -165,6 +165,11 @@ _FIRE_CONFIDENCE = SelectSpec([
     ("high", "High - saturated pixels only"),
 ])
 
+# Real wildfire fronts, even the most extreme recorded, top out in the low-thousands of
+# MW per pixel -- readings far above that are far more likely a gas flare/industrial
+# source than an actual fire (see FireAdapter.get_fires_as_geojson's docstring).
+_FIRE_MAX_FRP = SliderSpec(min=500, max=20000, step=100, suffix=" MW")
+
 _ERUPT_DATE_CODES = MultiSelectSpec([
     ("D1", "D1 - 1964 or later"),
     ("D2", "D2 - 1900 to 1963"),
@@ -247,7 +252,15 @@ FIELD_SPECS = {
     ("volcanoes", "runs_per_day"): _RUNS_PER_DAY,
     ("fires", "expiry_hours"): _HOURS,
     ("fires", "min_confidence"): _FIRE_CONFIDENCE,
+    ("fires", "max_frp"): _FIRE_MAX_FRP,
     ("fires", "runs_per_day"): _RUNS_PER_DAY,
+    # Fire Weather Index heatmap (tasks/fire_weather.py) -- same "fires" section as the
+    # FIRMS hotspot settings above, so the Show tab needs only one "Wildfires" toggle.
+    ("fires", "level_of_detail"): _LEVEL_OF_DETAIL,
+    ("fires", "opacity"): _OPACITY,
+    ("fires", "key_fontsize"): _FONTSIZE,
+    ("fires", "min_risk_display"): SliderSpec(min=0, max=100, step=5, suffix=""),
+    ("fires", "min_risk_filter"): SliderSpec(min=0, max=100, step=5, suffix="", zero_label="off"),
     # --- Misc (satellites, terminator, markers) ---
     ("satellites", "sat_names"): _SAT_NAMES,
     ("satellites", "past_minutes"): _MINUTES,
@@ -439,6 +452,9 @@ _LABEL_OVERRIDES = {
     ("currents", "opacity"): "Heatmap opacity",
     ("ozone", "critical_du"): "Critical Ozone Threshold (Dobson Units)",
     ("pwat", "critical_pwat"): "Critical Moisture Threshold (mm)",
+    ("fires", "opacity"): "Heatmap opacity",
+    ("fires", "min_risk_display"): "Heatmap minimum fire risk",
+    ("fires", "min_risk_filter"): "Fire risk display threshold",
 }
 
 

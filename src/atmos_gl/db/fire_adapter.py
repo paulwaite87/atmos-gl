@@ -64,8 +64,19 @@ class FireAdapter:
         except Exception as e:
             logger.error(f"Error bulk-saving {len(rows)} fires: {e}")
 
-    def get_fires_as_geojson(self, min_confidence="low", expiry_hours=24):
-        """Returns fire detections as GeoJSON, filtering by age and confidence tier."""
+    def get_fires_as_geojson(self, min_confidence="low", expiry_hours=24, max_frp=5000.0):
+        """Returns fire detections as GeoJSON, filtering by age, confidence tier, and an
+        FRP ceiling (max_frp, megawatts).
+
+        The ceiling exists because VIIRS' thermal-anomaly detector doesn't distinguish
+        wildfires from gas flares, industrial furnaces, or the rare sensor artifact --
+        it flags anything sufficiently hot. Real wildfire fronts, even the most extreme
+        recorded (e.g. Australia's 2019-2020 "Black Summer"), top out in the
+        low-thousands of MW per pixel; readings far above that are far more likely a
+        flare/industrial source than an actual fire. 5000 MW is a deliberately generous
+        default -- comfortably above genuine extreme-fire-behaviour readings, but well
+        below the 12,000+ MW outliers (fixed industrial coordinates, not moving/growing
+        night to night like a real fire front) that prompted this filter."""
         feature = func.jsonb_build_object(
             "type",
             "Feature",
@@ -94,6 +105,7 @@ class FireAdapter:
         stmt = select(cast(collection, SqlText)).where(
             Fire.acq_time >= cutoff,
             Fire.confidence.in_(_confidence_at_or_above(min_confidence)),
+            Fire.frp <= max_frp,
         )
         try:
             with Session() as session:
@@ -150,7 +162,7 @@ class FakeFireAdapter:
             existing["frp"] = r["frp"]
             existing["confidence"] = r["confidence"]
 
-    def get_fires_as_geojson(self, min_confidence="low", expiry_hours=24):
+    def get_fires_as_geojson(self, min_confidence="low", expiry_hours=24, max_frp=5000.0):
         import json
 
         now = datetime.now(timezone.utc)
@@ -158,7 +170,7 @@ class FakeFireAdapter:
         allowed = set(_confidence_at_or_above(min_confidence))
         features = []
         for f in self._fires.values():
-            if f["acq_time"] < cutoff or f["confidence"] not in allowed:
+            if f["acq_time"] < cutoff or f["confidence"] not in allowed or f["frp"] > max_frp:
                 continue
             age_minutes = (now - f["acq_time"]).total_seconds() / 60.0
             features.append(

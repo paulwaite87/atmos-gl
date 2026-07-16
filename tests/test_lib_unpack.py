@@ -3,13 +3,15 @@
 candidate "lock down the numeric core with tests"). _swell_uv, _standardize_lon, and
 _regrid_curvilinear had zero coverage before this -- _swell_uv is where the real
 waves_data_unpack sign-flip bug lived (see CONTEXT.md's "Direction convention (FROM)").
-The GRIB-opening glue in each *_data_unpack function stays untested here; it needs real
-cfgrib to exercise honestly and carries little bug risk compared to this math.
+fosberg_ffwi (the Fire Weather Index formula behind fire_weather_data_unpack) is
+covered the same way, for the same reason. The GRIB-opening glue in each
+*_data_unpack function stays untested here; it needs real cfgrib to exercise
+honestly and carries little bug risk compared to this math.
 """
 import numpy as np
 import pytest
 
-from atmos_gl.lib.unpack import _swell_uv, _standardize_lon, _regrid_curvilinear
+from atmos_gl.lib.unpack import _swell_uv, _standardize_lon, _regrid_curvilinear, fosberg_ffwi
 
 
 # ---- _swell_uv --------------------------------------------------------------
@@ -149,3 +151,57 @@ def test_regrid_curvilinear_excludes_out_of_physical_range_values():
         lat2d, lon2d, {"u": u}, step=1.0, lat_min=-3.0, lat_max=3.0, k=4
     )
     assert np.nanmax(out["u"]) < 100.0
+
+
+# ---- fosberg_ffwi -------------------------------------------------------------
+
+def test_fosberg_ffwi_matches_the_literature_reference_point():
+    """30 mph wind + ~0% equilibrium moisture content (bone dry) is the formula's own
+    published "extreme" reference point: FFWI == 100. RH=0 doesn't give EMC exactly 0
+    (the piecewise formula has a small nonzero constant term at RH=0), so this lands
+    close to but not exactly 100 -- pinning the tolerance documents that expected gap
+    rather than a bug."""
+    wind_ms = 30.0 / 2.23694
+    ffwi = fosberg_ffwi(np.array([0.0]), np.array([0.0]), np.array([wind_ms]))
+    assert ffwi[0] == pytest.approx(100.0, abs=1.0)
+
+
+def test_fosberg_ffwi_calm_saturated_conditions_are_low_risk():
+    """No wind, fully saturated air, mild temperature -- about as low-danger as fire
+    weather gets."""
+    ffwi = fosberg_ffwi(np.array([15.0]), np.array([100.0]), np.array([0.0]))
+    assert ffwi[0] < 10.0
+
+
+def test_fosberg_ffwi_increases_with_wind_speed():
+    calm = fosberg_ffwi(np.array([25.0]), np.array([20.0]), np.array([0.0]))
+    windy = fosberg_ffwi(np.array([25.0]), np.array([20.0]), np.array([15.0]))
+    assert windy[0] > calm[0]
+
+
+def test_fosberg_ffwi_decreases_with_humidity():
+    dry = fosberg_ffwi(np.array([25.0]), np.array([5.0]), np.array([5.0]))
+    humid = fosberg_ffwi(np.array([25.0]), np.array([80.0]), np.array([5.0]))
+    assert dry[0] > humid[0]
+
+
+def test_fosberg_ffwi_clips_out_of_range_humidity():
+    """GFS RH can occasionally read slightly outside [0, 100] as a model artifact --
+    must not produce NaN or a wildly wrong value from an unclamped negative/>100 input."""
+    below = fosberg_ffwi(np.array([20.0]), np.array([-5.0]), np.array([5.0]))
+    at_zero = fosberg_ffwi(np.array([20.0]), np.array([0.0]), np.array([5.0]))
+    above = fosberg_ffwi(np.array([20.0]), np.array([105.0]), np.array([5.0]))
+    at_hundred = fosberg_ffwi(np.array([20.0]), np.array([100.0]), np.array([5.0]))
+    assert below[0] == pytest.approx(at_zero[0])
+    assert above[0] == pytest.approx(at_hundred[0])
+
+
+def test_fosberg_ffwi_broadcasts_elementwise_across_arrays():
+    temp_c = np.array([10.0, 20.0, 30.0])
+    rh_pct = np.array([80.0, 40.0, 5.0])
+    wind_ms = np.array([1.0, 5.0, 12.0])
+    ffwi = fosberg_ffwi(temp_c, rh_pct, wind_ms)
+    assert ffwi.shape == (3,)
+    assert np.all(np.isfinite(ffwi))
+    # Element 2 (hot/dry/windy) must be riskier than element 0 (mild/humid/calm).
+    assert ffwi[2] > ffwi[0]
