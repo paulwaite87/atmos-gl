@@ -1,6 +1,10 @@
 import { liveDataSync } from './_datasync.js';
 import { hoverPopup } from './_hoverpopup.js';
-import { fetchOrThrow } from './_feedhelpers.js';
+import { fetchOrThrow, popupCard } from './_feedhelpers.js';
+
+// Friendly names for the satellite codes FIRMS reports (VIIRS_NOAA20_NRT's "satellite"
+// column -- see collectors/fires.py). Unrecognised codes fall through to the raw value.
+const SATELLITE_NAMES = { N20: 'NOAA-20', N21: 'NOAA-21', N: 'Suomi NPP' };
 
 export function loadLayer(map, config) {
     const sourceId = 'fires-source';
@@ -16,13 +20,21 @@ export function loadLayer(map, config) {
     const popupHtml = (f) => {
         const d = f.properties;
         const mins = Math.floor(d.age_minutes);
-        const age = mins < 60 ? `${mins} mins ago` : `${Math.floor(mins/60)} hours ago`;
-        return `<div style="font-family:sans-serif;font-size:12px;color:#000;padding:5px;">
-               <strong style="color:#ff5a1f;">Active Fire</strong> — ${d.confidence} confidence
-               <hr style="margin:6px 0;"><div>FRP: <strong>${Number(d.frp).toFixed(1)} MW</strong></div>
-               <div>Brightness: <strong>${Number(d.brightness).toFixed(0)} K</strong></div>
-               <div>Satellite: <strong>${d.satellite}</strong></div>
-               <div>Detected: <strong>${age}</strong></div></div>`;
+        const age = mins < 60 ? `${mins} mins ago` : `${Math.floor(mins / 60)} hours ago`;
+        // width: 75 (default is 45, tuned for other layers' short labels like "VEI") --
+        // "Confidence"/"Brightness" clip and run into the value at the default width.
+        return popupCard({
+            title: 'Active Fire',
+            titleColor: '#ff5a1f',
+            rows: [
+                { label: 'Confidence', value: d.confidence, width: 75 },
+                { label: 'FRP', value: `${Number(d.frp).toFixed(1)} MW`, width: 75 },
+                { label: 'Brightness', value: `${Number(d.brightness).toFixed(0)} K`, width: 75 },
+                { label: 'Satellite', value: SATELLITE_NAMES[d.satellite] || d.satellite, width: 75 },
+                { label: 'Day/Night', value: d.daynight === 'D' ? 'Day' : d.daynight === 'N' ? 'Night' : d.daynight, width: 75 },
+                { label: 'Detected', value: age, width: 75 },
+            ],
+        });
     };
 
     // No image assets -- fires render as a native circle layer (radius by FRP, color by
@@ -34,7 +46,7 @@ export function loadLayer(map, config) {
         map.addLayer({
             id: layerId, type: 'circle', source: sourceId,
             paint: {
-                'circle-radius': ['interpolate', ['linear'], ['get', 'frp'], 0, 3, 50, 6, 500, 12],
+                'circle-radius': ['interpolate', ['linear'], ['get', 'frp'], 0, 4, 50, 8, 500, 16],
                 'circle-color': [
                     'match', ['get', 'confidence'],
                     'high', '#ff2b00',
