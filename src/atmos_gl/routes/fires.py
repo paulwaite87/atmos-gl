@@ -29,32 +29,42 @@ def _sample_nearest(field, lat, lon):
     return float(values[row, col])
 
 
-def _filter_by_risk(geojson_string: str, min_risk: float) -> str:
-    """Drops fire detections below min_risk, sampled from the current Fire Weather
-    Index field. Lives here (not FireAdapter, which stays DB-only) -- joining a DB row
-    against a fieldstore raster value is a genuinely new cross-cutting concern, not a
-    pattern FireAdapter or anything else in the app has today."""
-    config = load_config()
-    workdir = config.get_setting("common", "workdir", ".")
-    store = fieldstore.get_store(workdir, field_catalog_adapter=FieldCatalogAdapter())
-    avail = store.field_catalog_adapter.get_latest_run_hours(products=["fire_weather"])
-    if not avail or not avail.get("hours"):
-        logger.warning("Fires: min_risk requested but no fire_weather field available yet; skipping filter.")
-        return geojson_string
+def _attach_and_filter_by_risk(geojson_string: str, min_risk: float) -> str:
+    """Samples the current Fire Weather Index field at every detection's coordinates,
+    attaching it as a "fire_risk" property (shown in the frontend popup) and, when
+    min_risk > 0, dropping detections below it. Lives here (not FireAdapter, which
+    stays DB-only) -- joining a DB row against a fieldstore raster value is a genuinely
+    new cross-cutting concern, not a pattern FireAdapter or anything else in the app has
+    today. Runs unconditionally (not just when filtering) since the popup wants the
+    value for every detection -- so unlike the rest of this route, a fieldstore/DB
+    hiccup here must degrade to "no fire_risk attached" rather than 500 the whole
+    endpoint (mirrors FireAdapter's own try/except-and-log-degrade methods)."""
+    try:
+        config = load_config()
+        workdir = config.get_setting("common", "workdir", ".")
+        store = fieldstore.get_store(workdir, field_catalog_adapter=FieldCatalogAdapter())
+        avail = store.field_catalog_adapter.get_latest_run_hours(products=["fire_weather"])
+        if not avail or not avail.get("hours"):
+            logger.warning("Fires: no fire_weather field available yet; skipping risk lookup.")
+            return geojson_string
 
-    field = store.get_field(avail["run_date"], avail["run_id"], avail["hours"][0], "fire_weather")
-    if not field or field.get("values") is None:
-        return geojson_string
+        field = store.get_field(avail["run_date"], avail["run_id"], avail["hours"][0], "fire_weather")
+        if not field or field.get("values") is None:
+            return geojson_string
 
-    geojson = json.loads(geojson_string)
-    kept = []
-    for feature in geojson["features"]:
-        lon, lat = feature["geometry"]["coordinates"]
-        risk = _sample_nearest(field, lat, lon)
-        if risk >= min_risk:
-            kept.append(feature)
-    geojson["features"] = kept
-    return json.dumps(geojson)
+        geojson = json.loads(geojson_string)
+        kept = []
+        for feature in geojson["features"]:
+            lon, lat = feature["geometry"]["coordinates"]
+            risk = _sample_nearest(field, lat, lon)
+            feature["properties"]["fire_risk"] = risk
+            if risk >= min_risk:
+                kept.append(feature)
+        geojson["features"] = kept
+        return json.dumps(geojson)
+    except Exception as e:
+        logger.error(f"Fires: fire_weather lookup failed, serving detections without fire_risk: {e}")
+        return geojson_string
 
 
 @router.get("/fires/geojson")
@@ -66,6 +76,5 @@ async def get_fires_geojson(
     fire_adapter: FireAdapter = Depends(get_fire_adapter),
 ):
     geojson_string = fire_adapter.get_fires_as_geojson(min_confidence, expiry_hours, max_frp)
-    if min_risk > 0:
-        geojson_string = _filter_by_risk(geojson_string, min_risk)
+    geojson_string = _attach_and_filter_by_risk(geojson_string, min_risk)
     return Response(content=geojson_string, media_type="application/json")

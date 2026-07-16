@@ -50,6 +50,7 @@ export function loadLayer(map, config, fullConfig = {}) {
             titleColor: '#ff5a1f',
             rows: [
                 { label: 'Confidence', value: d.confidence, width: 75 },
+                { label: 'Fire Risk', value: d.fire_risk != null ? Number(d.fire_risk).toFixed(0) : 'N/A', width: 75 },
                 { label: 'FRP', value: `${Number(d.frp).toFixed(1)} MW`, width: 75 },
                 { label: 'Brightness', value: `${Number(d.brightness).toFixed(0)} K`, width: 75 },
                 { label: 'Satellite', value: SATELLITE_NAMES[d.satellite] || d.satellite, width: 75 },
