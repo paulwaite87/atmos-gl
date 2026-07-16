@@ -43,19 +43,20 @@ export function loadLayer(map, config, fullConfig = {}) {
         const d = f.properties;
         const mins = Math.floor(d.age_minutes);
         const age = mins < 60 ? `${mins} mins ago` : `${Math.floor(mins / 60)} hours ago`;
-        // width: 75 (default is 45, tuned for other layers' short labels like "VEI") --
-        // "Confidence"/"Brightness" clip and run into the value at the default width.
+        // width: 140 (default is 45, tuned for other layers' short labels like "VEI") --
+        // "Fire Radiative Power" is the longest label here; every row shares one width
+        // so the popup's label column stays aligned.
         return popupCard({
             title: 'Active Fire',
             titleColor: '#ff5a1f',
             rows: [
-                { label: 'Confidence', value: d.confidence, width: 75 },
-                { label: 'Fire Risk', value: d.fire_risk != null ? Number(d.fire_risk).toFixed(0) : 'N/A', width: 75 },
-                { label: 'FRP', value: `${Number(d.frp).toFixed(1)} MW`, width: 75 },
-                { label: 'Brightness', value: `${Number(d.brightness).toFixed(0)} K`, width: 75 },
-                { label: 'Satellite', value: SATELLITE_NAMES[d.satellite] || d.satellite, width: 75 },
-                { label: 'Day/Night', value: d.daynight === 'D' ? 'Day' : d.daynight === 'N' ? 'Night' : d.daynight, width: 75 },
-                { label: 'Detected', value: age, width: 75 },
+                { label: 'Confidence', value: d.confidence, width: 140 },
+                { label: 'Fire Risk', value: d.fire_risk != null ? Number(d.fire_risk).toFixed(0) : 'N/A', width: 140 },
+                { label: 'Fire Radiative Power', value: `${Number(d.frp).toFixed(1)} MW`, width: 140 },
+                { label: 'Brightness', value: `${Number(d.brightness).toFixed(0)} K`, width: 140 },
+                { label: 'Satellite', value: SATELLITE_NAMES[d.satellite] || d.satellite, width: 140 },
+                { label: 'Day/Night', value: d.daynight === 'D' ? 'Day' : d.daynight === 'N' ? 'Night' : d.daynight, width: 140 },
+                { label: 'Detected', value: age, width: 140 },
             ],
         });
     };

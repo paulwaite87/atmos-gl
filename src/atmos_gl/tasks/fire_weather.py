@@ -35,7 +35,7 @@ FIRE_WEATHER_SPEC = ScalarFieldSpec(
     vmax=100.0,
     extend="max",  # rare extreme conditions can exceed 100
     ticks=[0, 20, 40, 60, 80, 100],
-    title="Fire Weather Index",
+    title="Fire Risk",
     # "Critical zone" rendering (see scalar_field.py's _threshold_colormap): only shade
     # elevated-risk areas, same mechanism ozone/pwat already use for "don't colourise
     # the whole globe, just the areas that matter" -- most of the planet has near-zero
