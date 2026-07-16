@@ -13,7 +13,10 @@ from atmos_gl.api import app
 def test_fires_geojson_reflects_the_overridden_fake(client):
     fake = FakeFireAdapter()
     now = datetime.now(timezone.utc).isoformat()
-    fake.update_fire("f1", -40.0, 175.0, 330.0, 10.0, "nominal", "N", "D", now)
+    fake.upsert_fires([{
+        "id": "f1", "lat": -40.0, "lon": 175.0, "brightness": 330.0, "frp": 10.0,
+        "confidence": "nominal", "satellite": "N", "daynight": "D", "acq_time": now,
+    }])
     app.dependency_overrides[get_fire_adapter] = lambda: fake
 
     resp = client.get("/api/fires/geojson")
@@ -29,8 +32,12 @@ def test_fires_geojson_reflects_the_overridden_fake(client):
 def test_fires_geojson_passes_query_params_through_to_the_adapter(client):
     fake = FakeFireAdapter()
     now = datetime.now(timezone.utc).isoformat()
-    fake.update_fire("hi", -40.0, 175.0, 330.0, 10.0, "high", "N", "D", now)
-    fake.update_fire("lo", -40.0, 175.0, 330.0, 10.0, "low", "N", "D", now)
+    fake.upsert_fires([
+        {"id": "hi", "lat": -40.0, "lon": 175.0, "brightness": 330.0, "frp": 10.0,
+         "confidence": "high", "satellite": "N", "daynight": "D", "acq_time": now},
+        {"id": "lo", "lat": -40.0, "lon": 175.0, "brightness": 330.0, "frp": 10.0,
+         "confidence": "low", "satellite": "N", "daynight": "D", "acq_time": now},
+    ])
     app.dependency_overrides[get_fire_adapter] = lambda: fake
 
     resp = client.get("/api/fires/geojson", params={"min_confidence": "nominal"})

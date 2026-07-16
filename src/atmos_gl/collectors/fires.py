@@ -1,8 +1,16 @@
 #!/usr/bin/env python3
-"""NASA FIRMS VIIRS_SNPP_NRT active-fire feed -> database.
+"""NASA FIRMS VIIRS_NOAA20_NRT active-fire feed -> database.
 
 Pure data (no render): fetches the FIRMS area CSV (world bbox, most recent day) and
 upserts rows into the DB. The frontend reads them via the /api/fires route.
+
+Source is VIIRS_NOAA20_NRT, not VIIRS_SNPP_NRT -- Suomi-NPP's NRT feed was confirmed
+returning zero detections (empty CSV body) against world bbox, multiple day_range
+values, and a known-hot region, while NOAA-20/21 and MODIS all returned normal global
+data against the same key at the same time. NOAA-20 is the newer, currently-operational
+VIIRS satellite; if it degrades the same way, VIIRS_NOAA21_NRT is the other confirmed-
+working VIIRS source (see _CONFIDENCE_MAP below -- both NOAA-20/21 share the same
+single-letter confidence encoding, unlike SNPP's full words).
 
 Requires a free FIRMS MAP_KEY (https://firms.modaps.eosdis.nasa.gov/api/map_key/),
 injected the same way AIS_API_KEY/OPENWEATHER_API_KEY are (see lib/config.py's
@@ -29,8 +37,19 @@ from atmos_gl.db.fire_adapter import FireAdapter
 logger = logging.getLogger(__name__)
 
 _WORLD_BBOX = "-180,-90,180,90"
-_SOURCE = "VIIRS_SNPP_NRT"
+_SOURCE = "VIIRS_NOAA20_NRT"
 _DAY_RANGE = 1
+
+# NOAA-20/21's confidence field is single-letter (l/n/h), unlike SNPP's full words --
+# normalized here at ingest so FireAdapter/the frontend/the config UI's SelectSpec only
+# ever need to know one vocabulary ("low"/"nominal"/"high"). Already-full-word values
+# pass through unchanged (defensive, in case a future source uses SNPP's convention).
+_CONFIDENCE_MAP = {"l": "low", "n": "nominal", "h": "high"}
+
+
+def _normalize_confidence(raw) -> str:
+    key = str(raw).strip().lower()
+    return _CONFIDENCE_MAP.get(key, key or "nominal")
 
 
 class FiresCollector(CollectorBase):
@@ -65,7 +84,7 @@ class FiresCollector(CollectorBase):
                 logger.error(f"Fires: unexpected response (not a fire CSV): {r.text[:200]!r}")
                 return
 
-            count = 0
+            rows = []
             for _, row in df.iterrows():
                 acq_date = str(row["acq_date"])
                 acq_time = str(int(row["acq_time"])).zfill(4)
@@ -74,20 +93,22 @@ class FiresCollector(CollectorBase):
                 satellite = str(row.get("satellite", ""))
                 fire_id = f"{satellite}|{lat:.4f}|{lon:.4f}|{acq_date}|{acq_time}"
 
-                self.fire_adapter.update_fire(
-                    fire_id,
-                    lat,
-                    lon,
-                    float(row.get("bright_ti4", row.get("brightness", 0.0)) or 0.0),
-                    float(row.get("frp", 0.0) or 0.0),
-                    str(row.get("confidence", "low")),
-                    satellite,
-                    str(row.get("daynight", "")),
-                    acq_time_iso,
+                rows.append(
+                    {
+                        "id": fire_id,
+                        "lat": lat,
+                        "lon": lon,
+                        "brightness": float(row.get("bright_ti4", row.get("brightness", 0.0)) or 0.0),
+                        "frp": float(row.get("frp", 0.0) or 0.0),
+                        "confidence": _normalize_confidence(row.get("confidence", "low")),
+                        "satellite": satellite,
+                        "daynight": str(row.get("daynight", "")),
+                        "acq_time": acq_time_iso,
+                    }
                 )
-                count += 1
 
+            self.fire_adapter.upsert_fires(rows)
             deleted = self.fire_adapter.delete_expired(expiry_hours)
-            logger.info(f"Fires: upserted {count} detections, pruned {deleted} expired.")
+            logger.info(f"Fires: upserted {len(rows)} detections, pruned {deleted} expired.")
         except requests.RequestException as e:
             logger.error(f"Fires: fetch failed: {e}")

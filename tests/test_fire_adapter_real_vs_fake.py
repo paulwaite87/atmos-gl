@@ -35,14 +35,21 @@ def _row(adapter, fire_id, real_db):
         return dict(result)
 
 
+def _fire_row(fire_id, lat, lon, brightness, frp, confidence, acq_time_iso):
+    return {
+        "id": fire_id, "lat": lat, "lon": lon, "brightness": brightness, "frp": frp,
+        "confidence": confidence, "satellite": "N", "daynight": "D", "acq_time": acq_time_iso,
+    }
+
+
 @pytest.mark.parametrize("kind", ["real", "fake"])
 def test_brightness_frp_confidence_update_on_conflict(kind, real_db):
     fire_id = f"fire-update-{kind}"
     adapter, ctx = _make_adapter(kind, real_db)
 
     with ctx:
-        adapter.update_fire(fire_id, -36.8, 174.7, 320.0, 8.0, "low", "N", "D", "2026-01-01T00:00:00+00:00")
-        adapter.update_fire(fire_id, -36.8, 174.7, 340.0, 15.0, "high", "N", "D", "2026-01-01T00:00:00+00:00")
+        adapter.upsert_fires([_fire_row(fire_id, -36.8, 174.7, 320.0, 8.0, "low", "2026-01-01T00:00:00+00:00")])
+        adapter.upsert_fires([_fire_row(fire_id, -36.8, 174.7, 340.0, 15.0, "high", "2026-01-01T00:00:00+00:00")])
         row = _row(adapter, fire_id, real_db)
 
     assert row["brightness"] == pytest.approx(340.0)
@@ -59,8 +66,8 @@ def test_lat_lon_immutable_on_conflict(kind, real_db):
     adapter, ctx = _make_adapter(kind, real_db)
 
     with ctx:
-        adapter.update_fire(fire_id, -36.8, 174.7, 320.0, 8.0, "low", "N", "D", "2026-01-01T00:00:00+00:00")
-        adapter.update_fire(fire_id, 10.0, 20.0, 320.0, 8.0, "low", "N", "D", "2026-01-01T00:05:00+00:00")
+        adapter.upsert_fires([_fire_row(fire_id, -36.8, 174.7, 320.0, 8.0, "low", "2026-01-01T00:00:00+00:00")])
+        adapter.upsert_fires([_fire_row(fire_id, 10.0, 20.0, 320.0, 8.0, "low", "2026-01-01T00:05:00+00:00")])
         row = _row(adapter, fire_id, real_db)
 
     assert row["lat"] == pytest.approx(-36.8)
