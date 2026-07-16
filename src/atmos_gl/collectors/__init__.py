@@ -11,7 +11,7 @@ Synchronous event feeds  (COLLECTORS)        — write straight to the DB
   quakes     — USGS earthquake CSV, runs_per_day=24 (every ~hour)
   storms     — NHC/JTWC ATCF b/a-deck files, runs_per_day=8
   volcanoes  — NOAA HazEL REST API, runs_per_day=1
-  fires      — NASA FIRMS VIIRS_SNPP_NRT active-fire CSV, runs_per_day=24 (every ~hour)
+  fires      — NASA FIRMS VIIRS_NOAA20_NRT active-fire CSV, runs_per_day=24 (every ~hour)
   satellites — CelesTrak OMM JSON, period derived from update_hours (default 12h)
   markers    — LOCAL markers.geojson -> DB 'markers' table (mtime-gated, not remote)
 

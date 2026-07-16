@@ -7,20 +7,34 @@ def _iso(dt):
     return dt.isoformat()
 
 
-def test_update_fire_inserts_new_fire():
+def _row(fire_id, lat, lon, brightness, frp, confidence, satellite, daynight, acq_time_iso):
+    return {
+        "id": fire_id,
+        "lat": lat,
+        "lon": lon,
+        "brightness": brightness,
+        "frp": frp,
+        "confidence": confidence,
+        "satellite": satellite,
+        "daynight": daynight,
+        "acq_time": acq_time_iso,
+    }
+
+
+def test_upsert_fires_inserts_new_fire():
     adapter = FakeFireAdapter()
     now = datetime.now(timezone.utc)
-    adapter.update_fire("f1", -40.0, 175.0, 330.5, 12.3, "nominal", "N", "D", _iso(now))
+    adapter.upsert_fires([_row("f1", -40.0, 175.0, 330.5, 12.3, "nominal", "N", "D", _iso(now))])
     geojson = _fires(adapter)
     assert len(geojson["features"]) == 1
     assert geojson["features"][0]["properties"]["id"] == "f1"
 
 
-def test_update_fire_conflict_updates_mutable_fields_only():
+def test_upsert_fires_conflict_updates_mutable_fields_only():
     adapter = FakeFireAdapter()
     now = datetime.now(timezone.utc)
-    adapter.update_fire("f1", -40.0, 175.0, 320.0, 10.0, "low", "N", "D", _iso(now))
-    adapter.update_fire("f1", 1.0, 1.0, 340.0, 20.0, "high", "N1", "N", _iso(now))
+    adapter.upsert_fires([_row("f1", -40.0, 175.0, 320.0, 10.0, "low", "N", "D", _iso(now))])
+    adapter.upsert_fires([_row("f1", 1.0, 1.0, 340.0, 20.0, "high", "N1", "N", _iso(now))])
     geojson = _fires(adapter)
     feature = geojson["features"][0]
     assert feature["properties"]["brightness"] == 340.0
@@ -30,11 +44,28 @@ def test_update_fire_conflict_updates_mutable_fields_only():
     assert feature["geometry"]["coordinates"] == [175.0, -40.0]
 
 
+def test_upsert_fires_handles_multiple_rows_in_one_call():
+    adapter = FakeFireAdapter()
+    now = datetime.now(timezone.utc)
+    adapter.upsert_fires(
+        [
+            _row("a", -40.0, 175.0, 330.0, 10.0, "low", "N", "D", _iso(now)),
+            _row("b", -41.0, 176.0, 331.0, 11.0, "nominal", "N", "D", _iso(now)),
+        ]
+    )
+    ids = {f["properties"]["id"] for f in _fires(adapter)["features"]}
+    assert ids == {"a", "b"}
+
+
 def test_get_fires_as_geojson_filters_by_min_confidence():
     adapter = FakeFireAdapter()
     now = datetime.now(timezone.utc)
-    adapter.update_fire("hi", -40.0, 175.0, 330.0, 10.0, "high", "N", "D", _iso(now))
-    adapter.update_fire("lo", -40.0, 175.0, 330.0, 10.0, "low", "N", "D", _iso(now))
+    adapter.upsert_fires(
+        [
+            _row("hi", -40.0, 175.0, 330.0, 10.0, "high", "N", "D", _iso(now)),
+            _row("lo", -40.0, 175.0, 330.0, 10.0, "low", "N", "D", _iso(now)),
+        ]
+    )
     geojson = _fires(adapter, min_confidence="nominal")
     ids = {f["properties"]["id"] for f in geojson["features"]}
     assert ids == {"hi"}
@@ -43,8 +74,12 @@ def test_get_fires_as_geojson_filters_by_min_confidence():
 def test_get_fires_as_geojson_filters_by_expiry_hours():
     adapter = FakeFireAdapter()
     now = datetime.now(timezone.utc)
-    adapter.update_fire("recent", -40.0, 175.0, 330.0, 10.0, "low", "N", "D", _iso(now - timedelta(hours=1)))
-    adapter.update_fire("old", -40.0, 175.0, 330.0, 10.0, "low", "N", "D", _iso(now - timedelta(hours=30)))
+    adapter.upsert_fires(
+        [
+            _row("recent", -40.0, 175.0, 330.0, 10.0, "low", "N", "D", _iso(now - timedelta(hours=1))),
+            _row("old", -40.0, 175.0, 330.0, 10.0, "low", "N", "D", _iso(now - timedelta(hours=30))),
+        ]
+    )
     geojson = _fires(adapter, expiry_hours=24)
     ids = {f["properties"]["id"] for f in geojson["features"]}
     assert ids == {"recent"}
@@ -53,7 +88,7 @@ def test_get_fires_as_geojson_filters_by_expiry_hours():
 def test_get_fires_as_geojson_shape():
     adapter = FakeFireAdapter()
     now = datetime.now(timezone.utc)
-    adapter.update_fire("f1", -40.0, 175.0, 330.5, 12.3, "nominal", "N", "D", _iso(now))
+    adapter.upsert_fires([_row("f1", -40.0, 175.0, 330.5, 12.3, "nominal", "N", "D", _iso(now))])
     geojson = _fires(adapter)
     feature = geojson["features"][0]
     assert feature["type"] == "Feature"
@@ -75,8 +110,12 @@ def test_get_fires_as_geojson_empty():
 def test_delete_expired_removes_only_old_rows():
     adapter = FakeFireAdapter()
     now = datetime.now(timezone.utc)
-    adapter.update_fire("recent", -40.0, 175.0, 330.0, 10.0, "low", "N", "D", _iso(now - timedelta(hours=1)))
-    adapter.update_fire("old", -40.0, 175.0, 330.0, 10.0, "low", "N", "D", _iso(now - timedelta(hours=30)))
+    adapter.upsert_fires(
+        [
+            _row("recent", -40.0, 175.0, 330.0, 10.0, "low", "N", "D", _iso(now - timedelta(hours=1))),
+            _row("old", -40.0, 175.0, 330.0, 10.0, "low", "N", "D", _iso(now - timedelta(hours=30))),
+        ]
+    )
 
     deleted = adapter.delete_expired(expiry_hours=24)
 

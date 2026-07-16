@@ -11,6 +11,14 @@ from atmos_gl.db.models import Fire
 
 logger = logging.getLogger(__name__)
 
+# Postgres caps bind parameters at 65535 per statement; each row here binds 9 (all
+# columns except geom, which is a literal EWKT string built per-row, same technique
+# marker_adapter.py's upsert_markers uses to keep bulk inserts to plain param dicts
+# rather than a ST_MakePoint(...) function call that can't vary per row in one execute).
+# 5000 rows/chunk stays well clear of that limit while keeping round-trips to Postgres
+# low even at VIIRS' full-world daily volume (tens of thousands of rows).
+_UPSERT_CHUNK_SIZE = 5000
+
 # Ordinal ranking of FIRMS' text confidence levels, so "min_confidence=nominal" can be
 # expressed as a >= comparison despite Postgres having no native ordinal type here.
 CONFIDENCE_RANK = {"low": 0, "nominal": 1, "high": 2}
@@ -24,21 +32,22 @@ def _confidence_at_or_above(min_confidence: str) -> list[str]:
 class FireAdapter:
     """Real adapter for NASA FIRMS active-fire detections, backed by SQLAlchemy."""
 
-    def update_fire(self, fire_id, lat, lon, brightness, frp, confidence, satellite, daynight, acq_time_iso):
-        """UPSERTs a fire detection into the database."""
-        point = func.ST_SetSRID(func.ST_MakePoint(lon, lat), 4326)
-        stmt = pg_insert(Fire).values(
-            id=fire_id,
-            lat=lat,
-            lon=lon,
-            brightness=brightness,
-            frp=frp,
-            confidence=confidence,
-            satellite=satellite,
-            daynight=daynight,
-            acq_time=acq_time_iso,
-            geom=point,
-        )
+    def upsert_fires(self, rows):
+        """Bulk-UPSERTs fire detections into the database. Each row is a dict with keys:
+        id, lat, lon, brightness, frp, confidence, satellite, daynight, acq_time (ISO str).
+
+        Bulk, not one UPSERT per detection: VIIRS' global per-cycle volume (thousands to
+        tens of thousands of rows) made a one-Session-per-row loop (this adapter's
+        original shape, mirroring quake_adapter.py) far too slow -- a single collect()
+        cycle didn't finish within several minutes. Follows marker_adapter.py's
+        upsert_markers bulk pattern instead, chunked by _UPSERT_CHUNK_SIZE."""
+        if not rows:
+            return
+        values = [
+            {**r, "geom": f"SRID=4326;POINT({r['lon']} {r['lat']})"}
+            for r in rows
+        ]
+        stmt = pg_insert(Fire)
         stmt = stmt.on_conflict_do_update(
             index_elements=[Fire.id],
             set_={
@@ -49,10 +58,11 @@ class FireAdapter:
         )
         try:
             with Session() as session:
-                session.execute(stmt)
+                for i in range(0, len(values), _UPSERT_CHUNK_SIZE):
+                    session.execute(stmt, values[i : i + _UPSERT_CHUNK_SIZE])
                 session.commit()
         except Exception as e:
-            logger.error(f"Error saving fire {fire_id}: {e}")
+            logger.error(f"Error bulk-saving {len(rows)} fires: {e}")
 
     def get_fires_as_geojson(self, min_confidence="low", expiry_hours=24):
         """Returns fire detections as GeoJSON, filtering by age and confidence tier."""
@@ -115,26 +125,30 @@ class FakeFireAdapter:
     def __init__(self):
         self._fires: dict[str, dict] = {}
 
-    def update_fire(self, fire_id, lat, lon, brightness, frp, confidence, satellite, daynight, acq_time_iso):
-        existing = self._fires.get(fire_id)
-        if existing is None:
-            self._fires[fire_id] = {
-                "id": fire_id,
-                "lat": lat,
-                "lon": lon,
-                "brightness": brightness,
-                "frp": frp,
-                "confidence": confidence,
-                "satellite": satellite,
-                "daynight": daynight,
-                "acq_time": datetime.fromisoformat(acq_time_iso),
-            }
+    def upsert_fires(self, rows):
+        if not rows:
             return
-        # ON CONFLICT only updates brightness/frp/confidence; lat/lon (geom), satellite,
-        # daynight, acq_time are immutable, mirroring the real adapter's set_ list.
-        existing["brightness"] = brightness
-        existing["frp"] = frp
-        existing["confidence"] = confidence
+        for r in rows:
+            existing = self._fires.get(r["id"])
+            if existing is None:
+                self._fires[r["id"]] = {
+                    "id": r["id"],
+                    "lat": r["lat"],
+                    "lon": r["lon"],
+                    "brightness": r["brightness"],
+                    "frp": r["frp"],
+                    "confidence": r["confidence"],
+                    "satellite": r["satellite"],
+                    "daynight": r["daynight"],
+                    "acq_time": datetime.fromisoformat(r["acq_time"]),
+                }
+                continue
+            # ON CONFLICT only updates brightness/frp/confidence; lat/lon (geom),
+            # satellite, daynight, acq_time are immutable, mirroring the real adapter's
+            # set_ list.
+            existing["brightness"] = r["brightness"]
+            existing["frp"] = r["frp"]
+            existing["confidence"] = r["confidence"]
 
     def get_fires_as_geojson(self, min_confidence="low", expiry_hours=24):
         import json
