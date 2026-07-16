@@ -176,6 +176,12 @@
     ],
     "runs_per_day": 1
   },
+  "fires": {
+    "enabled": false,
+    "expiry_hours": 24,
+    "min_confidence": "nominal",
+    "runs_per_day": 24
+  },
   "shipping": {
     "enabled": true,
     "icon_zoom": 1.0
@@ -208,6 +214,7 @@
       "clouds": "https://gibs.earthdata.nasa.gov/wms/epsg4326/best/wms.cgi",
       "quakes": "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.csv",
       "volcanoes": "https://www.ngdc.noaa.gov/hazel/hazard-service/api/v1/volcanoes",
+      "fires": "https://firms.modaps.eosdis.nasa.gov/api/area/csv",
       "satellites": "https://celestrak.org/NORAD/elements",
       "shipping": "wss://stream.aisstream.io/v0/stream",
       "lightning": "https://demo.openweathermap.org/lightning/1.0/data"
@@ -220,6 +227,7 @@
       "clouds": true,
       "quakes": true,
       "volcanoes": true,
+      "fires": true,
       "satellites": true,
       "storms": true
     },

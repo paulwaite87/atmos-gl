@@ -9,6 +9,7 @@ services:
       - LOG_LEVEL=INFO
       - AIS_API_KEY=${AIS_API_KEY}
       - OPENWEATHER_API_KEY=${OPENWEATHER_API_KEY}
+      - FIRMS_API_KEY=${FIRMS_API_KEY}
       - TZ=Pacific/Auckland
       - PYTHONPATH=/opt/project/src
       - PYTHONUNBUFFERED=1
@@ -95,6 +96,7 @@ services:
       - PGPASSWORD=agl
       - CONFIG_PATH=/opt/project/config/atmos-gl.json
       - MAPTILER_API_KEY=${MAPTILER_API_KEY}
+      - FIRMS_API_KEY=${FIRMS_API_KEY}
     restart: unless-stopped
     depends_on:
       atmos_gl_db:

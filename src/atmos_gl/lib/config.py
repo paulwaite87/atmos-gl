@@ -72,6 +72,7 @@ class AtmosGLConfig:
             "shipping_collector": os.getenv("AIS_API_KEY"),
             "lightning_collector": os.getenv("OPENWEATHER_API_KEY"),
             "common": os.getenv("MAPTILER_API_KEY"),
+            "fires": os.getenv("FIRMS_API_KEY"),
         }
 
         for section, api_key in api_keys.items():
