@@ -292,6 +292,29 @@ def test_update_config_accepts_valid_payload(tmp_path):
     assert json.loads(tmp_config.read_text())["common"]["auto_rotate_speed"] == 0.5
 
 
+def test_update_config_strips_outfile_before_saving(tmp_path):
+    """outfile is injected read-time-only by _build_config_data() (see OUTFILES) --
+    the browser's masterConfigCache echoes it back on every save (it has no
+    dynamic-input to override it), so it must be stripped here or it'd get written to
+    disk as if it were a real stored setting."""
+    tmp_config = tmp_path / "atmos-gl.json"
+    tmp_config.write_text('{"isobars": {"opacity": 50}}')
+
+    with patch(
+        "atmos_gl.routes.config.load_config",
+        return_value=AtmosGLConfig(str(tmp_config)),
+    ):
+        resp = client.post(
+            "/api/config",
+            json={"isobars": {"opacity": 50, "outfile": "data/isobars.png"}},
+        )
+
+    assert resp.status_code == 200
+    saved = json.loads(tmp_config.read_text())
+    assert saved["isobars"]["opacity"] == 50
+    assert "outfile" not in saved["isobars"]
+
+
 # --- Atmospheric / Climate batch: whole-step int display, sentinel badges,
 # byte<->percent transform, unspecced-boolean fallback, section-conditional selects ---
 

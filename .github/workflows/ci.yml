@@ -21,6 +21,10 @@ jobs:
         uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
+          # Pinned so this step never has to ask GitHub's API for "latest" -- that
+          # lookup started failing intermittently (unrelated to this repo's code) and
+          # pinning both routes around it and keeps CI reproducible.
+          version: "0.11.8"
       - name: Install dependencies
         run: uv sync --frozen
       - name: Bootstrap live config from template
