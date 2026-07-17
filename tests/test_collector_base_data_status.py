@@ -101,6 +101,11 @@ def test_async_collector_base_data_status_next_update_none_when_disabled():
 def test_collector_base_source_url_none_when_no_datasource_key():
     c = make_bare_collector()
     c.datasource_key = ""
+    # A real CollectorBase always has .config (set in __init__) by the time anything
+    # calls source_url() -- set it here too, since resolve_source_url(config, key)'s
+    # `config` argument is evaluated at the call site regardless of what the function
+    # body does with it (Python evaluates arguments before the call).
+    c.config = MagicMock()
 
     assert c.source_url() is None
 
@@ -136,5 +141,6 @@ def test_async_collector_base_source_url_reads_configured_datasource():
 def test_async_collector_base_source_url_none_when_no_datasource_key():
     c = make_bare_async_collector()
     c.datasource_key = ""
+    c.config = MagicMock()  # see the CollectorBase equivalent test above for why
 
     assert c.source_url() is None

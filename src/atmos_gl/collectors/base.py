@@ -29,11 +29,10 @@ import time
 import logging
 
 from atmos_gl.lib.data_status import (
-    freshness_percent,
-    estimate_next_update,
     period_s_from_runs_per_day,
-    read_process_status,
-    build_status,
+    resolve_datasource_url,
+    resolve_source_url,
+    freshness_data_status,
 )
 
 logger = logging.getLogger(__name__)
@@ -85,23 +84,17 @@ class CollectorBase:
 
     def datasource_url(self, key: str) -> str:
         """The configured data_collector.datasources[key] base URL, or "" if unset.
-
-        Every collector's actual source URL lives in this one shared dict now (mirrors
-        FieldCollectorBase.base_url(), generalised to sources whose `section` isn't
-        "data_collector" -- they still need their own section for `enabled` etc, so this
-        reaches into data_collector separately instead of overriding `section`)."""
-        datasources = self.config.get_setting("data_collector", "datasources", {}) or {}
-        return (datasources.get(key) or "").rstrip("/")
+        See lib/data_status.py's resolve_datasource_url() -- this is a thin delegating
+        wrapper, kept on the class since many concrete collectors call
+        self.datasource_url(key) directly with an explicit key."""
+        return resolve_datasource_url(self.config, key)
 
     def source_url(self) -> str | None:
         """The external URL this collector fetches from, for the Data Status page's
-        clickable-label link -- None if there's no single browsable URL (datasource_key
-        unset, e.g. markers) or none is configured. Override where the URL doesn't live
-        in data_collector.datasources at all (see StormsCollector, which keeps its two
-        ATCF mirror URLs in its own section)."""
-        if not self.datasource_key:
-            return None
-        return self.datasource_url(self.datasource_key) or None
+        clickable-label link. See lib/data_status.py's resolve_source_url(). Override
+        where the URL doesn't live in data_collector.datasources at all (see
+        StormsCollector, which keeps its two ATCF mirror URLs in its own section)."""
+        return resolve_source_url(self.config, self.datasource_key)
 
     # ------------------------------------------------------------------
     # Scheduling
@@ -175,19 +168,14 @@ class CollectorBase:
         kill-switch — _drive() runs every COLLECTORS/CACHE_COLLECTORS entry unconditionally
         of it (see collectors/__init__.py). next_update must reflect that real, unconditional
         schedule rather than reporting "disabled" for a source that is in fact still being
-        collected in the background."""
-        last_updated, last_error, status = read_process_status(
-            self.process_status_adapter, self.section
-        )
-        return build_status(
-            name=self.section,
-            kind="collector",
-            percent=freshness_percent(last_updated, self.period_s),
-            last_updated=last_updated,
-            next_update=estimate_next_update(last_updated, self.period_s, True),
-            enabled=self.enabled,
-            detail=last_error,
-            status=status,
+        collected in the background -- see lib/data_status.py's freshness_data_status()
+        (next_update_respects_enabled=False encodes that here)."""
+        return freshness_data_status(
+            self.process_status_adapter,
+            self.section,
+            self.period_s,
+            self.enabled,
+            next_update_respects_enabled=False,
         )
 
     # ------------------------------------------------------------------
@@ -304,17 +292,16 @@ class AsyncCollectorBase:
 
     def datasource_url(self, key: str) -> str:
         """The configured data_collector.datasources[key] base URL, or "" if unset.
-        See CollectorBase.datasource_url() -- same contract, duplicated here since
-        AsyncCollectorBase is a sibling hierarchy, not a subclass."""
-        datasources = self.config.get_setting("data_collector", "datasources", {}) or {}
-        return (datasources.get(key) or "").rstrip("/")
+        See lib/data_status.py's resolve_datasource_url() -- this is a thin delegating
+        wrapper, duplicated on both classes since AsyncCollectorBase is a sibling
+        hierarchy to CollectorBase, not a subclass."""
+        return resolve_datasource_url(self.config, key)
 
     def source_url(self) -> str | None:
-        """See CollectorBase.source_url() -- same contract, duplicated here since
-        AsyncCollectorBase is a sibling hierarchy, not a subclass."""
-        if not self.datasource_key:
-            return None
-        return self.datasource_url(self.datasource_key) or None
+        """See lib/data_status.py's resolve_source_url() and CollectorBase.source_url()
+        -- same contract, duplicated here since AsyncCollectorBase is a sibling
+        hierarchy, not a subclass."""
+        return resolve_source_url(self.config, self.datasource_key)
 
     async def run(self) -> None:
         raise NotImplementedError(f"{type(self).__name__}.run() not implemented")
@@ -323,21 +310,11 @@ class AsyncCollectorBase:
         """Same decaying-freshness snapshot as CollectorBase.data_status(), using
         heartbeat_period_s in place of period_s (these have no is_stale cadence — they
         self-schedule inside run() and record a heartbeat at their own natural
-        checkpoint, e.g. once per rotation/scan)."""
-        last_updated, last_error, status = read_process_status(
-            self.process_status_adapter, self.section
-        )
-        return build_status(
-            name=self.section,
-            kind="collector",
-            percent=freshness_percent(last_updated, self.heartbeat_period_s),
-            last_updated=last_updated,
-            next_update=estimate_next_update(
-                last_updated, self.heartbeat_period_s, self.enabled
-            ),
-            enabled=self.enabled,
-            detail=last_error,
-            status=status,
+        checkpoint, e.g. once per rotation/scan). Unlike CollectorBase, shipping/
+        lightning's `enabled` IS a real kill-switch, so next_update correctly respects it
+        here (freshness_data_status()'s default) -- see that function's docstring."""
+        return freshness_data_status(
+            self.process_status_adapter, self.section, self.heartbeat_period_s, self.enabled
         )
 
     @classmethod

@@ -14,6 +14,9 @@ from atmos_gl.lib.data_status import (
     period_s_from_runs_per_day,
     read_process_status,
     build_status,
+    resolve_datasource_url,
+    resolve_source_url,
+    freshness_data_status,
     RUNS_PER_DAY_CHOICES,
 )
 
@@ -176,3 +179,96 @@ def test_build_status_rounds_percent_to_one_decimal():
         next_update=None, enabled=False, detail="err",
     )
     assert result["percent"] == 33.3
+
+
+# --- resolve_datasource_url / resolve_source_url (Candidate 1: one shared URL +
+# freshness contract for CollectorBase/AsyncCollectorBase) ---
+
+
+def _config_with_datasources(datasources):
+    config = MagicMock()
+    config.get_setting.return_value = datasources
+    return config
+
+
+def test_resolve_datasource_url_returns_configured_value_stripped_of_trailing_slash():
+    config = _config_with_datasources({"quakes": "https://example.com/quakes/"})
+    assert resolve_datasource_url(config, "quakes") == "https://example.com/quakes"
+    config.get_setting.assert_called_once_with("data_collector", "datasources", {})
+
+
+def test_resolve_datasource_url_empty_string_when_key_unconfigured():
+    config = _config_with_datasources({})
+    assert resolve_datasource_url(config, "quakes") == ""
+
+
+def test_resolve_source_url_none_when_datasource_key_empty():
+    config = _config_with_datasources({"quakes": "https://example.com/quakes"})
+    assert resolve_source_url(config, "") is None
+
+
+def test_resolve_source_url_none_when_key_configured_but_value_missing():
+    config = _config_with_datasources({})
+    assert resolve_source_url(config, "quakes") is None
+
+
+def test_resolve_source_url_returns_the_resolved_url():
+    config = _config_with_datasources({"quakes": "https://example.com/quakes"})
+    assert resolve_source_url(config, "quakes") == "https://example.com/quakes"
+
+
+# --- freshness_data_status (CollectorBase/AsyncCollectorBase's shared data_status()
+# body -- next_update_respects_enabled is the one real divergence between them) ---
+
+
+def test_freshness_data_status_shape_with_no_row_yet():
+    adapter = MagicMock()
+    adapter.get_process_status.return_value = None
+
+    result = freshness_data_status(adapter, "quakes", 3600.0, True)
+
+    assert result["name"] == "quakes"
+    assert result["kind"] == "collector"
+    assert result["percent"] == 0.0
+    assert result["last_updated"] is None
+    assert result["enabled"] is True
+    assert result["next_update"] is not None  # enabled + never run -> estimated
+
+
+def test_freshness_data_status_reflects_a_fresh_run():
+    adapter = MagicMock()
+    now = datetime.now(timezone.utc)
+    adapter.get_process_status.return_value = {"last_updated": now, "last_error": None}
+
+    result = freshness_data_status(adapter, "quakes", 3600.0, True)
+
+    assert result["percent"] == 100.0
+    assert result["last_updated"] == now
+    assert result["next_update"] == now + timedelta(hours=1)
+
+
+def test_freshness_data_status_default_respects_enabled_for_next_update():
+    """Default (next_update_respects_enabled=True, AsyncCollectorBase's case): a
+    disabled collector's next_update is None -- it's a real kill-switch."""
+    adapter = MagicMock()
+    adapter.get_process_status.return_value = None
+
+    result = freshness_data_status(adapter, "shipping_collector", 300.0, False)
+
+    assert result["next_update"] is None
+
+
+def test_freshness_data_status_can_ignore_enabled_for_next_update():
+    """next_update_respects_enabled=False (CollectorBase's case): collection is
+    unconditional of the frontend `enabled` flag, so next_update is still computed
+    even when enabled=False -- it must not report "disabled" for a source that's
+    still being collected in the background."""
+    adapter = MagicMock()
+    adapter.get_process_status.return_value = None
+
+    result = freshness_data_status(
+        adapter, "quakes", 3600.0, False, next_update_respects_enabled=False
+    )
+
+    assert result["enabled"] is False
+    assert result["next_update"] is not None

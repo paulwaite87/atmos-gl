@@ -7,6 +7,16 @@ by hand, and tasks/common.py imported two of these formulas across a package bou
 purely for lack of a neutral home. Lives in lib/ alongside the other cross-cutting,
 no-single-domain-owner modules (config, logging, fieldstore).
 
+freshness_data_status() (architecture review candidate "one shared URL + freshness
+contract") is the further-consolidated body of CollectorBase.data_status() and
+AsyncCollectorBase.data_status() -- those two classes are siblings, not a subclass
+relationship (one sync/periodic, one async/self-scheduling), so they can't share this
+via inheritance; the one real behavioural difference between them (whether next_update
+respects the `enabled` flag) is an explicit parameter here rather than a buried literal
+hand-copied across two call sites 150 lines apart. resolve_datasource_url()/
+resolve_source_url() are the same two classes' other duplicated pair, consolidated the
+same way.
+
 What's deliberately NOT here: the coverage-based percent calculations in
 FieldCollectorBase (product x forecast-hour coverage) and Updater.layer_status()
 (render-completion coverage) stay local to their callers -- they're genuinely
@@ -107,3 +117,62 @@ def build_status(
         "detail": detail,
         "status": status,
     }
+
+
+def resolve_datasource_url(config, key: str) -> str:
+    """The configured data_collector.datasources[key] base URL, or "" if unset.
+
+    Every collector's actual source URL lives in this one shared config dict --
+    CollectorBase.datasource_url()/AsyncCollectorBase.datasource_url() are thin
+    delegating wrappers around this (kept on each class since many concrete collectors
+    call self.datasource_url(key) directly, with an explicit key not necessarily equal
+    to self.datasource_key)."""
+    datasources = config.get_setting("data_collector", "datasources", {}) or {}
+    return (datasources.get(key) or "").rstrip("/")
+
+
+def resolve_source_url(config, datasource_key: str) -> str | None:
+    """The collector's upstream URL for the Data Status page's clickable-label link --
+    None if datasource_key is unset (no single browsable URL, e.g. markers, which syncs
+    a local file) or the key has no configured value. Collectors whose URL doesn't live
+    in data_collector.datasources at all (see StormsCollector, which keeps its two ATCF
+    mirror URLs in its own section) override source_url() instead of using this."""
+    if not datasource_key:
+        return None
+    return resolve_datasource_url(config, datasource_key) or None
+
+
+def freshness_data_status(
+    process_status_adapter,
+    section: str,
+    period_s: float,
+    enabled: bool,
+    *,
+    next_update_respects_enabled: bool = True,
+) -> dict:
+    """Shared body of CollectorBase.data_status()/AsyncCollectorBase.data_status():
+    read process_status, compute the decaying freshness percent + next_update, assemble
+    via build_status().
+
+    next_update_respects_enabled is the one real behavioural divergence between the two
+    callers -- everything else here is identical:
+      * CollectorBase (default False) -- collection is unconditional of the frontend
+        `enabled` flag (_drive() runs every collector regardless of it), so next_update
+        must reflect the real, unconditional schedule rather than reporting "disabled"
+        for a source that's still being collected in the background.
+      * AsyncCollectorBase (pass True) -- shipping/lightning's `enabled` IS a real
+        kill-switch, so next_update should correctly report None while disabled.
+    """
+    last_updated, last_error, status = read_process_status(process_status_adapter, section)
+    return build_status(
+        name=section,
+        kind="collector",
+        percent=freshness_percent(last_updated, period_s),
+        last_updated=last_updated,
+        next_update=estimate_next_update(
+            last_updated, period_s, enabled if next_update_respects_enabled else True
+        ),
+        enabled=enabled,
+        detail=last_error,
+        status=status,
+    )
