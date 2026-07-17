@@ -93,3 +93,48 @@ def test_async_collector_base_data_status_next_update_none_when_disabled():
 
     assert result["next_update"] is None
     assert result["enabled"] is False
+
+
+# --- source_url() (Data Status page's clickable-label link) ---
+
+
+def test_collector_base_source_url_none_when_no_datasource_key():
+    c = make_bare_collector()
+    c.datasource_key = ""
+
+    assert c.source_url() is None
+
+
+def test_collector_base_source_url_reads_configured_datasource():
+    c = make_bare_collector()
+    c.datasource_key = "quakes"
+    c.config = MagicMock()
+    c.config.get_setting.return_value = {"quakes": "https://example.com/quakes.csv"}
+
+    assert c.source_url() == "https://example.com/quakes.csv"
+    c.config.get_setting.assert_called_once_with("data_collector", "datasources", {})
+
+
+def test_collector_base_source_url_none_when_datasource_key_not_configured():
+    c = make_bare_collector()
+    c.datasource_key = "quakes"
+    c.config = MagicMock()
+    c.config.get_setting.return_value = {}
+
+    assert c.source_url() is None
+
+
+def test_async_collector_base_source_url_reads_configured_datasource():
+    c = make_bare_async_collector()
+    c.datasource_key = "shipping"
+    c.config = MagicMock()
+    c.config.get_setting.return_value = {"shipping": "wss://stream.aisstream.io/v0/stream"}
+
+    assert c.source_url() == "wss://stream.aisstream.io/v0/stream"
+
+
+def test_async_collector_base_source_url_none_when_no_datasource_key():
+    c = make_bare_async_collector()
+    c.datasource_key = ""
+
+    assert c.source_url() is None

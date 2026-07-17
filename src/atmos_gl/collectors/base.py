@@ -58,6 +58,12 @@ class CollectorBase:
     # collectors/__init__.py.
     channel_key: str | None = None
 
+    # Key into data_collector.datasources -- see source_url() below. "" (default) means
+    # this collector has no single browsable remote URL (e.g. markers, which syncs a
+    # local file), so source_url() returns None and the Data Status page renders a plain,
+    # non-clickable label.
+    datasource_key: str = ""
+
     # Process-level ETag/Last-Modified cache: url -> last-seen marker string.
     # Shared across all collector subclasses (keyed by URL, so no collision).
     _etag_cache: dict[str, str] = {}
@@ -86,6 +92,16 @@ class CollectorBase:
         reaches into data_collector separately instead of overriding `section`)."""
         datasources = self.config.get_setting("data_collector", "datasources", {}) or {}
         return (datasources.get(key) or "").rstrip("/")
+
+    def source_url(self) -> str | None:
+        """The external URL this collector fetches from, for the Data Status page's
+        clickable-label link -- None if there's no single browsable URL (datasource_key
+        unset, e.g. markers) or none is configured. Override where the URL doesn't live
+        in data_collector.datasources at all (see StormsCollector, which keeps its two
+        ATCF mirror URLs in its own section)."""
+        if not self.datasource_key:
+            return None
+        return self.datasource_url(self.datasource_key) or None
 
     # ------------------------------------------------------------------
     # Scheduling
@@ -260,6 +276,10 @@ class AsyncCollectorBase:
     # ShippingCollector/LightningCollector override with a real estimate.
     heartbeat_period_s: float = 300.0
 
+    # See CollectorBase.datasource_key -- same contract, duplicated here since
+    # AsyncCollectorBase is a sibling hierarchy, not a subclass.
+    datasource_key: str = ""
+
     def __init__(self, config_path: str):
         from atmos_gl.lib.config import AtmosGLConfig
         from atmos_gl.db.process_status_adapter import ProcessStatusAdapter
@@ -288,6 +308,13 @@ class AsyncCollectorBase:
         AsyncCollectorBase is a sibling hierarchy, not a subclass."""
         datasources = self.config.get_setting("data_collector", "datasources", {}) or {}
         return (datasources.get(key) or "").rstrip("/")
+
+    def source_url(self) -> str | None:
+        """See CollectorBase.source_url() -- same contract, duplicated here since
+        AsyncCollectorBase is a sibling hierarchy, not a subclass."""
+        if not self.datasource_key:
+            return None
+        return self.datasource_url(self.datasource_key) or None
 
     async def run(self) -> None:
         raise NotImplementedError(f"{type(self).__name__}.run() not implemented")

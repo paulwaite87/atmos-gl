@@ -18,6 +18,11 @@
         .status-row.channel-off { opacity: 0.55; }
         .status-label-block { width: 160px; flex: 0 0 160px; }
         .status-label { font-weight: 600; font-size: 0.9rem; overflow-wrap: break-word; }
+        /* Collector rows with a known upstream URL (see CollectorBase.source_url()) render
+           their label as a link to the live source data -- same weight/colour as the plain
+           text label, underlined only on hover so it doesn't read as an error/warning link. */
+        a.status-label-link { color: inherit; text-decoration: none; }
+        a.status-label-link:hover { text-decoration: underline; color: #0d6efd; }
         .status-via { font-size: 0.72rem; color: #6c757d; overflow-wrap: break-word; }
         .status-off-tag { font-size: 0.72rem; font-weight: 600; color: #6c757d; white-space: nowrap; }
         .status-track { flex: 1 1 auto; height: 18px; background-color: #e9ecef; border-radius: 9px; overflow: hidden; position: relative; }
@@ -26,6 +31,14 @@
         .status-fill.warn { background-color: #ffc107; }
         .status-fill.bad { background-color: #dc3545; }
         .status-fill.off { background-color: #ced4da; }
+        /* Multi-hour layers (isobars, wind, ...) replace the single solid .status-fill
+           with one of these per forecast hour -- green once rendered, light amber while
+           still pending, so the bar reads as "which hours" rather than just "how much". */
+        .status-segmented-track { display: flex; height: 100%; width: 100%; }
+        .status-segment { flex: 1 1 0; height: 100%; border-right: 1px solid #ffffff; cursor: default; }
+        .status-segment:last-child { border-right: none; }
+        .status-segment.rendered { background-color: #198754; }
+        .status-segment.pending { background-color: #ffddb3; }
         .status-pct { width: 48px; flex: 0 0 48px; text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; font-size: 0.9rem; }
         .status-runs-select, .status-runs-select-spacer { width: 74px; flex: 0 0 74px; }
         .status-runs-select { font-size: 0.78rem; padding: 2px 6px; }
@@ -712,15 +725,38 @@
                     ? `<span class="status-off-tag">&#9208; opted out</span>`
                     : `updated ${lastUpdated} &middot; next ${nextUpdate}`;
 
+                // Multi-hour layers (isobars, wind, ...) carry a per-hour segments[]
+                // (see Updater.layer_status()) -- draw one coloured slice per forecast
+                // hour instead of a single solid fill, so which hours are actually
+                // rendered vs. still pending is visible at a glance. Every other row
+                // (collectors, single-shot layers) has segments == null and keeps the
+                // plain fill bar.
+                const trackHtml = (item.segments && item.segments.length)
+                    ? `<div class="status-segmented-track">${item.segments.map(seg => {
+                          const fhour = String(seg.hour).padStart(3, "0");
+                          const label = `Run ${item.run_id}Z ${item.run_date} &middot; f${fhour} `
+                              + (seg.rendered ? "(rendered)" : "(pending)");
+                          return `<div class="status-segment ${seg.rendered ? "rendered" : "pending"}" title="${label}"></div>`;
+                      }).join("")}</div>`
+                    : `<div class="status-fill ${fillClass}" style="width: ${pct}%;"></div>`;
+
+                // Collectors carry a source_url (see CollectorBase.source_url()) when
+                // they fetch from one identifiable upstream URL -- render the label as a
+                // new-tab link to it. Layers and sourceless collectors (e.g. markers,
+                // which syncs a local file) have source_url == null and keep a plain label.
+                const labelHtml = item.source_url
+                    ? `<a href="${item.source_url.replace(/"/g, "&quot;")}" target="_blank" rel="noopener noreferrer" class="status-label-link">${item.display_name}</a>`
+                    : item.display_name;
+
                 return `
                     <div class="status-row ${channelOn ? "" : "channel-off"}" title="${title}">
                         ${toggleHtml}
                         <div class="status-label-block">
-                            <div class="status-label">${item.display_name}</div>
+                            <div class="status-label">${labelHtml}</div>
                             ${viaHtml}
                         </div>
                         <div class="status-track">
-                            <div class="status-fill ${fillClass}" style="width: ${pct}%;"></div>
+                            ${trackHtml}
                         </div>
                         <div class="status-pct">${pct.toFixed(0)}%</div>
                         ${runsPerDayHtml}

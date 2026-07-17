@@ -73,6 +73,30 @@ class _StubGatedCollector:
         }
 
 
+class _StubCollectorWithSourceUrl:
+    """A stub defining source_url() -- e.g. quakes/sst -- to prove the route reads and
+    forwards it, alongside _StubCollector (no source_url attribute at all, matching a
+    real sourceless collector like markers) proving that case degrades to None rather
+    than raising."""
+
+    def __init__(self, *args, **kwargs):
+        pass
+
+    def data_status(self):
+        return {
+            "name": "stub_source_collector",
+            "kind": "collector",
+            "percent": 100.0,
+            "last_updated": None,
+            "next_update": None,
+            "enabled": True,
+            "detail": None,
+        }
+
+    def source_url(self):
+        return "https://example.com/source.csv"
+
+
 class _RaisingCollector:
     def __init__(self, *args, **kwargs):
         pass
@@ -140,6 +164,28 @@ def test_data_status_defaults_channel_key_to_none_when_collector_class_lacks_it(
 
     assert resp.status_code == 200
     assert resp.json()["data"]["collectors"][0]["channel_key"] is None
+
+
+def test_data_status_defaults_source_url_to_none_when_collector_class_lacks_it(client):
+    """A stub (or real collector, e.g. markers) with no source_url() at all must
+    serialize with source_url: null rather than raising."""
+    _override_all_empty()
+    app.dependency_overrides[get_collector_classes] = lambda: (_StubCollector,)
+
+    resp = client.get("/api/data_status")
+
+    assert resp.status_code == 200
+    assert resp.json()["data"]["collectors"][0]["source_url"] is None
+
+
+def test_data_status_forwards_a_collector_classs_source_url(client):
+    _override_all_empty()
+    app.dependency_overrides[get_collector_classes] = lambda: (_StubCollectorWithSourceUrl,)
+
+    resp = client.get("/api/data_status")
+
+    assert resp.status_code == 200
+    assert resp.json()["data"]["collectors"][0]["source_url"] == "https://example.com/source.csv"
 
 
 def test_data_status_forwards_a_collector_classs_channel_key(client):

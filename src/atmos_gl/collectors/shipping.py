@@ -37,6 +37,7 @@ SLICE_DENSITY_MAP = {
 
 class ShippingCollector(AsyncCollectorBase):
     section = "shipping_collector"
+    datasource_key = "shipping"
 
     def __init__(self, config_path: str):
         super().__init__(config_path)

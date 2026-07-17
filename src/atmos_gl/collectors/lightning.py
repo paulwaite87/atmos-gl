@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 
 class LightningCollector(AsyncCollectorBase):
     section = "lightning_collector"
+    datasource_key = "lightning"
     # The scan loop sleeps a fixed 600s between passes (see run()); no setting exists for
     # the scan itself, so this is a generous fixed allowance rather than a computed value.
     heartbeat_period_s = 900.0

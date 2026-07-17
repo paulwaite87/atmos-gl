@@ -60,11 +60,21 @@ RUNS_PER_DAY_SECTIONS = {
 }
 
 
+def _source_url(instance) -> str | None:
+    """instance.source_url() if the collector defines it (every real CollectorBase/
+    AsyncCollectorBase subclass does, see collectors/base.py) -- layer tasks and any
+    pre-this-feature test stub simply lack the attribute, so this reads as None for
+    them the same way getattr(CollectorCls, "channel_key", None) already does above."""
+    fn = getattr(instance, "source_url", None)
+    return fn() if callable(fn) else None
+
+
 def _serialize(
     status: dict,
     channel_key: str | None,
     channel_enabled: dict,
     runs_per_day: int | None = None,
+    source_url: str | None = None,
 ) -> dict:
     """JSON-safe copy of a data_status()/layer_status() dict: datetimes -> ISO 8601.
 
@@ -84,7 +94,12 @@ def _serialize(
     right value for anything keying off the raw section/status_name).
 
     runs_per_day is the row's current cadence value if it's edited via this page's
-    widget (see RUNS_PER_DAY_SECTIONS), else None so the frontend renders no widget."""
+    widget (see RUNS_PER_DAY_SECTIONS), else None so the frontend renders no widget.
+
+    source_url is the collector's upstream URL (see CollectorBase.source_url()), so the
+    Data Status page can render the row's label as a link to the live source data --
+    None for layer rows (they don't fetch anything themselves) and any collector with
+    no single browsable URL (e.g. markers)."""
     out = dict(status)
     for key in ("last_updated", "next_update"):
         v = out.get(key)
@@ -94,6 +109,7 @@ def _serialize(
     out["channel_on"] = channel_enabled.get(channel_key, True) if channel_key else None
     out["display_name"] = _display_name(out["name"])
     out["runs_per_day"] = runs_per_day
+    out["source_url"] = source_url
     return out
 
 
@@ -168,7 +184,8 @@ def get_data_status(
         for CollectorCls in (*collector_classes, *cache_collector_classes):
             try:
                 channel_key = getattr(CollectorCls, "channel_key", None)
-                status = CollectorCls(config).data_status()
+                instance = CollectorCls(config)
+                status = instance.data_status()
                 section = getattr(CollectorCls, "section", None)
                 # Falls back to 1 (CollectorBase.period_s's own default), not None --
                 # a section in RUNS_PER_DAY_SECTIONS always gets the widget, showing
@@ -179,14 +196,19 @@ def get_data_status(
                     if section in RUNS_PER_DAY_SECTIONS
                     else None
                 )
-                collectors.append(_serialize(status, channel_key, channel_enabled, runs_per_day))
+                collectors.append(
+                    _serialize(
+                        status, channel_key, channel_enabled, runs_per_day, _source_url(instance)
+                    )
+                )
             except Exception as e:
                 logger.error(f"data_status failed for {CollectorCls.__name__}: {e}")
 
         for CollectorCls in field_collector_classes:
             try:
                 channel_key = getattr(CollectorCls, "channel_key", None)
-                status = CollectorCls(config, store).data_status()
+                instance = CollectorCls(config, store)
+                status = instance.data_status()
                 # data_collector's runs_per_day governs gfs_atmos + gfs_waves +
                 # rtofs_currents together; surfaced only on the gfs_atmos row (see
                 # RUNS_PER_DAY_SECTIONS docstring above). Falls back to 96 (matching
@@ -196,15 +218,22 @@ def get_data_status(
                     if getattr(CollectorCls, "status_name", None) == "gfs_atmos"
                     else None
                 )
-                collectors.append(_serialize(status, channel_key, channel_enabled, runs_per_day))
+                collectors.append(
+                    _serialize(
+                        status, channel_key, channel_enabled, runs_per_day, _source_url(instance)
+                    )
+                )
             except Exception as e:
                 logger.error(f"data_status failed for {CollectorCls.__name__}: {e}")
 
         for CollectorCls in embeddable_collector_classes:
             try:
                 channel_key = getattr(CollectorCls, "channel_key", None)
-                status = CollectorCls(config.config_path).data_status()
-                collectors.append(_serialize(status, channel_key, channel_enabled))
+                instance = CollectorCls(config.config_path)
+                status = instance.data_status()
+                collectors.append(
+                    _serialize(status, channel_key, channel_enabled, source_url=_source_url(instance))
+                )
             except Exception as e:
                 logger.error(f"data_status failed for {CollectorCls.__name__}: {e}")
 

@@ -55,6 +55,7 @@ def _normalize_confidence(raw) -> str:
 class FiresCollector(CollectorBase):
     section = "fires"
     channel_key = "fires"
+    datasource_key = "fires"
 
     def __init__(self, config):
         super().__init__(config)

@@ -33,6 +33,7 @@ _DEFAULT_GEOMETRY = "2048x1024"
 class CloudsCollector(CollectorBase):
     section = "clouds"
     channel_key = "clouds"
+    datasource_key = "clouds"
 
     def collect(self) -> None:
         """Fetch the global GIBS cloud image into the shared cache the clouds layer reads,
