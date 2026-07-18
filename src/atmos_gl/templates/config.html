@@ -649,6 +649,49 @@
             return row ? row.display_name : channelKey;
         }
 
+        // Single escaping helper for anything from a status row interpolated into this
+        // template's HTML (error details, labels, URLs) -- safe in both an attribute
+        // context (title="...", href="...") and a text-content context (a label
+        // rendered as a child node); &quot; is a harmless no-op in text content, so one
+        // function covers both rather than needing a slightly different one per
+        // context. Replaces two inconsistent one-off `.replace(/"/g, "&quot;")` calls
+        // that only handled the attribute case, and left other interpolated values
+        // (channelLabel, display_name) unescaped entirely.
+        function escapeHtml(str) {
+            return String(str)
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;");
+        }
+
+        // Multi-hour layers (isobars, wind, ...) carry a per-hour segments[] (see
+        // Updater.layer_status()) -- draw one coloured slice per forecast hour instead
+        // of a single solid fill, so which hours are actually rendered vs. still
+        // pending is visible at a glance. Every other row (collectors, single-shot
+        // layers) has segments == null and gets the plain fill bar.
+        function renderStatusTrack(item, pct, fillClass) {
+            if (!item.segments || !item.segments.length) {
+                return `<div class="status-fill ${fillClass}" style="width: ${pct}%;"></div>`;
+            }
+            const segmentsHtml = item.segments.map(seg => {
+                const fhour = String(seg.hour).padStart(3, "0");
+                const label = `Run ${item.run_id}Z ${item.run_date} · f${fhour} `
+                    + (seg.rendered ? "(rendered)" : "(pending)");
+                return `<div class="status-segment ${seg.rendered ? "rendered" : "pending"}" title="${escapeHtml(label)}"></div>`;
+            }).join("");
+            return `<div class="status-segmented-track">${segmentsHtml}</div>`;
+        }
+
+        // Collectors carry a source_url (see CollectorBase.source_url()) when they
+        // fetch from one identifiable upstream URL -- render the label as a new-tab
+        // link to it. Layers and sourceless collectors (e.g. markers, which syncs a
+        // local file) have source_url == null and keep a plain label.
+        function renderStatusLabel(item) {
+            if (!item.source_url) return escapeHtml(item.display_name);
+            return `<a href="${escapeHtml(item.source_url)}" target="_blank" rel="noopener noreferrer" class="status-label-link">${escapeHtml(item.display_name)}</a>`;
+        }
+
         function renderStatusRows(containerId, items, { withToggle = false } = {}) {
             const container = document.getElementById(containerId);
             if (!container) return;
@@ -680,8 +723,8 @@
                 const runningBadge = item.status === "running"
                     ? '<span class="badge bg-primary status-running-badge">running</span>'
                     : '<span class="status-running-badge-spacer"></span>';
-                const title = item.detail ? item.detail.replace(/"/g, "&quot;") : "";
-                const channelLabel = channelDisplayName(channelKey);
+                const title = item.detail ? escapeHtml(item.detail) : "";
+                const channelLabel = escapeHtml(channelDisplayName(channelKey));
 
                 // Cadence widget: only Collectors-panel rows carry runs_per_day (null for
                 // layers and every row not migrated onto it -- see routes/status.py's
@@ -729,28 +772,8 @@
                     ? `<span class="status-off-tag">&#9208; opted out</span>`
                     : `updated ${lastUpdated} &middot; next ${nextUpdate}`;
 
-                // Multi-hour layers (isobars, wind, ...) carry a per-hour segments[]
-                // (see Updater.layer_status()) -- draw one coloured slice per forecast
-                // hour instead of a single solid fill, so which hours are actually
-                // rendered vs. still pending is visible at a glance. Every other row
-                // (collectors, single-shot layers) has segments == null and keeps the
-                // plain fill bar.
-                const trackHtml = (item.segments && item.segments.length)
-                    ? `<div class="status-segmented-track">${item.segments.map(seg => {
-                          const fhour = String(seg.hour).padStart(3, "0");
-                          const label = `Run ${item.run_id}Z ${item.run_date} &middot; f${fhour} `
-                              + (seg.rendered ? "(rendered)" : "(pending)");
-                          return `<div class="status-segment ${seg.rendered ? "rendered" : "pending"}" title="${label}"></div>`;
-                      }).join("")}</div>`
-                    : `<div class="status-fill ${fillClass}" style="width: ${pct}%;"></div>`;
-
-                // Collectors carry a source_url (see CollectorBase.source_url()) when
-                // they fetch from one identifiable upstream URL -- render the label as a
-                // new-tab link to it. Layers and sourceless collectors (e.g. markers,
-                // which syncs a local file) have source_url == null and keep a plain label.
-                const labelHtml = item.source_url
-                    ? `<a href="${item.source_url.replace(/"/g, "&quot;")}" target="_blank" rel="noopener noreferrer" class="status-label-link">${item.display_name}</a>`
-                    : item.display_name;
+                const trackHtml = renderStatusTrack(item, pct, fillClass);
+                const labelHtml = renderStatusLabel(item);
 
                 return `
                     <div class="status-row ${channelOn ? "" : "channel-off"}" title="${title}">
