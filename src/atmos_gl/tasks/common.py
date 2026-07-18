@@ -19,6 +19,7 @@ from atmos_gl.lib.data_status import (
     estimate_next_update,
     period_s_from_runs_per_day,
     read_process_status,
+    resolve_run_epoch_utc,
     build_status,
 )
 from .plotting import PlottingMixin
@@ -367,12 +368,17 @@ class Updater(PlottingMixin):
 
         Two shapes, depending on status_product:
           * set (multi-hour: isobars, wind, ...) — percent is the fraction of the
-            forecast hours ALREADY IN THE CATALOG for status_product that are fully
-            rendered (should_plot_for_hour false, i.e. every per_hour_outputs suffix
-            present and fresh). should_plot_for_hour lives on MultiHourRenderMixin, not
-            Updater itself — safe to call here because only subclasses that set
-            status_product take this branch, and they always mix in that class too.
-            Deliberately bounded by what the underlying collector
+            forecast hours ALREADY IN THE CATALOG for status_product, from "now" onward,
+            that are fully rendered (should_plot_for_hour false, i.e. every
+            per_hour_outputs suffix present and fresh). Hours before "now" are excluded
+            even though they're still sitting in the catalog (retained for
+            data_collector.cache_hours, which is wider than what's currently
+            reachable) — the scrubber's minHour ratchets forward and never exposes them,
+            so counting them here would report a layer as further along than a user can
+            actually see (see _now_fhour). should_plot_for_hour lives on
+            MultiHourRenderMixin, not Updater itself — safe to call here because only
+            subclasses that set status_product take this branch, and they always mix in
+            that class too. Deliberately bounded by what the underlying collector
             has fetched so far, not the theoretical full forecast window — a layer being
             "100%" of what it currently has to work with is correct, not a defect, when
             the collector itself is still catching up (that's the COLLECTOR's data_status
@@ -381,9 +387,9 @@ class Updater(PlottingMixin):
             forecast hour" — there's no single well-defined value for the latter since
             rendering is continuous as hours arrive, but the former is still real and
             worth showing rather than leaving blank. Also returns `segments` -- one
-            {"hour": fh, "rendered": bool} per catalog hour -- plus the `run_date`/
-            `run_id` they belong to, so the Data Status page can draw a segmented
-            per-hour bar instead of a single solid fill.
+            {"hour": fh, "rendered": bool} per now-onward catalog hour -- plus the
+            `run_date`/`run_id` they belong to, so the Data Status page can draw a
+            segmented per-hour bar instead of a single solid fill.
           * None (single-shot: sst, clouds, markers) — the same decaying-freshness
             formula CollectorBase.data_status() uses, keyed by this task's own section
             and runs_per_day cadence. next_update falls back to an estimate (now +
@@ -416,6 +422,8 @@ class Updater(PlottingMixin):
             resolved = self.latest_store_run([self.status_product])
             if resolved:
                 run_date, run_id, hours = resolved
+                now_fhour = self._now_fhour(run_date, run_id)
+                hours = [h for h in hours if h >= now_fhour]
                 total = len(hours)
                 rendered = 0
                 segments = []
@@ -448,6 +456,15 @@ class Updater(PlottingMixin):
         result["run_date"] = run_date
         result["run_id"] = run_id
         return result
+
+    def _now_fhour(self, run_date, run_id) -> int:
+        """The forecast hour of `run_date`/`run_id` whose valid time is closest to
+        wall-clock now — the same "nearest hour" the frontend scrubber's nowHour()
+        computes, so layer_status()'s now-onward filtering matches what the scrubber
+        will actually let a user reach."""
+        epoch = resolve_run_epoch_utc(run_date, run_id)
+        now = datetime.now(timezone.utc)
+        return max(0, int(round((now - epoch).total_seconds() / 3600.0)))
 
     def latest_store_run(self, products):
         """Resolve the freshest run actually present in the fieldstore catalog for the

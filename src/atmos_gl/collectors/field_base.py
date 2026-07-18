@@ -46,6 +46,7 @@ from atmos_gl.lib.data_status import (
     estimate_next_update,
     period_s_from_runs_per_day,
     read_process_status,
+    resolve_run_epoch_utc,
     build_status,
 )
 from atmos_gl.lib.gfs import download_whole
@@ -216,10 +217,7 @@ class FieldCollectorBase(CollectorBase):
 
     @staticmethod
     def _valid_time(run_date: str, run_id: str, fhour) -> datetime:
-        run_ts = datetime.strptime(f"{run_date} {run_id}", "%Y-%m-%d %H").replace(
-            tzinfo=timezone.utc
-        )
-        return run_ts + timedelta(hours=int(fhour))
+        return resolve_run_epoch_utc(run_date, run_id) + timedelta(hours=int(fhour))
 
     def backfill_hour(self, run_date: str, run_id: str, fhour: int, product: str) -> bool:
         """Fetch + store a single (run_date, run_id, fhour, product) hour on demand, for the

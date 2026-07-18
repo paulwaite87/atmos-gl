@@ -6,6 +6,7 @@ from fastapi.templating import Jinja2Templates
 from atmos_gl.db.field_catalog_adapter import FieldCatalogAdapter
 from atmos_gl.db.region_adapter import RegionAdapter
 from atmos_gl.lib.config import AtmosGLConfig
+from atmos_gl.lib.data_status import resolve_run_epoch_utc
 from atmos_gl.lib.output_files import OUTFILES
 from atmos_gl.routes.field_specs import (
     FIELD_SPECS,
@@ -19,7 +20,7 @@ from atmos_gl.routes.field_specs import (
     is_api_key_field,
     validate_against_specs,
 )
-from datetime import datetime, timezone, timedelta, date
+from datetime import timedelta
 
 router = APIRouter(prefix="/api", tags=["System Configuration"])
 
@@ -69,35 +70,6 @@ SOURCES = {
 
 # Backwards-compatible alias: the GFS-source products (some call sites referenced this).
 SCRUBBER_PRODUCTS = SOURCES["gfs"]["products"]
-
-
-def _run_epoch_utc(run_date, run_id):
-    """Build the f000 valid-time (UTC) from run_date (str 'YYYYMMDD' or a date/
-    datetime) and run_id (str/int hour). Tolerant of the catalog column being
-    either text or DATE."""
-    run_hour = int(run_id)
-
-    if isinstance(run_date, datetime):
-        d = run_date.date()
-    elif isinstance(run_date, date):
-        d = run_date
-    else:
-        # string like "20260613" (or "2026-06-13" just in case)
-        s = str(run_date).strip()
-        if "-" in s:
-            d = datetime.strptime(s, "%Y-%m-%d").date()
-        else:
-            d = datetime.strptime(s, "%Y%m%d").date()
-
-    return datetime(
-        d.year,
-        d.month,
-        d.day,
-        run_hour,
-        0,
-        0,
-        tzinfo=timezone.utc,
-    )
 
 
 def load_config():
@@ -153,7 +125,7 @@ def get_forecast_state(
             summary = field_catalog_adapter.get_latest_run_hours(products=present)
             if not summary or not summary.get("hours"):
                 return None
-            epoch = _run_epoch_utc(summary["run_date"], summary["run_id"])
+            epoch = resolve_run_epoch_utc(summary["run_date"], summary["run_id"])
             rdate = summary["run_date"]
             return {
                 "run_date": rdate

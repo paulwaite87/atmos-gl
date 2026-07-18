@@ -5,7 +5,7 @@ build_status replace the same logic hand-duplicated across CollectorBase.data_st
 AsyncCollectorBase.data_status(), FieldCollectorBase.data_status() and
 Updater.layer_status() -- none of it had any test coverage before this.
 """
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from unittest.mock import MagicMock
 
 from atmos_gl.lib.data_status import (
@@ -13,12 +13,43 @@ from atmos_gl.lib.data_status import (
     estimate_next_update,
     period_s_from_runs_per_day,
     read_process_status,
+    resolve_run_epoch_utc,
     build_status,
     resolve_datasource_url,
     resolve_source_url,
     freshness_data_status,
     RUNS_PER_DAY_CHOICES,
 )
+
+
+# --- resolve_run_epoch_utc (shared by routes/config.py's scrubber timeline,
+# FieldCollectorBase's coverage math, and Updater.layer_status()'s now-onward
+# filtering -- three previously-independent implementations of this same date math) ---
+
+
+def test_resolve_run_epoch_utc_accepts_yyyymmdd_string():
+    result = resolve_run_epoch_utc("20260613", "18")
+    assert result == datetime(2026, 6, 13, 18, 0, 0, tzinfo=timezone.utc)
+
+
+def test_resolve_run_epoch_utc_accepts_iso_date_string():
+    result = resolve_run_epoch_utc("2026-06-13", "18")
+    assert result == datetime(2026, 6, 13, 18, 0, 0, tzinfo=timezone.utc)
+
+
+def test_resolve_run_epoch_utc_accepts_a_date_object():
+    result = resolve_run_epoch_utc(date(2026, 6, 13), "6")
+    assert result == datetime(2026, 6, 13, 6, 0, 0, tzinfo=timezone.utc)
+
+
+def test_resolve_run_epoch_utc_accepts_a_datetime_object():
+    result = resolve_run_epoch_utc(datetime(2026, 6, 13, 9, 30), "0")
+    assert result == datetime(2026, 6, 13, 0, 0, 0, tzinfo=timezone.utc)
+
+
+def test_resolve_run_epoch_utc_accepts_int_run_id():
+    result = resolve_run_epoch_utc("20260613", 12)
+    assert result == datetime(2026, 6, 13, 12, 0, 0, tzinfo=timezone.utc)
 
 
 # --- freshness_percent ---
