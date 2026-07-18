@@ -288,6 +288,12 @@ FIELD_SPECS = {
     ("isobars", "label_fontsize"): _FONTSIZE,
     ("isobars", "label_outline"): ToggleSpec(),
     ("isobars", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
+    # Polar Boundary: the 0 degC isotherm, rendered from the same "temperature" field
+    # as the Air Temperature layer -- fixed at freezing (no isobar_step equivalent).
+    ("polar_boundary", "line_color"): ColorSpec(),
+    ("polar_boundary", "linewidth"): SliderSpec(min=0.1, max=5.0, step=0.1, decimals=1, suffix="px"),
+    ("polar_boundary", "opacity"): _OPACITY,
+    ("polar_boundary", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
     # Ordered to mirror currents' shape below (same shared engine): resolution, colour,
     # opacity, particle tuning, field-quality knobs, trail rendering, playback quality.
     ("wind", "level_of_detail"): _LEVEL_OF_DETAIL,
@@ -454,6 +460,7 @@ def field_label(section: str, option: str) -> str:
 SECTION_LABELS = {
     "clouds": "Clouds",
     "isobars": "Isobars",
+    "polar_boundary": "Polar Boundary",
     "wind": "Wind",
     "precipitation": "Precipitation",
     "pwat": "Precipitable Water",

@@ -20,6 +20,7 @@ from atmos_gl.db.process_status_adapter import ProcessStatusAdapter
 from atmos_gl.tasks.common import MapData, LAYER_CYCLE_SECONDS, MultiHourRenderMixin
 from atmos_gl.tasks.clouds import CloudUpdater
 from atmos_gl.tasks.isobars import IsobarUpdater
+from atmos_gl.tasks.polar_boundary import PolarBoundaryUpdater
 from atmos_gl.tasks.wind import WindUpdater
 from atmos_gl.tasks.precipitation import PrecipitationUpdater
 from atmos_gl.tasks.sst import SSTUpdater
@@ -43,6 +44,7 @@ CYCLE_SECONDS = LAYER_CYCLE_SECONDS
 # updaters render in parallel, not in sequence.
 TASK_CLASSES = {
     "isobars": IsobarUpdater,
+    "polar_boundary": PolarBoundaryUpdater,
     "precipitation": PrecipitationUpdater,
     "clouds": CloudUpdater,
     "wind": WindUpdater,
