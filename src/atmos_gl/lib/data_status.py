@@ -22,9 +22,37 @@ FieldCollectorBase (product x forecast-hour coverage) and Updater.layer_status()
 (render-completion coverage) stay local to their callers -- they're genuinely
 different domain math, not the same formula duplicated.
 
+resolve_run_epoch_utc() is a third consolidation, unrelated to the data_status-dict
+formulas above: routes/config.py's scrubber timeline, FieldCollectorBase's coverage
+math, and Updater.layer_status()'s now-onward filtering each independently computed a
+run's f000 valid-time from its (run_date, run_id) catalog columns, with two of the
+three call sites unable to handle a date/DATE column instead of a string. Consolidated
+into one tolerant implementation here since it's the same date-math sitting alongside
+the same status-page building blocks, not layer/collector-specific.
+
 Validated with ast.parse.
 """
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
+
+
+def resolve_run_epoch_utc(run_date, run_id) -> datetime:
+    """Build a run's f000 valid-time (UTC) from run_date (a date/datetime, or a string
+    in "YYYYMMDD" or "YYYY-MM-DD" form) and run_id (str/int hour). Tolerant of the
+    catalog column being either text or DATE."""
+    run_hour = int(run_id)
+
+    if isinstance(run_date, datetime):
+        d = run_date.date()
+    elif isinstance(run_date, date):
+        d = run_date
+    else:
+        s = str(run_date).strip()
+        if "-" in s:
+            d = datetime.strptime(s, "%Y-%m-%d").date()
+        else:
+            d = datetime.strptime(s, "%Y%m%d").date()
+
+    return datetime(d.year, d.month, d.day, run_hour, 0, 0, tzinfo=timezone.utc)
 
 
 def freshness_percent(last_updated, period_s: float) -> float:
