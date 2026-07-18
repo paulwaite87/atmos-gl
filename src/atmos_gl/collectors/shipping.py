@@ -37,6 +37,7 @@ SLICE_DENSITY_MAP = {
 
 class ShippingCollector(AsyncCollectorBase):
     section = "shipping_collector"
+    datasource_key = "shipping"
 
     def __init__(self, config_path: str):
         super().__init__(config_path)
@@ -55,7 +56,11 @@ class ShippingCollector(AsyncCollectorBase):
 
     def refresh_settings(self) -> None:
         super().refresh_settings()
-        self.url = self.datasource_url("shipping")
+        # Cached (not resolved fresh at each connect) since collect_ships_in_region()
+        # is called once per slice, ten times a rotation -- self.url is derived from
+        # source_url() (the same method the Data Status link uses) rather than a second
+        # independent config read, so the two can't silently disagree.
+        self.url = self.source_url() or ""
         # API key: config file first, then environment variable.
         self.api_key = (
             self.settings.get("api_key")

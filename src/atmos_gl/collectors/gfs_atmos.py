@@ -25,6 +25,10 @@ logger = logging.getLogger("atmos_gl.collectors.gfs_atmos")
 
 class GfsAtmosCollector(FieldCollectorBase):
     status_name = "gfs_atmos"
+    # status_name isn't a real config section, so routes/status.py's generic
+    # section_label()-based display name would give "Gfs Atmos" (.title() fallback),
+    # not the proper GFS acronym -- this overrides it (see _collect_status_rows()).
+    display_label = "GFS Atmos"
     datasource_key = "gfs"
     baseline_key = "gfs"
     channel_key = "gfs_atmos"

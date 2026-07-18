@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 class SatellitesCollector(CollectorBase):
     section = "satellites_collector"
     channel_key = "satellites"
+    datasource_key = "satellites"
 
     def __init__(self, config):
         super().__init__(config)
@@ -35,16 +36,20 @@ class SatellitesCollector(CollectorBase):
         raw = self.settings.get("groups", "stations,weather,science,resource")
         return [g.strip() for g in raw.split(",") if g.strip()]
 
-    def _base_url(self) -> str:
-        return self.datasource_url("satellites") or "https://celestrak.org/NORAD/elements"
+    def source_url(self) -> str | None:
+        """CelesTrak's default endpoint when data_collector.datasources.satellites
+        isn't configured -- collect()/has_new_data() have always had a working
+        hardcoded fallback; the Data Status link should show it too rather than going
+        blank (see the base class's source_url())."""
+        return super().source_url() or "https://celestrak.org/NORAD/elements"
 
     def has_new_data(self) -> bool:
         """HEAD the stations-group URL as a proxy for the whole dataset."""
-        url = f"{self._base_url()}/gp.php?GROUP=stations&FORMAT=json"
+        url = f"{self.source_url()}/gp.php?GROUP=stations&FORMAT=json"
         return self._head_changed_or_default(url, "Satellites")
 
     def _fetch_group(self, group: str) -> list:
-        url = f"{self._base_url()}/gp.php?GROUP={group}&FORMAT=json"
+        url = f"{self.source_url()}/gp.php?GROUP={group}&FORMAT=json"
         try:
             r = requests.get(
                 url,

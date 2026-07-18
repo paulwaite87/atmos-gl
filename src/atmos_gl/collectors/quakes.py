@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 class QuakeCollector(CollectorBase):
     section = "quakes"
     channel_key = "quakes"
+    datasource_key = "quakes"
 
     def __init__(self, config):
         super().__init__(config)

@@ -22,16 +22,14 @@ logger = logging.getLogger(__name__)
 class VolcanoesCollector(CollectorBase):
     section = "volcanoes"
     channel_key = "volcanoes"
+    datasource_key = "volcanoes"
 
     def __init__(self, config):
         super().__init__(config)
         self.volcano_adapter = VolcanoAdapter()
 
-    def base_url(self):
-        return self.datasource_url("volcanoes")
-
     def has_new_data(self) -> bool:
-        url = self.base_url()
+        url = self.source_url()
         if not url:
             return True
         return self._head_changed_or_default(url, "Volcanoes")
@@ -64,7 +62,7 @@ class VolcanoesCollector(CollectorBase):
         return items
 
     def collect(self) -> None:
-        records = self._fetch_all(self.base_url())
+        records = self._fetch_all(self.source_url())
         count = 0
         for r in records:
             v_id = r.get("id", r.get("name"))

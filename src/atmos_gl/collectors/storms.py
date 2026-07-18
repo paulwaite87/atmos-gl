@@ -29,6 +29,16 @@ class StormsCollector(CollectorBase):
         super().__init__(config)
         self.storm_adapter = StormAdapter()
 
+    def source_url(self) -> str | None:
+        """Storms' two ATCF mirrors (jtwc_url/nhc_url) live directly in its own config
+        section, not data_collector.datasources -- CollectorBase.source_url()'s
+        datasource_key lookup doesn't apply here. JTWC is the primary source shown."""
+        return (
+            self.settings.get("jtwc_url", "").strip()
+            or self.settings.get("nhc_url", "").strip()
+            or None
+        )
+
     def has_new_data(self) -> bool:
         """HEAD both ATCF directory URLs; skip if neither has changed."""
         jtwc = self.settings.get("jtwc_url", "").strip().rstrip("/")

@@ -380,7 +380,10 @@ class Updater(PlottingMixin):
             task" (LAYER_CYCLE_SECONDS, its fixed fan-out cadence) rather than "next new
             forecast hour" — there's no single well-defined value for the latter since
             rendering is continuous as hours arrive, but the former is still real and
-            worth showing rather than leaving blank.
+            worth showing rather than leaving blank. Also returns `segments` -- one
+            {"hour": fh, "rendered": bool} per catalog hour -- plus the `run_date`/
+            `run_id` they belong to, so the Data Status page can draw a segmented
+            per-hour bar instead of a single solid fill.
           * None (single-shot: sst, clouds, markers) — the same decaying-freshness
             formula CollectorBase.data_status() uses, keyed by this task's own section
             and runs_per_day cadence. next_update falls back to an estimate (now +
@@ -399,6 +402,14 @@ class Updater(PlottingMixin):
         )
         detail = last_error
         next_update = None
+        # Per-hour rendered/pending breakdown for the Data Status page's segmented
+        # progress bar -- None for the single-shot branch (no per-hour concept there),
+        # so the frontend falls back to its plain solid-fill bar. run_date/run_id ride
+        # alongside so the frontend can label each segment ("Run 18Z f003") without
+        # having to reverse-engineer it from the hour alone.
+        segments = None
+        run_date = None
+        run_id = None
 
         if self.status_product:
             percent = 0.0
@@ -407,10 +418,13 @@ class Updater(PlottingMixin):
                 run_date, run_id, hours = resolved
                 total = len(hours)
                 rendered = 0
+                segments = []
                 for fh in hours:
                     state = ForecastState.at_hour(run_date, run_id, fh)
-                    if not self.should_plot_for_hour(state, self.status_product):
+                    is_rendered = not self.should_plot_for_hour(state, self.status_product)
+                    if is_rendered:
                         rendered += 1
+                    segments.append({"hour": fh, "rendered": is_rendered})
                 percent = 100.0 * rendered / total if total else 0.0
                 if not detail:
                     detail = f"{run_date} {run_id}Z: {rendered}/{total} hour(s) rendered"
@@ -420,7 +434,7 @@ class Updater(PlottingMixin):
             percent = freshness_percent(last_updated, period_s)
             next_update = estimate_next_update(last_updated, period_s, True)
 
-        return build_status(
+        result = build_status(
             name=self.section,
             kind="layer",
             percent=percent,
@@ -430,6 +444,10 @@ class Updater(PlottingMixin):
             detail=detail,
             status=status,
         )
+        result["segments"] = segments
+        result["run_date"] = run_date
+        result["run_id"] = run_id
+        return result
 
     def latest_store_run(self, products):
         """Resolve the freshest run actually present in the fieldstore catalog for the

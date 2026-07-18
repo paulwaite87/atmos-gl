@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 
 class LightningCollector(AsyncCollectorBase):
     section = "lightning_collector"
+    datasource_key = "lightning"
     # The scan loop sleeps a fixed 600s between passes (see run()); no setting exists for
     # the scan itself, so this is a generous fixed allowance rather than a computed value.
     heartbeat_period_s = 900.0
@@ -36,7 +37,11 @@ class LightningCollector(AsyncCollectorBase):
     def refresh_settings(self) -> None:
         super().refresh_settings()
         self.primary_region_label = self.config.get_setting("common", "region")
-        self.url = self.datasource_url("lightning")
+        # Cached (not resolved fresh at each fetch) since fetch_and_store() is called
+        # per 50km grid point -- potentially hundreds of times per scan. self.url is
+        # derived from source_url() (the same method the Data Status link uses) rather
+        # than a second independent config read, so the two can't silently disagree.
+        self.url = self.source_url() or ""
         # API key: config file first, then environment variable.
         self.api_key = (
             self.settings.get("api_key")
