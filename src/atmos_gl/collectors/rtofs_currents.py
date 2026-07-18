@@ -33,6 +33,9 @@ logger = logging.getLogger("atmos_gl.collectors.rtofs_currents")
 
 class RtofsCurrentsCollector(SingleFileFieldCollector):
     status_name = "rtofs_currents"
+    # See GfsAtmosCollector.display_label -- same reason (status_name isn't a real
+    # config section, so the generic derivation would give "Rtofs Currents").
+    display_label = "RTOFS Currents"
     datasource_key = "currents"
     baseline_key = "rtofs"
     channel_key = "rtofs_currents"

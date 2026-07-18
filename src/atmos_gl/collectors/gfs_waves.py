@@ -29,6 +29,9 @@ logger = logging.getLogger("atmos_gl.collectors.gfs_waves")
 
 class GfsWavesCollector(SingleFileFieldCollector):
     status_name = "gfs_waves"
+    # See GfsAtmosCollector.display_label -- same reason (status_name isn't a real
+    # config section, so the generic derivation would give "Gfs Waves").
+    display_label = "GFS Waves"
     datasource_key = "gfs"
     baseline_key = "gfs"
     channel_key = "gfs_waves"

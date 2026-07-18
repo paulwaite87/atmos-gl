@@ -685,13 +685,17 @@
 
                 // Cadence widget: only Collectors-panel rows carry runs_per_day (null for
                 // layers and every row not migrated onto it -- see routes/status.py's
-                // RUNS_PER_DAY_SECTIONS). The gfs_atmos row's value is data_collector's,
-                // shared with gfs_waves/rtofs_currents -- saved under "data_collector",
-                // not "gfs_atmos" (see updateRunsPerDay below).
-                const runsPerDaySection = item.name === "gfs_atmos" ? "data_collector" : item.name;
+                // RUNS_PER_DAY_SECTIONS). runs_per_day_section is which config section a
+                // change actually saves to -- the backend resolves this (architecture
+                // review candidate "one source of truth for which rows get the cadence
+                // widget"), rather than this template re-deriving the gfs_atmos special
+                // case itself; it's almost always item.name, except the gfs_atmos row
+                // (shared cadence with gfs_waves/rtofs_currents, saved under
+                // "data_collector" -- see updateRunsPerDay below).
+                const runsPerDaySection = item.runs_per_day_section;
                 const runsPerDayHtml = (withToggle && item.runs_per_day != null)
                     ? `<select class="form-select form-select-sm status-runs-select"
-                               title="${item.name === "gfs_atmos" ? "Governs GFS Atmos, GFS Waves &amp; RTOFS Currents together" : "Runs per day"}"
+                               title="${runsPerDaySection !== item.name ? "Governs GFS Atmos, GFS Waves &amp; RTOFS Currents together" : "Runs per day"}"
                                onchange="updateRunsPerDay('${runsPerDaySection}', this.value)">
                            ${RUNS_PER_DAY_CHOICES.map(v =>
                                `<option value="${v}" ${v === item.runs_per_day ? "selected" : ""}>${v}/day</option>`
@@ -814,14 +818,14 @@
         }
 
         // Saves a row's cadence immediately -- its own tiny endpoint, same rationale as
-        // toggleChannel above. `section` is "data_collector" for the gfs_atmos row
-        // (shared cadence with gfs_waves/rtofs_currents) and the row's own name for
-        // every other collector.
+        // toggleChannel above. `section` is item.runs_per_day_section (see above) --
+        // "data_collector" for the gfs_atmos row (shared cadence with gfs_waves/
+        // rtofs_currents) and the row's own name for every other collector.
         async function updateRunsPerDay(section, value) {
             const runsPerDay = Number(value);
             const previous = {};
             for (const item of lastStatusData.collectors) {
-                if (item.name === section || (section === "data_collector" && item.name === "gfs_atmos")) {
+                if (item.runs_per_day_section === section) {
                     previous[item.name] = item.runs_per_day;
                     item.runs_per_day = runsPerDay;
                 }

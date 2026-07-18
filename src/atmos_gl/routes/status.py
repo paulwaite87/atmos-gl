@@ -30,23 +30,15 @@ from atmos_gl.routes.field_specs import section_label
 logger = logging.getLogger("atmos_gl.routes.status")
 router = APIRouter(prefix="/api", tags=["Data Status"])
 
-# status_name values for FieldCollectorBase subclasses ("gfs_atmos", "gfs_waves",
-# "rtofs_currents") aren't real config sections, so section_label()'s SECTION_LABELS
-# lookup (and its .title() fallback) doesn't know GFS/RTOFS should stay acronyms --
-# override here rather than teaching SECTION_LABELS about identities that aren't
-# sections at all.
-_STATUS_NAME_LABELS = {
-    "gfs_atmos": "GFS Atmos",
-    "gfs_waves": "GFS Waves",
-    "rtofs_currents": "RTOFS Currents",
-}
-
-
 def _display_name(key: str) -> str:
     """Friendly name for a Data Status row -- matches the Show tab's wording exactly
-    for anything that's a real config section (via section_label()); the 3 field
-    collectors' status_name-only identities get their own override above."""
-    return _STATUS_NAME_LABELS.get(key, section_label(key))
+    for anything that's a real config section (via section_label()). status_name-only
+    identities that aren't real config sections (the 3 field collectors: "gfs_atmos",
+    "gfs_waves", "rtofs_currents") would get section_label()'s .title() fallback here
+    ("Gfs Atmos", not "GFS Atmos") -- they instead carry their own `display_label`
+    class attribute (see GfsAtmosCollector etc.), resolved in _collect_status_rows()
+    and passed to _serialize(), which prefers it over this function entirely."""
+    return section_label(key)
 
 
 # Sections whose runs_per_day is edited via this page's per-row widget instead of their
@@ -75,6 +67,8 @@ def _serialize(
     channel_enabled: dict,
     runs_per_day: int | None = None,
     source_url: str | None = None,
+    runs_per_day_section: str | None = None,
+    display_label: str | None = None,
 ) -> dict:
     """JSON-safe copy of a data_status()/layer_status() dict: datetimes -> ISO 8601.
 
@@ -91,10 +85,18 @@ def _serialize(
 
     Also adds display_name, a friendly version of `name` for the UI -- `name` itself
     is left untouched (some existing tests assert it verbatim, and it's still the
-    right value for anything keying off the raw section/status_name).
+    right value for anything keying off the raw section/status_name). display_label
+    (a collector class's own override, e.g. GfsAtmosCollector.display_label = "GFS
+    Atmos") wins over the generic _display_name() derivation when given -- see that
+    function's docstring for why the 3 field collectors need one.
 
     runs_per_day is the row's current cadence value if it's edited via this page's
     widget (see RUNS_PER_DAY_SECTIONS), else None so the frontend renders no widget.
+    runs_per_day_section is the config section a cadence change actually saves to --
+    almost always the row's own `name`, except the gfs_atmos row (shared cadence with
+    gfs_waves/rtofs_currents, saved under "data_collector") -- attached here instead of
+    left for the frontend to re-derive from `name`, architecture review candidate "one
+    source of truth for which rows get the cadence widget".
 
     source_url is the collector's upstream URL (see CollectorBase.source_url()), so the
     Data Status page can render the row's label as a link to the live source data --
@@ -107,8 +109,9 @@ def _serialize(
             out[key] = v.isoformat()
     out["channel_key"] = channel_key
     out["channel_on"] = channel_enabled.get(channel_key, True) if channel_key else None
-    out["display_name"] = _display_name(out["name"])
+    out["display_name"] = display_label or _display_name(out["name"])
     out["runs_per_day"] = runs_per_day
+    out["runs_per_day_section"] = runs_per_day_section
     out["source_url"] = source_url
     return out
 
@@ -118,7 +121,7 @@ def _collect_status_rows(
     channel_enabled: dict,
     *,
     construct,
-    runs_per_day_of=lambda cls: None,
+    cadence_of=lambda cls: (None, None),
 ) -> list[dict]:
     """Iterate `classes`, constructing each via construct(cls) and calling its
     data_status(), logging (not raising) a per-class failure so one bad collector can't
@@ -129,18 +132,36 @@ def _collect_status_rows(
 
     Those three loops previously hand-duplicated this try/construct/call/log/serialize
     body, varying only in constructor arity (config-only / config+store / config_path)
-    and the runs_per_day rule -- both kept explicit as construct/runs_per_day_of
-    closures at each call site rather than hidden, since they ARE genuinely different
-    per registry (not the same logic duplicated)."""
+    and the runs_per_day rule -- both kept explicit as construct/cadence_of closures at
+    each call site rather than hidden, since they ARE genuinely different per registry
+    (not the same logic duplicated). cadence_of returns (runs_per_day,
+    runs_per_day_section) as ONE pair from one closure -- not two separate closures
+    that could disagree -- since a row's cadence *value* and which section a change to
+    it actually saves to are the same underlying fact (see _serialize()'s docstring,
+    architecture review candidate "one source of truth for which rows get the cadence
+    widget").
+
+    display_label (a class's own override for the Data Status label, e.g.
+    GfsAtmosCollector.display_label = "GFS Atmos") is resolved here the same way
+    channel_key already is -- a plain getattr with no default, since most collectors
+    don't need one and _serialize() falls back to the generic derivation."""
     rows = []
     for cls in classes:
         try:
             channel_key = getattr(cls, "channel_key", None)
+            display_label = getattr(cls, "display_label", None)
             instance = construct(cls)
             status = instance.data_status()
+            runs_per_day, runs_per_day_section = cadence_of(cls)
             rows.append(
                 _serialize(
-                    status, channel_key, channel_enabled, runs_per_day_of(cls), _source_url(instance)
+                    status,
+                    channel_key,
+                    channel_enabled,
+                    runs_per_day,
+                    _source_url(instance),
+                    runs_per_day_section,
+                    display_label,
                 )
             )
         except Exception as e:
@@ -218,37 +239,36 @@ def get_data_status(
         # Falls back to 1 (CollectorBase.period_s's own default), not None -- a section
         # in RUNS_PER_DAY_SECTIONS always gets the widget, showing whatever value is
         # actually in effect rather than hiding when the key happens to be absent from
-        # config.
-        def _event_feed_runs_per_day(cls):
+        # config. runs_per_day_section is just the row's own section here -- a save
+        # always targets the same section the row is about.
+        def _event_feed_cadence(cls):
             section = getattr(cls, "section", None)
-            return (
-                config.get_setting(section, "runs_per_day", 1)
-                if section in RUNS_PER_DAY_SECTIONS
-                else None
-            )
+            if section not in RUNS_PER_DAY_SECTIONS:
+                return None, None
+            return config.get_setting(section, "runs_per_day", 1), section
 
         # data_collector's runs_per_day governs gfs_atmos + gfs_waves + rtofs_currents
         # together; surfaced only on the gfs_atmos row (see RUNS_PER_DAY_SECTIONS
-        # docstring above). Falls back to 96 (matching CollectorService.refresh_settings's
-        # own default), not None.
-        def _field_collector_runs_per_day(cls):
-            return (
-                config.get_setting("data_collector", "runs_per_day", 96)
-                if getattr(cls, "status_name", None) == "gfs_atmos"
-                else None
-            )
+        # docstring above), and a save targets "data_collector", not "gfs_atmos" --
+        # returning both facts from this one closure (see cadence_of's docstring) is
+        # what lets the frontend stop re-deriving that special case itself. Falls back
+        # to 96 (matching CollectorService.refresh_settings's own default), not None.
+        def _field_collector_cadence(cls):
+            if getattr(cls, "status_name", None) != "gfs_atmos":
+                return None, None
+            return config.get_setting("data_collector", "runs_per_day", 96), "data_collector"
 
         collectors = _collect_status_rows(
             (*collector_classes, *cache_collector_classes),
             channel_enabled,
             construct=lambda cls: cls(config),
-            runs_per_day_of=_event_feed_runs_per_day,
+            cadence_of=_event_feed_cadence,
         )
         collectors += _collect_status_rows(
             field_collector_classes,
             channel_enabled,
             construct=lambda cls: cls(config, store),
-            runs_per_day_of=_field_collector_runs_per_day,
+            cadence_of=_field_collector_cadence,
         )
         collectors += _collect_status_rows(
             embeddable_collector_classes,

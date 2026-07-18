@@ -158,18 +158,38 @@ def test_collect_status_rows_defaults_source_url_to_none_without_the_attribute()
     assert rows[0]["source_url"] is None
 
 
-def test_collect_status_rows_applies_runs_per_day_of_per_class():
+def test_collect_status_rows_applies_cadence_of_per_class():
     rows = _collect_status_rows(
-        (_StubCollector,), {}, construct=lambda cls: cls(), runs_per_day_of=lambda cls: 24,
+        (_StubCollector,), {}, construct=lambda cls: cls(),
+        cadence_of=lambda cls: (24, "stub_collector"),
     )
     assert rows[0]["runs_per_day"] == 24
+    assert rows[0]["runs_per_day_section"] == "stub_collector"
 
 
-def test_collect_status_rows_defaults_runs_per_day_to_none():
+def test_collect_status_rows_defaults_cadence_to_none():
     rows = _collect_status_rows(
         (_StubCollector,), {}, construct=lambda cls: cls(),
     )
     assert rows[0]["runs_per_day"] is None
+    assert rows[0]["runs_per_day_section"] is None
+
+
+def test_collect_status_rows_forwards_display_label():
+    class _StubWithDisplayLabel(_StubCollector):
+        display_label = "Custom Label"
+
+    rows = _collect_status_rows(
+        (_StubWithDisplayLabel,), {}, construct=lambda cls: cls(),
+    )
+    assert rows[0]["display_name"] == "Custom Label"
+
+
+def test_collect_status_rows_falls_back_to_generic_display_name_without_display_label():
+    rows = _collect_status_rows(
+        (_StubCollector,), {}, construct=lambda cls: cls(),
+    )
+    assert rows[0]["display_name"] == _display_name("stub_collector")
 
 
 def test_collect_status_rows_logs_and_skips_a_raising_class_without_aborting():
@@ -469,12 +489,23 @@ def test_display_name_matches_section_labels_for_a_real_section():
     assert _display_name("satellites_collector") == "Satellites Collector"
 
 
-def test_display_name_overrides_the_three_field_collector_status_names():
-    """These aren't real config sections -- section_label()'s .title() fallback would
-    give "Gfs Atmos"/"Rtofs Currents", not proper GFS/RTOFS acronyms."""
-    assert _display_name("gfs_atmos") == "GFS Atmos"
-    assert _display_name("gfs_waves") == "GFS Waves"
-    assert _display_name("rtofs_currents") == "RTOFS Currents"
+def test_display_name_no_longer_special_cases_field_collector_status_names():
+    """_display_name() itself is now the plain section_label() fallback -- the 3 field
+    collectors' proper GFS/RTOFS acronyms come from their own display_label class
+    attribute instead (resolved in _collect_status_rows(), see the tests below), not a
+    second dict here that had to stay in sync with FIELD_COLLECTOR_CLASSES."""
+    assert _display_name("gfs_atmos") == "Gfs Atmos"
+    assert _display_name("rtofs_currents") == "Rtofs Currents"
+
+
+def test_field_collectors_carry_the_proper_acronym_display_label():
+    from atmos_gl.collectors.gfs_atmos import GfsAtmosCollector
+    from atmos_gl.collectors.gfs_waves import GfsWavesCollector
+    from atmos_gl.collectors.rtofs_currents import RtofsCurrentsCollector
+
+    assert GfsAtmosCollector.display_label == "GFS Atmos"
+    assert GfsWavesCollector.display_label == "GFS Waves"
+    assert RtofsCurrentsCollector.display_label == "RTOFS Currents"
 
 
 def test_display_name_falls_back_to_title_case_for_an_unknown_key():
@@ -529,6 +560,26 @@ def test_serialize_attaches_the_given_runs_per_day():
 def test_serialize_defaults_runs_per_day_to_none():
     out = _serialize(_BARE_STATUS, None, {})
     assert out["runs_per_day"] is None
+
+
+def test_serialize_attaches_the_given_runs_per_day_section():
+    out = _serialize(_BARE_STATUS, None, {}, 12, None, "quakes")
+    assert out["runs_per_day_section"] == "quakes"
+
+
+def test_serialize_defaults_runs_per_day_section_to_none():
+    out = _serialize(_BARE_STATUS, None, {})
+    assert out["runs_per_day_section"] is None
+
+
+def test_serialize_display_label_wins_over_the_generic_derivation():
+    out = _serialize(_BARE_STATUS, None, {}, display_label="Custom Label")
+    assert out["display_name"] == "Custom Label"
+
+
+def test_serialize_falls_back_to_display_name_without_a_display_label():
+    out = _serialize(_BARE_STATUS, None, {})
+    assert out["display_name"] == _display_name(_BARE_STATUS["name"])
 
 
 def _write_runs_per_day_config(tmp_path, **extra_sections):
@@ -638,6 +689,10 @@ def test_data_status_attaches_data_collectors_runs_per_day_only_to_gfs_atmos_row
     assert resp.status_code == 200
     collectors = {c["name"]: c["runs_per_day"] for c in resp.json()["data"]["collectors"]}
     assert collectors == {"gfs_atmos": 96, "gfs_waves": None}
+    sections = {c["name"]: c["runs_per_day_section"] for c in resp.json()["data"]["collectors"]}
+    # gfs_atmos's cadence saves under "data_collector", not "gfs_atmos" -- the frontend
+    # reads this straight off the row instead of re-deriving the special case itself.
+    assert sections == {"gfs_atmos": "data_collector", "gfs_waves": None}
 
 
 def test_runs_per_day_sections_excludes_data_collector_itself():
