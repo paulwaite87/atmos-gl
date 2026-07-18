@@ -15,6 +15,7 @@ from atmos_gl.tasks.polar_boundary import (
     FREEZE_LEVEL_C,
     VMIN_TEMPERATURE,
     VMAX_TEMPERATURE,
+    MAX_DEGREES_FROM_POLE,
     _smooth_global_field,
     _suppress_non_polar_cold_pockets,
 )
@@ -152,16 +153,38 @@ def test_suppress_non_polar_cold_pockets_removes_an_isolated_pocket():
 
 def test_suppress_non_polar_cold_pockets_respects_antimeridian_wrap():
     """A cold path that only reaches the pole by crossing the antimeridian must still
-    be recognised as pole-connected, not wrongly treated as two separate pockets."""
+    be recognised as pole-connected, not wrongly treated as two separate pockets.
+    Uses its own lats (all close to the pole) rather than the shared _LATS -- this
+    test is about wrap adjacency, not the MAX_DEGREES_FROM_POLE backstop below."""
+    wrap_lats = np.array([90.0, 80.0, 70.0, -80.0, -90.0])
     temp = np.full((5, 8), 10.0)
     temp[0, 7] = -3.0  # touches the north pole row
     temp[1, 7] = -3.0  # connects straight down (ordinary adjacency)
     temp[1, 0] = -3.0  # same row as the above -- reachable only via antimeridian wrap
     temp[2, 0] = -3.0  # connects straight down from there
 
-    result = _suppress_non_polar_cold_pockets(temp.copy(), _LATS)
+    result = _suppress_non_polar_cold_pockets(temp.copy(), wrap_lats)
 
     assert result[2, 0] < 0  # only correct if the wrap linked it back to the pole
+
+
+# --- MAX_DEGREES_FROM_POLE backstop (the Andes case: a front that genuinely reaches
+# Patagonia can become topologically connected to the permanently-cold high Andes,
+# which connectivity alone can't distinguish from "the front got that far") ---
+
+
+def test_suppress_non_polar_cold_pockets_backstop_clips_reach_beyond_max_degrees_from_pole():
+    lats = np.array([90.0, 30.0, 10.0, -90.0])  # distances from nearest pole: 0, 60, 80, 0
+    assert 60 <= MAX_DEGREES_FROM_POLE < 80  # keep the test meaningful if the constant moves
+    temp = np.full((4, 3), 10.0)
+    temp[0, 1] = -3.0  # touches the north pole row
+    temp[1, 1] = -3.0  # 60 degrees from the pole -- within reach, part of the front
+    temp[2, 1] = -3.0  # 80 degrees from the pole -- same connected chain, too far
+
+    result = _suppress_non_polar_cold_pockets(temp.copy(), lats)
+
+    assert result[1, 1] < 0
+    assert result[2, 1] == VMAX_TEMPERATURE
 
 
 def test_layer_builder_registers_polar_boundary():

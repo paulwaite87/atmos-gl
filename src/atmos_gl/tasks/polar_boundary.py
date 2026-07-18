@@ -32,6 +32,18 @@ FREEZE_LEVEL_C = 0.0
 # not a stylistic choice the way palette/opacity are.
 SMOOTHING_SIGMA = 1.5
 
+# Generous backstop for _suppress_non_polar_cold_pockets: cold more than this many
+# degrees of latitude from a pole is suppressed even if it's topologically connected
+# to the polar cold mass. Needed because high-altitude terrain (the Andes) is
+# permanently below freezing regardless of season, and once the real polar airmass
+# genuinely sweeps as far as Patagonia, connectivity alone can't tell "the front just
+# reached the base of the mountains" from "the whole permanently-cold spine is now
+# lumped in" -- confirmed against live data, where a Patagonia-reaching front pulled in
+# an unbroken cold corridor up the Andes to ~18 degS. 65 degrees leaves NZ (north tip
+# ~34.4 degS, i.e. ~55.6 degrees from the pole) and Tasmania (~39.6 degS, ~50.4 degrees)
+# a comfortable margin, so their normal winter reach is untouched.
+MAX_DEGREES_FROM_POLE = 65.0
+
 
 def _smooth_global_field(values) -> np.ndarray:
     """Gaussian-blur a global (lat, lon) field, wrapping at the antimeridian (mode=
@@ -75,17 +87,25 @@ def _merge_wrapped_labels(labels: np.ndarray, num_labels: int) -> np.ndarray:
 
 
 def _suppress_non_polar_cold_pockets(temperature: np.ndarray, lats) -> np.ndarray:
-    """Push every sub-zero region NOT connected to a pole safely above freezing, so
-    only the Polar Boundary itself (the edge of the large-scale polar cold airmass)
-    draws a 0 degC contour -- not an isolated local cold pocket (e.g. NZ's Southern
-    Alps in winter, or any other mountain range) that dips below freezing without
-    being part of the actual polar front.
+    """Push every sub-zero region NOT part of the Polar Boundary safely above
+    freezing, so only the large-scale polar cold airmass's edge draws a 0 degC
+    contour -- not an isolated local cold pocket (e.g. NZ's Southern Alps in winter,
+    or any other mountain range) that dips below freezing without being part of the
+    actual polar front.
 
-    "Connected" means reachable from the pole row through a continuous path of
-    sub-zero cells (4-connectivity, wrapping at the antimeridian) -- deliberately NOT
-    a fixed-latitude cutoff. The real Polar Boundary genuinely does sweep up and
+    Primary test: reachable from the pole row through a continuous path of sub-zero
+    cells (4-connectivity, wrapping at the antimeridian) -- deliberately NOT a
+    fixed-latitude cutoff. The real Polar Boundary genuinely does sweep up and
     connect to NZ/Tasmania in winter at times, and correctly showing that is the whole
     point of this layer, not something to suppress.
+
+    Backstop: connectivity alone isn't sufficient, because permanently cold
+    high-altitude terrain (the Andes) can become topologically connected to a
+    genuine polar outbreak that reaches Patagonia -- there's no elevation/terrain
+    dataset in this pipeline to exclude "cold because of altitude" directly, so
+    anything more than MAX_DEGREES_FROM_POLE degrees of latitude from a pole is
+    suppressed regardless of connectivity (see that constant's docstring for the
+    margin this leaves NZ/Tasmania).
     """
     cold = temperature < FREEZE_LEVEL_C
     if not cold.any():
@@ -104,6 +124,9 @@ def _suppress_non_polar_cold_pockets(temperature: np.ndarray, lats) -> np.ndarra
         row_labels = set(np.unique(labels[row][cold[row]])) - {0}
         for lbl in row_labels:
             keep |= labels == lbl
+
+    within_reach = (90.0 - np.abs(lats))[:, None] <= MAX_DEGREES_FROM_POLE
+    keep &= within_reach
 
     cleaned = temperature.copy()
     isolated = cold & ~keep
