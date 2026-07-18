@@ -113,6 +113,41 @@ def _serialize(
     return out
 
 
+def _collect_status_rows(
+    classes,
+    channel_enabled: dict,
+    *,
+    construct,
+    runs_per_day_of=lambda cls: None,
+) -> list[dict]:
+    """Iterate `classes`, constructing each via construct(cls) and calling its
+    data_status(), logging (not raising) a per-class failure so one bad collector can't
+    blank the whole Data Status page -- the shared shape behind all three of
+    get_data_status()'s collector loops (COLLECTORS+CACHE_COLLECTORS,
+    FIELD_COLLECTOR_CLASSES, EMBEDDABLE_COLLECTORS), architecture review candidate
+    "collapse get_data_status()'s near-identical loops".
+
+    Those three loops previously hand-duplicated this try/construct/call/log/serialize
+    body, varying only in constructor arity (config-only / config+store / config_path)
+    and the runs_per_day rule -- both kept explicit as construct/runs_per_day_of
+    closures at each call site rather than hidden, since they ARE genuinely different
+    per registry (not the same logic duplicated)."""
+    rows = []
+    for cls in classes:
+        try:
+            channel_key = getattr(cls, "channel_key", None)
+            instance = construct(cls)
+            status = instance.data_status()
+            rows.append(
+                _serialize(
+                    status, channel_key, channel_enabled, runs_per_day_of(cls), _source_url(instance)
+                )
+            )
+        except Exception as e:
+            logger.error(f"data_status failed for {cls.__name__}: {e}")
+    return rows
+
+
 def _build_layer_channel_keys(field_collector_classes, cache_collector_classes) -> dict:
     """Maps a layer's TASK_CLASSES section name (e.g. "isobars") to the channel_key
     that feeds it (e.g. "gfs_atmos"), so the Data Status UI can gray out every layer a
@@ -180,62 +215,46 @@ def get_data_status(
         store = fieldstore.get_store(workdir, field_catalog_adapter=FieldCatalogAdapter())
         channel_enabled = config.get_setting("data_collector", "channel_enabled", {}) or {}
 
-        collectors = []
-        for CollectorCls in (*collector_classes, *cache_collector_classes):
-            try:
-                channel_key = getattr(CollectorCls, "channel_key", None)
-                instance = CollectorCls(config)
-                status = instance.data_status()
-                section = getattr(CollectorCls, "section", None)
-                # Falls back to 1 (CollectorBase.period_s's own default), not None --
-                # a section in RUNS_PER_DAY_SECTIONS always gets the widget, showing
-                # whatever value is actually in effect rather than hiding when the key
-                # happens to be absent from config.
-                runs_per_day = (
-                    config.get_setting(section, "runs_per_day", 1)
-                    if section in RUNS_PER_DAY_SECTIONS
-                    else None
-                )
-                collectors.append(
-                    _serialize(
-                        status, channel_key, channel_enabled, runs_per_day, _source_url(instance)
-                    )
-                )
-            except Exception as e:
-                logger.error(f"data_status failed for {CollectorCls.__name__}: {e}")
+        # Falls back to 1 (CollectorBase.period_s's own default), not None -- a section
+        # in RUNS_PER_DAY_SECTIONS always gets the widget, showing whatever value is
+        # actually in effect rather than hiding when the key happens to be absent from
+        # config.
+        def _event_feed_runs_per_day(cls):
+            section = getattr(cls, "section", None)
+            return (
+                config.get_setting(section, "runs_per_day", 1)
+                if section in RUNS_PER_DAY_SECTIONS
+                else None
+            )
 
-        for CollectorCls in field_collector_classes:
-            try:
-                channel_key = getattr(CollectorCls, "channel_key", None)
-                instance = CollectorCls(config, store)
-                status = instance.data_status()
-                # data_collector's runs_per_day governs gfs_atmos + gfs_waves +
-                # rtofs_currents together; surfaced only on the gfs_atmos row (see
-                # RUNS_PER_DAY_SECTIONS docstring above). Falls back to 96 (matching
-                # CollectorService.refresh_settings's own default), not None.
-                runs_per_day = (
-                    config.get_setting("data_collector", "runs_per_day", 96)
-                    if getattr(CollectorCls, "status_name", None) == "gfs_atmos"
-                    else None
-                )
-                collectors.append(
-                    _serialize(
-                        status, channel_key, channel_enabled, runs_per_day, _source_url(instance)
-                    )
-                )
-            except Exception as e:
-                logger.error(f"data_status failed for {CollectorCls.__name__}: {e}")
+        # data_collector's runs_per_day governs gfs_atmos + gfs_waves + rtofs_currents
+        # together; surfaced only on the gfs_atmos row (see RUNS_PER_DAY_SECTIONS
+        # docstring above). Falls back to 96 (matching CollectorService.refresh_settings's
+        # own default), not None.
+        def _field_collector_runs_per_day(cls):
+            return (
+                config.get_setting("data_collector", "runs_per_day", 96)
+                if getattr(cls, "status_name", None) == "gfs_atmos"
+                else None
+            )
 
-        for CollectorCls in embeddable_collector_classes:
-            try:
-                channel_key = getattr(CollectorCls, "channel_key", None)
-                instance = CollectorCls(config.config_path)
-                status = instance.data_status()
-                collectors.append(
-                    _serialize(status, channel_key, channel_enabled, source_url=_source_url(instance))
-                )
-            except Exception as e:
-                logger.error(f"data_status failed for {CollectorCls.__name__}: {e}")
+        collectors = _collect_status_rows(
+            (*collector_classes, *cache_collector_classes),
+            channel_enabled,
+            construct=lambda cls: cls(config),
+            runs_per_day_of=_event_feed_runs_per_day,
+        )
+        collectors += _collect_status_rows(
+            field_collector_classes,
+            channel_enabled,
+            construct=lambda cls: cls(config, store),
+            runs_per_day_of=_field_collector_runs_per_day,
+        )
+        collectors += _collect_status_rows(
+            embeddable_collector_classes,
+            channel_enabled,
+            construct=lambda cls: cls(config.config_path),
+        )
 
         layer_channel_keys = _build_layer_channel_keys(
             field_collector_classes, cache_collector_classes

@@ -23,6 +23,7 @@ from atmos_gl.routes.status import (
     get_embeddable_collector_classes,
     get_task_classes,
     _build_layer_channel_keys,
+    _collect_status_rows,
     _serialize,
     _display_name,
     RUNS_PER_DAY_SECTIONS,
@@ -119,6 +120,90 @@ class _StubTask:
             "enabled": True,
             "detail": None,
         }
+
+
+# --- _collect_status_rows() (architecture review Candidate 3: the shared shape behind
+# get_data_status()'s three collector loops) -- unit-tested directly, without going
+# through the FastAPI route/TestClient, since it's a module-level function now. ---
+
+
+def test_collect_status_rows_serializes_each_class():
+    rows = _collect_status_rows(
+        (_StubCollector,), {}, construct=lambda cls: cls(),
+    )
+    assert len(rows) == 1
+    assert rows[0]["name"] == "stub_collector"
+    assert rows[0]["percent"] == 100.0
+
+
+def test_collect_status_rows_forwards_channel_key_and_state():
+    rows = _collect_status_rows(
+        (_StubGatedCollector,), {"stub_channel": False}, construct=lambda cls: cls(),
+    )
+    assert rows[0]["channel_key"] == "stub_channel"
+    assert rows[0]["channel_on"] is False
+
+
+def test_collect_status_rows_forwards_source_url():
+    rows = _collect_status_rows(
+        (_StubCollectorWithSourceUrl,), {}, construct=lambda cls: cls(),
+    )
+    assert rows[0]["source_url"] == "https://example.com/source.csv"
+
+
+def test_collect_status_rows_defaults_source_url_to_none_without_the_attribute():
+    rows = _collect_status_rows(
+        (_StubCollector,), {}, construct=lambda cls: cls(),
+    )
+    assert rows[0]["source_url"] is None
+
+
+def test_collect_status_rows_applies_runs_per_day_of_per_class():
+    rows = _collect_status_rows(
+        (_StubCollector,), {}, construct=lambda cls: cls(), runs_per_day_of=lambda cls: 24,
+    )
+    assert rows[0]["runs_per_day"] == 24
+
+
+def test_collect_status_rows_defaults_runs_per_day_to_none():
+    rows = _collect_status_rows(
+        (_StubCollector,), {}, construct=lambda cls: cls(),
+    )
+    assert rows[0]["runs_per_day"] is None
+
+
+def test_collect_status_rows_logs_and_skips_a_raising_class_without_aborting():
+    rows = _collect_status_rows(
+        (_RaisingCollector, _StubCollector), {}, construct=lambda cls: cls(),
+    )
+    assert len(rows) == 1
+    assert rows[0]["name"] == "stub_collector"
+
+
+def test_collect_status_rows_uses_the_construct_closure():
+    """Proves constructor arity is the call site's business, not this function's --
+    the whole point of taking `construct` as a closure instead of hardcoding
+    cls(config)."""
+    seen = []
+
+    class _ArityStub:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def data_status(self):
+            return {
+                "name": "arity_stub", "kind": "collector", "percent": 0.0,
+                "last_updated": None, "next_update": None, "enabled": True, "detail": None,
+            }
+
+    def construct(cls):
+        seen.append(cls)
+        return cls("fake_config", "fake_store")  # 2-arg constructor, e.g. field collectors
+
+    rows = _collect_status_rows((_ArityStub,), {}, construct=construct)
+
+    assert seen == [_ArityStub]
+    assert rows[0]["name"] == "arity_stub"
 
 
 def _override_all_empty():
