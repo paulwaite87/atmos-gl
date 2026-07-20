@@ -54,6 +54,52 @@ def test_init_passes_the_exact_section_key_for_outfile_lookup():
     assert mock_init.call_args.args[1] == "polar_boundary"
 
 
+def test_init_sets_per_hour_outputs_for_every_level():
+    """should_plot_for_hour treats the hour as stale if ANY per_hour_outputs suffix is
+    missing -- this must include a texture-only suffix for every level in LEVELS, or a
+    level's cache going missing wouldn't trigger a re-render (see __init__'s comment
+    for why this list is fixed/level-independent rather than tracking "current")."""
+    from atmos_gl.tasks.polar_boundary import LEVELS, _level_tag
+
+    with patch("atmos_gl.tasks.polar_boundary.Updater.__init__", return_value=None):
+        u = PolarBoundaryUpdater(config=MagicMock(), map_data=MagicMock())
+
+    assert ".png" in u.per_hour_outputs
+    assert "_data.png" in u.per_hour_outputs
+    for lvl in LEVELS:
+        assert f"_lvl{_level_tag(lvl)}_data.png" in u.per_hour_outputs
+    assert len(u.per_hour_outputs) == 2 + len(LEVELS)
+
+
+def test_publish_current_hour_publishes_every_level(tmp_path):
+    """publish_current_hour must copy every per-level texture (not just the plain
+    static PNG/texture pair MultiHourRenderMixin's version knows about) to its stable,
+    run-agnostic name."""
+    from atmos_gl.tasks.polar_boundary import LEVELS, _level_tag
+
+    u = PolarBoundaryUpdater.__new__(PolarBoundaryUpdater)
+    u.section = "polar_boundary"
+    u.output_path = str(tmp_path / "polar_boundary.png")
+
+    (tmp_path / "polar_boundary_f005.png").write_bytes(b"static")
+    (tmp_path / "polar_boundary_f005_data.png").write_bytes(b"plain-tex")
+    for lvl in LEVELS:
+        tag = _level_tag(lvl)
+        (tmp_path / f"polar_boundary_f005_lvl{tag}_data.png").write_bytes(
+            f"tex-{tag}".encode()
+        )
+
+    u.publish_current_hour(5)
+
+    assert (tmp_path / "polar_boundary.png").read_bytes() == b"static"
+    assert (tmp_path / "polar_boundary_data.png").read_bytes() == b"plain-tex"
+    for lvl in LEVELS:
+        tag = _level_tag(lvl)
+        assert (tmp_path / f"polar_boundary_lvl{tag}_data.png").read_bytes() == (
+            f"tex-{tag}".encode()
+        )
+
+
 def test_plot_contours_at_the_freezing_level_only():
     u = make_bare_updater(settings={"line_color": "cyan", "linewidth": 2.0, "opacity": 90})
     field0 = {"lat": [0], "lon": [0], "values": [[1.0]]}
@@ -76,6 +122,86 @@ def test_plot_contours_at_the_freezing_level_only():
     # the SAME field the Air Temperature layer renders.
     assert mock_encode.call_args.args[2] == VMIN_TEMPERATURE
     assert mock_encode.call_args.args[3] == VMAX_TEMPERATURE
+
+
+def _fake_isolate(t, lats, lons, land, freeze_level_c):
+    """Test double for _isolate_antarctic_boundary: tags its output array with the
+    level it was asked for, so a test can identify -- from the array alone -- which
+    level's result ended up where (e.g. passed to contour(), or encoded under which
+    filename), without depending on the real (expensive) sweep/land-fill/spline math."""
+    return np.full((1, 1), freeze_level_c)
+
+
+def test_plot_pre_renders_every_level_but_only_contours_the_configured_one():
+    """plot() calls _isolate_antarctic_boundary once per LEVELS entry (so every
+    level's GPU texture is pre-baked), but matplotlib's contour()+savefig -- the
+    expensive step -- runs exactly once, for whichever level the setting names."""
+    from atmos_gl.tasks.polar_boundary import LEVELS
+
+    u = make_bare_updater(settings={"freeze_level_c": 3})
+    field0 = {"lat": [0], "lon": [0], "values": [[1.0]]}
+    state = ForecastState.at_hour("2026-06-13", "18", 3)
+
+    with patch("atmos_gl.tasks.polar_boundary.Plot") as MockPlot, patch(
+        "atmos_gl.tasks.polar_boundary.encode_frames"
+    ), patch(
+        "atmos_gl.tasks.polar_boundary._isolate_antarctic_boundary",
+        side_effect=_fake_isolate,
+    ) as mock_isolate:
+        u.plot(field0, state)
+
+    assert mock_isolate.call_count == len(LEVELS)
+    levels_requested = sorted(c.kwargs["freeze_level_c"] for c in mock_isolate.call_args_list)
+    assert levels_requested == sorted(float(lvl) for lvl in LEVELS)
+
+    contour = MockPlot.return_value.ax.contour
+    contour.assert_called_once()
+    assert contour.call_args.args[2][0, 0] == 3.0  # the configured level's array
+
+
+def test_plot_clamps_an_out_of_range_freeze_level_c():
+    """Defensive clamp against a stale/hand-edited config value outside the -5..+5
+    slider range -- FIELD_SPECS' SliderSpec normally prevents this via the config UI,
+    but nothing stops a directly-edited config file."""
+    u = make_bare_updater(settings={"freeze_level_c": 999})
+    field0 = {"lat": [0], "lon": [0], "values": [[1.0]]}
+    state = ForecastState.at_hour("2026-06-13", "18", 3)
+
+    with patch("atmos_gl.tasks.polar_boundary.Plot") as MockPlot, patch(
+        "atmos_gl.tasks.polar_boundary.encode_frames"
+    ), patch(
+        "atmos_gl.tasks.polar_boundary._isolate_antarctic_boundary",
+        side_effect=_fake_isolate,
+    ):
+        u.plot(field0, state)
+
+    contour = MockPlot.return_value.ax.contour
+    assert contour.call_args.args[2][0, 0] == 5.0  # clamped to the slider's max
+
+
+def test_plot_encodes_a_texture_per_level_plus_the_plain_default():
+    """Every level in LEVELS gets its own tagged texture file, and the configured
+    level ALSO gets the plain (untagged) name the frontend fetches today."""
+    from atmos_gl.tasks.polar_boundary import LEVELS, _level_tag
+
+    u = make_bare_updater(settings={"freeze_level_c": -2})
+    field0 = {"lat": [0], "lon": [0], "values": [[1.0]]}
+    state = ForecastState.at_hour("2026-06-13", "18", 3)
+
+    with patch("atmos_gl.tasks.polar_boundary.Plot"), patch(
+        "atmos_gl.tasks.polar_boundary._isolate_antarctic_boundary",
+        side_effect=_fake_isolate,
+    ), patch("atmos_gl.tasks.polar_boundary.encode_frames") as mock_encode:
+        u.plot(field0, state)
+
+    written_names = {c.args[1] for c in mock_encode.call_args_list}
+    expected_tagged = {
+        f"/tmp/out/polar_boundary_f003_lvl{_level_tag(lvl)}_data.png" for lvl in LEVELS
+    }
+    assert expected_tagged <= written_names
+    assert "/tmp/out/polar_boundary_f003_data.png" in written_names
+    # One tagged file per level, plus exactly one plain file (the configured level).
+    assert len(written_names) == len(LEVELS) + 1
 
 
 def test_plot_defaults_when_settings_absent():
@@ -235,6 +361,43 @@ def test_isolate_antarctic_boundary_keeps_cold_up_to_the_first_crossing():
     # warm (0) real readings -- not snapped to either grid row.
     boundary = _boundary_lat(result, _LATS, 0)
     assert -45.0 < boundary < 0.0
+
+
+def test_isolate_antarctic_boundary_freeze_level_c_shifts_which_isotherm_is_found():
+    """freeze_level_c (the polar_boundary.freeze_level_c setting, -10..+10 via a
+    slider) changes WHICH isotherm the sweep searches for -- a warmer target isotherm
+    can only be found further from the pole (a monotonic south-to-north warming
+    profile reaches a higher threshold later), so raising it should push the found
+    boundary further north; lowering it should pull the boundary further south."""
+    lats = np.array([90.0, 70.0, 50.0, 30.0, 10.0, -10.0, -30.0, -50.0, -70.0, -90.0])
+    lons = _LONS
+    no_land = np.zeros((10, 2), dtype=bool)
+
+    # Monotonic south-to-north warming, entirely within the Southern Hemisphere, so
+    # the NH-suppression override (see _isolate_antarctic_boundary) never interferes
+    # with reading the found boundary back out.
+    temp = np.full((10, 2), 20.0)
+    temp[9, 0] = -10.0  # lat -90
+    temp[8, 0] = -6.0   # lat -70
+    temp[7, 0] = -2.0   # lat -50
+    temp[6, 0] = 2.0    # lat -30
+    temp[5, 0] = 6.0    # lat -10
+
+    cold = _isolate_antarctic_boundary(
+        temp.copy(), lats, lons, no_land, smoothing_deg=0.0, freeze_level_c=-5.0
+    )
+    default = _isolate_antarctic_boundary(
+        temp.copy(), lats, lons, no_land, smoothing_deg=0.0, freeze_level_c=0.0
+    )
+    warm = _isolate_antarctic_boundary(
+        temp.copy(), lats, lons, no_land, smoothing_deg=0.0, freeze_level_c=5.0
+    )
+
+    cold_b = _boundary_lat(cold, lats, 0)
+    default_b = _boundary_lat(default, lats, 0)
+    warm_b = _boundary_lat(warm, lats, 0)
+
+    assert cold_b < default_b < warm_b
 
 
 def test_isolate_antarctic_boundary_ignores_a_second_cold_dip_further_north():

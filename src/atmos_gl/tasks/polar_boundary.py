@@ -21,9 +21,35 @@ logger = logging.getLogger(__name__)
 VMIN_TEMPERATURE = -40.0
 VMAX_TEMPERATURE = 50.0
 
-# The Polar Boundary is fixed at the freezing isotherm -- not a configurable step like
-# isobars' isobar_step, since 0 degC is the entire point of the layer.
+# Default isotherm _isolate_antarctic_boundary's sweep searches for -- true freezing.
+# User-configurable via the polar_boundary.freeze_level_c setting (a -5..+5 slider;
+# see FIELD_SPECS), passed through plot() as _isolate_antarctic_boundary's
+# freeze_level_c argument, which defaults to this constant. Distinct from the
+# rendered field's own zero-crossing (still always exactly 0, see that function's
+# docstring) -- this only changes WHICH isotherm the sweep locates, not how the
+# found boundary is rendered once located.
 FREEZE_LEVEL_C = 0.0
+
+# Every integer isotherm level plot() pre-renders per hour, matching the
+# polar_boundary.freeze_level_c slider's -5..+5 range (FIELD_SPECS) -- see
+# PolarBoundaryUpdater.plot()'s docstring for why pre-rendering every level (rather
+# than only the currently-configured one) is worth the extra render cost: it lets the
+# frontend switch levels by fetching a different pre-baked texture, no backend
+# round-trip, once the frontend is wired to do so.
+LEVELS = list(range(-5, 6))
+
+
+def _level_tag(level) -> str:
+    """Filename-safe tag for an integer isotherm level -- 'm3'/'0'/'p2' -- used for
+    every per-level cache/publish filename below. Negative uses 'm' rather than a
+    literal '-' (avoids surprises in tools/URLs that treat '-' specially); '+' is
+    avoided too (some URL encoders rewrite it as a space)."""
+    n = int(round(level))
+    if n < 0:
+        return f"m{-n}"
+    if n > 0:
+        return f"p{n}"
+    return "0"
 
 # Gaussian blur sigma (grid cells) applied before contouring. Beyond softening
 # single-cell noise spikes and land/sea discontinuities (so the live GPU shader's
@@ -114,9 +140,12 @@ def _isolate_antarctic_boundary(
     lons,
     land_mask: np.ndarray,
     smoothing_deg: float = BOUNDARY_SMOOTHING_DEG,
+    freeze_level_c: float = FREEZE_LEVEL_C,
 ) -> np.ndarray:
     """Reduce the field to a single Antarctic Polar Boundary: for each longitude
-    column, sweep from the South Pole northward to find the FIRST 0 degC crossing,
+    column, sweep from the South Pole northward to find the FIRST freeze_level_c
+    crossing (0 degC true freezing by default, user-configurable -- see
+    FREEZE_LEVEL_C's docstring),
     median-filter those crossing latitudes across longitude to erase localised
     artifacts (see MEDIAN_FILTER_DEG), fit a light smoothing periodic cubic spline
     over the result purely for cosmetic continuity (see BOUNDARY_SMOOTHING_DEG), then
@@ -124,7 +153,7 @@ def _isolate_antarctic_boundary(
     curve -- negative south of it, positive north, exactly 0 on it. Every cell's
     value now depends only on its own latitude and its column's curve latitude, not
     on the real temperature there, so only one smooth line, per column, ever crosses
-    freezing, and the Northern Hemisphere (strongly positive by construction,
+    freeze_level_c, and the Northern Hemisphere (strongly positive by construction,
     backstopped explicitly below) never does.
 
     Rebuilding via signed distance -- not a discrete "north of this grid row ->
@@ -164,6 +193,11 @@ def _isolate_antarctic_boundary(
     docstring) and doubles as the on/off switch: 0 skips fitting entirely and uses the
     raw per-column crossing latitude (tests exercise the crossing/land/NZ logic in
     isolation this way, without the spline as a confound).
+
+    freeze_level_c only changes WHICH isotherm the sweep searches for -- the rendered
+    field (and therefore the contour level plot() passes to matplotlib, and the
+    frontend GPU shader's u_level) stays exactly 0 regardless, since that's the
+    signed-distance field's own zero-crossing, not a temperature.
     """
     lats = np.asarray(lats)
     lons = np.asarray(lons)
@@ -188,7 +222,7 @@ def _isolate_antarctic_boundary(
 
     ordered = sea_level[order]
 
-    is_warm = ordered >= FREEZE_LEVEL_C
+    is_warm = ordered >= freeze_level_c
     crosses = is_warm.any(axis=0)
     first_warm_row = np.where(crosses, is_warm.argmax(axis=0), n_rows - 1)
 
@@ -205,7 +239,7 @@ def _isolate_antarctic_boundary(
     lat1 = ordered_lats[first_warm_row]
     span = v1 - v0
     safe_span = np.where(np.abs(span) > 1e-9, span, 1.0)
-    frac = np.where(np.abs(span) > 1e-9, (FREEZE_LEVEL_C - v0) / safe_span, 0.0)
+    frac = np.where(np.abs(span) > 1e-9, (freeze_level_c - v0) / safe_span, 0.0)
     frac = np.clip(frac, 0.0, 1.0)
     boundary_lat = np.where(crosses, lat0 + frac * (lat1 - lat0), ordered_lats[-1])
 
@@ -242,14 +276,25 @@ def _isolate_antarctic_boundary(
 
 
 class PolarBoundaryUpdater(Updater, MultiHourRenderMixin):
-    """Renders the 0 degC isotherm ("Polar Boundary") as a single contour line -- the
+    """Renders the "Polar Boundary" isotherm as a single contour line -- the
     cold-front boundary line NZ weather broadcasts show creeping up from the Antarctic
     in winter. Consumes the SAME "temperature" fieldstore product scalar_field.py's
     filled heatmap already renders (status_product/run() pass "temperature", not a new
-    product) -- just a different render of it: one fixed contour line instead of a
-    filled colour ramp. Modeled on IsobarUpdater's contour-line pattern, simplified to a
-    single level (no stepped range, no per-line labels -- a repeated "0" along one line
-    adds nothing isobars' many distinct pressure values do).
+    product) -- just a different render of it: one contour line instead of a filled
+    colour ramp. Modeled on IsobarUpdater's contour-line pattern, simplified to a
+    single level (no per-line labels -- a repeated number along one line adds nothing
+    isobars' many distinct pressure values do) -- but that single level is now a user
+    setting (freeze_level_c, -5..+5 degC via a slider) rather than isobars'
+    isobar_step-style fixed increment, defaulting to true freezing (0 degC).
+
+    Every integer level in LEVELS is pre-rendered as a GPU data texture each hour, not
+    just the currently-configured one -- moving the slider would otherwise mean
+    waiting on a full backend re-render (this layer's render cost is dominated by
+    matplotlib's contour()+savefig, seconds per variant; see plot()'s docstring),
+    which the config UI's other sliders already tolerate but this one specifically
+    was called out as needing to feel responsive. Only the CURRENTLY-configured
+    level gets the expensive matplotlib static-PNG fallback; the other ten are
+    texture-only (cheap: an array op + encode_frames, no rasterisation).
 
     The raw temperature field is cleaned before contouring/encoding (see
     _smooth_global_field/_isolate_antarctic_boundary above) so only the single
@@ -258,9 +303,20 @@ class PolarBoundaryUpdater(Updater, MultiHourRenderMixin):
 
     def __init__(self, config: AtmosGLConfig, map_data: MapData):
         super().__init__(config, "polar_boundary", map_data)
-        # Static PNG (matplotlib fallback) + GPU data texture (what the live shader,
-        # ui/modules/polar_boundary.js, actually draws the line from).
-        self.per_hour_outputs = [".png", "_data.png"]
+        # Static PNG (matplotlib fallback, current level only) + GPU data texture
+        # (current level) + one GPU-texture-only file per OTHER level in LEVELS --
+        # see plot()/publish_current_hour(). should_plot_for_hour treats the hour as
+        # stale if ANY of these is missing, so this list is deliberately the full,
+        # level-independent set (all of LEVELS, unconditionally) rather than trying to
+        # track "which level is current" here -- that would go stale the moment the
+        # setting changes without a matching change to this fixed list, silently
+        # leaving old levels un-rendered. plot() reuses the current level's already-
+        # computed array for its (redundant, but cheap) tagged copy rather than
+        # recomputing it, so the fixed-list approach costs one extra encode_frames
+        # call, not a second contour()+savefig.
+        self.per_hour_outputs = [".png", "_data.png"] + [
+            f"_lvl{_level_tag(lvl)}_data.png" for lvl in LEVELS
+        ]
         self.status_product = "temperature"
         # The land mask depends only on the (fixed) temperature grid geometry, so
         # compute it once and reuse for every hour. Mirrors currents.py/waves.py's
@@ -289,8 +345,15 @@ class PolarBoundaryUpdater(Updater, MultiHourRenderMixin):
         return land
 
     def plot(self, field0, state: ForecastState):
-        """Render the static fallback PNG (matplotlib contour, non-WebGL browsers only)
-        AND the per-hour data texture. Mirrors IsobarUpdater.plot() minus the label
+        """Render EVERY level in LEVELS as a GPU data texture (cheap: one
+        _isolate_antarctic_boundary call + one encode_frames call each), so the
+        frontend can eventually switch which pre-baked texture it fetches as the
+        freeze_level_c slider moves, with no backend round-trip. Only the
+        CURRENTLY-configured level also gets the expensive matplotlib static-PNG
+        fallback (non-WebGL browsers only) -- measured at ~5s per variant
+        (contour()+savefig on an 8192x4096 canvas) vs ~0.3s for a texture-only
+        encode, doing that for all 11 levels every hour would cost roughly a minute
+        per hour instead of ~10s. Mirrors IsobarUpdater.plot() minus the label
         harvesting -- see the class docstring for why labels aren't needed here."""
         logger.debug("Plotting Polar Boundary to per-hour output path")
 
@@ -300,42 +363,79 @@ class PolarBoundaryUpdater(Updater, MultiHourRenderMixin):
         land = self._land_mask_for(lats, lons, t.shape)
         if land is None:
             land = np.zeros(t.shape, dtype=bool)
-        t = _isolate_antarctic_boundary(t, lats, lons, land)
-
-        plot = Plot(self.map_data.region)
-        plot.get_figure()
+        # -5..+5 slider (FIELD_SPECS); clamp defensively against a stale/hand-edited
+        # config value from outside that range slipping through.
+        current_level = max(-5, min(5, int(round(
+            float(self.settings.get("freeze_level_c", FREEZE_LEVEL_C))
+        ))))
 
         color = self.settings.get("line_color", "cyan")
         thickness = self.settings.get("linewidth", 2.0)
         alpha_val = float(self.settings.get("opacity", 90) / 100)
 
-        plot.ax.contour(
-            lons,
-            lats,
-            t,
-            levels=[FREEZE_LEVEL_C],
-            colors=color,
-            linewidths=thickness,
-            alpha=alpha_val,
-            transform=ccrs.PlateCarree(),
-            zorder=3,
-        )
-
-        # Per-hour output path
         output_path_for_hour = self.get_output_path_for_hour(state.fhour)
-        plot.save_figure(output_path_for_hour)
-
-        plt_close = getattr(plot, "close", None)
-        if callable(plt_close):
-            plt_close()
-
-        # --- WebGL single-hour data texture (one frame per forecast hour; the
-        # frontend scrubber assembles the animation from consecutive hours). Encodes
-        # the SAME cleaned field the static contour above just drew, so the live GPU
-        # line and the fallback PNG always agree. ---
         base, _ = os.path.splitext(output_path_for_hour)
-        encode_frames([t], f"{base}_data.png", VMIN_TEMPERATURE, VMAX_TEMPERATURE)
+
+        for lvl in LEVELS:
+            cleaned = _isolate_antarctic_boundary(
+                t, lats, lons, land, freeze_level_c=float(lvl)
+            )
+            encode_frames(
+                [cleaned], f"{base}_lvl{_level_tag(lvl)}_data.png",
+                VMIN_TEMPERATURE, VMAX_TEMPERATURE,
+            )
+            if lvl != current_level:
+                continue
+
+            # The currently-configured level ALSO gets the plain (untagged) name --
+            # what the frontend fetches today, and what non-WebGL browsers' static
+            # fallback shows -- plus the expensive matplotlib render.
+            plot = Plot(self.map_data.region)
+            plot.get_figure()
+            # Always the signed-distance field's own zero-crossing, NOT freeze_level_c
+            # -- see _isolate_antarctic_boundary's docstring.
+            plot.ax.contour(
+                lons, lats, cleaned,
+                levels=[FREEZE_LEVEL_C],
+                colors=color,
+                linewidths=thickness,
+                alpha=alpha_val,
+                transform=ccrs.PlateCarree(),
+                zorder=3,
+            )
+            plot.save_figure(output_path_for_hour)
+            plt_close = getattr(plot, "close", None)
+            if callable(plt_close):
+                plt_close()
+            encode_frames(
+                [cleaned], f"{base}_data.png", VMIN_TEMPERATURE, VMAX_TEMPERATURE
+            )
+
         logger.info(f"Finished Polar Boundary texture f{state.fhour:03d}.")
+
+    def publish_current_hour(self, fhour: int | str):
+        """Publish every per-level texture (plus the plain static PNG/texture pair)
+        to their stable, run-agnostic names -- MultiHourRenderMixin's version only
+        knows about the single {base}_f{fhour}.png/{_data.png} pair, not the extra
+        per-level files plot() writes. Same atomic copy-then-replace technique."""
+        super().publish_current_hour(fhour)
+
+        fhour = int(fhour)
+        base, _ = os.path.splitext(self.output_path)
+        import shutil
+
+        for lvl in LEVELS:
+            tag = _level_tag(lvl)
+            src = f"{base}_f{fhour:03d}_lvl{tag}_data.png"
+            dst = f"{base}_lvl{tag}_data.png"
+            if not os.path.exists(src):
+                continue
+            try:
+                tmp = f"{dst}.tmp"
+                shutil.copy2(src, tmp)
+                os.replace(tmp, dst)
+            except Exception as e:
+                logger.warning(f"{self.section}: failed to publish {src} -> {dst}: {e}")
 
     def run(self, max_hours=None):
         # Warms the shared per-cycle GFS baseline cache (map_data.shared_state) for
