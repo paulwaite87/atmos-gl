@@ -288,8 +288,11 @@ FIELD_SPECS = {
     ("isobars", "label_fontsize"): _FONTSIZE,
     ("isobars", "label_outline"): ToggleSpec(),
     ("isobars", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
-    # Polar Boundary: the 0 degC isotherm, rendered from the same "temperature" field
-    # as the Air Temperature layer -- fixed at freezing (no isobar_step equivalent).
+    # Polar Boundary: an isotherm, rendered from the same "temperature" field as the
+    # Air Temperature layer -- defaults to true freezing but the level itself is a
+    # setting (tasks/polar_boundary.py's FREEZE_LEVEL_C), not fixed like isobars'
+    # isobar_step is a fixed increment.
+    ("polar_boundary", "freeze_level_c"): SliderSpec(min=-5, max=5, step=1, suffix="°C"),
     ("polar_boundary", "line_color"): ColorSpec(),
     ("polar_boundary", "linewidth"): SliderSpec(min=0.1, max=5.0, step=0.1, decimals=1, suffix="px"),
     ("polar_boundary", "opacity"): _OPACITY,
@@ -441,6 +444,7 @@ _LABEL_OVERRIDES = {
     ("pwat", "critical_pwat"): "Critical Moisture Threshold (mm)",
     ("fires", "opacity"): "Heatmap opacity",
     ("fires", "min_risk_display"): "Heatmap minimum fire risk",
+    ("polar_boundary", "freeze_level_c"): "Polar boundary",
     ("fires", "min_risk_filter"): "Fire risk display threshold",
 }
 

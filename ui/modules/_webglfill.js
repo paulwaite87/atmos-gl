@@ -66,6 +66,16 @@ export function createFillLayer(map, opts) {
             return `${window.MAP_UI}/${base}_f${f}_data.png?t=${bust}`;
         },
         forecastStepping = (anim) => (anim && anim.forecast_stepping !== false),
+        // Optional: (cfg) => a value identifying which PRE-RENDERED variant hourDataUrl
+        // resolves to (e.g. polar_boundary.js keys this on freeze_level_c). texCache is
+        // keyed by hour only -- an entry already cached for the current hour would
+        // otherwise keep serving whichever variant was live when it was first fetched,
+        // even after a live config change swaps in a different hourDataUrl(cfg, ...). A
+        // changed cacheKey between refreshes clears texCache (same as onTimeline's own
+        // bustChanged clear) so the next render re-fetches under the new URL. null
+        // (default): no per-config variants, texCache is never cleared by a settings
+        // change alone -- unchanged behaviour for every other caller.
+        cacheKey = null,
     } = opts;
 
     const S_SRC = `${sectionKey}-source`;
@@ -85,6 +95,7 @@ export function createFillLayer(map, opts) {
     let meshBuf = null, meshVAO = null, meshVertCount = 0;
     let cmapTex = null, customLocs = {};
     let curAnim = initialAnimation || {}, curCommon = initialCommon || {}, curCfg = initialConfig || {};
+    let curCacheKey = cacheKey ? cacheKey(curCfg) : null;
     let texSize = [1440, 721];
 
     // per-hour decoded-value textures (one single-frame texture per forecast hour)
@@ -401,6 +412,18 @@ void main(){
     };
     const refreshFill = (cfg) => {
         curCfg = cfg;
+        if (cacheKey) {
+            const newKey = cacheKey(cfg);
+            if (newKey !== curCacheKey) {
+                curCacheKey = newKey;
+                // Same clear onTimeline's bustChanged branch does: hourDataUrl(cfg, ...)
+                // now resolves to a different pre-rendered variant, so every cached
+                // texture (fetched under the OLD key) is stale and must be re-fetched.
+                for (const [, e] of texCache) if (e.tex && glRef) glRef.deleteTexture(e.tex);
+                texCache.clear();
+                if (glRef) prefetch(lastSnap.hour);
+            }
+        }
         if (colormapOpt && glRef) { const lut = colormapOpt(cfg); if (lut) uploadCmap(glRef, lut); }
         map.triggerRepaint();
     };
