@@ -16,7 +16,6 @@ entry -- they're served live via DB-backed API routes, nothing writes a file for
 
 OUTFILES = {
     "isobars": "data/isobars.png",
-    "polar_boundary": "data/polar_boundary.png",
     "wind": "data/wind.png",
     "precipitation": "data/precipitation.png",
     "currents": "data/currents.png",
