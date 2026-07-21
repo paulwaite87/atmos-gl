@@ -67,7 +67,8 @@ export function createFillLayer(map, opts) {
         },
         forecastStepping = (anim) => (anim && anim.forecast_stepping !== false),
         // Optional: (cfg) => a value identifying which PRE-RENDERED variant hourDataUrl
-        // resolves to (e.g. polar_boundary.js keys this on freeze_level_c). texCache is
+        // resolves to (e.g. a layer with several backend-pre-baked variants of the same
+        // hour, selected by a config setting). texCache is
         // keyed by hour only -- an entry already cached for the current hour would
         // otherwise keep serving whichever variant was live when it was first fetched,
         // even after a live config change swaps in a different hourDataUrl(cfg, ...). A
