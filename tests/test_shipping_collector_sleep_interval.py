@@ -36,5 +36,5 @@ def test_heartbeat_period_s_is_unaffected_by_sleep_interval():
     """heartbeat_period_s is derived from listen_duration (heartbeats are recorded per
     SLICE, ten times a rotation, before sleep_interval's pause ever happens) -- changing
     sleep_interval must not change it."""
-    c = make_collector(settings={"listen_duration": 300, "sleep_interval": 30})
-    assert c.heartbeat_period_s == 300 * 2.0  # base * max SLICE_DENSITY_MAP weight (2.0)
+    c = make_collector(settings={"listen_duration": 5, "sleep_interval": 30})
+    assert c.heartbeat_period_s == (5 * 60.0) * 2.0  # base_seconds * max SLICE_DENSITY_MAP weight (2.0)

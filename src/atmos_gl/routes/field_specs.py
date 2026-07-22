@@ -131,6 +131,16 @@ _CACHE_EXPIRY_DAYS = SliderSpec(
 # minutes (this slider); each collector converts to seconds itself (see
 # _sleep_interval_seconds() on both classes).
 _SLEEP_INTERVAL_MINUTES = SliderSpec(min=5, max=30, step=1, suffix=" min", pluralize=True)
+# shipping_collector.vessel_track_expiry_days: 0 already means "never prune" in
+# ShipAdapter.prune_vessel_tracks() (an `if not expiry_days or expiry_days <= 0: return`
+# guard predating this slider) -- zero_label makes the UI say so instead of "0 days".
+_VESSEL_TRACK_EXPIRY_DAYS = SliderSpec(
+    min=0, max=60, step=5, suffix=" day", zero_label="Never", pluralize=True
+)
+# shipping_collector.listen_duration -- base per-slice AIS listen time, stored/edited in
+# minutes (this slider); ShippingCollector converts to seconds itself (see
+# _listen_duration_seconds()).
+_LISTEN_DURATION_MINUTES = SliderSpec(min=5, max=60, step=5, suffix=" min", pluralize=True)
 
 _LEVEL_OF_DETAIL = SelectSpec([
     ("1", "Low resolution"),
@@ -408,7 +418,9 @@ FIELD_SPECS = {
     ("stormwatch", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
     # --- Background (shipping_collector, lightning_collector, satellites_collector,
     # data_collector, housekeeper) ---
+    ("shipping_collector", "listen_duration"): _LISTEN_DURATION_MINUTES,
     ("shipping_collector", "sleep_interval"): _SLEEP_INTERVAL_MINUTES,
+    ("shipping_collector", "vessel_track_expiry_days"): _VESSEL_TRACK_EXPIRY_DAYS,
     ("shipping_collector", "log_level"): _LOG_LEVEL,
     ("lightning_collector", "sleep_interval"): _SLEEP_INTERVAL_MINUTES,
     ("lightning_collector", "expiry_hours"): _HOURS,
