@@ -93,6 +93,22 @@ describe('hoverPopup', () => {
             expect.objectContaining({ offset: 10 }));
     });
 
+    test('maxWidth is omitted from the Popup constructor call when not given', () => {
+        const map = fakeMap();
+        hoverPopup(map, 'quakes-layer', { html: () => '<div/>' });
+
+        const opts = globalThis.maplibregl.Popup.mock.calls[0][0];
+        expect('maxWidth' in opts).toBe(false);
+    });
+
+    test('an explicit maxWidth is passed through to the Popup constructor', () => {
+        const map = fakeMap();
+        hoverPopup(map, 'storms-points', { html: () => '<div/>', maxWidth: '360px' });
+
+        expect(globalThis.maplibregl.Popup).toHaveBeenCalledWith(
+            expect.objectContaining({ maxWidth: '360px' }));
+    });
+
     test('the returned stop() unregisters both handlers and removes the popup', () => {
         const map = fakeMap();
         const stop = hoverPopup(map, 'quakes-layer', { html: () => '<div/>' });

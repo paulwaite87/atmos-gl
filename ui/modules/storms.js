@@ -38,6 +38,7 @@ export function loadLayer(map, config) {
     ];
     let stopPopup = null;
     let stopPulse = null;
+    let currentCfg = config;
 
     const urlFor = () => `${window.WM_API}/storms/geojson?t=${Date.now()}`;
 
@@ -61,10 +62,12 @@ export function loadLayer(map, config) {
         }
         rows.push({ label: 'Time', value: dateStr });
         if (p.tau > 0) rows.push({ label: 'Hour', value: `+${p.tau}` });
-        return popupCard({ title: p.name || p.sid, titleColor: '#ff4a4a', titleSize: 14, rows });
+        const fontSize = Number(currentCfg.popup_fontsize) || 12;
+        return popupCard({ title: p.name || p.sid, titleColor: '#ff4a4a', titleSize: 14, rows, fontSize });
     };
 
-    const mount = async () => {
+    const mount = async (cfg) => {
+        currentCfg = cfg;
         const data = await fetchData();
         if (map.getSource(sourceId)) return;
         map.addSource(sourceId, { type: 'geojson', data });
@@ -92,13 +95,17 @@ export function loadLayer(map, config) {
                 'circle-color': '#111111', 'circle-stroke-color': '#ff4a4a', 'circle-stroke-width': 2,
             } });
 
-        stopPopup = hoverPopup(map, 'storms-points', { offset: 10, html: popupHtml });
+        // 360px (240px MapLibre default * 1.5) -- the fixed "label: value" rows
+        // (Storm category / Max wind speed / Min sea-level pressure) were wrapping
+        // uncomfortably narrow at the default width.
+        stopPopup = hoverPopup(map, 'storms-points', { offset: 10, html: popupHtml, maxWidth: '360px' });
         stopPulse = startPulse(map, 'storms-points', 'circle-radius', {
             base: 6, toValue: (r) => ['match', ['get', 'record_type'], 'CURRENT', r, 4],
         });
     };
 
-    const refresh = async () => {
+    const refresh = async (cfg) => {
+        currentCfg = cfg;
         const data = await fetchData();
         map.getSource(sourceId)?.setData(data);
     };

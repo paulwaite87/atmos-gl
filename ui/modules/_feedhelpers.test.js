@@ -100,4 +100,14 @@ describe('popupCard', () => {
         expect(html).toContain('Empty');
         expect(html).not.toContain('<span');
     });
+
+    test('defaults the body font-size to 12px', () => {
+        const html = popupCard({ title: 'Test' });
+        expect(html).toContain('font-size:12px;color:#000');
+    });
+
+    test('applies an explicit fontSize to the body', () => {
+        const html = popupCard({ title: 'Test', fontSize: 16 });
+        expect(html).toContain('font-size:16px;color:#000');
+    });
 });

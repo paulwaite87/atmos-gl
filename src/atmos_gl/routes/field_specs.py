@@ -335,6 +335,7 @@ FIELD_SPECS = {
     ("lightning", "strike_keep_minutes"): _MINUTES,
     ("lightning", "strike_expiry_hours"): _HOURS,
     ("storms", "expiry_days"): SliderSpec(min=0, max=60, step=1, suffix=" days expiry"),
+    ("storms", "popup_fontsize"): _FONTSIZE,
     # --- Climate (sst, currents, waves, temperature, ozone, stormwatch) ---
     ("sst", "mode"): _MODE_OPTIONS,
     ("sst", "opacity"): _OPACITY,

@@ -35,12 +35,12 @@ export async function preloadIcons(map, icons) {
 // color, br-separated multi-column rows) that forcing them through this shape would
 // just re-add the per-caller params ADR-0002 already rejected for markers.js -- left
 // bespoke.
-export function popupCard({ title, titleColor = '#333', titleSize = 13, padding = 4, rows = [] }) {
+export function popupCard({ title, titleColor = '#333', titleSize = 13, padding = 4, rows = [], fontSize = 12 }) {
     const rowsHtml = rows
         .map(({ label, value, width = 45 }) =>
             `<div><span style="color:#666;width:${width}px;display:inline-block;">${label}:</span> <strong>${value}</strong></div>`)
         .join('');
-    return `<div style="font-family:sans-serif;font-size:12px;color:#000;padding:${padding}px;">
+    return `<div style="font-family:sans-serif;font-size:${fontSize}px;color:#000;padding:${padding}px;">
             <strong style="font-size:${titleSize}px;color:${titleColor};">${title}</strong>
             <hr style="border:0;border-top:1px solid #ccc;margin:4px 0;">
             ${rowsHtml}
