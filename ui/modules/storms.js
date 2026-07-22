@@ -3,6 +3,33 @@ import { hoverPopup } from './_hoverpopup.js';
 import { startPulse } from './_pulse.js';
 import { fetchOrThrow, popupCard } from './_feedhelpers.js';
 
+// ATCF's own storm-type/category codes (field TY in b-deck/a-deck lines) -- see
+// https://www.nrlmry.navy.mil/atcf_web/docs/database/new/abdeck.txt. Translated to
+// friendly English only here, at render time; the backend stores the raw code
+// (StormTrack.category) unchanged so it stays reusable for anything else that might
+// want it later (e.g. colour-coding by category).
+const CATEGORY_LABELS = {
+    DB: 'Disturbance',
+    TD: 'Tropical depression',
+    TS: 'Tropical storm',
+    TY: 'Typhoon',
+    ST: 'Super typhoon',
+    TC: 'Tropical cyclone',
+    HU: 'Hurricane',
+    SD: 'Subtropical depression',
+    SS: 'Subtropical storm',
+    EX: 'Extratropical cyclone',
+    PT: 'Post-tropical cyclone',
+    IN: 'Inland',
+    DS: 'Dissipating',
+    LO: 'Low-pressure area',
+    WV: 'Tropical wave',
+    ET: 'Extrapolated position',
+    MD: 'Monsoon depression',
+    XX: 'Unspecified',
+};
+const KNOTS_TO_KPH = 1.852;
+
 export function loadLayer(map, config) {
     const sourceId = 'storms-source';
     const layerIds = [
@@ -22,8 +49,17 @@ export function loadLayer(map, config) {
             { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
         const rows = [
             { label: 'Type', value: p.record_type },
-            { label: 'Time', value: dateStr },
         ];
+        if (p.category) {
+            rows.push({ label: 'Storm category', value: CATEGORY_LABELS[p.category] || p.category });
+        }
+        if (p.wind_kt != null) {
+            rows.push({ label: 'Max wind speed', value: `${Math.round(p.wind_kt * KNOTS_TO_KPH)} kph` });
+        }
+        if (p.pressure_hpa != null) {
+            rows.push({ label: 'Min sea-level pressure', value: `${p.pressure_hpa} hPa` });
+        }
+        rows.push({ label: 'Time', value: dateStr });
         if (p.tau > 0) rows.push({ label: 'Hour', value: `+${p.tau}` });
         return popupCard({ title: p.name || p.sid, titleColor: '#ff4a4a', titleSize: 14, rows });
     };

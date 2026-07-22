@@ -202,6 +202,15 @@ class StormTrack(Base):
     lat: Mapped[float | None] = mapped_column(Numeric)
     lon: Mapped[float | None] = mapped_column(Numeric)
     geom: Mapped[str | None] = mapped_column(Geometry("POINT", srid=4326, spatial_index=False))
+    # ATCF b-deck/a-deck fields 8/9/10 (VMAX/MSLP/TY) -- present on every track/forecast
+    # line already parsed for LAT/LON/TIME, just not previously captured. wind_kt is
+    # knots and pressure_hpa is hPa (ATCF's own units, unconverted); category is the raw
+    # ATCF storm-type code (e.g. "TD"/"TS"/"HU") -- translated to friendly English only
+    # at render time (ui/modules/storms.js), so the stored value stays reusable for
+    # anything else that might want the raw code later (e.g. colour-coding by category).
+    wind_kt: Mapped[int | None] = mapped_column(Integer)
+    pressure_hpa: Mapped[int | None] = mapped_column(Integer)
+    category: Mapped[str | None] = mapped_column(String(4))
 
 
 class Satellite(Base):
