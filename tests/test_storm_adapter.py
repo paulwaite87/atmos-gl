@@ -46,6 +46,37 @@ def test_update_storm_replaces_old_track_points():
     assert points[0]["geometry"]["coordinates"] == [-70.0, 30.0]
 
 
+def test_update_storm_carries_wind_pressure_and_category_onto_point_features():
+    adapter = FakeStormAdapter()
+    now = datetime.now(timezone.utc)
+    track = [
+        {
+            "LAT": 25.0, "LON": -80.0, "TIME": now, "TYPE": "CURRENT", "TAU": 0,
+            "WIND_KT": 85, "PRESSURE_HPA": 965, "CATEGORY": "HU",
+        }
+    ]
+    adapter.update_storm("AL012026", "Alpha", [], track)
+
+    point = _by_type(_geojson(adapter), "POINT")[0]
+    assert point["properties"]["wind_kt"] == 85
+    assert point["properties"]["pressure_hpa"] == 965
+    assert point["properties"]["category"] == "HU"
+
+
+def test_update_storm_defaults_missing_intensity_fields_to_none():
+    """Not every track point has WIND_KT/PRESSURE_HPA/CATEGORY set (only ones parsed
+    from an ATCF line do) -- update_storm must not KeyError on their absence."""
+    adapter = FakeStormAdapter()
+    now = datetime.now(timezone.utc)
+    track = [{"LAT": 25.0, "LON": -80.0, "TIME": now, "TYPE": "CURRENT", "TAU": 0}]
+    adapter.update_storm("AL012026", "Alpha", [], track)
+
+    point = _by_type(_geojson(adapter), "POINT")[0]
+    assert point["properties"]["wind_kt"] is None
+    assert point["properties"]["pressure_hpa"] is None
+    assert point["properties"]["category"] is None
+
+
 def test_update_storm_cone_updates_cone_geom_only():
     adapter = FakeStormAdapter()
     adapter.update_storm("AL012026", "Alpha", [(-80.0, 25.0), (-79.0, 26.0), (-78.0, 25.5)], [])

@@ -26,13 +26,16 @@ def _make_adapter(kind, real_db):
     return FakeStormAdapter(), contextlib.nullcontext()
 
 
-def _pt(record_type, lat, lon, hour):
+def _pt(record_type, lat, lon, hour, wind_kt=None, pressure_hpa=None, category=None):
     return {
         "TYPE": record_type,
         "TIME": datetime(2026, 1, 1, hour, tzinfo=timezone.utc),
         "TAU": 0,
         "LAT": lat,
         "LON": lon,
+        "WIND_KT": wind_kt,
+        "PRESSURE_HPA": pressure_hpa,
+        "CATEGORY": category,
     }
 
 
@@ -114,3 +117,24 @@ def test_current_point_is_shared_endpoint_of_both_lines(kind, real_db):
     current_point = [-80.0, 10.0]
     assert past[-1] == current_point
     assert forecast[0] == current_point
+
+
+@pytest.mark.parametrize("kind", ["real", "fake"])
+def test_point_feature_carries_wind_pressure_and_category(kind, real_db):
+    """The SQL's jsonb_build_object and the Fake's dict literal must expose
+    wind_kt/pressure_hpa/category identically -- these are new columns added
+    alongside the pre-existing POINT properties, an easy spot for Real/Fake drift."""
+    sid = f"AL04{kind[:1].upper()}"
+    adapter, ctx = _make_adapter(kind, real_db)
+
+    with ctx:
+        adapter.update_storm(
+            sid, "Test", cone_vertices=[],
+            track_points=[_pt("CURRENT", 10.0, -80.0, hour=0, wind_kt=85, pressure_hpa=965, category="HU")],
+        )
+        features = _track_features(adapter, sid)
+
+    point = [f for f in features if f["properties"]["feature_type"] == "POINT"][0]
+    assert point["properties"]["wind_kt"] == 85
+    assert point["properties"]["pressure_hpa"] == 965
+    assert point["properties"]["category"] == "HU"

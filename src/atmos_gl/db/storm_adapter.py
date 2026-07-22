@@ -60,6 +60,9 @@ class StormAdapter:
                             "lat": pt["LAT"],
                             "lon": pt["LON"],
                             "geom": f"SRID=4326;POINT({pt['LON']} {pt['LAT']})",
+                            "wind_kt": pt.get("WIND_KT"),
+                            "pressure_hpa": pt.get("PRESSURE_HPA"),
+                            "category": pt.get("CATEGORY"),
                         }
                         for pt in track_points
                     ]
@@ -139,6 +142,12 @@ class StormAdapter:
                         StormTrack.tau,
                         "dt",
                         StormTrack.dt,
+                        "wind_kt",
+                        StormTrack.wind_kt,
+                        "pressure_hpa",
+                        StormTrack.pressure_hpa,
+                        "category",
+                        StormTrack.category,
                     ),
                 ).label("feature")
             )
@@ -206,6 +215,9 @@ class FakeStormAdapter:
                 "tau": pt.get("TAU", 0),
                 "lat": pt["LAT"],
                 "lon": pt["LON"],
+                "wind_kt": pt.get("WIND_KT"),
+                "pressure_hpa": pt.get("PRESSURE_HPA"),
+                "category": pt.get("CATEGORY"),
             }
             for pt in track_points
         ]
@@ -265,6 +277,9 @@ class FakeStormAdapter:
                             "record_type": p["record_type"],
                             "tau": p["tau"],
                             "dt": p["dt"].isoformat() if p["dt"] else None,
+                            "wind_kt": p.get("wind_kt"),
+                            "pressure_hpa": p.get("pressure_hpa"),
+                            "category": p.get("category"),
                         },
                     }
                 )

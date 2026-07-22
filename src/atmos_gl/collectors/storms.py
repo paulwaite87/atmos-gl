@@ -76,6 +76,23 @@ class StormsCollector(CollectorBase):
             lon_val = -lon_val
         return lat_val, lon_val
 
+    def _parse_intensity(self, parts):
+        """ATCF fields 8/9/10 -- VMAX (max sustained wind, knots), MSLP (min sea-level
+        pressure, hPa), TY (storm-type/category code, e.g. "TD"/"TS"/"HU") -- present on
+        every b-deck/a-deck line already being parsed for LAT/LON/TIME, at the same
+        fixed positions in both deck types. Blank/non-numeric fields (common on early
+        genesis-stage lines) become None rather than raising."""
+        def _int_or_none(s):
+            try:
+                return int(s)
+            except (TypeError, ValueError):
+                return None
+
+        wind_kt = _int_or_none(parts[8]) if len(parts) > 8 else None
+        pressure_hpa = _int_or_none(parts[9]) if len(parts) > 9 else None
+        category = parts[10] if len(parts) > 10 and parts[10] else None
+        return wind_kt, pressure_hpa, category
+
     def _parse_b_deck(self, url, now_utc, expiry_days):
         try:
             text = requests.get(url, timeout=10).text
@@ -99,6 +116,7 @@ class StormsCollector(CollectorBase):
                         name = parts[27]
                         if name not in ["NONAME", "INVEST", "DB", "LO", "EX"]:
                             storm_name = name
+                    wind_kt, pressure_hpa, category = self._parse_intensity(parts)
                     pts.append(
                         {
                             "SID": sid,
@@ -108,6 +126,9 @@ class StormsCollector(CollectorBase):
                             "TIME": dt,
                             "TYPE": "PAST",
                             "TAU": 0,
+                            "WIND_KT": wind_kt,
+                            "PRESSURE_HPA": pressure_hpa,
+                            "CATEGORY": category,
                         }
                     )
 
@@ -157,6 +178,7 @@ class StormsCollector(CollectorBase):
                 run_dt = datetime.strptime(latest_run, "%Y%m%d%H").replace(
                     tzinfo=timezone.utc
                 )
+                wind_kt, pressure_hpa, category = self._parse_intensity(parts)
                 pts.append(
                     {
                         "SID": sid,
@@ -165,6 +187,9 @@ class StormsCollector(CollectorBase):
                         "TIME": run_dt + timedelta(hours=tau),
                         "TYPE": "FORECAST",
                         "TAU": tau,
+                        "WIND_KT": wind_kt,
+                        "PRESSURE_HPA": pressure_hpa,
+                        "CATEGORY": category,
                     }
                 )
             return pts
