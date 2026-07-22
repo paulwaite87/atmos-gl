@@ -50,9 +50,18 @@ class ShippingCollector(AsyncCollectorBase):
         which would leave the Data Status UI showing "never" for a healthy collector), so
         this is the longest a single slice can run (listen_duration * the heaviest weight)
         rather than the full rotation sum."""
-        base = float(self.settings.get("listen_duration", 300))
         max_weight = max(m["weight"] for m in SLICE_DENSITY_MAP.values())
-        return base * max_weight
+        return self._listen_duration_seconds() * max_weight
+
+    def _listen_duration_seconds(self) -> float:
+        """shipping_collector.listen_duration (the "Listen duration" slider, 5-60) is
+        stored/edited in MINUTES; run()'s per-slice listen time needs seconds."""
+        try:
+            minutes = int(self.settings.get("listen_duration", 5))
+        except (TypeError, ValueError):
+            minutes = 5
+        minutes = min(60, max(5, minutes))
+        return minutes * 60.0
 
     def _sleep_interval_seconds(self) -> float:
         """shipping_collector.sleep_interval (the "Sleep interval" slider, 5-30) is
@@ -160,7 +169,7 @@ class ShippingCollector(AsyncCollectorBase):
             self.refresh_settings()
 
             if self.enabled:
-                base_duration = int(self.settings.get("listen_duration", 300))
+                base_duration = self._listen_duration_seconds()
                 sleep_between_runs = self._sleep_interval_seconds()
                 num_chunks = 10
                 slice_width = 36.0
