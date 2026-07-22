@@ -36,7 +36,7 @@ function buildLUT(paletteName) {
 export function hFromConfig(cfg) {
     const t = Number(cfg.trail_length);
     const frac = (t >= 0 && t <= 100) ? t / 100 : 0.5;
-    return 1.0e-4 + frac * (4.0e-4 - 1.0e-4);
+    return 6.0e-4 + frac * (2.2e-3 - 6.0e-4);
 }
 
 // ---- valid_time reconciliation -------------------------------------------------
@@ -218,18 +218,26 @@ export async function loadLayer(map, config, fullConfig = {}) {
             return Math.pow(v / 100, 2) * 3.2;
         },
         // REGRESSION (diagnosed via a numeric port of this engine's RK2/cp_step math
-        // against real RTOFS textures): the previous ~1e-3..7e-3 range -- scaled up 5x
-        // from the engine's own default to make the tail "read long enough" -- made
-        // each of the 40 fixed STREAM_STEPS segments stride up to ~1.44deg longitude
-        // (~160km at the equator) per step. RTOFS resolves real eddies/current
-        // reversals well under that distance, so the tail's piecewise-linear
-        // reconstruction was regularly jumping across genuine flow curvature, not
-        // noise -- reading as particles twitching laterally instead of curving
-        // smoothly. Measured mean per-step heading change of ~10.5deg (28% of turns
-        // reversing sign) at the old range's max, vs ~0.14-1.05deg (2-7% reversing)
-        // across this new 1e-4..4e-4 range -- at or better than wind's own
-        // (unaffected) ~1.13deg/10% benchmark at every slider position, while still
-        // giving a visibly longer tail than wind's own ~3e-5..3e-4 range.
+        // against real RTOFS textures): the old ~1e-3..7e-3 range -- scaled up 5x from
+        // the engine's own default to make the tail "read long enough" -- made each of
+        // the 40 fixed STREAM_STEPS segments stride up to ~1.44deg longitude (~160km
+        // at the equator) per step. RTOFS resolves real eddies/current reversals well
+        // under that distance, so the tail's piecewise-linear reconstruction was
+        // regularly jumping across genuine flow curvature, not noise -- reading as
+        // particles twitching laterally instead of curving smoothly (mean per-step
+        // heading change ~10.5deg, 28% of turns reversing sign, at the old range's
+        // max).
+        //
+        // A first fix (1e-4..4e-4) over-corrected: it matched/beat wind's own ~1.13deg
+        // benchmark, but rendered a total arc only ~0.1-0.16x wind's own length --
+        // "hardly any visible length" (STREAM_STEPS is a shared, fixed 40-segment
+        // budget, so shrinking the PER-SEGMENT step to fix jaggedness necessarily
+        // shortens the total tail too; there's no way to hold both length and
+        // per-segment smoothness fixed independently within that fixed budget). This
+        // range (6e-4..2.2e-3) instead balances the two: ~0.24-0.81x wind's own
+        // length (vs the broken original's 1.39x) at ~1.57-5.85deg/9-21% reversing --
+        // roughly half the old bug's jaggedness at the slider's default (50), while
+        // staying clearly closer to wind's visible tail length than the first fix was.
         hFromConfig,
         hourDataUrl: currentsHourUrl,     // RTOFS-hour translated (shared with fill)
         backfillKey: recon.backfillKey,   // RTOFS (date,run,hour) for 404 backfill
