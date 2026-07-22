@@ -31,7 +31,11 @@ function formatLastUpdate(lastUpdateStr) {
 export function loadLayer(map, config) {
     const sourceId = 'ships-source';
     const layerId  = 'ships-layer';
+    const trackSourceId = 'ships-track-source';
+    const trackLayerId  = 'ships-track-layer';
     let stopPopup = null;
+    let currentCfg = config;
+    let hoveredMmsi = null;
 
     // Set X days here, or pass it in via the config object
     const maxAgeDays = config.max_age_days || 7;
@@ -84,7 +88,56 @@ export function loadLayer(map, config) {
             </div>`;
     };
 
+    // Hover-only track (shipping.view_tracks/track_limit/track_color): empty until a
+    // ship is hovered, cleared again on mouseleave -- never a persistent overlay, so
+    // there's exactly one track shown at a time (see mount()'s docstring context).
+    const emptyTrack = () => ({ type: 'FeatureCollection', features: [] });
+
+    const trackUrlFor = (mmsi, limit) =>
+        `${window.WM_API}/ships/${mmsi}/track?limit=${limit}&t=${Date.now()}`;
+
+    const showTrack = async (mmsi) => {
+        hoveredMmsi = mmsi;
+        let points;
+        try {
+            const resp = await fetchOrThrow(trackUrlFor(mmsi, currentCfg.track_limit || 50));
+            points = resp.data || [];
+        } catch (err) {
+            console.warn(`[shipping] track fetch failed for ${mmsi}`, err);
+            return;
+        }
+        // The hover may have moved to a different ship (or left entirely) while this
+        // request was in flight -- a stale response must not overwrite what's shown.
+        if (hoveredMmsi !== mmsi) return;
+        if (!map.getSource(trackSourceId)) return;
+
+        // newest-first from the API -- reverse so the line is drawn oldest -> newest.
+        const coords = points.slice().reverse().map(p => [p.lon, p.lat]);
+        map.getSource(trackSourceId).setData(coords.length >= 2
+            ? { type: 'FeatureCollection', features: [
+                { type: 'Feature', geometry: { type: 'LineString', coordinates: coords }, properties: {} },
+            ] }
+            : emptyTrack());
+    };
+
+    const clearTrack = () => {
+        hoveredMmsi = null;
+        map.getSource(trackSourceId)?.setData(emptyTrack());
+    };
+
+    // Bespoke mouseenter/mouseleave wiring rather than widening hoverPopup's contract
+    // -- see docs/adr/0002-dont-extend-hoverpopup-for-markers.md; showing a track is a
+    // different shape of "thing to do on hover" than hoverPopup's one job (an HTML
+    // popup), so it stays alongside it as its own pair of handlers on the same layer.
+    const onTrackEnter = (e) => {
+        if (!currentCfg.view_tracks || !e.features.length) return;
+        const mmsi = e.features[0].properties.mmsi;
+        if (mmsi) showTrack(mmsi);
+    };
+    const onTrackLeave = () => clearTrack();
+
     const mount = async (cfg) => {
+        currentCfg = cfg;
         await preloadIcons(map, shipIcons);
 
         const data = await fetchData();
@@ -107,16 +160,35 @@ export function loadLayer(map, config) {
             },
         });
 
+        // Added BEFORE layerId so the line renders underneath the ship icons.
+        map.addSource(trackSourceId, { type: 'geojson', data: emptyTrack() });
+        map.addLayer({
+            id: trackLayerId, type: 'line', source: trackSourceId,
+            layout: { 'line-cap': 'round', 'line-join': 'round' },
+            paint: { 'line-color': cfg.track_color || 'white', 'line-width': 2 },
+        }, layerId);
+
         stopPopup = hoverPopup(map, layerId, { offset: 0, html: popupHtml });
+        map.on('mouseenter', layerId, onTrackEnter);
+        map.on('mouseleave', layerId, onTrackLeave);
     };
 
-    const refresh = async () => {
+    const refresh = async (cfg) => {
+        currentCfg = cfg;
         const data = await fetchData();
         map.getSource(sourceId)?.setData(data);
+        if (map.getLayer(trackLayerId)) {
+            map.setPaintProperty(trackLayerId, 'line-color', cfg.track_color || 'white');
+        }
     };
 
     const unmount = () => {
         stopPopup?.();
+        map.off('mouseenter', layerId, onTrackEnter);
+        map.off('mouseleave', layerId, onTrackLeave);
+        hoveredMmsi = null;
+        if (map.getLayer(trackLayerId))   map.removeLayer(trackLayerId);
+        if (map.getSource(trackSourceId)) map.removeSource(trackSourceId);
         if (map.getLayer(layerId))   map.removeLayer(layerId);
         if (map.getSource(sourceId)) map.removeSource(sourceId);
     };

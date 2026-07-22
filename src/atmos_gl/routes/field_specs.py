@@ -271,6 +271,12 @@ FIELD_SPECS = {
     ("markers", "weather_popup"): ToggleSpec(),
     # --- Shipping (shipping) ---
     ("shipping", "icon_zoom"): _ICON_ZOOM,
+    # Track shown only while hovering a ship (shipping.js) -- not a persistent overlay,
+    # so there's no opacity/always-on styling to match here, just the three knobs the
+    # hover-track itself needs.
+    ("shipping", "view_tracks"): ToggleSpec(),
+    ("shipping", "track_limit"): SliderSpec(min=5, max=100, step=5),
+    ("shipping", "track_color"): ColorSpec(),
     # --- Atmospheric (clouds, isobars, wind, precipitation, pwat, lightning, storms) ---
     ("clouds", "threshold"): SliderSpec(
         min=0, max=100, step=1, suffix="%",
