@@ -8,9 +8,16 @@
  * caller supplies only its own layerId and an html(feature) -> string renderer, since
  * the popup CONTENT is genuinely bespoke per layer (different fields, different
  * layout) and isn't part of the duplication.
+ *
+ * maxWidth is optional and omitted from the Popup options entirely when not given --
+ * passing an explicit `undefined` through to `new maplibregl.Popup({..., maxWidth})`
+ * would override MapLibre's own built-in default (240px) with `undefined` via
+ * Object.assign's key-presence semantics, widening every caller's popup by accident.
  */
-export function hoverPopup(map, layerId, { offset = 15, html }) {
-    const popup = new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset });
+export function hoverPopup(map, layerId, { offset = 15, html, maxWidth }) {
+    const popupOpts = { closeButton: false, closeOnClick: false, offset };
+    if (maxWidth) popupOpts.maxWidth = maxWidth;
+    const popup = new maplibregl.Popup(popupOpts);
 
     const onEnter = (e) => {
         if (!e.features.length) return;
