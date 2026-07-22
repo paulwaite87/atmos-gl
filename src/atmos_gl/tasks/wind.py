@@ -47,6 +47,34 @@ class WindUpdater(Updater, MultiHourRenderMixin):
         self.per_hour_outputs = [".png", "_data.png"]
         self.status_product = "wind"
 
+    def save_wind_key(self, output_path):
+        """Standalone key image (_key.png), matching every other layer's key style
+        (sst/currents/waves/precipitation). Previously wind had no backend key at all
+        -- its legend was a hand-built client-side DOM gradient bar (ui/modules/
+        wind.js), the one layer visibly inconsistent with the rest (different bar
+        height/length, a third font-size convention, no shared code). VMAX_SPEED is
+        expressed in km/h here (matching the title/frontend convention, and the SAME
+        value written to wind_meta.json) rather than the m/s units plot()'s own norm
+        uses -- Normalize is linear, so a km/h-scaled norm produces identical colours
+        at each fractional position along the bar as the m/s one plot() uses; only the
+        axis units/tick labels differ, which is exactly the point.
+        """
+        vmax_kph = round(self.VMAX_SPEED * 3.6)
+        norm = mcolors.Normalize(vmin=0.0, vmax=vmax_kph)
+        ticks = np.linspace(0.0, vmax_kph, 5)
+
+        self.save_key_image(
+            output_path,
+            WIND_CMAP,
+            norm,
+            ticks,
+            "Wind speed (km/h)",
+            key_fontsize=self.settings.get("key_fontsize", 10),
+            labelsize=8,
+            weight="bold",
+            tick_format="%d",
+        )
+
     def plot(self, field0, state: ForecastState):
         """Render the per-hour windspeed heatmap (.png) + velocity texture (_data.png).
 
@@ -141,6 +169,12 @@ class WindUpdater(Updater, MultiHourRenderMixin):
                     json.dump({"heatmap_max_kph": round(self.VMAX_SPEED * 3.6)}, f)
             except Exception as e:
                 logger.warning(f"Wind: could not write wind_meta.json: {e}")
+
+        # The legend key depends only on VMAX_SPEED (just resolved above) and
+        # key_fontsize, not per-hour forecast data -- refresh it unconditionally every
+        # run so it never waits on should_plot_for_hour's data-freshness gate.
+        if self.output_path:
+            self.save_wind_key(self.output_path)
 
         # --- render all hours (plot() now has VMAX_SPEED set globally) ----------------
         # max_hours=1 from layer_builder's round-robin dispatch renders one hour and

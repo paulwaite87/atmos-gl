@@ -1,6 +1,6 @@
 import { createCurrentParticleGLLayer } from './_currentparticles_gl.js';
 import { createFillLayer } from './_webglfill.js';
-import { replaceSlot, removeLegend } from './_legend.js';
+import { keyFilename, showLegend, removeLegend } from './_legend.js';
 import { opacityUniform } from './_opacity.js';
 
 const VMAX_WIND = 40.0;   // m/s velocity-texture encoding range (must match backend)
@@ -93,27 +93,13 @@ export async function loadLayer(map, config, fullConfig = {}) {
     } catch (_) { /* use default */ }
     const vmaxMs = heatmapMaxKph / 3.6;
     const slotId = 'wind-legend-slot';
-    const rgbCss = (c) => `rgb(${Math.round(c[0] * 255)},${Math.round(c[1] * 255)},${Math.round(c[2] * 255)})`;
-    const gradient = () => PALETTE
-        .map((c, i) => `${rgbCss(c)} ${(i / (PALETTE.length - 1) * 100).toFixed(1)}%`)
-        .join(', ');
 
+    // Backend-rendered key PNG (tasks/wind.py's save_wind_key), same as every other
+    // layer -- previously this was a hand-built DOM gradient bar, the one layer
+    // visibly inconsistent with the rest (different bar height/length, its own
+    // font-size convention, no shared styling code).
     const addLegend = (cfg) => {
-        const vmaxKph = heatmapMaxKph;
-        const ticks = [0, 0.25, 0.5, 0.75, 1].map(f => Math.round(vmaxKph * f));
-        // key_fontsize (shared with every other layer's backend-rendered key PNG): wind's
-        // legend is a client-built HTML gradient bar instead of an image, so the same
-        // setting scales its title/tick text directly rather than a matplotlib figure.
-        const titlePx = Math.max(6, Number(cfg.key_fontsize) || 11);
-        const tickPx = Math.max(6, titlePx - 1);
-        replaceSlot(slotId, (slot) => {
-            slot.innerHTML = `
-                <div style="font-size:${titlePx}px;color:#fff;font-weight:600;margin-bottom:3px;">Wind speed (km/h)</div>
-                <div style="height:10px;border-radius:2px;background:linear-gradient(to right, ${gradient()});"></div>
-                <div style="display:flex;justify-content:space-between;font-size:${tickPx}px;color:rgba(255,255,255,0.8);margin-top:2px;">
-                    ${ticks.map(t => `<span>${t}</span>`).join('')}
-                </div>`;
-        });
+        showLegend(slotId, `${window.MAP_UI}/${keyFilename(cfg.outfile)}?t=${Date.now()}`);
     };
 
     // Keep the static-raster (non-stepping) heatmap opacity live too. Fill (stepping) mode

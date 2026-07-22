@@ -221,7 +221,12 @@ class ScalarFieldUpdater(Updater, MultiHourRenderMixin):
     def _write_legend_key(self):
         """Colourbar key depends only on palette/threshold/key_fontsize settings, not
         forecast data. Refresh it unconditionally every run so config changes take
-        effect without waiting on should_plot_for_hour's data-freshness gate."""
+        effect without waiting on should_plot_for_hour's data-freshness gate.
+
+        key_fontsize/labelsize/weight/tick_format match every other layer's key (sst/
+        currents/waves) -- precipitation and this shared scalar-field key used to be
+        the odd ones out (smaller, unbolded, no explicit tick_format), which is why the
+        Precipitation key visibly looked different from Wind/SST/Currents/Waves."""
         cmap = self._resolve_cmap()
         norm = mcolors.Normalize(vmin=self.spec.vmin, vmax=self.spec.vmax)
         self.save_key_image(
@@ -230,7 +235,10 @@ class ScalarFieldUpdater(Updater, MultiHourRenderMixin):
             norm,
             self.spec.ticks,
             self.spec.title,
-            key_fontsize=self.settings.get("key_fontsize", 8),
+            key_fontsize=self.settings.get("key_fontsize", 10),
+            labelsize=8,
+            weight="bold",
+            tick_format="%d",
         )
 
     def plot(self, field0, state: ForecastState):

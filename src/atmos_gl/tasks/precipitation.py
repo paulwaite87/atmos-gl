@@ -70,7 +70,12 @@ class PrecipitationUpdater(Updater, MultiHourRenderMixin):
         """Standalone key image. Uses a solid-colour ListedColormap over a coarser
         tick set than the map render's alpha-blended contourf cmap — alpha would look
         odd in a legend, and the render's finer BoundaryNorm levels are more detail
-        than a legend needs."""
+        than a legend needs.
+
+        key_fontsize/labelsize/weight/tick_format match every other layer's key (sst/
+        currents/waves) -- this key used to be smaller/unbolded with no explicit
+        tick_format, which is why it visibly looked different from those (and from
+        Wind's key, now also converted to this same style)."""
         # Honour the configured palette (matches the map render + the GPU layer),
         # falling back to 'standard' if an unknown palette is set.
         palette_name = self.settings.get("palette", "standard")
@@ -85,7 +90,10 @@ class PrecipitationUpdater(Updater, MultiHourRenderMixin):
             norm,
             key_ticks,
             "Precipitation (mm/hr)",
-            key_fontsize=self.settings.get("key_fontsize", 8),
+            key_fontsize=self.settings.get("key_fontsize", 10),
+            labelsize=8,
+            weight="bold",
+            tick_format="%.1f",
         )
 
     def plot(self, field0, state: ForecastState):

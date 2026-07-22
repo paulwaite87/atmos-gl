@@ -98,6 +98,25 @@ def test_write_legend_key_uses_resolved_cmap_and_spec_ticks_title(key):
     assert key_args.kwargs["key_fontsize"] == 8
 
 
+@pytest.mark.parametrize("key", ["temperature", "ozone", "stormwatch", "pwat"])
+def test_write_legend_key_matches_the_shared_key_style(key):
+    """Regression test: this key used to be smaller/unbolded with no explicit
+    tick_format, unlike sst/currents/waves' keys -- visibly different from them (and
+    from precipitation's, which had the same gap) even though every one of these keys
+    renders through the same save_key_image() helper."""
+    spec = SPECS[key]
+    u = make_bare_updater(spec)
+    u.settings = {}
+
+    u._write_legend_key()
+
+    key_args = u.save_key_image.call_args
+    assert key_args.kwargs["key_fontsize"] == 10
+    assert key_args.kwargs["labelsize"] == 8
+    assert key_args.kwargs["weight"] == "bold"
+    assert key_args.kwargs["tick_format"] == "%d"
+
+
 def test_specs_cover_the_four_scalar_fields():
     assert set(SPECS) == {"temperature", "ozone", "stormwatch", "pwat"}
     for key, spec in SPECS.items():
