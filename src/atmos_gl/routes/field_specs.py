@@ -126,6 +126,11 @@ _MIN_MAX_C = SliderSpec(min=0, max=36, step=1, suffix=" DegC")
 _CACHE_EXPIRY_DAYS = SliderSpec(
     min=0, max=30, step=1, suffix=" day", zero_label="keep forever", pluralize=True
 )
+# Shared by shipping_collector/lightning_collector's "Sleep interval" -- the pause
+# between collection passes for each long-running async collector. Stored/edited in
+# minutes (this slider); each collector converts to seconds itself (see
+# _sleep_interval_seconds() on both classes).
+_SLEEP_INTERVAL_MINUTES = SliderSpec(min=5, max=30, step=1, suffix=" min", pluralize=True)
 
 _LEVEL_OF_DETAIL = SelectSpec([
     ("1", "Low resolution"),
@@ -403,7 +408,9 @@ FIELD_SPECS = {
     ("stormwatch", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
     # --- Background (shipping_collector, lightning_collector, satellites_collector,
     # data_collector, housekeeper) ---
+    ("shipping_collector", "sleep_interval"): _SLEEP_INTERVAL_MINUTES,
     ("shipping_collector", "log_level"): _LOG_LEVEL,
+    ("lightning_collector", "sleep_interval"): _SLEEP_INTERVAL_MINUTES,
     ("lightning_collector", "expiry_hours"): _HOURS,
     ("lightning_collector", "log_level"): _LOG_LEVEL,
     ("satellites_collector", "log_level"): _LOG_LEVEL,

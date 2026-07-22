@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """OpenWeather lightning strike data -> database.
 
-Long-running async collector: scans a priority-ordered list of regions every 600s,
-batching 50km grid-point requests via aiohttp. Runs as its own Docker service because
-the blocking GFS downloads in DataCollector.collect_once() would starve its event loop
-(follow-on: asyncio.to_thread consolidation into data_collector).
+Long-running async collector: scans a priority-ordered list of regions every
+sleep_interval minutes (the "Sleep interval" slider, 5-30, default 10 -- see
+_sleep_interval_seconds()), batching 50km grid-point requests via aiohttp. Runs as its
+own Docker service because the blocking GFS downloads in DataCollector.collect_once()
+would starve its event loop (follow-on: asyncio.to_thread consolidation into
+data_collector).
 
 Moved from src/atmos_gl/lightning_collector.py to src/atmos_gl/collectors/lightning.py
 to live under the shared collectors umbrella. Core logic is unchanged.
@@ -25,14 +27,29 @@ logger = logging.getLogger(__name__)
 class LightningCollector(AsyncCollectorBase):
     section = "lightning_collector"
     datasource_key = "lightning"
-    # The scan loop sleeps a fixed 600s between passes (see run()); no setting exists for
-    # the scan itself, so this is a generous fixed allowance rather than a computed value.
-    heartbeat_period_s = 900.0
 
     def __init__(self, config_path: str):
         super().__init__(config_path)
         self.lightning_adapter = LightningAdapter()
         self.region_adapter = RegionAdapter()
+
+    @property
+    def heartbeat_period_s(self) -> float:
+        """Expected gap between heartbeats: one scan-then-sleep cycle. sleep_interval is
+        now configurable (5-30 min), so a fixed allowance no longer fits every setting --
+        this scales with it (+300s buffer for scan time, matching the old fixed 900s
+        value's margin over the previous hardcoded 600s sleep)."""
+        return self._sleep_interval_seconds() + 300.0
+
+    def _sleep_interval_seconds(self) -> float:
+        """lightning_collector.sleep_interval (the "Sleep interval" slider, 5-30) is
+        stored/edited in MINUTES; run()'s pause between scans needs seconds."""
+        try:
+            minutes = int(self.settings.get("sleep_interval", 10))
+        except (TypeError, ValueError):
+            minutes = 10
+        minutes = min(30, max(5, minutes))
+        return minutes * 60.0
 
     def refresh_settings(self) -> None:
         super().refresh_settings()
@@ -151,7 +168,7 @@ class LightningCollector(AsyncCollectorBase):
             else:
                 logger.debug("LightningCollector: disabled.")
 
-            await asyncio.sleep(600)
+            await asyncio.sleep(self._sleep_interval_seconds())
 
 
 if __name__ == "__main__":

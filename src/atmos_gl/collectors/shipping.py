@@ -54,6 +54,16 @@ class ShippingCollector(AsyncCollectorBase):
         max_weight = max(m["weight"] for m in SLICE_DENSITY_MAP.values())
         return base * max_weight
 
+    def _sleep_interval_seconds(self) -> float:
+        """shipping_collector.sleep_interval (the "Sleep interval" slider, 5-30) is
+        stored/edited in MINUTES; run()'s pause between rotations needs seconds."""
+        try:
+            minutes = int(self.settings.get("sleep_interval", 5))
+        except (TypeError, ValueError):
+            minutes = 5
+        minutes = min(30, max(5, minutes))
+        return minutes * 60.0
+
     def refresh_settings(self) -> None:
         super().refresh_settings()
         # Cached (not resolved fresh at each connect) since collect_ships_in_region()
@@ -151,7 +161,7 @@ class ShippingCollector(AsyncCollectorBase):
 
             if self.enabled:
                 base_duration = int(self.settings.get("listen_duration", 300))
-                sleep_between_runs = int(self.settings.get("sleep_interval", 60))
+                sleep_between_runs = self._sleep_interval_seconds()
                 num_chunks = 10
                 slice_width = 36.0
 
