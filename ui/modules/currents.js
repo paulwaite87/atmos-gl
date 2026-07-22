@@ -30,6 +30,15 @@ function buildLUT(paletteName) {
     return lut;
 }
 
+// trail_length (0-100) -> the trail engine's per-segment integration arc (u_H). See the
+// inline comment at this function's call site (below) for why this range specifically
+// -- exported/named (rather than inline) so it's independently testable.
+export function hFromConfig(cfg) {
+    const t = Number(cfg.trail_length);
+    const frac = (t >= 0 && t <= 100) ? t / 100 : 0.5;
+    return 1.0e-4 + frac * (4.0e-4 - 1.0e-4);
+}
+
 // ---- valid_time reconciliation -------------------------------------------------
 // Currents come from the RTOFS run (its own absolute forecast-hour numbering); the
 // scrubber timeline is GFS-relative. We translate the timeline's CURRENT hour to the
@@ -208,15 +217,20 @@ export async function loadLayer(map, config, fullConfig = {}) {
             const v = isFinite(ui) ? Math.min(100, Math.max(0, ui)) : 50;
             return Math.pow(v / 100, 2) * 3.2;
         },
-        // The engine's default hFromConfig (currents' own tuned range, ~2e-4..1.4e-3)
-        // read too short even at the trail_length slider's max -- scaled up 5x (now
-        // ~1e-3..7e-3) rather than tweaking the shared default, matching wind's own
-        // explicit hFromConfig override elsewhere in this engine.
-        hFromConfig: (cfg) => {
-            const t = Number(cfg.trail_length);
-            const frac = (t >= 0 && t <= 100) ? t / 100 : 0.5;
-            return 1.0e-3 + frac * (7.0e-3 - 1.0e-3);
-        },
+        // REGRESSION (diagnosed via a numeric port of this engine's RK2/cp_step math
+        // against real RTOFS textures): the previous ~1e-3..7e-3 range -- scaled up 5x
+        // from the engine's own default to make the tail "read long enough" -- made
+        // each of the 40 fixed STREAM_STEPS segments stride up to ~1.44deg longitude
+        // (~160km at the equator) per step. RTOFS resolves real eddies/current
+        // reversals well under that distance, so the tail's piecewise-linear
+        // reconstruction was regularly jumping across genuine flow curvature, not
+        // noise -- reading as particles twitching laterally instead of curving
+        // smoothly. Measured mean per-step heading change of ~10.5deg (28% of turns
+        // reversing sign) at the old range's max, vs ~0.14-1.05deg (2-7% reversing)
+        // across this new 1e-4..4e-4 range -- at or better than wind's own
+        // (unaffected) ~1.13deg/10% benchmark at every slider position, while still
+        // giving a visibly longer tail than wind's own ~3e-5..3e-4 range.
+        hFromConfig,
         hourDataUrl: currentsHourUrl,     // RTOFS-hour translated (shared with fill)
         backfillKey: recon.backfillKey,   // RTOFS (date,run,hour) for 404 backfill
     });
