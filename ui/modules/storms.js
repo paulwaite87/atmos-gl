@@ -51,14 +51,21 @@ export function loadLayer(map, config) {
         const rows = [
             { label: 'Type', value: p.record_type },
         ];
+        // width:130 (popupCard's per-row override, default 45) -- these labels are
+        // much longer than this card's other rows ("Type"/"Time"/"Hour"), and popupCard's
+        // label column is a fixed-width inline-block: at the default 45px they wrap
+        // across 2-4 lines regardless of the popup's own maxWidth (a completely
+        // separate constraint), which is what actually made the wider popup look like
+        // it hadn't changed anything. 130px fits "Min sea-level pressure:" (the
+        // longest) on one line at the default 12px popup_fontsize.
         if (p.category) {
-            rows.push({ label: 'Storm category', value: CATEGORY_LABELS[p.category] || p.category });
+            rows.push({ label: 'Storm category', value: CATEGORY_LABELS[p.category] || p.category, width: 130 });
         }
         if (p.wind_kt != null) {
-            rows.push({ label: 'Max wind speed', value: `${Math.round(p.wind_kt * KNOTS_TO_KPH)} kph` });
+            rows.push({ label: 'Max wind speed', value: `${Math.round(p.wind_kt * KNOTS_TO_KPH)} kph`, width: 130 });
         }
         if (p.pressure_hpa != null) {
-            rows.push({ label: 'Min sea-level pressure', value: `${p.pressure_hpa} hPa` });
+            rows.push({ label: 'Min sea-level pressure', value: `${p.pressure_hpa} hPa`, width: 130 });
         }
         rows.push({ label: 'Time', value: dateStr });
         if (p.tau > 0) rows.push({ label: 'Hour', value: `+${p.tau}` });
