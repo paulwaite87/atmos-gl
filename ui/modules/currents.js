@@ -16,7 +16,7 @@ const PALETTES = {
     cyberpunk:     [[0.45,0,0.45],[1,0,0.55],[0,1,0.75]],
 };
 
-function buildLUT(paletteName) {
+export function buildLUT(paletteName) {
     const pal = PALETTES[paletteName] || PALETTES.thermal_red;
     const lut = new Uint8Array(256 * 4);
     for (let i = 0; i < 256; i++) {
@@ -28,6 +28,16 @@ function buildLUT(paletteName) {
         lut[o + 3] = 255;
     }
     return lut;
+}
+
+// Resolve the configured palette (falling back to the default for an unset/unknown
+// name), read fresh from whatever cfg is passed in -- NOT captured once at mount. Both
+// the fill and particle engines below call colormap(cfg) with the live config on every
+// refresh (see _webglfill.js's refreshFill()/_currentparticles_gl.js's refresh()); a
+// bare `config.palette` closed over at loadLayer()-time would silently ignore a later
+// palette change (the bug this fixes -- see jetstream.js's identical fix).
+export function paletteFor(cfg) {
+    return (cfg.palette && PALETTES[cfg.palette]) ? cfg.palette : 'thermal_red';
 }
 
 // trail_length (0-100) -> the trail engine's per-segment integration arc (u_H). See the
@@ -136,8 +146,6 @@ export async function loadLayer(map, config, fullConfig = {}) {
     };
     const clearLegend = () => removeLegend(slotId);
 
-    const palette = config.palette && PALETTES[config.palette] ? config.palette : 'thermal_red';
-
     // ---- 1) SPEED FILL (underneath): speed = |decode(u,v)|, coloured via LUT ----
     const stopFill = createFillLayer(map, {
         sectionKey: 'currents',
@@ -146,7 +154,7 @@ export async function loadLayer(map, config, fullConfig = {}) {
         initialCommon: fullConfig.common || {},
         vmin: 0.0, vspan: 1.0,            // value channel unused; we decode u/v ourselves
         opacity: opacityUniform(config, 0.6),
-        colormap: () => buildLUT(palette),
+        colormap: (cfg) => buildLUT(paletteFor(cfg)),
         hourDataUrl: currentsHourUrl,     // RTOFS-hour translated
         backfillKey: recon.backfillKey,   // RTOFS (date,run,hour) for 404 backfill
         // shade() decodes u/v from R/G directly (same scheme as the particle layer)
@@ -184,6 +192,10 @@ export async function loadLayer(map, config, fullConfig = {}) {
         onMount: addLegend,
         onRefresh: addLegend,
         onUnmount: clearLegend,
+        // Palette changes never touch the fill's data texture (colour is applied
+        // entirely client-side), so the default imageUrl regen chase can't detect that
+        // the legend needs re-fetching -- keyUrl gives it its own independent chase.
+        keyUrl: (cfg) => `${window.MAP_UI}/${keyFilename(cfg.outfile)}`,
     });
 
     // ---- 2) PARTICLES (on top): flowing trails advected along the u/v texture ----
@@ -195,7 +207,7 @@ export async function loadLayer(map, config, fullConfig = {}) {
         initialAnimation: fullConfig.animation || {},
         initialCommon: fullConfig.common || {},
         vmax: VMAX,                       // matches backend VMAX_CURRENT
-        colormap: () => buildLUT(palette),
+        colormap: (cfg) => buildLUT(paletteFor(cfg)),
         maxSpeedColor: () => VMAX,        // speed tint scaled to current speeds
         landReset: () => 1.0,             // currents must NOT flow over land
         // Map the config UI's 0-100 particle_speed slider to the currents advection

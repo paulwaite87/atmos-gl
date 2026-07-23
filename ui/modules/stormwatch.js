@@ -59,5 +59,9 @@ export function loadLayer(map, config, fullConfig = {}) {
         onMount: addLegend,
         onRefresh: addLegend,
         onUnmount: removeLegend,
+        // key_fontsize changes never touch the fill's data texture, so the default
+        // imageUrl regen chase can't detect that the legend needs re-fetching --
+        // keyUrl gives it its own independent chase.
+        keyUrl: keyUrlFor,
     });
 }

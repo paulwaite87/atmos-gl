@@ -10,7 +10,7 @@
 // trail_length=50 now renders at trail_length=100 (the slider's max). See the comments
 // in jetstream.js for the full story.
 import { describe, test, expect } from 'vitest';
-import { buildLUT, speedFromConfig, hFromConfig, coherenceRadius, LOD_COUNT } from './jetstream.js';
+import { buildLUT, speedFromConfig, hFromConfig, coherenceRadius, paletteFor, LOD_COUNT } from './jetstream.js';
 
 describe('buildLUT', () => {
     test('returns a 256-entry RGBA lookup table', () => {
@@ -118,6 +118,26 @@ describe('coherenceRadius', () => {
 
     test('disables smoothing for a negative radius rather than passing it through', () => {
         expect(coherenceRadius({ flow_coherence_radius: -3 })).toBe(0);
+    });
+});
+
+describe('paletteFor', () => {
+    // Regression guard: colormap must re-resolve the palette from whatever cfg is
+    // passed in on each call, not a value captured once at mount -- otherwise a live
+    // palette change in the config UI silently has no visible effect (the reported bug).
+    test('resolves each configured palette name', () => {
+        expect(paletteFor({ palette: 'stratosphere' })).toBe('stratosphere');
+        expect(paletteFor({ palette: 'aurora' })).toBe('aurora');
+        expect(paletteFor({ palette: 'inferno' })).toBe('inferno');
+    });
+
+    test('falls back to stratosphere for a missing/unknown palette', () => {
+        expect(paletteFor({})).toBe('stratosphere');
+        expect(paletteFor({ palette: 'not-a-real-palette' })).toBe('stratosphere');
+    });
+
+    test('two different cfg objects resolve independently (no stale capture)', () => {
+        expect(paletteFor({ palette: 'inferno' })).not.toBe(paletteFor({ palette: 'aurora' }));
     });
 });
 

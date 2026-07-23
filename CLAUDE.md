@@ -418,7 +418,8 @@ are the ones actively in use for this repo:
 - `wayfinder` — plan and track work too large for one session as a map of tickets
 - `diagnosing-bugs` — diagnosis loop for hard bugs and performance regressions
 - `to-issues` — break a plan/PRD into independently-gradable GitHub issues
-- `to-prd` — turn a conversation into a PRD and publish it to GitHub
+- `to-spec` — turn a conversation into a PRD and publish it to GitHub (not `to-prd`,
+  which is not an available skill in this repo despite the name's obviousness)
 - `triage` — move incoming issues/PRs through the triage label state machine
 - `implement` — implement a piece of work from a PRD or set of issues
 - `improve-codebase-architecture` — scan for deepening opportunities, report, then grill through one
@@ -427,5 +428,10 @@ are the ones actively in use for this repo:
 - `claude-handoff` — hand the current conversation to a fresh background agent
 - `grilling` — grill the user relentlessly about a plan or design before building
 - `grill-me` — a relentless interview to sharpen a plan or design
+- `grill-with-docs` — same, informed by existing repo docs
 - `domain-modeling` — build and sharpen the project's domain model, record ADRs
 - `prototype` — build a throwaway prototype to answer a design question
+
+**PRD workflow order:** before ever invoking `to-spec`, always run `grill-me` or
+`grill-with-docs` first — or, at minimum, explicitly confirm with the user that
+grilling isn't needed for this particular PRD. Never jump straight to `to-spec`.

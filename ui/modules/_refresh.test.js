@@ -212,6 +212,99 @@ describe('slow-cadence fallback', () => {
     });
 });
 
+describe('key-image regen-detection', () => {
+    // Legend/colourbar-key PNGs (keyUrl) are backend-rendered but live at a DIFFERENT
+    // path than the main per-hour data image (imageUrl) and aren't gated on
+    // forecast-hour freshness -- for client-side-colormap layers (wind/currents/
+    // jetstream/etc.) a palette-only config change never touches the data image's
+    // mtime at all (the raw velocity/scalar texture is unchanged; only the legend key
+    // is re-rendered), so the existing imageUrl-only regen chase never detects it and
+    // the legend sits stale until the slow refreshMs fallback (minutes later). keyUrl
+    // is opt-in and independent of imageUrl's regen chase, so existing callers that
+    // don't pass it are completely unaffected (see every other describe block above,
+    // none of which pass keyUrl).
+    function mockFetchTwoUrls({
+        section, dataStatus = 200, dataLastModified = null,
+        keyStatus = 200, keyLastModified = null,
+    }) {
+        globalThis.fetch = vi.fn(async (url, opts) => {
+            if (opts && opts.method === 'HEAD') {
+                const isKey = String(url).includes('_key.png');
+                const status = isKey ? keyStatus : dataStatus;
+                const lm = isKey ? keyLastModified : dataLastModified;
+                if (status !== 200) return { ok: false, status, headers: { get: () => null } };
+                return { ok: true, status: 200, headers: { get: (h) => (h === 'Last-Modified' ? lm : null) } };
+            }
+            return { json: async () => ({ data: { [SECTION_KEY]: section } }) };
+        });
+    }
+
+    async function readySync({ section, refresh }) {
+        mockFetchTwoUrls({
+            section, dataLastModified: 'Mon, 01 Jun 2026 00:00:00 GMT',
+            keyLastModified: 'Mon, 01 Jun 2026 00:00:00 GMT',
+        });
+        liveLayerSync({}, {
+            sectionKey: SECTION_KEY, initialConfig: null,
+            mount: vi.fn(), refresh, unmount: vi.fn(),
+            imageUrl: () => 'http://test/sst.png',
+            keyUrl: () => 'http://test/sst_key.png',
+            syncMs: 1000,
+        });
+        await vi.advanceTimersByTimeAsync(1000);  // mount
+        await vi.advanceTimersByTimeAsync(1000);  // image-ready
+        refresh.mockClear();
+    }
+
+    test('a palette-only change (data image mtime unchanged) still refreshes once the key regenerates', async () => {
+        const refresh = vi.fn();
+        const section = { enabled: true, palette: 'a' };
+        await readySync({ section, refresh });
+
+        // Config changes (palette) but the DATA image's mtime never moves -- exactly
+        // what happens for a client-side-colormap layer, where only the legend key is
+        // re-rendered server-side.
+        mockFetchTwoUrls({
+            section: { enabled: true, palette: 'b' },
+            dataLastModified: 'Mon, 01 Jun 2026 00:00:00 GMT',
+            keyLastModified: 'Mon, 01 Jun 2026 00:00:00 GMT',
+        });
+        await vi.advanceTimersByTimeAsync(1000);  // sig change: immediate refresh
+        expect(refresh).toHaveBeenCalledTimes(1);
+        refresh.mockClear();
+
+        // Backend regenerates the key (its mtime advances); data image mtime is
+        // unrelated and still hasn't moved.
+        mockFetchTwoUrls({
+            section: { enabled: true, palette: 'b' },
+            dataLastModified: 'Mon, 01 Jun 2026 00:00:00 GMT',
+            keyLastModified: 'Tue, 02 Jun 2026 00:00:00 GMT',
+        });
+        await vi.advanceTimersByTimeAsync(1000);
+
+        expect(refresh).toHaveBeenCalledTimes(1);
+    });
+
+    test('gives up watching the key after regenWaitMs without ever refreshing extra', async () => {
+        const refresh = vi.fn();
+        const section = { enabled: true, palette: 'a' };
+        await readySync({ section, refresh });
+
+        mockFetchTwoUrls({
+            section: { enabled: true, palette: 'b' },
+            dataLastModified: 'Mon, 01 Jun 2026 00:00:00 GMT',
+            keyLastModified: 'Mon, 01 Jun 2026 00:00:00 GMT',
+        });
+        await vi.advanceTimersByTimeAsync(1000);  // sig change
+        refresh.mockClear();
+
+        // Key never regenerates for the rest of the window.
+        await vi.advanceTimersByTimeAsync(120000);
+
+        expect(refresh).not.toHaveBeenCalled();
+    });
+});
+
 describe('initialGlobals', () => {
     test('seeds the initial mount when the shared loop cannot supply globals yet', async () => {
         mockFetch({ section: { enabled: true }, imageStatus: 200 });

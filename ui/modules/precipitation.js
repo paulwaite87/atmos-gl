@@ -152,5 +152,9 @@ export function loadLayer(map, config, fullConfig = {}) {
         onMount: addLegend,
         onRefresh: addLegend,                  // re-stamp the key image
         onUnmount: () => removeLegend(slotId),
+        // key_fontsize changes never touch the fill's data texture, so the default
+        // imageUrl regen chase can't detect that the legend needs re-fetching --
+        // keyUrl gives it its own independent chase.
+        keyUrl: (cfg) => `${window.MAP_UI}/${keyFilename(cfg.outfile)}`,
     });
 }

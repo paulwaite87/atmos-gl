@@ -117,6 +117,10 @@ export function loadLayer(map, config, fullConfig = {}) {
         onMount: setLegend,
         onRefresh: setLegend,
         onUnmount: () => removeLegend(slotId),
+        // Palette changes never touch the heatmap's data texture (colour is applied
+        // entirely client-side), so the default imageUrl regen chase can't detect that
+        // the legend needs re-fetching -- keyUrl gives it its own independent chase.
+        keyUrl: (cfg) => `${window.MAP_UI}/${keyFilename(cfg.outfile)}`,
     });
 
     // Animated swell bars (GPU custom layer). Uses the shared particle engine with

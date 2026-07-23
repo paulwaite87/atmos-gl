@@ -480,6 +480,12 @@ export function createCurrentParticleGLLayer(map, opts) {
         // with no fill layer (jetstream) has nowhere else to hook a legend's show/hide to
         // the layer's real enabled state. No-op by default, same as createFillLayer's.
         onMount = () => {}, onRefresh = () => {}, onUnmount = () => {},
+        // Optional: (cfg) => this layer's legend/colourbar-key PNG URL, forwarded to
+        // liveLayerSync's independent key-regen chase (see _refresh.js's keyUrl
+        // docstring) -- needed because this engine's colormap is applied entirely
+        // client-side, so a palette change never touches the velocity texture (imageUrl)
+        // that the default regen chase watches; only the legend key gets re-rendered.
+        keyUrl = null,
         refreshMs, syncMs,
     } = opts;
 
@@ -1066,6 +1072,7 @@ export function createCurrentParticleGLLayer(map, opts) {
         globalKeys: ['animation', 'common'],
         mount, refresh, unmount,
         imageUrl: (cfg) => hourDataUrl(cfg, timeline.get().hour, bustKey),
+        keyUrl,
         onMissing: () => flagBackfill(sectionKey, timeline.get(), backfillKey),
         refreshMs, syncMs,
     });

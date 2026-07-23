@@ -70,6 +70,15 @@ export function coherenceRadius(cfg) {
     return (isFinite(v) && v > 0) ? v : 0;
 }
 
+// Resolve the configured palette (falling back to the default for an unset/unknown
+// name), read fresh from whatever cfg is passed in -- NOT captured once at mount. The
+// engine calls colormap(cfg) with the live config on every refresh (see
+// _currentparticles_gl.js's refresh()); a bare `config.palette` closed over at
+// loadLayer()-time would silently ignore a later palette change (the bug this fixes).
+export function paletteFor(cfg) {
+    return (cfg.palette && PALETTES[cfg.palette]) ? cfg.palette : 'stratosphere';
+}
+
 export function loadLayer(map, config, fullConfig = {}) {
     const slotId = 'jetstream-legend-slot';
 
@@ -77,8 +86,6 @@ export function loadLayer(map, config, fullConfig = {}) {
         showLegend(slotId, `${window.MAP_UI}/${keyFilename(cfg.outfile)}?t=${Date.now()}`);
     };
     const clearLegend = () => removeLegend(slotId);
-
-    const palette = config.palette && PALETTES[config.palette] ? config.palette : 'stratosphere';
 
     // Particle-only, speed-colored (no heatmap -- see tasks/jetstream.py's docstring),
     // via the same shared engine wind and currents already use. No custom hourDataUrl/
@@ -91,7 +98,7 @@ export function loadLayer(map, config, fullConfig = {}) {
         initialAnimation: fullConfig.animation || {},
         initialCommon: fullConfig.common || {},
         vmax: VMAX,                       // matches backend JetStreamUpdater.VMAX
-        colormap: () => buildLUT(palette),
+        colormap: (cfg) => buildLUT(paletteFor(cfg)),
         maxSpeedColor: () => VMAX,
         landReset: () => 0.0,             // jet-core wind blows over land AND ocean
         speedFromConfig,
@@ -104,6 +111,10 @@ export function loadLayer(map, config, fullConfig = {}) {
         onMount: addLegend,
         onRefresh: addLegend,
         onUnmount: clearLegend,
+        // Palette changes never touch the velocity texture (colour is applied entirely
+        // client-side), so the default imageUrl regen chase can't detect that the
+        // legend needs re-fetching -- keyUrl gives it its own independent chase.
+        keyUrl: (cfg) => `${window.MAP_UI}/${keyFilename(cfg.outfile)}`,
     });
 
     return () => {
