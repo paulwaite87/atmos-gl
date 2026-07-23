@@ -42,6 +42,14 @@ LAYER_CYCLE_SECONDS = 15
 # its step up (coarser) only if the clipped region is large enough to exceed it anyway.
 _MAX_LOD_GRID_POINTS = 4_000_000
 
+# Pixel dimensions of the static-fallback PNG Plot.get_figure() renders for every layer
+# (used only when forecast_stepping is off or the browser's WebGL path fails -- the
+# primary animated rendering decodes raw field data on the GPU at its own resolution,
+# independent of this). Always 2:1 since MapData always resolves the global bbox. Used
+# to be a user-facing "Target Geometry" setting; dropped since it only ever affected
+# this rarely-seen fallback.
+STATIC_FALLBACK_GEOMETRY = "4096x2048"
+
 
 def stringify_bbox(bbox):
     """
@@ -159,10 +167,7 @@ class MapData:
         self.refresh()
 
     def refresh(self):
-        # Acquire the target geometry
-        common_settings = self.config.get_section("common")
-        target_geometry = common_settings.get("target_geometry", "2048x1024")
-        self.region = MapRegion(target_geometry=target_geometry)
+        self.region = MapRegion(target_geometry=STATIC_FALLBACK_GEOMETRY)
 
 
 @dataclass(frozen=True)

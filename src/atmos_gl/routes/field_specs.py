@@ -318,11 +318,6 @@ FIELD_SPECS = {
         ("basic-v2", "Basic"),
     ]),
     ("common", "atmosphere"): ToggleSpec(),
-    ("common", "target_geometry"): SelectSpec([
-        ("2048x1024", "2048x1024"),
-        ("4096x2048", "4096x2048"),
-        ("8192x4096", "8192x4096"),
-    ]),
     ("common", "auto_rotate"): ToggleSpec(),
     ("common", "auto_rotate_speed"): SliderSpec(min=0.01, max=1.0, step=0.01),
     # Fixes a pre-existing bug in the legacy JS, which swapped these two ranges
