@@ -616,3 +616,64 @@ def test_config_page_still_has_the_interactive_datasource_functions():
     html = resp.text
     for fn in ("addDatasource", "updateDatasourceName", "updateDatasourceUrl", "deleteDatasource"):
         assert f"function {fn}" in html
+
+
+# --- Jet Stream (#184) ---
+
+
+def test_jetstream_reuses_currents_shaped_shared_constants():
+    """Jet stream is speed-colored particles with no heatmap, like currents -- it
+    shares currents' particle-tuning constants, not wind's rescaled ones."""
+    assert (
+        FIELD_SPECS[("jetstream", "particle_speed")]
+        is FIELD_SPECS[("currents", "particle_speed")]
+    )
+    assert (
+        FIELD_SPECS[("jetstream", "trail_length")]
+        is FIELD_SPECS[("currents", "trail_length")]
+    )
+    assert (
+        FIELD_SPECS[("jetstream", "trail_thickness")]
+        is FIELD_SPECS[("currents", "trail_thickness")]
+    )
+    assert (
+        FIELD_SPECS[("jetstream", "opacity")] is FIELD_SPECS[("currents", "opacity")]
+    )
+
+
+def test_jetstream_palette_options_match_the_backend_updater():
+    """Must stay in sync with JetStreamUpdater.PALETTES (tasks/jetstream.py) -- an
+    option here with no matching backend palette would 500 on save/render."""
+    values = {v for v, _ in FIELD_SPECS[("jetstream", "palette")].options}
+    assert values == {"stratosphere"}
+
+
+def test_jetstream_has_no_ocean_only_fields():
+    """Unlike currents, jetstream has no land/sea distinction (250mb wind blows
+    over both) and no regrid-for-crispness step -- current_speed_minimum/
+    fill_floor/fill_knee must not be carried over."""
+    for option in ("current_speed_minimum", "fill_floor", "fill_knee"):
+        assert ("jetstream", option) not in FIELD_SPECS
+
+
+def test_config_page_renders_jetstream_toggle_on_show_tab():
+    resp = client.get("/config")
+    html = resp.text
+    assert 'type="checkbox" id="jetstream__enabled"' in html
+
+
+def test_config_page_renders_jetstream_fields_section_and_gated_fallback():
+    resp = client.get("/config")
+    html = resp.text
+    assert 'id="fields-section-jetstream"' in html
+    assert 'id="fallback-section-jetstream"' in html
+    assert 'id="jetstream__palette"' in html
+    assert 'id="jetstream__trail_length"' in html
+
+
+def test_config_page_renders_jetstream_palette_select_with_stratosphere_option():
+    resp = client.get("/config")
+    html = resp.text
+    idx = html.index('id="jetstream__palette"')
+    select_html = html[idx : html.index("</select>", idx)]
+    assert '<option value="stratosphere"' in select_html

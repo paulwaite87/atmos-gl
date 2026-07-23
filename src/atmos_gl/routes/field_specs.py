@@ -19,7 +19,7 @@ constants below capture those shapes once and get registered under every
 
 Migrated so far: Global (common, animation), Events (quakes, volcanoes),
 Misc (satellites, terminator, markers), Shipping (shipping),
-Atmospheric (clouds, isobars, wind, precipitation, pwat, lightning, storms),
+Atmospheric (clouds, isobars, wind, jetstream, precipitation, pwat, lightning, storms),
 Climate (sst, currents, waves, temperature, ozone, stormwatch).
 
 Validated with ast.parse.
@@ -404,6 +404,22 @@ FIELD_SPECS = {
     ("wind", "trail_thickness"): SliderSpec(min=1, max=5, step=1),
     ("wind", "key_fontsize"): _FONTSIZE,
     ("wind", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
+    # Jet stream is speed-colored particles with no heatmap, like currents (not
+    # wind's flat-colored particles + separate heatmap) -- shares currents' particle
+    # tuning ranges (_PARTICLE_SPEED_LIKE/_TRAIL_LENGTH/_TRAIL_THICKNESS) rather than
+    # wind's rescaled ones. Lives on the Atmospheric tab (it's GFS wind, not ocean),
+    # unlike currents itself.
+    ("jetstream", "level_of_detail"): _LEVEL_OF_DETAIL,
+    ("jetstream", "palette"): SelectSpec([
+        ("stratosphere", "Stratosphere"),
+    ]),
+    ("jetstream", "opacity"): _OPACITY,
+    ("jetstream", "particle_speed"): _PARTICLE_SPEED_LIKE,
+    ("jetstream", "particle_alpha"): _PARTICLE_ALPHA,
+    ("jetstream", "trail_length"): _TRAIL_LENGTH,
+    ("jetstream", "trail_thickness"): _TRAIL_THICKNESS,
+    ("jetstream", "key_fontsize"): _FONTSIZE,
+    ("jetstream", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
     ("precipitation", "level_of_detail"): _LEVEL_OF_DETAIL,
     ("precipitation", "min_mm_hr"): SliderSpec(min=0.0, max=10.0, step=0.1, decimals=1),
     ("precipitation", "opacity"): _OPACITY,
