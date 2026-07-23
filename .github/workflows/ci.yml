@@ -13,10 +13,6 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Install Ruff
-        run: pip install ruff
-      - name: Run Ruff
-        run: ruff check ./src
       - name: Install uv
         uses: astral-sh/setup-uv@v6
         with:
@@ -27,6 +23,13 @@ jobs:
           version: "0.11.8"
       - name: Install dependencies
         run: uv sync --frozen
+      - name: Run Ruff
+        # `uv run` (not a separate `pip install ruff`) so this uses the exact version
+        # pyproject.toml's dev dependency-group + uv.lock resolved (ruff>=0.15.11),
+        # not whatever's newest on PyPI at run time -- a prior unpinned `pip install
+        # ruff` picked up a same-day release with new default-enabled rules and failed
+        # CI on ~70 files with no code change involved, purely a version drift.
+        run: uv run ruff check ./src
       - name: Bootstrap live config from template
         run: cp config/atmos-gl.json.tmpl config/atmos-gl.json
       - name: Run pytest

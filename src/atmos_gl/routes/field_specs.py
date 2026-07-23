@@ -133,6 +133,11 @@ _TRAIL_LENGTH = SliderSpec(min=0, max=100, step=1)
 # Streamline-ribbon half-thickness (_currentparticles_gl.js's curThick, shared by wind
 # and currents -- the unified engine both now render through).
 _TRAIL_THICKNESS = SliderSpec(min=0.5, max=5.0, step=0.1, decimals=1, suffix="px")
+# Direction-coherence smoothing radius (_currentparticles_gl.js's coherenceRadius) --
+# needed by any consumer reading a raw 0.25deg GFS field (wind, jetstream), whose
+# small-scale grid noise otherwise reads as trails jittering between paths frame to
+# frame. Currents never sets this (RTOFS is smooth enough not to need it).
+_FLOW_COHERENCE_RADIUS = SliderSpec(min=0.0, max=10.0, step=0.5, decimals=2)
 _MIN_MAX_C = SliderSpec(min=0, max=36, step=1, suffix=" DegC")
 _CACHE_EXPIRY_DAYS = SliderSpec(
     min=0, max=30, step=1, suffix=" day", zero_label="keep forever", pluralize=True
@@ -399,7 +404,7 @@ FIELD_SPECS = {
     # so its sliders were rescaled to give that band the full 0-100 (or 1-5) resolution.
     ("wind", "particle_speed"): SliderSpec(min=10, max=100, step=1),
     ("wind", "particle_alpha"): _PARTICLE_ALPHA,
-    ("wind", "flow_coherence_radius"): SliderSpec(min=0.0, max=10.0, step=0.5, decimals=2),
+    ("wind", "flow_coherence_radius"): _FLOW_COHERENCE_RADIUS,
     ("wind", "trail_length"): SliderSpec(min=10, max=100, step=1),
     ("wind", "trail_thickness"): SliderSpec(min=1, max=5, step=1),
     ("wind", "key_fontsize"): _FONTSIZE,
@@ -408,7 +413,9 @@ FIELD_SPECS = {
     # wind's flat-colored particles + separate heatmap) -- shares currents' particle
     # tuning ranges (_PARTICLE_SPEED_LIKE/_TRAIL_LENGTH/_TRAIL_THICKNESS) rather than
     # wind's rescaled ones. Lives on the Atmospheric tab (it's GFS wind, not ocean),
-    # unlike currents itself.
+    # unlike currents itself. flow_coherence_radius reuses WIND's spec/mechanism
+    # though, not currents' (which has none) -- jetstream reads the same noisy
+    # 0.25deg GFS grid wind does, unlike currents' smooth RTOFS source.
     ("jetstream", "level_of_detail"): _LEVEL_OF_DETAIL,
     ("jetstream", "palette"): SelectSpec([
         ("stratosphere", "Stratosphere"),
@@ -416,6 +423,7 @@ FIELD_SPECS = {
     ("jetstream", "opacity"): _OPACITY,
     ("jetstream", "particle_speed"): _PARTICLE_SPEED_LIKE,
     ("jetstream", "particle_alpha"): _PARTICLE_ALPHA,
+    ("jetstream", "flow_coherence_radius"): _FLOW_COHERENCE_RADIUS,
     ("jetstream", "trail_length"): _TRAIL_LENGTH,
     ("jetstream", "trail_thickness"): _TRAIL_THICKNESS,
     ("jetstream", "key_fontsize"): _FONTSIZE,

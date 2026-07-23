@@ -641,6 +641,17 @@ def test_jetstream_reuses_currents_shaped_shared_constants():
     )
 
 
+def test_jetstream_reuses_winds_flow_coherence_radius_not_currents_lack_of_one():
+    """Jetstream reads the same noisy 0.25deg GFS grid wind does (unlike currents'
+    smooth RTOFS source, which has no flow_coherence_radius spec at all) -- it must
+    share WIND's coherence-smoothing spec, not currents' particle-tuning shape."""
+    assert (
+        FIELD_SPECS[("jetstream", "flow_coherence_radius")]
+        is FIELD_SPECS[("wind", "flow_coherence_radius")]
+    )
+    assert ("currents", "flow_coherence_radius") not in FIELD_SPECS
+
+
 def test_jetstream_palette_options_match_the_backend_updater():
     """Must stay in sync with JetStreamUpdater.PALETTES (tasks/jetstream.py) -- an
     option here with no matching backend palette would 500 on save/render."""
@@ -669,6 +680,7 @@ def test_config_page_renders_jetstream_fields_section_and_gated_fallback():
     assert 'id="fallback-section-jetstream"' in html
     assert 'id="jetstream__palette"' in html
     assert 'id="jetstream__trail_length"' in html
+    assert 'id="jetstream__flow_coherence_radius"' in html
 
 
 def test_config_page_renders_jetstream_palette_select_with_stratosphere_option():
