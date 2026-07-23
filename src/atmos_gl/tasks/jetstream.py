@@ -31,17 +31,24 @@ class JetStreamUpdater(VectorFieldUpdater):
     # for typical (well below peak) conditions. See encode_uv's own docstring: "pick it
     # a little above the strongest winds you care about."
     VMAX = 120.0
-    # Provisional palette -- cool/electric, distinct from wind's warm windy.com ramp and
-    # currents' four options, meant to read as "upper atmosphere" rather than surface
-    # weather. Final palette choice/tuning happens in the frontend layer (coordinate
-    # with ui/modules/jetstream.js); this just needs to exist so the backend colourbar
-    # key renders something coherent. More named options can be added the same way
-    # currents' PALETTES grew to four.
+    # Three "upper atmosphere" ramps, distinct from wind's warm windy.com ramp and
+    # currents' four options. Mirrors ui/modules/jetstream.js's PALETTES exactly --
+    # keep both in sync so the particles' speed tint and the colourbar key agree.
     PALETTES = {
         "stratosphere": [
             (0.05, 0.05, 0.35),   # indigo (slow)
             (0.0, 0.65, 0.9),     # electric cyan (moderate)
             (0.85, 0.95, 1.0),    # near-white ice-blue (jet core)
+        ],
+        "aurora": [
+            (0.0, 0.15, 0.12),    # deep teal-green (slow)
+            (0.1, 0.9, 0.45),     # aurora green (moderate)
+            (0.65, 0.2, 0.95),    # violet-magenta (jet core)
+        ],
+        "inferno": [
+            (0.08, 0.0, 0.02),    # near-black maroon (slow)
+            (0.85, 0.3, 0.0),     # orange (moderate)
+            (1.0, 0.9, 0.4),      # bright yellow-white (jet core)
         ],
     }
     DEFAULT_PALETTE = "stratosphere"
