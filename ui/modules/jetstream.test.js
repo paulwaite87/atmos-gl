@@ -1,9 +1,14 @@
-// Tests for jetstream.js's pure config-mapping helpers. speedFromConfig/hFromConfig
-// are PROVISIONAL first-pass estimates (no live-tuning history yet, unlike wind's/
-// currents' own heavily-tuned formulas) -- locking their current shape down so a
+// Tests for jetstream.js's pure config-mapping helpers. speedFromConfig is a
+// PROVISIONAL first-pass estimate (no live-tuning history yet, unlike wind's/
+// currents' own heavily-tuned formulas) -- locking its current shape down so a
 // future retune is a deliberate, visible change here, not a silent drift.
+//
+// hFromConfig/coherenceRadius are NOT first guesses -- they reuse wind.js's own
+// proven values directly, after live feedback found the original hFromConfig
+// (calibrated off currents' magnitude instead) rendered solid lines with no visible
+// particles and jittery trails. See the comments in jetstream.js for the full story.
 import { describe, test, expect } from 'vitest';
-import { buildLUT, speedFromConfig, hFromConfig } from './jetstream.js';
+import { buildLUT, speedFromConfig, hFromConfig, coherenceRadius } from './jetstream.js';
 
 describe('buildLUT', () => {
     test('returns a 256-entry RGBA lookup table', () => {
@@ -55,15 +60,35 @@ describe('speedFromConfig', () => {
 });
 
 describe('hFromConfig', () => {
-    test('maps trail_length 0..100 onto the 2e-4..1.2e-3 arc range', () => {
-        expect(hFromConfig({ trail_length: 0 })).toBeCloseTo(2.0e-4);
-        expect(hFromConfig({ trail_length: 50 })).toBeCloseTo(7.0e-4);
-        expect(hFromConfig({ trail_length: 100 })).toBeCloseTo(1.2e-3);
+    test('maps trail_length 0..100 onto wind\'s own proven 3e-5..3e-4 arc range', () => {
+        expect(hFromConfig({ trail_length: 0 })).toBeCloseTo(3.0e-5);
+        expect(hFromConfig({ trail_length: 50 })).toBeCloseTo(1.65e-4);
+        expect(hFromConfig({ trail_length: 100 })).toBeCloseTo(3.0e-4);
     });
 
     test('falls back to the midpoint for an out-of-range or missing trail_length', () => {
-        expect(hFromConfig({ trail_length: -5 })).toBeCloseTo(7.0e-4);
-        expect(hFromConfig({ trail_length: 150 })).toBeCloseTo(7.0e-4);
-        expect(hFromConfig({})).toBeCloseTo(7.0e-4);
+        expect(hFromConfig({ trail_length: -5 })).toBeCloseTo(1.65e-4);
+        expect(hFromConfig({ trail_length: 150 })).toBeCloseTo(1.65e-4);
+        expect(hFromConfig({})).toBeCloseTo(1.65e-4);
+    });
+
+    test('regression: stays well under the original over-long 2e-4..1.2e-3 range', () => {
+        expect(hFromConfig({ trail_length: 100 })).toBeLessThan(1.0e-3);
+    });
+});
+
+describe('coherenceRadius', () => {
+    test('passes through a positive configured radius', () => {
+        expect(coherenceRadius({ flow_coherence_radius: 8 })).toBe(8);
+    });
+
+    test('disables smoothing (0) for a missing/zero/non-numeric radius', () => {
+        expect(coherenceRadius({})).toBe(0);
+        expect(coherenceRadius({ flow_coherence_radius: 0 })).toBe(0);
+        expect(coherenceRadius({ flow_coherence_radius: 'nonsense' })).toBe(0);
+    });
+
+    test('disables smoothing for a negative radius rather than passing it through', () => {
+        expect(coherenceRadius({ flow_coherence_radius: -3 })).toBe(0);
     });
 });
