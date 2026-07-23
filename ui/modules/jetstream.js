@@ -40,19 +40,18 @@ export function speedFromConfig(cfg) {
 }
 
 // trail_length (0-100) -> the trail engine's per-segment integration arc (u_H).
-// Reuses WIND's proven 3.0e-5..3.0e-4 magnitude range (not currents'), since jetstream
-// reads the same noisy 0.25deg GFS grid wind does -- the original 2.0e-4..1.2e-3 range
-// here was calibrated off currents' magnitude instead and rendered ~12x longer than
-// wind's own default, producing solid lines with no visible individual particles and
-// (compounding it) each of the trail engine's fixed integration steps striding across
-// enough real-world distance to jump over genuine field noise, reading as jitter --
-// the exact failure mode documented in currents.test.js's own hFromConfig history.
+// Second live-tuning pass: the first fix (wind's own 3.0e-5..3.0e-4 range) fixed the
+// jitter and made individual particles visible, but was still judged too long at the
+// default (trail_length=50 -> 1.65e-4). Rescaled so THAT value becomes the slider's
+// MAX (trail_length=100), not its default -- i.e. multiplied wind's whole range by
+// 1.65e-4/3.0e-4 (0.55), keeping the same proportional shape (10x span, same relative
+// feel) at roughly half the absolute length throughout.
 // Clamp shape matches currents' (0-100 slider), not wind's (10-100 slider) -- jetstream
 // reuses currents' _TRAIL_LENGTH spec (see #184), which allows 0.
 export function hFromConfig(cfg) {
     const t = Number(cfg.trail_length);
     const frac = (t >= 0 && t <= 100) ? t / 100 : 0.5;
-    return 3.0e-5 + frac * (3.0e-4 - 3.0e-5);
+    return 1.65e-5 + frac * (1.65e-4 - 1.65e-5);
 }
 
 // flow_coherence_radius (config, 0-10, added alongside this fix): direction-coherence

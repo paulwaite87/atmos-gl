@@ -3,10 +3,12 @@
 // currents' own heavily-tuned formulas) -- locking its current shape down so a
 // future retune is a deliberate, visible change here, not a silent drift.
 //
-// hFromConfig/coherenceRadius are NOT first guesses -- they reuse wind.js's own
-// proven values directly, after live feedback found the original hFromConfig
-// (calibrated off currents' magnitude instead) rendered solid lines with no visible
-// particles and jittery trails. See the comments in jetstream.js for the full story.
+// hFromConfig/coherenceRadius have been through two rounds of live feedback: the
+// original hFromConfig (calibrated off currents' magnitude) rendered solid lines with
+// no visible particles and jittery trails; wind's own proven range fixed the jitter
+// but was still too long at the default; this rescales that range so what rendered at
+// trail_length=50 now renders at trail_length=100 (the slider's max). See the comments
+// in jetstream.js for the full story.
 import { describe, test, expect } from 'vitest';
 import { buildLUT, speedFromConfig, hFromConfig, coherenceRadius } from './jetstream.js';
 
@@ -60,20 +62,24 @@ describe('speedFromConfig', () => {
 });
 
 describe('hFromConfig', () => {
-    test('maps trail_length 0..100 onto wind\'s own proven 3e-5..3e-4 arc range', () => {
-        expect(hFromConfig({ trail_length: 0 })).toBeCloseTo(3.0e-5);
-        expect(hFromConfig({ trail_length: 50 })).toBeCloseTo(1.65e-4);
-        expect(hFromConfig({ trail_length: 100 })).toBeCloseTo(3.0e-4);
+    test('maps trail_length 0..100 onto the rescaled 1.65e-5..1.65e-4 arc range', () => {
+        expect(hFromConfig({ trail_length: 0 })).toBeCloseTo(1.65e-5);
+        expect(hFromConfig({ trail_length: 50 })).toBeCloseTo(9.075e-5);
+        expect(hFromConfig({ trail_length: 100 })).toBeCloseTo(1.65e-4);
+    });
+
+    test('regression: trail_length=100 now renders what trail_length=50 used to (the value live feedback judged too long as a DEFAULT, now only reachable at the slider max)', () => {
+        expect(hFromConfig({ trail_length: 100 })).toBeCloseTo(1.65e-4);
     });
 
     test('falls back to the midpoint for an out-of-range or missing trail_length', () => {
-        expect(hFromConfig({ trail_length: -5 })).toBeCloseTo(1.65e-4);
-        expect(hFromConfig({ trail_length: 150 })).toBeCloseTo(1.65e-4);
-        expect(hFromConfig({})).toBeCloseTo(1.65e-4);
+        expect(hFromConfig({ trail_length: -5 })).toBeCloseTo(9.075e-5);
+        expect(hFromConfig({ trail_length: 150 })).toBeCloseTo(9.075e-5);
+        expect(hFromConfig({})).toBeCloseTo(9.075e-5);
     });
 
     test('regression: stays well under the original over-long 2e-4..1.2e-3 range', () => {
-        expect(hFromConfig({ trail_length: 100 })).toBeLessThan(1.0e-3);
+        expect(hFromConfig({ trail_length: 100 })).toBeLessThan(2.0e-4);
     });
 });
 
