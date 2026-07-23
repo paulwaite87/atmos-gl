@@ -321,11 +321,23 @@ void main(){
     }
 
     vec3 vsB = sampleVelSmooth(u_vel, pB, u_vmax);
+    // Antimeridian seam: pA/pB are two adjacent streamline points, but cp_step always
+    // wraps x back into [0,1) (fract(nx.x+1.0)) -- a particle whose true path crosses
+    // u=0/u=1 therefore lands with pA and pB on OPPOSITE sides of the wrap even though
+    // physically they're one short integration step apart. Discarding those segments
+    // (the old behaviour) avoided a spurious line drawn straight across the map, but left
+    // a real gap in the ribbon exactly at the seam -- and since which segments straddle
+    // it shifts slightly every frame as the head advects, the gap's edges read as jittery.
+    // Shift whichever point wrapped low back up by a full turn instead, so both endpoints
+    // are numerically continuous; projectTile handles the resulting <0 or >1 tile
+    // coordinate the same way it already handles any tile-edge-crossing geometry.
+    if (pB.x - pA.x > 0.5) pA.x += 1.0;
+    else if (pA.x - pB.x > 0.5) pB.x += 1.0;
     float dlon = abs(pA.x - pB.x);
     float dlat = abs(pA.y - pB.y);
     float seg2 = dlon*dlon + dlat*dlat;
-    // discard: land, antimeridian wrap, degenerate (land-frozen coincident), stray-long.
-    if (vsB.z < 0.5 || dlon > 0.5 || seg2 < 1e-12 || seg2 > (0.02*0.02)) {
+    // discard: land, degenerate (land-frozen coincident), stray-long.
+    if (vsB.z < 0.5 || seg2 < 1e-12 || seg2 > (0.02*0.02)) {
         v_speed = 0.0; v_t = 0.0; gl_Position = vec4(2.0,2.0,2.0,1.0); return;
     }
     v_speed = length(vsB.xy);
