@@ -19,6 +19,7 @@ OUTFILES = {
     "wind": "data/wind.png",
     "precipitation": "data/precipitation.png",
     "currents": "data/currents.png",
+    "jetstream": "data/jetstream.png",
     "waves": "data/waves.png",
     "temperature": "data/temperature.png",
     "ozone": "data/ozone.png",
