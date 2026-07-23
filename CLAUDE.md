@@ -68,6 +68,25 @@ When your changes create orphans:
 
 The test: Every changed line should trace directly to the user's request.
 
+## Prefer Common Code
+
+**When new work overlaps with something that already exists, look for a shared home
+before writing a second copy.**
+
+This is a standing preference, not a one-off — apply it by default on every task, not
+just when asked. Before building a new class/module/layer that resembles an existing
+one (a new field-vector layer's backend `Updater` next to `WindUpdater`, a new frontend
+module next to an existing `ui/modules/*.js`), check whether the overlap is real and,
+if so, extract or reuse rather than copy-paste. Call out the specific extraction
+opportunity you found (what's shared, what's new) rather than silently duplicating or
+silently refactoring — the user decides whether to take it in a given task's scope, but
+the option should always be surfaced.
+
+This preference has limits: only extract where the overlap is genuine, not superficial
+— see "Deepening Template-Method Hierarchies" below for the template-method-specific
+form of this same instinct, and `docs/adr/0002-dont-extend-hoverpopup-for-markers.md`
+for a case where forcing a shared abstraction was the wrong call.
+
 ## Deepening Template-Method Hierarchies
 
 **When a base class already owns control flow and lets subclasses override hooks,
