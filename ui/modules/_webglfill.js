@@ -56,6 +56,12 @@ export function createFillLayer(map, opts) {
         initialAnimation = {},
         initialCommon = {},
         onMount = () => {}, onRefresh = () => {}, onUnmount = () => {},
+        // Optional: (cfg) => this layer's legend/colourbar-key PNG URL, forwarded to
+        // liveLayerSync's independent key-regen chase (see _refresh.js's keyUrl
+        // docstring) -- this engine's colormap is applied entirely client-side (u_cmap),
+        // so a palette change never touches the data texture (imageUrl) that the
+        // default regen chase watches; only the legend key gets re-rendered.
+        keyUrl = null,
         backfillKey = null,   // optional resolver (snap)=>{date,run,hour} for backfill
         beforeId = null,      // insert beneath this layer id (guarded if it doesn't exist)
         refreshMs, syncMs,
@@ -473,6 +479,7 @@ void main(){
         mount, refresh, unmount,
         imageUrl: (cfg) => (forecastStepping(curAnim) && !webglFailed)
             ? hourDataUrl(cfg, timeline.get().hour, bustKey) : staticUrl(cfg),
+        keyUrl,
         onMissing: () => flagBackfill(sectionKey, timeline.get(), backfillKey),
         refreshMs, syncMs,
     });

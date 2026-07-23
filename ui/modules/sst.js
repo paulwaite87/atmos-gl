@@ -48,5 +48,14 @@ export function loadLayer(map, config) {
         removeLegend(slotId);
     };
 
-    return liveLayerSync(map, { sectionKey: 'sst', initialConfig: config, mount, refresh, unmount, imageUrl: urlFor });
+    // Palette/mode changes never touch the raster image's own mtime the way a genuine
+    // mode switch does (mode IS part of urlFor, so that case is already covered by the
+    // default imageUrl regen chase) -- but a palette-only change re-renders just the
+    // legend key server-side, which keyUrl's independent chase catches.
+    const keyUrlFor = (cfg) => keyFilename(modeFilename(cfg.outfile, cfg.mode));
+
+    return liveLayerSync(map, {
+        sectionKey: 'sst', initialConfig: config, mount, refresh, unmount,
+        imageUrl: urlFor, keyUrl: (cfg) => `${window.MAP_UI}/${keyUrlFor(cfg)}`,
+    });
 }

@@ -54,5 +54,9 @@ export function loadLayer(map, config, fullConfig = {}) {
         onMount: addLegend,
         onRefresh: addLegend,
         onUnmount: () => removeLegend(slotId),
+        // Palette changes never touch the fill's data texture (colour is applied
+        // entirely client-side), so the default imageUrl regen chase can't detect that
+        // the legend needs re-fetching -- keyUrl gives it its own independent chase.
+        keyUrl: (cfg) => `${window.MAP_UI}/${keyFilename(cfg.outfile)}`,
     });
 }
