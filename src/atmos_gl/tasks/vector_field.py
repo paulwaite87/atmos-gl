@@ -39,6 +39,14 @@ class VectorFieldUpdater(Updater, MultiHourRenderMixin):
     DEFAULT_PALETTE: str = ""      # override: fallback/default palette name
     KEY_TITLE: str = ""            # override: legend key title
     KEY_TICK_FORMAT: str = "%.1f"  # override where a different precision reads better
+    # Multiplier applied to VMAX ONLY for the legend key's displayed scale/ticks -- the
+    # underlying encode_uv data, particle physics, and frontend VMAX always stay in
+    # native m/s. 1.0 (default, e.g. currents) keeps the key in the same units as VMAX.
+    # JetStreamUpdater sets 3.6 for a km/h key, mirroring WindUpdater.save_wind_key's
+    # identical m/s->km/h key-only rescale: Normalize is linear, so scaling VMAX and the
+    # tick positions by the same factor produces identical colours at each fractional
+    # position along the bar -- only the axis units/tick labels change.
+    KEY_SPEED_SCALE: float = 1.0
 
     def __init__(self, config: AtmosGLConfig, section_label: str, map_data: MapData):
         super().__init__(config, section_label, map_data)
@@ -56,8 +64,9 @@ class VectorFieldUpdater(Updater, MultiHourRenderMixin):
         cmap = mcolors.LinearSegmentedColormap.from_list(
             f"{self.status_product}_speed", self.PALETTES[self._palette()], N=256
         )
-        norm = mcolors.Normalize(vmin=0.0, vmax=self.VMAX)
-        ticks = np.linspace(0.0, self.VMAX, 4)
+        vmax_display = self.VMAX * self.KEY_SPEED_SCALE
+        norm = mcolors.Normalize(vmin=0.0, vmax=vmax_display)
+        ticks = np.linspace(0.0, vmax_display, 4)
 
         self.save_key_image(
             output_path,

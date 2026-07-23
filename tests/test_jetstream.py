@@ -32,13 +32,15 @@ def test_palette_falls_back_for_an_unknown_name():
 
 # ---- save_key (inherited from VectorFieldUpdater) -------------------------------
 
-def test_save_key_uses_the_120_ms_vmax_range():
+def test_save_key_uses_a_km_h_range_despite_the_120_ms_vmax():
+    """VMAX (120 m/s) drives encode_uv/particle physics, but the key displays km/h
+    (matching wind's key convention) via KEY_SPEED_SCALE=3.6 -- 120 m/s = 432 km/h."""
     u = make_bare_updater()
     u.save_key("/tmp/out/jetstream.png")
     key_args = u.save_key_image.call_args
     assert key_args.args[0] == "/tmp/out/jetstream.png"
-    assert list(key_args.args[3]) == [0.0, 40.0, 80.0, 120.0]
-    assert key_args.args[4] == "Jet Stream Speed (m/s)"
+    assert list(key_args.args[3]) == [0.0, 144.0, 288.0, 432.0]
+    assert key_args.args[4] == "Jet Stream Speed (km/h)"
 
 
 def test_save_key_uses_whole_number_ticks():

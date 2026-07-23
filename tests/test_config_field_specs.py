@@ -656,7 +656,7 @@ def test_jetstream_palette_options_match_the_backend_updater():
     """Must stay in sync with JetStreamUpdater.PALETTES (tasks/jetstream.py) -- an
     option here with no matching backend palette would 500 on save/render."""
     values = {v for v, _ in FIELD_SPECS[("jetstream", "palette")].options}
-    assert values == {"stratosphere"}
+    assert values == {"stratosphere", "aurora", "inferno"}
 
 
 def test_jetstream_has_no_ocean_only_fields():
@@ -689,3 +689,5 @@ def test_config_page_renders_jetstream_palette_select_with_stratosphere_option()
     idx = html.index('id="jetstream__palette"')
     select_html = html[idx : html.index("</select>", idx)]
     assert '<option value="stratosphere"' in select_html
+    assert '<option value="aurora"' in select_html
+    assert '<option value="inferno"' in select_html

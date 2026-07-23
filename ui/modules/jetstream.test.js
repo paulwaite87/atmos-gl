@@ -41,6 +41,28 @@ describe('buildLUT', () => {
     test('falls back to stratosphere for an unknown palette name', () => {
         expect(buildLUT('not-a-real-palette')).toEqual(buildLUT('stratosphere'));
     });
+
+    test('interpolates aurora from deep teal-green to violet-magenta', () => {
+        const lut = buildLUT('aurora');
+        expect(lut[0]).toBe(0);    // round(0.0*255)
+        expect(lut[1]).toBe(38);   // round(0.15*255)
+        expect(lut[2]).toBe(31);   // round(0.12*255)
+        const o = 255 * 4;
+        expect(lut[o]).toBe(166);      // round(0.65*255)
+        expect(lut[o + 1]).toBe(51);   // round(0.2*255)
+        expect(lut[o + 2]).toBe(242);  // round(0.95*255)
+    });
+
+    test('interpolates inferno from near-black maroon to bright yellow-white', () => {
+        const lut = buildLUT('inferno');
+        expect(lut[0]).toBe(20);   // round(0.08*255)
+        expect(lut[1]).toBe(0);    // round(0.0*255)
+        expect(lut[2]).toBe(5);    // round(0.02*255)
+        const o = 255 * 4;
+        expect(lut[o]).toBe(255);      // round(1.0*255)
+        expect(lut[o + 1]).toBe(230);  // round(0.9*255)
+        expect(lut[o + 2]).toBe(102);  // round(0.4*255)
+    });
 });
 
 describe('speedFromConfig', () => {

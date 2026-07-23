@@ -414,6 +414,8 @@ FIELD_SPECS = {
     ("jetstream", "level_of_detail"): _LEVEL_OF_DETAIL,
     ("jetstream", "palette"): SelectSpec([
         ("stratosphere", "Stratosphere"),
+        ("aurora", "Aurora (green -> violet)"),
+        ("inferno", "Inferno (orange -> yellow)"),
     ]),
     ("jetstream", "opacity"): _OPACITY,
     ("jetstream", "particle_speed"): _PARTICLE_SPEED_LIKE,

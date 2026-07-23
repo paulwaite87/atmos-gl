@@ -6,11 +6,11 @@ import { keyFilename, showLegend, removeLegend } from './_legend.js';
 const VMAX = 120.0;
 
 // Mirrors JetStreamUpdater.PALETTES on the backend (tasks/jetstream.py) so the
-// particles' speed tint and the colourbar key agree. Provisional -- a single
-// "upper atmosphere" ramp for now; more named options can be added the same way
-// currents' four grew, once this first one has been seen live.
+// particles' speed tint and the colourbar key agree.
 const PALETTES = {
     stratosphere: [[0.05, 0.05, 0.35], [0, 0.65, 0.9], [0.85, 0.95, 1.0]],
+    aurora: [[0.0, 0.15, 0.12], [0.1, 0.9, 0.45], [0.65, 0.2, 0.95]],
+    inferno: [[0.08, 0.0, 0.02], [0.85, 0.3, 0.0], [1.0, 0.9, 0.4]],
 };
 
 // Live feedback: even at level_of_detail=1 (the lowest tier), the engine's own default
