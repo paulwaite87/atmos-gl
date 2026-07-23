@@ -52,8 +52,11 @@ class JetStreamUpdater(VectorFieldUpdater):
         ],
     }
     DEFAULT_PALETTE = "stratosphere"
-    KEY_TITLE = "Jet Stream Speed (m/s)"
-    KEY_TICK_FORMAT = "%.0f"  # VMAX=120 -- whole numbers read cleaner than currents' %.1f
+    # Key displays km/h (matching wind's key convention) while VMAX/encode_uv/particle
+    # physics all stay in m/s -- see VectorFieldUpdater.KEY_SPEED_SCALE's docstring.
+    KEY_TITLE = "Jet Stream Speed (km/h)"
+    KEY_TICK_FORMAT = "%.0f"  # whole numbers read cleaner than currents' %.1f
+    KEY_SPEED_SCALE = 3.6
 
     def __init__(self, config: AtmosGLConfig, map_data: MapData):
         super().__init__(config, "Jetstream", map_data)
