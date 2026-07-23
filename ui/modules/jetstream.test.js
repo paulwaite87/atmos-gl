@@ -10,7 +10,7 @@
 // trail_length=50 now renders at trail_length=100 (the slider's max). See the comments
 // in jetstream.js for the full story.
 import { describe, test, expect } from 'vitest';
-import { buildLUT, speedFromConfig, hFromConfig, coherenceRadius } from './jetstream.js';
+import { buildLUT, speedFromConfig, hFromConfig, coherenceRadius, LOD_COUNT } from './jetstream.js';
 
 describe('buildLUT', () => {
     test('returns a 256-entry RGBA lookup table', () => {
@@ -96,5 +96,23 @@ describe('coherenceRadius', () => {
 
     test('disables smoothing for a negative radius rather than passing it through', () => {
         expect(coherenceRadius({ flow_coherence_radius: -3 })).toBe(0);
+    });
+});
+
+describe('LOD_COUNT', () => {
+    // Live feedback: the engine's own default LOD_COUNT ({1:4000, 2:9000, 3:18000},
+    // tuned for currents spread across open ocean) packed jet-core particles densely
+    // enough -- even at the lowest tier -- that overlapping trails read as longer/
+    // bunched than they actually are. Halved as a first pass, mirroring wind's own
+    // dedicated (lower) LOD_COUNT for the same reason.
+    test('is exactly half the engine default at every tier', () => {
+        expect(LOD_COUNT).toEqual({ 1: 2000, 2: 4500, 3: 9000 });
+    });
+
+    test('every tier stays below the engine default (currents-tuned) LOD_COUNT', () => {
+        const engineDefault = { 1: 4000, 2: 9000, 3: 18000 };
+        for (const tier of [1, 2, 3]) {
+            expect(LOD_COUNT[tier]).toBeLessThan(engineDefault[tier]);
+        }
     });
 });
