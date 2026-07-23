@@ -568,6 +568,7 @@ SECTION_LABELS = {
     "storms": "Storm Track",
     "sst": "Sea Surface Temp",
     "currents": "Ocean Currents",
+    "jetstream": "Jet Stream",
     "waves": "Wave Heights",
     "temperature": "Air Temperature",
     "ozone": "Ozone",

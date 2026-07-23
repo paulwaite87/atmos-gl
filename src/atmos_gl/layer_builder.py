@@ -24,6 +24,7 @@ from atmos_gl.tasks.wind import WindUpdater
 from atmos_gl.tasks.precipitation import PrecipitationUpdater
 from atmos_gl.tasks.sst import SSTUpdater
 from atmos_gl.tasks.currents import CurrentsUpdater
+from atmos_gl.tasks.jetstream import JetStreamUpdater
 from atmos_gl.tasks.waves import WavesUpdater
 from atmos_gl.tasks.scalar_field import ScalarFieldUpdater, SPECS
 from atmos_gl.tasks.markers import MarkerUpdater
@@ -48,6 +49,7 @@ TASK_CLASSES = {
     "wind": WindUpdater,
     "sst": SSTUpdater,
     "currents": CurrentsUpdater,
+    "jetstream": JetStreamUpdater,
     "waves": WavesUpdater,
     "temperature": partial(ScalarFieldUpdater, spec=SPECS["temperature"]),
     "ozone": partial(ScalarFieldUpdater, spec=SPECS["ozone"]),
