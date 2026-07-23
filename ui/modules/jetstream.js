@@ -13,6 +13,13 @@ const PALETTES = {
     stratosphere: [[0.05, 0.05, 0.35], [0, 0.65, 0.9], [0.85, 0.95, 1.0]],
 };
 
+// Live feedback: even at level_of_detail=1 (the lowest tier), the engine's own default
+// LOD_COUNT ({1:4000, 2:9000, 3:18000}, tuned for currents spread across open ocean)
+// packed jet-core particles densely enough that overlapping trails read as longer/
+// bunched than they actually are. Same problem wind hit and fixed the same way (its
+// own dedicated, lower LOD_COUNT) -- halved here as a first pass, per that live call.
+export const LOD_COUNT = { 1: 2000, 2: 4500, 3: 9000 };
+
 export function buildLUT(paletteName) {
     const pal = PALETTES[paletteName] || PALETTES.stratosphere;
     const lut = new Uint8Array(256 * 4);
@@ -90,9 +97,10 @@ export function loadLayer(map, config, fullConfig = {}) {
         speedFromConfig,
         hFromConfig,
         coherenceRadius,
-        // thicknessFromConfig/tailFadeEnd/lodCount: not overridden -- the engine's own
-        // defaults already match currents' choice not to override them either
-        // (jetstream reuses currents' raw-px trail_thickness slider shape, see #184).
+        lodCount: LOD_COUNT,
+        // thicknessFromConfig/tailFadeEnd: not overridden -- the engine's own defaults
+        // already match currents' choice not to override them either (jetstream reuses
+        // currents' raw-px trail_thickness slider shape, see #184).
         onMount: addLegend,
         onRefresh: addLegend,
         onUnmount: clearLegend,
