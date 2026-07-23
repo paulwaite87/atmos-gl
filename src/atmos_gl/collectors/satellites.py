@@ -33,8 +33,10 @@ class SatellitesCollector(CollectorBase):
         self.satellite_adapter = SatelliteAdapter()
 
     def _groups(self) -> list[str]:
-        raw = self.settings.get("groups", "stations,weather,science,resource")
-        return [g.strip() for g in raw.split(",") if g.strip()]
+        """groups is a list (the config UI's grouped_transfer shuttle control saves an
+        array, like every other MultiSelectSpec-backed field -- see field_specs.py's
+        _CELESTRAK_GROUPS), not the comma-separated string it used to be."""
+        return list(self.settings.get("groups", ["stations", "weather", "science", "resource"]) or [])
 
     def source_url(self) -> str | None:
         """CelesTrak's default endpoint when data_collector.datasources.satellites

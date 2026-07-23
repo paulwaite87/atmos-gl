@@ -252,6 +252,22 @@
             document.getElementById(badgeId).innerText = text;
         }
 
+        // Moves the SELECTED <option>s of a grouped_transfer field (field_macros.html)
+        // from one listbox to the other, into the matching <optgroup> (same heading)
+        // there. Both listboxes render every heading upfront (even empty), so the
+        // target optgroup always already exists -- appendChild on an <option> that's
+        // currently attached elsewhere moves it, no separate removal step needed.
+        function moveGroupedOptions(fromId, toId) {
+            const fromSelect = document.getElementById(fromId);
+            const toSelect = document.getElementById(toId);
+            Array.from(fromSelect.selectedOptions).forEach(opt => {
+                const heading = opt.parentElement.label;
+                const targetGroup = Array.from(toSelect.querySelectorAll('optgroup'))
+                    .find(g => g.label === heading);
+                if (targetGroup) targetGroup.appendChild(opt);
+            });
+        }
+
         function findNearestNamedColor(hex) {
             hex = hex.toLowerCase();
             let closestName = "White";
