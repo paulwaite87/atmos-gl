@@ -72,6 +72,17 @@ class MultiSelectSpec:
 
 
 @dataclass(frozen=True)
+class GroupedTransferSpec:
+    """Two-listbox 'shuttle' control: groups is [(heading, [(value, label), ...]), ...].
+    Inactive options render in the left listbox, active (currently selected) in the
+    right, both grouped/indented under the same headings via <optgroup> -- Add/Remove
+    buttons move selected options between the two, keeping each option under its own
+    heading either side."""
+    groups: list
+    kind: str = field(default="grouped_transfer", init=False)
+
+
+@dataclass(frozen=True)
 class ColorSpec:
     # True (the common case): saved as the nearest named colour (e.g. "White"),
     # like markers.marker_color / volcanoes.marker_color. False: saved as the raw
@@ -218,6 +229,74 @@ _SAT_NAMES = MultiSelectSpec([
     ("METEOSAT-9", "METEOSAT-9 - Geostationary (Indian Ocean)"),
     ("METEOSAT-10", "METEOSAT-10 - Geostationary (Europe/Africa)"),
     ("METEOSAT-11", "METEOSAT-11 - Geostationary (Prime Meridian)"),
+])
+
+# CelesTrak's own catalog groupings (https://celestrak.org/NORAD/elements/) -- these
+# section headings and group slugs are exactly as CelesTrak organizes/names them; the
+# slugs are also the valid GROUP= query parameter values satellites.py's _fetch_group()
+# passes straight through to CelesTrak's GP data API.
+_CELESTRAK_GROUPS = GroupedTransferSpec([
+    ("Special-Interest Satellites", [
+        ("last-30-days", "Last 30 Days' Launches"),
+        ("stations", "Space Stations"),
+        ("visual", "100 (or so) Brightest"),
+        ("active", "Active Satellites"),
+        ("analyst", "Analyst Satellites"),
+        ("fengyun-1c-debris", "Fengyun 1C Debris"),
+        ("iridium-33-debris", "Iridium 33 Debris"),
+        ("cosmos-2251-debris", "Cosmos 2251 Debris"),
+    ]),
+    ("Weather & Earth Resources Satellites", [
+        ("weather", "Weather"),
+        ("resource", "Earth Resources"),
+        ("sar", "Synthetic Aperture Radar (SAR)"),
+        ("sarsat", "Search & Rescue (SARSAT)"),
+        ("dmc", "Disaster Monitoring Constellation"),
+        ("tdrss", "Tracking & Data Relay Satellite System"),
+        ("argos", "ARGOS Data Collection"),
+        ("planet", "Planet Labs"),
+        ("spire", "Spire Global"),
+    ]),
+    ("Communications Satellites", [
+        ("geo", "Active Geosynchronous"),
+        ("gpz", "GPZ"),
+        ("gpz-plus", "GPZ Plus"),
+        ("intelsat", "Intelsat"),
+        ("ses", "SES"),
+        ("eutelsat", "Eutelsat"),
+        ("telesat", "Telesat"),
+        ("starlink", "Starlink"),
+        ("oneweb", "OneWeb"),
+        ("qianfan", "Qianfan (China Satellite Network)"),
+        ("hulianwang", "Hulianwang (Guowang)"),
+        ("kuiper", "Amazon Kuiper"),
+        ("iridium-NEXT", "Iridium NEXT"),
+        ("orbcomm", "Orbcomm"),
+        ("globalstar", "Globalstar"),
+        ("amateur", "Amateur Radio"),
+        ("satnogs", "SatNOGS"),
+        ("x-comm", "Experimental Comms"),
+        ("other-comm", "Other Comms"),
+    ]),
+    ("Navigation Satellites", [
+        ("gnss", "All GNSS"),
+        ("gps-ops", "GPS Operational"),
+        ("glo-ops", "GLONASS Operational"),
+        ("galileo", "Galileo"),
+        ("beidou", "BeiDou"),
+        ("sbas", "Satellite-Based Augmentation (SBAS)"),
+    ]),
+    ("Scientific Satellites", [
+        ("science", "Space & Earth Science"),
+        ("geodetic", "Geodetic"),
+        ("engineering", "Engineering"),
+        ("education", "Education"),
+    ]),
+    ("Miscellaneous Satellites", [
+        ("military", "Miscellaneous Military"),
+        ("radar", "Radar Calibration"),
+        ("cubesat", "CubeSats"),
+    ]),
 ])
 
 
@@ -425,6 +504,7 @@ FIELD_SPECS = {
     ("lightning_collector", "sleep_interval"): _SLEEP_INTERVAL_MINUTES,
     ("lightning_collector", "expiry_hours"): _HOURS,
     ("lightning_collector", "log_level"): _LOG_LEVEL,
+    ("satellites_collector", "groups"): _CELESTRAK_GROUPS,
     ("satellites_collector", "log_level"): _LOG_LEVEL,
     # data_collector.datasources is deliberately NOT here -- see
     # render_datasources_accordion in _field_macros.html.
@@ -459,6 +539,7 @@ _LABEL_OVERRIDES = {
     ("currents", "opacity"): "Heatmap opacity",
     ("ozone", "critical_du"): "Critical Ozone Threshold (Dobson Units)",
     ("pwat", "critical_pwat"): "Critical Moisture Threshold (mm)",
+    ("satellites_collector", "groups"): "Satellite groups (CelesTrak)",
     ("fires", "opacity"): "Heatmap opacity",
     ("fires", "min_risk_display"): "Heatmap minimum fire risk",
     ("fires", "min_risk_filter"): "Fire risk display threshold",
@@ -611,6 +692,12 @@ def validate_against_specs(payload: dict) -> list[str]:
                 )
         elif spec.kind == "multiselect":
             valid = {str(opt_value) for opt_value, _ in spec.options}
+            if not isinstance(value, list) or not all(str(v) in valid for v in value):
+                errors.append(
+                    f"{section}.{option}: {value!r} not a subset of {sorted(valid)}"
+                )
+        elif spec.kind == "grouped_transfer":
+            valid = {str(opt_value) for _, opts in spec.groups for opt_value, _ in opts}
             if not isinstance(value, list) or not all(str(v) in valid for v in value):
                 errors.append(
                     f"{section}.{option}: {value!r} not a subset of {sorted(valid)}"

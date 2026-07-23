@@ -48,6 +48,53 @@
       </select>
       <div class="text-white-50" style="font-size: 11px; margin-top: 4px;">💡 Hold Ctrl (or Cmd ⌘) to select multiple timelines.</div>
     </div>
+  {% elif spec and spec.kind == "grouped_transfer" %}
+    {# Two-listbox shuttle: both <select>s render EVERY heading as its own <optgroup>
+       (even if empty on one side) so moveGroupedOptions() (config.html) only ever
+       needs to find-and-append into an already-existing optgroup, never create one --
+       keeps heading order identical and stable on both sides regardless of how items
+       get shuffled between them. #}
+    {% set active = (value if value is iterable and value is not string else [])|map("string")|list %}
+    <div class="col-12">
+      <label class="form-label small text-white-50 fw-bold mb-1">{{ label }}</label>
+      <div class="row g-2 align-items-center">
+        <div class="col-5">
+          <div class="text-white-50 small mb-1">Available</div>
+          <select class="form-select bg-dark text-light border-secondary" id="{{ dom_id }}__available" multiple size="10">
+            {% for heading, opts in spec.groups %}
+              <optgroup label="{{ heading }}">
+                {% for opt_value, opt_label in opts %}
+                  {% if opt_value|string not in active %}
+                    <option value="{{ opt_value }}">{{ opt_label }}</option>
+                  {% endif %}
+                {% endfor %}
+              </optgroup>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-2 d-flex flex-column align-items-center gap-2">
+          <button type="button" class="btn btn-sm btn-outline-light" style="width: 100%;"
+                  onclick="moveGroupedOptions('{{ dom_id }}__available', '{{ dom_id }}')">+ Add</button>
+          <button type="button" class="btn btn-sm btn-outline-light" style="width: 100%;"
+                  onclick="moveGroupedOptions('{{ dom_id }}', '{{ dom_id }}__available')">- Remove</button>
+        </div>
+        <div class="col-5">
+          <div class="text-white-50 small mb-1">Active</div>
+          <select class="form-select bg-dark text-light border-secondary dynamic-input array-select" id="{{ dom_id }}" multiple size="10">
+            {% for heading, opts in spec.groups %}
+              <optgroup label="{{ heading }}">
+                {% for opt_value, opt_label in opts %}
+                  {% if opt_value|string in active %}
+                    <option value="{{ opt_value }}">{{ opt_label }}</option>
+                  {% endif %}
+                {% endfor %}
+              </optgroup>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+      <div class="text-white-50" style="font-size: 11px; margin-top: 4px;">💡 Select one or more (Ctrl/Cmd-click for multiple), then Add/Remove to move them between lists.</div>
+    </div>
   {% elif spec and spec.kind == "color" %}
     {% set hex_value, color_label = initial_color_render(value) %}
     <div class="col-md-6">

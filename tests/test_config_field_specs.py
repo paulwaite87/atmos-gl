@@ -178,6 +178,24 @@ def test_validate_against_specs_rejects_non_list_multiselect_value():
     assert len(errors) == 1
 
 
+def test_validate_against_specs_accepts_valid_grouped_transfer_subset():
+    assert validate_against_specs(
+        {"satellites_collector": {"groups": ["stations", "starlink"]}}
+    ) == []
+
+
+def test_validate_against_specs_rejects_grouped_transfer_with_unknown_option():
+    errors = validate_against_specs(
+        {"satellites_collector": {"groups": ["stations", "nope"]}}
+    )
+    assert len(errors) == 1
+
+
+def test_validate_against_specs_rejects_non_list_grouped_transfer_value():
+    errors = validate_against_specs({"satellites_collector": {"groups": "stations"}})
+    assert len(errors) == 1
+
+
 # --- GET /config: Events / Misc / Shipping tabs render correctly ---
 
 
@@ -204,6 +222,30 @@ def test_config_page_renders_multiselect_with_correct_options_checked():
     idx = html.index('id="volcanoes__erupt_date_codes"')
     select_html = html[idx : idx + 1500]
     assert '<option value="D1" selected>' in select_html
+
+
+def test_config_page_renders_grouped_transfer_with_active_options_on_the_right():
+    """satellites_collector.groups (live config: ["stations", "weather", "science",
+    "resource"]) -- active groups render in the right ("active"/saved) select, grouped
+    under the same <optgroup> headings as the left ("available") select, and never in
+    both at once."""
+    resp = client.get("/config")
+    html = resp.text
+    assert 'id="satellites_collector__groups__available"' in html
+    assert 'id="satellites_collector__groups"' in html
+    assert '<optgroup label="Special-Interest Satellites">' in html
+
+    avail_idx = html.index('id="satellites_collector__groups__available"')
+    active_idx = html.index('id="satellites_collector__groups"', avail_idx)
+    available_html = html[avail_idx:active_idx]
+    active_html = html[active_idx : html.index("</select>", active_idx)]
+
+    # "stations" is active (in the live config) -> right box only.
+    assert '<option value="stations">' in active_html
+    assert '<option value="stations">' not in available_html
+    # "starlink" is not active -> left box only.
+    assert '<option value="starlink">' in available_html
+    assert '<option value="starlink">' not in active_html
 
 
 def test_config_page_renders_color_picker_with_resolved_hex():
