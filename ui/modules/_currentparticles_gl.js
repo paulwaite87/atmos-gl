@@ -462,6 +462,12 @@ export function createCurrentParticleGLLayer(map, opts) {
         // falls back to this module's currents-tuned LOD_COUNT when not overridden.
         lodCount = null,
         tailFadeEnd = 0.35,   // currents' own tuned default; see trailFragmentShader
+        // Lifecycle hooks, matching createFillLayer's contract (_webglfill.js) exactly --
+        // wind/currents never needed these (their legends piggyback on their accompanying
+        // FILL layer's onMount/onRefresh/onUnmount instead), but a particle-only consumer
+        // with no fill layer (jetstream) has nowhere else to hook a legend's show/hide to
+        // the layer's real enabled state. No-op by default, same as createFillLayer's.
+        onMount = () => {}, onRefresh = () => {}, onUnmount = () => {},
         refreshMs, syncMs,
     } = opts;
 
@@ -1004,6 +1010,7 @@ export function createCurrentParticleGLLayer(map, opts) {
         curCfg = cfg; curAnim = (globals && globals.animation) || {};
         bustKey = timeline.get().refreshEpoch || Date.now();
         if (!map.getLayer(A_LYR)) { map.addLayer(makeLayer(cfg)); added = true; scrubber.layerActivated && scrubber.layerActivated(); }
+        onMount(cfg);
     };
     const refresh = (cfg, globals) => {
         curCfg = cfg; curAnim = (globals && globals.animation) || {};
@@ -1014,9 +1021,11 @@ export function createCurrentParticleGLLayer(map, opts) {
         if (glRef) { loadVelocity(cfg); loadVelocityNext(cfg, timeline.get()); }
         if (parseInt(cfg.level_of_detail, 10) && glRef) pendingRebuild = true;
         map.triggerRepaint();
+        onRefresh(cfg);
     };
     const unmount = () => {
         if (added && map.getLayer(A_LYR)) { map.removeLayer(A_LYR); added = false; scrubber.layerDeactivated && scrubber.layerDeactivated(); }
+        onUnmount();
     };
 
     // Reload velocity texture when the timeline hour changes (scrubber/playback).
