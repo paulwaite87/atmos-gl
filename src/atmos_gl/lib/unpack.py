@@ -225,6 +225,35 @@ def wind_data_unpack(path):
     return out
 
 
+def jetstream_data_unpack(path):
+    """UGRD/VGRD @ 250 mb -> u, v jet-core wind components (m/s).
+
+    Same shape as wind_data_unpack, differing only in the level filter (a pressure
+    level, not height-above-ground) and variable names: cfgrib names the isobaric U/V
+    variables plainly 'u'/'v' (not 'u10'/'v10' the way it does for the 10 m height
+    filter), confirmed against a live GFS union file during implementation.
+    """
+    ds = xr.open_dataset(
+        path,
+        engine="cfgrib",
+        backend_kwargs={
+            "filter_by_keys": {"typeOfLevel": "isobaricInhPa", "level": 250}
+        },
+    )
+    # Enforce the row-0 = north contract (see module docstring and wind_data_unpack's
+    # comment above) -- don't rely on this particular level happening to come back
+    # north-first already.
+    ds = ds.sortby("latitude", ascending=False)
+    u = ds["u"].values.squeeze()
+    v = ds["v"].values.squeeze()
+    lats = ds["latitude"].values
+    lons, (u, v) = _standardize_lon(ds["longitude"].values, u, v)
+    ds.close()
+    out = _blank()
+    out.update(lat=np.asarray(lats), lon=lons, u=u, v=v)
+    return out
+
+
 def stormwatch_data_unpack(path):
     """CAPE (values) + CIN (values2), both surface (J/kg)."""
 
@@ -502,6 +531,7 @@ ATMOS_UNPACKERS = {
     "ozone": ozone_data_unpack,
     "pwat": pwat_data_unpack,
     "wind": wind_data_unpack,
+    "jetstream": jetstream_data_unpack,
     "stormwatch": stormwatch_data_unpack,
     "fire_weather": fire_weather_data_unpack,
 }
