@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 #   stormwatch    :CAPE:surface: / :CIN:surface:
 #   temperature   :TMP:2 m above ground:
 #   wind          :UGRD:/:VGRD:10 m above ground:
+#   jetstream     :UGRD:/:VGRD:250 mb: (jet-core pressure level)
 ATMOS_TARGETS = [
     ":PRMSL:mean sea level:",
     ":PRATE:surface:",
@@ -34,6 +35,8 @@ ATMOS_TARGETS = [
     ":RH:2 m above ground:",
     ":UGRD:10 m above ground:",
     ":VGRD:10 m above ground:",
+    ":UGRD:250 mb:",
+    ":VGRD:250 mb:",
 ]
 
 NOMADS_GFS_BASE = "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod"
