@@ -66,6 +66,88 @@ export function interpolatedPosition({ lat, lon, gs, track }, elapsedSeconds) {
     return { lat: lat + deltaLat, lon: lon + deltaLon };
 }
 
+// ICAO aircraft type designator (adsb.lol's `t` field, e.g. "B77W") -> a broad,
+// human-friendly class for the hover popup. Locally maintained and deliberately not
+// exhaustive -- covers designators likely to actually show up in real ADS-B traffic
+// (airliners, regional/business jets, turboprops, light GA, rotorcraft, a handful of
+// military types). An unregistered designator (including any adsb.lol variant/typo
+// this list doesn't happen to cover) falls back to a vague default rather than
+// guessing -- see aircraftClass()'s default.
+const AIRCRAFT_CLASS_REGISTER = {
+    // Widebody jets
+    A332: 'Widebody Jet', A333: 'Widebody Jet', A338: 'Widebody Jet', A339: 'Widebody Jet',
+    A342: 'Widebody Jet', A343: 'Widebody Jet', A345: 'Widebody Jet', A346: 'Widebody Jet',
+    A359: 'Widebody Jet', A35K: 'Widebody Jet', A388: 'Widebody Jet',
+    B744: 'Widebody Jet', B748: 'Widebody Jet', B772: 'Widebody Jet', B773: 'Widebody Jet',
+    B77L: 'Widebody Jet', B77W: 'Widebody Jet', B788: 'Widebody Jet', B789: 'Widebody Jet',
+    B78X: 'Widebody Jet', MD11: 'Widebody Jet',
+
+    // Narrowbody jets
+    A318: 'Narrowbody Jet', A319: 'Narrowbody Jet', A320: 'Narrowbody Jet', A321: 'Narrowbody Jet',
+    A19N: 'Narrowbody Jet', A20N: 'Narrowbody Jet', A21N: 'Narrowbody Jet',
+    B712: 'Narrowbody Jet', B737: 'Narrowbody Jet', B738: 'Narrowbody Jet', B739: 'Narrowbody Jet',
+    B37M: 'Narrowbody Jet', B38M: 'Narrowbody Jet', B39M: 'Narrowbody Jet', B3XM: 'Narrowbody Jet',
+    B752: 'Narrowbody Jet', B753: 'Narrowbody Jet',
+    MD82: 'Narrowbody Jet', MD83: 'Narrowbody Jet', MD90: 'Narrowbody Jet',
+
+    // Regional jets
+    CRJ1: 'Regional Jet', CRJ2: 'Regional Jet', CRJ7: 'Regional Jet', CRJ9: 'Regional Jet',
+    CRJX: 'Regional Jet',
+    E135: 'Regional Jet', E145: 'Regional Jet', E170: 'Regional Jet', E175: 'Regional Jet',
+    E190: 'Regional Jet', E195: 'Regional Jet', E290: 'Regional Jet', E295: 'Regional Jet',
+    SU95: 'Regional Jet', ARJ21: 'Regional Jet', F70: 'Regional Jet', F100: 'Regional Jet',
+
+    // Turboprops
+    AT43: 'Turboprop', AT45: 'Turboprop', AT72: 'Turboprop', AT75: 'Turboprop', AT76: 'Turboprop',
+    DH8A: 'Turboprop', DH8B: 'Turboprop', DH8C: 'Turboprop', DH8D: 'Turboprop',
+    SF34: 'Turboprop', B190: 'Turboprop', C208: 'Turboprop', C208B: 'Turboprop',
+    PC12: 'Turboprop', TBM7: 'Turboprop', TBM8: 'Turboprop', TBM9: 'Turboprop',
+    D328: 'Turboprop', SW4: 'Turboprop', BE20: 'Turboprop',
+
+    // Business jets
+    GLF4: 'Business Jet', GLF5: 'Business Jet', GLF6: 'Business Jet',
+    CL30: 'Business Jet', CL35: 'Business Jet', CL60: 'Business Jet',
+    GLEX: 'Business Jet', GL5T: 'Business Jet', GL6T: 'Business Jet',
+    C525: 'Business Jet', C550: 'Business Jet', C560: 'Business Jet', C56X: 'Business Jet',
+    C650: 'Business Jet', C680: 'Business Jet', C68A: 'Business Jet', C700: 'Business Jet',
+    C750: 'Business Jet',
+    FA7X: 'Business Jet', FA8X: 'Business Jet', FA50: 'Business Jet', FA6X: 'Business Jet',
+    FA20: 'Business Jet',
+    LJ35: 'Business Jet', LJ45: 'Business Jet', LJ60: 'Business Jet', LJ75: 'Business Jet',
+    PC24: 'Business Jet', E50P: 'Business Jet', E55P: 'Business Jet', H25B: 'Business Jet',
+
+    // Light aircraft (piston GA)
+    C152: 'Light Aircraft', C172: 'Light Aircraft', C182: 'Light Aircraft', C206: 'Light Aircraft',
+    P28A: 'Light Aircraft', PA31: 'Light Aircraft', PA34: 'Light Aircraft', PA44: 'Light Aircraft',
+    BE33: 'Light Aircraft', BE35: 'Light Aircraft', BE36: 'Light Aircraft', BE58: 'Light Aircraft',
+    M20P: 'Light Aircraft', M20T: 'Light Aircraft', SR20: 'Light Aircraft', SR22: 'Light Aircraft',
+    DA40: 'Light Aircraft', DA42: 'Light Aircraft',
+
+    // Helicopters
+    R22: 'Helicopter', R44: 'Helicopter', R66: 'Helicopter',
+    EC30: 'Helicopter', EC35: 'Helicopter', EC45: 'Helicopter', EC55: 'Helicopter',
+    AS50: 'Helicopter', AS55: 'Helicopter', AS65: 'Helicopter',
+    A109: 'Helicopter', A119: 'Helicopter', A139: 'Helicopter', A169: 'Helicopter', A189: 'Helicopter',
+    B06: 'Helicopter', B47: 'Helicopter', B407: 'Helicopter', B412: 'Helicopter',
+    B429: 'Helicopter', B430: 'Helicopter',
+    S76: 'Helicopter', S92: 'Helicopter',
+    H60: 'Helicopter', AH64: 'Helicopter', UH1: 'Helicopter',
+
+    // Military (fixed-wing) -- a small representative set; ADS-B military traffic is
+    // rare and often squawks without a populated `t` at all.
+    F15: 'Military Aircraft', F16: 'Military Aircraft', F18: 'Military Aircraft',
+    F22: 'Military Aircraft', F35: 'Military Aircraft',
+    C130: 'Military Aircraft', C17: 'Military Aircraft',
+    B52: 'Military Aircraft', A10: 'Military Aircraft',
+};
+
+const DEFAULT_AIRCRAFT_CLASS = 'Aircraft (unclassified)';
+
+export function aircraftClass(typeCode) {
+    if (!typeCode) return DEFAULT_AIRCRAFT_CLASS;
+    return AIRCRAFT_CLASS_REGISTER[typeCode.toUpperCase()] || DEFAULT_AIRCRAFT_CLASS;
+}
+
 // ---------------------------------------------------------------------------------
 // Layer wiring: WebSocket client, requestAnimationFrame render loop, MapLibre
 // filters/icons, hover popup. Not unit-tested (same boundary every other layer module
@@ -141,11 +223,13 @@ function popupHtml(f) {
     const p = f.properties;
     const alt = p.alt_baro_ft ? `${Math.round(p.alt_baro_ft).toLocaleString()} ft` : 'ground';
     const target = targetAltitudeLabel(p.nav_altitude_mcp_ft, p.alt_baro_ft);
+    const cls = aircraftClass(p.aircraft_type);
     const staleNote = p.frozen
         ? '<div style="color:#c0392b;font-size:11px;margin-top:4px;">&#9888; Signal lost -- position frozen</div>' : '';
     return `<div style="font-family:sans-serif;font-size:12px;color:#000;padding:5px;">
             <strong style="color:#007bff;font-size:14px;">${p.flight}</strong><br>
             ${p.aircraft_type ? `<span style="color:#666;">Type:</span> ${p.aircraft_type}<br>` : ''}
+            <span style="color:#666;">Class:</span> ${cls}<br>
             ${p.registration ? `<span style="color:#666;">Registration:</span> ${p.registration}<br>` : ''}
             <span style="color:#666;">Status:</span> ${flightStatus(p.baro_rate_fpm)}<br>
             <span style="color:#666;">Altitude:</span> ${alt}<br>
