@@ -55,6 +55,13 @@ describe('preloadIcons', () => {
             .rejects.toThrow('Could not load icon-a');
     });
 
+    test('registers an icon marked sdf:true with the sdf option, for render-time tinting', async () => {
+        const map = fakeMap();
+        globalThis.fetch = vi.fn(async () => ({ ok: true, blob: async () => 'blob' }));
+        await preloadIcons(map, [{ id: 'icon-a', url: '/images/a.png', sdf: true }]);
+        expect(map.addImage).toHaveBeenCalledWith('icon-a', 'bitmap', { sdf: true });
+    });
+
     test('loads multiple missing icons in parallel, leaving present ones untouched', async () => {
         const map = fakeMap(['icon-b']);
         globalThis.fetch = vi.fn(async () => ({ ok: true, blob: async () => 'blob' }));

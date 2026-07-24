@@ -14,17 +14,29 @@ export async function fetchOrThrow(url) {
     return r.json();
 }
 
-// Icon-array preloader shared by quakes.js/lightning.js/shipping.js -- was
-// byte-for-byte identical in lightning.js/shipping.js; quakes.js's copy was missing
-// the !res.ok check, silently fixed by unifying onto this one. volcanoes.js's
+// Icon-array preloader shared by quakes.js/lightning.js/shipping.js/flightradar.js --
+// was byte-for-byte identical in lightning.js/shipping.js; quakes.js's copy was
+// missing the !res.ok check, silently fixed by unifying onto this one. volcanoes.js's
 // single-icon case has its own post-await hasImage re-check (a race-guard this
 // three-icon version doesn't need) and stays bespoke.
+//
+// An icon entry with `sdf: true` (flightradar.js's aircraft/glider icons -- a white
+// silhouette on transparent) is registered as an SDF image, so a layer can tint it at
+// render time via the icon-color paint property instead of needing a separately-baked
+// PNG per color. Every other caller's icons are pre-colored PNGs and omit `sdf`,
+// which must call addImage with exactly its original two-argument signature -- some
+// mocked `map`s in tests assert against that exact call shape.
 export async function preloadIcons(map, icons) {
     await Promise.all(icons.map(async (ic) => {
         if (map.hasImage(ic.id)) return;
         const res = await fetch(`${window.location.origin}${ic.url}`);
         if (!res.ok) throw new Error(`Could not load ${ic.id}`);
-        map.addImage(ic.id, await createImageBitmap(await res.blob()));
+        const bitmap = await createImageBitmap(await res.blob());
+        if (ic.sdf) {
+            map.addImage(ic.id, bitmap, { sdf: true });
+        } else {
+            map.addImage(ic.id, bitmap);
+        }
     }));
 }
 

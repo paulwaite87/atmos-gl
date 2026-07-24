@@ -3,7 +3,7 @@
 // for 1 hour = 60 nautical miles = exactly 1 degree of latitude), not recomputed the
 // way the code does, so a broken formula can actually disagree with the test.
 import { describe, test, expect } from 'vitest';
-import { interpolatedPosition, boundedElapsedSeconds, isFrozen, flightStatus, targetAltitudeLabel, aircraftClass } from './flightradar.js';
+import { interpolatedPosition, boundedElapsedSeconds, isFrozen, flightStatus, targetAltitudeLabel, aircraftClass, aircraftGroup, aircraftGroupColor } from './flightradar.js';
 
 describe('interpolatedPosition', () => {
     test('due-north flight for 1 hour at 60kts moves exactly 1 degree of latitude', () => {
@@ -167,5 +167,50 @@ describe('aircraftClass', () => {
         expect(aircraftClass(null)).toBe('Aircraft (unclassified)');
         expect(aircraftClass(undefined)).toBe('Aircraft (unclassified)');
         expect(aircraftClass('')).toBe('Aircraft (unclassified)');
+    });
+});
+
+describe('aircraftGroup', () => {
+    test('widebody jets are their own group', () => {
+        expect(aircraftGroup('B77W')).toBe('widebody');
+    });
+
+    test('narrowbody and regional jets both fold into the airliner group', () => {
+        expect(aircraftGroup('B738')).toBe('airliner');
+        expect(aircraftGroup('E190')).toBe('airliner');
+    });
+
+    test('turboprops, business jets, and light aircraft all fold into the light group', () => {
+        expect(aircraftGroup('AT76')).toBe('light');
+        expect(aircraftGroup('GLF6')).toBe('light');
+        expect(aircraftGroup('C172')).toBe('light');
+    });
+
+    test('helicopters, military, and unclassified types all fall into the other group', () => {
+        expect(aircraftGroup('R44')).toBe('other');
+        expect(aircraftGroup('F16')).toBe('other');
+        expect(aircraftGroup('ZZZZ')).toBe('other');
+        expect(aircraftGroup(null)).toBe('other');
+    });
+
+    test('there are fewer than 5 groups in total', () => {
+        const allGroups = new Set(
+            ['B77W', 'B738', 'E190', 'AT76', 'GLF6', 'C172', 'R44', 'F16', 'ZZZZ'].map(aircraftGroup)
+        );
+        expect(allGroups.size).toBeLessThan(5);
+    });
+});
+
+describe('aircraftGroupColor', () => {
+    test('each group resolves to a distinct color', () => {
+        const widebody = aircraftGroupColor('B77W');
+        const airliner = aircraftGroupColor('B738');
+        const light = aircraftGroupColor('C172');
+        const other = aircraftGroupColor('R44');
+        expect(new Set([widebody, airliner, light, other]).size).toBe(4);
+    });
+
+    test('an unregistered type still resolves to a valid color (the other group)', () => {
+        expect(aircraftGroupColor('ZZZZ')).toBe(aircraftGroupColor('R44'));
     });
 });
