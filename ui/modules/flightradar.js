@@ -25,12 +25,21 @@ export function isFrozen(lastSeenMs, nowMs, maxExtrapolationS = MAX_EXTRAPOLATIO
     return (nowMs - lastSeenMs) / 1000.0 >= maxExtrapolationS;
 }
 
+// onGround comes straight from adsb.lol's own squat/weight-on-wheels transponder field
+// (alt_baro === "ground") -- never computed by comparing altitude to field elevation,
+// so it's correct even at a high-elevation airport. gs still matters once on the
+// ground: gs=0 is unambiguously Landed, but gs>0 covers taxiing, the last few seconds
+// of rollout after touchdown, and the first few seconds of the takeoff roll all at
+// once -- ADS-B alone can't tell those apart, so this deliberately renders nothing
+// rather than guessing (see targetAltitudeLabel's matching ambiguity handling below).
+//
 // adsb.lol's baro_rate (ft/min, barometric vertical rate) is noisy even in level
 // flight -- a deadband avoids the popup flickering between Climbing/Descending/Level
 // on sensor jitter alone. 150ft/min is a conservative starting guess (real level-flight
 // noise is usually well under 100ft/min), tunable like every other numeric constant in
 // this feature.
-export function flightStatus(baroRateFpm, deadbandFpm = 150) {
+export function flightStatus(onGround, gs, baroRateFpm, deadbandFpm = 150) {
+    if (onGround) return gs === 0 ? 'Landed' : '';
     if (typeof baroRateFpm !== 'number') return 'Level flight';
     if (baroRateFpm > deadbandFpm) return 'Climbing';
     if (baroRateFpm < -deadbandFpm) return 'Descending';
@@ -42,7 +51,14 @@ export function flightStatus(baroRateFpm, deadbandFpm = 150) {
 // cruise -- a real adsb.lol record: alt_baro=37000, nav_altitude_mcp=36992. A small
 // tolerance (rather than bit-exact equality) is what makes "Reached" actually fire in
 // practice.
-export function targetAltitudeLabel(navAltitudeMcpFt, altBaroFt, toleranceFt = 50) {
+//
+// altitudeAmbiguous is true exactly when flightStatus's on-the-ground-but-moving case
+// applies: the MCP can already hold a pre-programmed climb target while still taxiing,
+// but there's no current altitude reading to sensibly compare it against (alt_baro is
+// the literal "ground" state, not a number) -- so the target is withheld entirely
+// rather than showing a number that looks like live progress-to-target.
+export function targetAltitudeLabel(navAltitudeMcpFt, altBaroFt, altitudeAmbiguous, toleranceFt = 50) {
+    if (altitudeAmbiguous) return null;
     if (typeof navAltitudeMcpFt !== 'number') return null;
     if (typeof altBaroFt === 'number' && Math.abs(navAltitudeMcpFt - altBaroFt) <= toleranceFt) {
         return 'Reached';
@@ -231,7 +247,15 @@ function buildFeatureCollection(aircraftByHex, now) {
                 flight: (rec.flight || '').trim() || rec.hex,
                 registration: rec.r || '',
                 aircraft_type: rec.t || '',
+                // alt_baro_ft stays numeric (0 fallback) purely for the MapLibre zoom-density
+                // filter above, which needs a number to compare against. The real reading is
+                // alt_baro_known/on_ground -- adsb.lol's alt_baro is either a number, the
+                // literal string "ground" (on-ground transponder state, unrelated to this
+                // value), or simply absent (no reading yet) -- three states popupHtml must
+                // not conflate (see its "ground" vs "unknown" altitude display).
                 alt_baro_ft: typeof rec.alt_baro === 'number' ? rec.alt_baro : 0,
+                alt_baro_known: typeof rec.alt_baro === 'number',
+                on_ground: rec.alt_baro === 'ground',
                 baro_rate_fpm: typeof rec.baro_rate === 'number' ? rec.baro_rate : null,
                 nav_altitude_mcp_ft: typeof rec.nav_altitude_mcp === 'number' ? rec.nav_altitude_mcp : null,
                 gs: rec.gs ?? 0,
@@ -253,8 +277,14 @@ function pruneStale(aircraftByHex, now) {
 
 function popupHtml(f) {
     const p = f.properties;
-    const alt = p.alt_baro_ft ? `${Math.round(p.alt_baro_ft).toLocaleString()} ft` : 'ground';
-    const target = targetAltitudeLabel(p.nav_altitude_mcp_ft, p.alt_baro_ft);
+    // On the ground but still moving: taxiing, just-landed rollout, and takeoff roll
+    // all look identical from ADS-B alone -- see flightStatus/targetAltitudeLabel.
+    const groundAmbiguous = p.on_ground && p.gs > 0;
+    const alt = p.on_ground ? 'ground'
+        : p.alt_baro_known ? `${Math.round(p.alt_baro_ft).toLocaleString()} ft`
+        : 'unknown';
+    const status = flightStatus(p.on_ground, p.gs, p.baro_rate_fpm);
+    const target = targetAltitudeLabel(p.nav_altitude_mcp_ft, p.alt_baro_ft, groundAmbiguous);
     const cls = aircraftClass(p.aircraft_type);
     const staleNote = p.frozen
         ? '<div style="color:#c0392b;font-size:11px;margin-top:4px;">&#9888; Signal lost -- position frozen</div>' : '';
@@ -263,7 +293,7 @@ function popupHtml(f) {
             ${p.aircraft_type ? `<span style="color:#666;">Type:</span> ${p.aircraft_type}<br>` : ''}
             <span style="color:#666;">Class:</span> ${cls}<br>
             ${p.registration ? `<span style="color:#666;">Registration:</span> ${p.registration}<br>` : ''}
-            <span style="color:#666;">Status:</span> ${flightStatus(p.baro_rate_fpm)}<br>
+            ${status ? `<span style="color:#666;">Status:</span> ${status}<br>` : ''}
             <span style="color:#666;">Altitude:</span> ${alt}<br>
             ${target ? `<span style="color:#666;">Target altitude:</span> ${target}<br>` : ''}
             <span style="color:#666;">Speed:</span> ${Math.round(p.gs)} kts<br>

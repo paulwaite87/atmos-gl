@@ -85,33 +85,42 @@ describe('isFrozen', () => {
 
 describe('flightStatus', () => {
     test('a clearly positive climb rate is Climbing', () => {
-        expect(flightStatus(1000)).toBe('Climbing');
+        expect(flightStatus(false, 250, 1000)).toBe('Climbing');
     });
 
     test('a clearly negative rate is Descending', () => {
-        expect(flightStatus(-1000)).toBe('Descending');
+        expect(flightStatus(false, 250, -1000)).toBe('Descending');
     });
 
     test('zero rate is Level flight', () => {
-        expect(flightStatus(0)).toBe('Level flight');
+        expect(flightStatus(false, 250, 0)).toBe('Level flight');
     });
 
     test('small positive noise within the deadband stays Level flight', () => {
-        expect(flightStatus(100, 150)).toBe('Level flight');
+        expect(flightStatus(false, 250, 100, 150)).toBe('Level flight');
     });
 
     test('small negative noise within the deadband stays Level flight', () => {
-        expect(flightStatus(-100, 150)).toBe('Level flight');
+        expect(flightStatus(false, 250, -100, 150)).toBe('Level flight');
     });
 
     test('just past the deadband on either side switches state', () => {
-        expect(flightStatus(151, 150)).toBe('Climbing');
-        expect(flightStatus(-151, 150)).toBe('Descending');
+        expect(flightStatus(false, 250, 151, 150)).toBe('Climbing');
+        expect(flightStatus(false, 250, -151, 150)).toBe('Descending');
     });
 
     test('missing rate data defaults to Level flight', () => {
-        expect(flightStatus(null)).toBe('Level flight');
-        expect(flightStatus(undefined)).toBe('Level flight');
+        expect(flightStatus(false, 250, null)).toBe('Level flight');
+        expect(flightStatus(false, 250, undefined)).toBe('Level flight');
+    });
+
+    test('on the ground and stationary reads as Landed, regardless of vertical rate', () => {
+        expect(flightStatus(true, 0, null)).toBe('Landed');
+    });
+
+    test('on the ground but still moving is ambiguous (taxiing, rollout, or takeoff roll) and renders nothing', () => {
+        expect(flightStatus(true, 12, null)).toBe('');
+        expect(flightStatus(true, 12, 1000)).toBe('');
     });
 });
 
@@ -136,6 +145,14 @@ describe('targetAltitudeLabel', () => {
 
     test('current altitude unknown still shows the raw target', () => {
         expect(targetAltitudeLabel(37000, null)).toBe('37,000 ft');
+    });
+
+    test('ambiguous ground state (taxiing/rollout/takeoff roll) suppresses the target entirely, even with a valid MCP value', () => {
+        expect(targetAltitudeLabel(3000, 0, true)).toBe(null);
+    });
+
+    test('once no longer ambiguous, target altitude resumes as normal', () => {
+        expect(targetAltitudeLabel(38000, 35000, false)).toBe('38,000 ft');
     });
 });
 
