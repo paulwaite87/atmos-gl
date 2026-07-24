@@ -492,7 +492,9 @@ military types and anything unrecognised, and rotated to match its heading. Posi
 are dead-reckoned smoothly from each aircraft's last known speed and track between
 updates, rather than snapping every time fresh data arrives.
 
-Hover over an aircraft for its flight number, aircraft type/class, registration, a
+Hover over an aircraft for its flight number, aircraft type/class, airline (inferred
+from the ICAO callsign for major/regional carriers — not shown for private/GA traffic,
+which usually broadcasts its own registration as the callsign instead), registration, a
 climb/descend/level/landed status, current altitude, the autopilot's selected target
 altitude (once one is set and reachable), ground speed, heading and ICAO hex code. Like
 Shipping, low-altitude and on-the-ground traffic only reveals itself once you're zoomed
