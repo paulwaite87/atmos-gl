@@ -362,7 +362,7 @@ FIELD_SPECS = {
     ("fires", "key_fontsize"): _FONTSIZE,
     ("fires", "min_risk_display"): SliderSpec(min=0, max=100, step=5, suffix=""),
     ("fires", "min_risk_filter"): SliderSpec(min=0, max=100, step=5, suffix="", zero_label="off"),
-    # --- Misc (satellites, terminator, markers) ---
+    # --- Misc (satellites, terminator, markers, flightradar) ---
     ("satellites", "sat_names"): _SAT_NAMES,
     ("satellites", "past_minutes"): _MINUTES,
     ("satellites", "future_minutes"): _MINUTES,
@@ -374,6 +374,7 @@ FIELD_SPECS = {
     ("markers", "marker_color"): ColorSpec(),
     ("markers", "marker_fontsize"): _FONTSIZE,
     ("markers", "weather_popup"): ToggleSpec(),
+    ("flightradar", "icon_zoom"): _ICON_ZOOM,
     # --- Shipping (shipping) ---
     ("shipping", "icon_zoom"): _ICON_ZOOM,
     # Track shown only while hovering a ship (shipping.js) -- not a persistent overlay,
@@ -611,6 +612,7 @@ SECTION_LABELS = {
     "satellites": "Satellites",
     "terminator": "Terminator Night/day Shade",
     "markers": "Place Markers",
+    "flightradar": "Flight Radar",
     "shipping": "Shipping Overlay",
     "shipping_collector": "Shipping Collector (AIS Loop)",
     "lightning_collector": "Lightning Collector Daemon",
