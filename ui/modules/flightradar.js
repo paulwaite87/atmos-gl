@@ -192,6 +192,57 @@ export function aircraftGroupColor(typeCode) {
     return AIRCRAFT_GROUP_COLORS[aircraftGroup(typeCode)];
 }
 
+// adsb.lol's `flight` field is the ICAO callsign (e.g. "ANZ583L"), whose leading 3
+// letters are the aircraft operator's standard ICAO airline designator -- the same
+// mechanism real flight trackers use to show an airline name. Locally maintained and
+// deliberately not exhaustive (thousands of these exist worldwide), same register/
+// fallback shape as AIRCRAFT_CLASS_REGISTER -- covers major/regional carriers likely to
+// actually show up in real traffic, skewed toward NZ/Australia/Pacific given that's
+// this deployment's home region. A callsign whose leading 3 letters aren't a
+// recognized designator (private/GA aircraft usually just broadcast their own
+// registration as the callsign, e.g. "N12345") falls through to no airline at all
+// rather than guessing -- see airlineForFlight()'s null return, and popupHtml, which
+// omits the whole line rather than showing a placeholder for the (common) GA case.
+const AIRLINE_REGISTER = {
+    // New Zealand / Australia / Pacific
+    ANZ: 'Air New Zealand', QFA: 'Qantas', JST: 'Jetstar', VOZ: 'Virgin Australia',
+
+    // North America
+    AAL: 'American Airlines', UAL: 'United Airlines', DAL: 'Delta Air Lines',
+    SWA: 'Southwest Airlines', JBU: 'JetBlue Airways', ASA: 'Alaska Airlines',
+    FFT: 'Frontier Airlines', NKS: 'Spirit Airlines', ACA: 'Air Canada', WJA: 'WestJet',
+
+    // Europe
+    BAW: 'British Airways', VIR: 'Virgin Atlantic', EZY: 'easyJet', RYR: 'Ryanair',
+    AFR: 'Air France', DLH: 'Lufthansa', KLM: 'KLM Royal Dutch Airlines', IBE: 'Iberia',
+    SAS: 'SAS Scandinavian Airlines', FIN: 'Finnair', SWR: 'Swiss International Air Lines',
+    THY: 'Turkish Airlines',
+
+    // Middle East
+    UAE: 'Emirates', QTR: 'Qatar Airways', ETD: 'Etihad Airways', SVA: 'Saudia',
+
+    // Asia
+    SIA: 'Singapore Airlines', CPA: 'Cathay Pacific', ANA: 'All Nippon Airways',
+    JAL: 'Japan Airlines', KAL: 'Korean Air', AAR: 'Asiana Airlines', CCA: 'Air China',
+    CES: 'China Eastern Airlines', CSN: 'China Southern Airlines', THA: 'Thai Airways',
+    MAS: 'Malaysia Airlines', GIA: 'Garuda Indonesia', PAL: 'Philippine Airlines',
+    AIC: 'Air India', IGO: 'IndiGo',
+
+    // Africa
+    ETH: 'Ethiopian Airlines', SAA: 'South African Airways', MSR: 'EgyptAir',
+
+    // South America
+    LAN: 'LATAM Airlines', TAM: 'LATAM Airlines', GLO: 'Gol Linhas Aereas', AVA: 'Avianca',
+
+    // Cargo
+    FDX: 'FedEx Express', UPS: 'UPS Airlines', GTI: 'Atlas Air',
+};
+
+export function airlineForFlight(flightCallsign) {
+    if (!flightCallsign) return null;
+    return AIRLINE_REGISTER[flightCallsign.trim().slice(0, 3).toUpperCase()] || null;
+}
+
 // ---------------------------------------------------------------------------------
 // Layer wiring: WebSocket client, requestAnimationFrame render loop, MapLibre
 // filters/icons, hover popup. Not unit-tested (same boundary every other layer module
@@ -245,6 +296,10 @@ function buildFeatureCollection(aircraftByHex, now) {
             properties: {
                 hex: rec.hex,
                 flight: (rec.flight || '').trim() || rec.hex,
+                // Derived from the raw callsign, before the hex fallback above --
+                // airlineForFlight() needs the real callsign (or nothing), not a hex
+                // ICAO address standing in for a missing one.
+                airline: airlineForFlight(rec.flight),
                 registration: rec.r || '',
                 aircraft_type: rec.t || '',
                 // alt_baro_ft stays numeric (0 fallback) purely for the MapLibre zoom-density
@@ -292,6 +347,7 @@ function popupHtml(f) {
             <strong style="color:#007bff;font-size:14px;">${p.flight}</strong><br>
             ${p.aircraft_type ? `<span style="color:#666;">Type:</span> ${p.aircraft_type}<br>` : ''}
             <span style="color:#666;">Class:</span> ${cls}<br>
+            ${p.airline ? `<span style="color:#666;">Airline:</span> ${p.airline}<br>` : ''}
             ${p.registration ? `<span style="color:#666;">Registration:</span> ${p.registration}<br>` : ''}
             ${status ? `<span style="color:#666;">Status:</span> ${status}<br>` : ''}
             <span style="color:#666;">Altitude:</span> ${alt}<br>
