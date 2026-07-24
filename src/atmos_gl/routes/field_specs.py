@@ -164,6 +164,16 @@ _LEVEL_OF_DETAIL = SelectSpec([
     ("3", "High resolution (needs lots of memory)"),
 ])
 
+# common.performance_tier -- caps LayerBuilder's concurrent render-worker count (see
+# workers_for_tier() in layer_builder.py). Deliberately lives in `common`, not
+# `layer_builder`'s own section, as a general "how much CPU/RAM is this host willing to
+# spend" switch -- see docs/adr/0006-performance-tier-lives-in-common.md.
+_PERFORMANCE_TIER = SelectSpec([
+    ("low", "Low (safest — minimal memory/CPU use, slower rendering)"),
+    ("medium", "Medium (balanced, default)"),
+    ("high", "High (fastest rendering, needs more memory/CPU)"),
+])
+
 _MODE_OPTIONS = SelectSpec([
     ("absolute", "Absolute"),
     ("anomaly", "Anomaly"),
@@ -329,6 +339,7 @@ FIELD_SPECS = {
         min=-180.0, max=180.0, step=1.0, decimals=1, suffix=" deg"
     ),
     ("common", "log_level"): _LOG_LEVEL,
+    ("common", "performance_tier"): _PERFORMANCE_TIER,
     ("animation", "forecast_stepping"): ToggleSpec(),
     ("animation", "stepping_rate"): _PARTICLE_SPEED_LIKE,
     # --- Events (quakes, volcanoes) ---

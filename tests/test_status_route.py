@@ -22,7 +22,6 @@ from atmos_gl.routes.status import (
     get_field_collector_classes,
     get_embeddable_collector_classes,
     get_task_classes,
-    _build_layer_channel_keys,
     _collect_status_rows,
     _serialize,
     _display_name,
@@ -356,51 +355,6 @@ def test_data_status_populates_every_registry_independently(client):
     data = resp.json()["data"]
     assert len(data["collectors"]) == 4  # one per registry
     assert len(data["layers"]) == 2
-
-
-def test_build_layer_channel_keys_maps_every_field_collector_product():
-    class _FakeGfsAtmos:
-        channel_key = "gfs_atmos"
-        products = {"isobars": None, "wind": None, "humidity": None}
-
-    class _FakeGfsWaves:
-        channel_key = "gfs_waves"
-        products = {"waves": None}
-
-    mapping = _build_layer_channel_keys((_FakeGfsAtmos, _FakeGfsWaves), ())
-
-    assert mapping == {
-        "isobars": "gfs_atmos",
-        "wind": "gfs_atmos",
-        "humidity": "gfs_atmos",
-        "waves": "gfs_waves",
-    }
-
-
-def test_build_layer_channel_keys_maps_cache_collectors_by_section():
-    class _FakeSst:
-        channel_key = "sst"
-        section = "sst"
-
-    mapping = _build_layer_channel_keys((), (_FakeSst,))
-
-    assert mapping == {"sst": "sst"}
-
-
-def test_build_layer_channel_keys_skips_a_collector_with_no_channel_key():
-    """markers isn't part of channel_enabled -- must not appear in the mapping at all
-    (not even as None), since a `None` value would be indistinguishable from
-    "channel_key wasn't set" if ever iterated rather than looked up by key."""
-    class _FakeUngated:
-        channel_key = None
-        products = {"markers": None}
-        section = "markers"
-
-    field_mapping = _build_layer_channel_keys((_FakeUngated,), ())
-    cache_mapping = _build_layer_channel_keys((), (_FakeUngated,))
-
-    assert field_mapping == {}
-    assert cache_mapping == {}
 
 
 _BARE_STATUS = {

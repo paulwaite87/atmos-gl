@@ -14,6 +14,7 @@ from concurrent.futures.process import BrokenProcessPool
 from atmos_gl.lib.config import AtmosGLConfig
 from atmos_gl.lib.logging import setup_logging, set_loglevel
 from atmos_gl.db.process_status_adapter import ProcessStatusAdapter
+from atmos_gl.collectors import FIELD_COLLECTOR_CLASSES, CACHE_COLLECTORS
 
 
 # Task imports
@@ -60,10 +61,67 @@ TASK_CLASSES = {
 }
 
 
+# common.performance_tier's fallback when unset/unknown -- the one default value
+# every reader of it (LayerBuilder.__init__, refresh_settings(), and
+# workers_for_tier()'s own fallback branch below) must agree on.
+_DEFAULT_TIER = "medium"
+
+
+def workers_for_tier(tier: str, cpu_count: int | None) -> int:
+    """Effective ProcessPoolExecutor worker count for common.performance_tier.
+
+    "low" -> 1: fully sequential, the one value that actually guarantees no
+    concurrent-process pile-up regardless of core count.
+    "medium" (also the fallback for an unset/unknown value) -> half the cores,
+    floored at 2 so it's never accidentally equal to "low".
+    "high" -> today's pre-existing hardcoded formula, unchanged -- a complete
+    no-op relative to current behavior."""
+    n = cpu_count or 4
+    if tier == "low":
+        return 1
+    if tier == "high":
+        return min(len(TASK_CLASSES), n)
+    return max(2, n // 2)
+
+
 def _updater_class(entry):
     """The plain class behind a TASK_CLASSES entry, unwrapping the partial() binding
     the four ScalarFieldUpdater-based sections use."""
     return entry.func if isinstance(entry, partial) else entry
+
+
+def build_layer_channel_keys(field_collector_classes, cache_collector_classes) -> dict:
+    """Maps a layer's TASK_CLASSES section name (e.g. "isobars") to the channel_key
+    that feeds it (e.g. "gfs_atmos"). Derived from the collector classes' own
+    `products`/`channel_key` rather than hand-duplicated, so the two can't drift apart.
+
+    Two consumers: the Data Status UI (routes/status.py, imports this from here) uses
+    it to gray out every layer a disabled channel backs; LayerBuilder's own dispatch
+    (see dispatchable_sections()) uses the SAME mapping so a channel-disabled layer is
+    both grayed out AND never rendered -- one source of truth for both."""
+    mapping = {}
+    for CollectorCls in field_collector_classes:
+        if getattr(CollectorCls, "channel_key", None):
+            for product_name in CollectorCls.products:
+                mapping[product_name] = getattr(CollectorCls, "channel_key", None)
+    for CollectorCls in cache_collector_classes:
+        if getattr(CollectorCls, "channel_key", None):
+            mapping[CollectorCls.section] = getattr(CollectorCls, "channel_key", None)
+    return mapping
+
+
+def dispatchable_sections(channel_enabled: dict, layer_channel_keys: dict, all_sections) -> list:
+    """`all_sections` filtered down to the ones LayerBuilder should actually spawn a
+    worker for this cycle: a section whose mapped channel_key is explicitly disabled in
+    data_collector.channel_enabled is excluded -- no worker spawned at all, not even
+    once to discover there's nothing to render. A section with no channel_key mapping
+    (not every layer maps to exactly one toggleable channel -- e.g. markers) is always
+    dispatchable. A channel_key present in layer_channel_keys but not yet written to
+    channel_enabled defaults to enabled, matching _serialize()'s existing convention."""
+    return [
+        s for s in all_sections
+        if channel_enabled.get(layer_channel_keys.get(s), True)
+    ]
 
 
 # Sections rendered per-forecast-hour (mix in MultiHourRenderMixin) vs. once per cycle
@@ -155,10 +213,19 @@ class LayerBuilder:
         # processes. Built in start_scheduler once the region/config are current.
         self._primer = None
 
-        # Render is CPU-bound, so cap workers at core count (never more than the number of
-        # layers). Tunable here; deliberately not a config knob.
-        self._max_workers = min(len(TASK_CLASSES), os.cpu_count() or 4)
+        # Render is CPU-bound, so cap workers at core count (never more than the number
+        # of layers), scaled down further by common.performance_tier. See
+        # workers_for_tier()'s docstring for the tier -> count mapping; "high" matches
+        # this line's own pre-existing formula exactly.
+        self._tier = self.config.get_setting("common", "performance_tier", _DEFAULT_TIER)
+        self._max_workers = workers_for_tier(self._tier, os.cpu_count())
         self._pool = None
+
+        # Static (derived from the collector class registries, not config), so computed
+        # once here rather than every dispatch cycle -- see dispatchable_sections().
+        self._layer_channel_keys = build_layer_channel_keys(
+            FIELD_COLLECTOR_CLASSES, CACHE_COLLECTORS
+        )
 
     def refresh_settings(self):
         self.config.load()
@@ -167,6 +234,18 @@ class LayerBuilder:
         log_level = self.config.get_setting("common", "log_level")
         if log_level:
             set_loglevel(log_level)
+
+        # A tier change recomputes _max_workers and, if a pool already exists (this is
+        # not the very first refresh_settings() call, which runs before start_scheduler()
+        # creates the initial pool), recreates it live -- reusing the exact recovery
+        # mechanism _dispatch_round() already uses for a crashed pool, just triggered
+        # deliberately instead of only reactively.
+        tier = self.config.get_setting("common", "performance_tier", _DEFAULT_TIER)
+        if tier != self._tier:
+            self._tier = tier
+            self._max_workers = workers_for_tier(tier, os.cpu_count())
+            if self._pool is not None:
+                self._recycle_pool()
 
     def handle_force_refresh(self, signum, frame):
         """SIGUSR1: drop the cached GFS/RTOFS datum so the next cycle re-resolves it."""
@@ -189,6 +268,16 @@ class LayerBuilder:
             initializer=_worker_init,
             initargs=(self.config_path,),
         )
+
+    def _recycle_pool(self):
+        """Discard the current pool and start a fresh one at the current
+        _max_workers -- shared by both the crash-recovery path (_dispatch_round,
+        after a BrokenProcessPool) and refresh_settings()'s live tier-change path."""
+        try:
+            self._pool.shutdown(wait=False, cancel_futures=True)
+        except Exception:
+            pass
+        self._pool = self._new_pool()
 
     def _resolve_baselines(self):
         """Resolve the GFS/RTOFS datums ONCE, up front (cleared first so a long-lived
@@ -262,11 +351,7 @@ class LayerBuilder:
         results = await asyncio.gather(*futures, return_exceptions=True)
         broken, plotted_by_section = self._handle_results(sections, results)
         if broken:
-            try:
-                self._pool.shutdown(wait=False, cancel_futures=True)
-            except Exception:
-                pass
-            self._pool = self._new_pool()
+            self._recycle_pool()
         return plotted_by_section
 
     async def _run_dispatch_cycle(self, loop, baseline):
@@ -280,8 +365,18 @@ class LayerBuilder:
         candidate "interleave per-hour rendering across layers"). A round drops a
         multi-hour section once it stops reporting progress.
         """
-        pending = {s: None for s in SINGLE_SHOT_SECTIONS}
-        pending.update({s: 1 for s in MULTI_HOUR_SECTIONS})
+        # A section whose backing channel is manually disabled never gets its worker
+        # process spawned at all -- not even once to discover there's nothing to
+        # render. channel_enabled is re-read fresh every cycle (it's live-toggleable
+        # via the Data Status page's own instant-save endpoint); _layer_channel_keys
+        # is static (derived from the collector class registries) and computed once.
+        channel_enabled = self.config.get_setting("data_collector", "channel_enabled", {}) or {}
+        all_sections = dispatchable_sections(
+            channel_enabled, self._layer_channel_keys,
+            SINGLE_SHOT_SECTIONS + MULTI_HOUR_SECTIONS,
+        )
+        pending = {s: None for s in SINGLE_SHOT_SECTIONS if s in all_sections}
+        pending.update({s: 1 for s in MULTI_HOUR_SECTIONS if s in all_sections})
 
         while pending:
             sections = list(pending)
