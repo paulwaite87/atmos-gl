@@ -172,6 +172,33 @@ class RegionManager:
                 due.add(rk)
         return due
 
+    def next_due_region(self, *, now: float) -> tuple | None:
+        """Among currently-due regions, the one that's gone longest without a poll
+        ATTEMPT (successful or not) -- a region never attempted at all sorts first, as
+        if last attempted at -inf. None if nothing is due.
+
+        This exists so poll_due_regions() can service ONE region per call instead of
+        firing every due region in the same instant: with a hot region plus up to
+        MAX_GENTLE_KEYS gentle regions all sharing one viewport, adsb.lol's per-IP rate
+        limit (see fetch_aircraft_near) tolerates roughly one successful request every
+        10-12s regardless of how many different regions are asked about -- a burst of
+        several regions' requests in the same tick just means most of them get 429'd
+        and wait a full cadence to try again, while whichever region wins the race
+        (empirically: the hot region, nearly every time) crowds out the rest
+        indefinitely. Confirmed live: with 1 hot + 8 gentle regions, 6 of the 8 gentle
+        regions had received zero data at all almost 4 minutes in.
+
+        Oldest-attempt-first fixes that without needing a smaller cadence number: it
+        naturally staggers requests one-per-tick during the initial ramp-up (every
+        region gets a first attempt before any region gets a second), and once
+        warmed up, guarantees every region gets a turn in proportion to how long it's
+        waited -- no region can be perpetually skipped just because another region's
+        due set membership makes it win a plain iteration-order race every time."""
+        due = self.regions_due_for_poll(now=now)
+        if not due:
+            return None
+        return min(due, key=lambda rk: self._last_poll.get(rk, (float("-inf"), None))[0])
+
     def record_poll_result(self, region_key: tuple, records: list[dict] | None, *, now: float) -> None:
         """records=None means the poll attempt failed (adsb.lol non-200/timeout/error)
         -- fetch_aircraft_near's way of distinguishing that from a confirmed-empty [].

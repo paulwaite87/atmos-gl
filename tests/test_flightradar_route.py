@@ -114,6 +114,41 @@ async def test_poll_due_regions_a_failed_fetch_does_not_clobber_previously_seen_
     assert rm.last_result((0, 0)) == [{"hex": "a1"}]
 
 
+@pytest.mark.asyncio
+async def test_poll_due_regions_services_only_one_region_per_call_even_with_several_due():
+    """adsb.lol tolerates roughly one successful request every 10-12s per IP no matter
+    how many regions are asked about (see fetch_aircraft_near) -- firing every due
+    region in the same tick just burns most of them on a 429. poll_due_regions must
+    issue at most one fetch per call, staggering the rest to later ticks instead."""
+    rm = RegionManager(grace_period_s=30.0, hot_cadence_s=10.0, gentle_cadence_s=10.0)
+    rm.subscribe((0, 0), "conn-1", tier="hot", now=0.0)
+    rm.subscribe((1, 1), "conn-1", tier="gentle", now=0.0)
+    rm.subscribe((2, 2), "conn-1", tier="gentle", now=0.0)
+    fetch_fn = AsyncMock(return_value=[{"hex": "a1"}])
+
+    await poll_due_regions(rm, {"conn-1": AsyncMock()}, fetch_fn, now=0.0)
+
+    fetch_fn.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_poll_due_regions_picks_the_longest_waiting_region_among_several_due():
+    """A region that's already had an attempt must not keep winning against one still
+    waiting for its very first try -- otherwise whichever region wins the plain
+    iteration-order race (empirically: the hot region) starves the rest indefinitely."""
+    rm = RegionManager(grace_period_s=30.0, hot_cadence_s=10.0, gentle_cadence_s=20.0)
+    rm.subscribe((0, 0), "conn-1", tier="hot", now=0.0)
+    rm.subscribe((1, 1), "conn-1", tier="gentle", now=0.0)
+    rm.record_poll_result((0, 0), [{"hex": "a1"}], now=0.0)  # hot: already attempted once
+    fetch_fn = AsyncMock(return_value=[{"hex": "a2"}])
+
+    await poll_due_regions(rm, {"conn-1": AsyncMock()}, fetch_fn, now=20.0)
+
+    fetch_fn.assert_awaited_once()
+    assert rm.last_result((1, 1)) == [{"hex": "a2"}]   # the never-attempted gentle region won
+    assert rm.last_result((0, 0)) == [{"hex": "a1"}]    # hot untouched this call
+
+
 # ---- WebSocket route: viewport subscribe/unsubscribe -------------------------
 
 def _wait_until(predicate, *, timeout=1.0, interval=0.01):
