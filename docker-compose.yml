@@ -113,6 +113,7 @@ services:
     image: ghcr.io/paulwaite87/atmos-gl-ui:latest
     ports:
       - "8180:8080"
+    restart: unless-stopped
     depends_on:
       - map_api
     networks:

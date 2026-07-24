@@ -84,21 +84,24 @@ def circle_for_region_key(
 
 async def fetch_aircraft_near(
     session: aiohttp.ClientSession, lat: float, lon: float, radius_nm: float, *, timeout: float = 10.0,
-) -> list[dict]:
-    """One adsb.lol point+radius query -> its `ac` (aircraft) list, or [] on any
-    failure (timeout, non-200, malformed response) -- a single bad request must never
-    crash the poll loop, same defensive shape as LightningCollector.fetch_and_store()."""
+) -> list[dict] | None:
+    """One adsb.lol point+radius query -> its `ac` (aircraft) list, or None on any
+    failure (timeout, non-200 -- adsb.lol's free tier 429s far more readily than its
+    documented behaviour suggests, malformed response). None is deliberately distinct
+    from [] : a failed request must never crash the poll loop, but it also must never
+    be reported to callers as "confirmed zero aircraft here" -- see RegionManager.
+    record_poll_result(), whose whole reason for accepting None is this distinction."""
     url = f"{ADSB_LOL_BASE}/lat/{lat}/lon/{lon}/dist/{radius_nm}"
     try:
         async with session.get(url, timeout=timeout) as resp:
             if resp.status != 200:
                 logger.debug(f"adsb.lol {url} returned {resp.status}")
-                return []
+                return None
             data = await resp.json()
             return data.get("ac", []) or []
     except Exception as exc:
         logger.debug(f"adsb.lol fetch failed for {url}: {exc}")
-        return []
+        return None
 
 
 class RegionManager:
@@ -113,7 +116,7 @@ class RegionManager:
     actually queries adsb.lol and pushes results to connections is a thin wrapper
     around this pure state machine, built separately."""
 
-    def __init__(self, *, grace_period_s: float, hot_cadence_s: float = 2.0, gentle_cadence_s: float = 20.0):
+    def __init__(self, *, grace_period_s: float, hot_cadence_s: float = 10.0, gentle_cadence_s: float = 20.0):
         self._grace_period_s = grace_period_s
         self._hot_cadence_s = hot_cadence_s
         self._gentle_cadence_s = gentle_cadence_s
@@ -123,7 +126,10 @@ class RegionManager:
         # region_key -> the `now` its last subscriber left. Only present while a
         # region is in its grace period (a fresh subscribe pops the entry).
         self._unsubscribed_at: dict[tuple, float] = {}
-        # region_key -> (last_polled_at, records). Absent entirely if never polled.
+        # region_key -> (last_attempted_at, records). Absent entirely if never polled.
+        # last_attempted_at advances on every poll attempt, success or failure, so a
+        # run of adsb.lol failures still backs off at the region's normal cadence
+        # instead of retrying every tick -- see record_poll_result().
         self._last_poll: dict[tuple, tuple[float, list[dict]]] = {}
 
     def subscribe(self, region_key: tuple, connection_id: str, *, tier: str, now: float) -> None:
@@ -166,7 +172,16 @@ class RegionManager:
                 due.add(rk)
         return due
 
-    def record_poll_result(self, region_key: tuple, records: list[dict], *, now: float) -> None:
+    def record_poll_result(self, region_key: tuple, records: list[dict] | None, *, now: float) -> None:
+        """records=None means the poll attempt failed (adsb.lol non-200/timeout/error)
+        -- fetch_aircraft_near's way of distinguishing that from a confirmed-empty [].
+        A failure still advances last_attempted_at (so regions_due_for_poll backs off
+        at the normal cadence rather than retrying every tick) but keeps whatever
+        aircraft were last actually seen there, instead of clobbering them with an
+        empty result that was never really "no aircraft", just a rejected request."""
+        if records is None:
+            previous = self._last_poll.get(region_key)
+            records = previous[1] if previous is not None else []
         self._last_poll[region_key] = (now, records)
 
     def last_result(self, region_key: tuple) -> list[dict]:
