@@ -3,7 +3,7 @@
 // for 1 hour = 60 nautical miles = exactly 1 degree of latitude), not recomputed the
 // way the code does, so a broken formula can actually disagree with the test.
 import { describe, test, expect } from 'vitest';
-import { interpolatedPosition, boundedElapsedSeconds, isFrozen, flightStatus, targetAltitudeLabel, aircraftClass, aircraftGroup, aircraftGroupColor } from './flightradar.js';
+import { interpolatedPosition, boundedElapsedSeconds, isFrozen, flightStatus, targetAltitudeLabel, aircraftClass, aircraftGroup, aircraftGroupColor, airlineForFlight } from './flightradar.js';
 
 describe('interpolatedPosition', () => {
     test('due-north flight for 1 hour at 60kts moves exactly 1 degree of latitude', () => {
@@ -229,5 +229,39 @@ describe('aircraftGroupColor', () => {
 
     test('an unregistered type still resolves to a valid color (the other group)', () => {
         expect(aircraftGroupColor('ZZZZ')).toBe(aircraftGroupColor('R44'));
+    });
+});
+
+describe('airlineForFlight', () => {
+    test('a real live-captured callsign resolves to its airline', () => {
+        // ANZ583L, captured from real adsb.lol traffic (see #203's popup work).
+        expect(airlineForFlight('ANZ583L')).toBe('Air New Zealand');
+    });
+
+    test('resolves regardless of trailing flight-number digits/suffix', () => {
+        expect(airlineForFlight('QFA938')).toBe('Qantas');
+        expect(airlineForFlight('UAL1')).toBe('United Airlines');
+    });
+
+    test('is case-insensitive (adsb.lol always sends uppercase, but do not depend on it)', () => {
+        expect(airlineForFlight('anz583l')).toBe('Air New Zealand');
+    });
+
+    test('ignores surrounding whitespace (adsb.lol pads flight to a fixed width)', () => {
+        expect(airlineForFlight('ANZ583L ')).toBe('Air New Zealand');
+    });
+
+    test('a callsign with no recognized 3-letter designator renders no airline', () => {
+        expect(airlineForFlight('ZZZ123')).toBe(null);
+    });
+
+    test('a GA aircraft broadcasting its own registration as callsign renders no airline', () => {
+        expect(airlineForFlight('N12345')).toBe(null);
+    });
+
+    test('missing flight data renders no airline', () => {
+        expect(airlineForFlight(null)).toBe(null);
+        expect(airlineForFlight(undefined)).toBe(null);
+        expect(airlineForFlight('')).toBe(null);
     });
 });
