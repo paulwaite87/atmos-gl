@@ -77,6 +77,43 @@ async def test_poll_due_regions_records_the_result_so_it_is_not_due_again_immedi
     assert rm.last_result((0, 0)) == [{"hex": "a1"}]
 
 
+@pytest.mark.asyncio
+async def test_poll_due_regions_does_not_push_when_the_fetch_fails():
+    """fetch_fn returning None (adsb.lol rejected/timed out -- see
+    fetch_aircraft_near) must not be forwarded to subscribers as a fake empty
+    aircraft_update -- there's nothing new to tell them this pass."""
+    rm = RegionManager(grace_period_s=30.0, hot_cadence_s=2.0, gentle_cadence_s=20.0)
+    rm.subscribe((0, 0), "conn-1", tier="hot", now=0.0)
+    ws1 = AsyncMock()
+    fetch_fn = AsyncMock(return_value=None)
+
+    await poll_due_regions(rm, {"conn-1": ws1}, fetch_fn, now=0.0)
+
+    ws1.send_json.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_poll_due_regions_a_failed_fetch_still_backs_off_the_next_poll():
+    rm = RegionManager(grace_period_s=30.0, hot_cadence_s=2.0, gentle_cadence_s=20.0)
+    rm.subscribe((0, 0), "conn-1", tier="hot", now=0.0)
+    fetch_fn = AsyncMock(return_value=None)
+
+    await poll_due_regions(rm, {"conn-1": AsyncMock()}, fetch_fn, now=0.0)
+
+    assert (0, 0) not in rm.regions_due_for_poll(now=0.5)  # cadence is 2.0s
+
+
+@pytest.mark.asyncio
+async def test_poll_due_regions_a_failed_fetch_does_not_clobber_previously_seen_aircraft():
+    rm = RegionManager(grace_period_s=30.0, hot_cadence_s=2.0, gentle_cadence_s=20.0)
+    rm.subscribe((0, 0), "conn-1", tier="hot", now=0.0)
+    rm.record_poll_result((0, 0), [{"hex": "a1"}], now=-5.0)
+
+    await poll_due_regions(rm, {"conn-1": AsyncMock()}, AsyncMock(return_value=None), now=0.0)
+
+    assert rm.last_result((0, 0)) == [{"hex": "a1"}]
+
+
 # ---- WebSocket route: viewport subscribe/unsubscribe -------------------------
 
 def _wait_until(predicate, *, timeout=1.0, interval=0.01):

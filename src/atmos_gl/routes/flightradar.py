@@ -33,7 +33,7 @@ router = APIRouter(prefix="/api", tags=["Flight Radar"])
 GRACE_PERIOD_S = 30.0
 POLL_TICK_S = 1.0
 
-# Hot/gentle cadences are RegionManager's own defaults (2.0s/20.0s) -- not re-declared
+# Hot/gentle cadences are RegionManager's own defaults (10.0s/20.0s) -- not re-declared
 # here as separate constants, so there's exactly one place they can drift from.
 _region_manager = RegionManager(grace_period_s=GRACE_PERIOD_S)
 # connection_id -> the live WebSocket, so poll_due_regions() can push to whichever
@@ -55,11 +55,20 @@ async def poll_due_regions(region_manager: RegionManager, connections: dict, fet
     `fetch_fn(lat, lon, radius_nm)` is the injected adsb.lol query -- production wires
     fetch_aircraft_near bound to a shared aiohttp.ClientSession; tests inject a fake.
     A failed push to one connection must never stop the others -- that connection is
-    very likely mid-disconnect, which its own handler's finally-block will clean up."""
+    very likely mid-disconnect, which its own handler's finally-block will clean up.
+
+    fetch_fn returning None means the request failed (adsb.lol rejected/timed out --
+    see fetch_aircraft_near) rather than confirming zero aircraft: record_poll_result
+    still advances the region's cadence clock so it isn't retried every tick, but there
+    is nothing new to tell subscribers, so no message is pushed for it this pass --
+    their existing markers (from the last successful poll) are left alone rather than
+    being overwritten with a false "no aircraft here"."""
     for region_key in region_manager.regions_due_for_poll(now=now):
         lat, lon, radius = circle_for_region_key(region_key)
         records = await fetch_fn(lat, lon, radius)
         region_manager.record_poll_result(region_key, records, now=now)
+        if records is None:
+            continue
         message = {"type": "aircraft_update", "region_key": list(region_key), "aircraft": records}
         for conn_id in region_manager.subscribers_of(region_key):
             ws = connections.get(conn_id)

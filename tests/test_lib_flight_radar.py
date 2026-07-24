@@ -9,8 +9,40 @@ import pytest
 from atmos_gl.lib.flight_radar import (
     viewport_to_region_keys,
     circle_for_region_key,
+    fetch_aircraft_near,
     RegionManager,
 )
+
+
+class _FakeResponse:
+    """Mimics aiohttp's response context manager: `session.get(...)` returns this
+    directly (not a coroutine), and `async with ... as resp` drives it."""
+
+    def __init__(self, status, json_body=None):
+        self.status = status
+        self._json_body = json_body
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc_info):
+        return False
+
+    async def json(self):
+        return self._json_body
+
+
+class _FakeSession:
+    def __init__(self, response):
+        self._response = response
+
+    def get(self, url, timeout=None):
+        return self._response
+
+
+class _RaisingSession:
+    def get(self, url, timeout=None):
+        raise RuntimeError("connection failed")
 
 
 def test_viewport_to_region_keys_single_cell_viewport_has_no_gentle_keys():
@@ -63,6 +95,41 @@ def test_circle_for_region_key_handles_negative_cells():
 def test_circle_for_region_key_uses_the_configured_radius():
     _lat, _lon, radius = circle_for_region_key((0, 0), grid_deg=5.0, radius_nm=123.0)
     assert radius == 123.0
+
+
+# ---- fetch_aircraft_near: success vs. confirmed-empty vs. failed -----------------
+# adsb.lol's free tier 429s far more readily than its 2.0s-cadence-assuming original
+# default expected (see docs/adr/0009 and RegionManager's hot_cadence_s default below)
+# -- a rejected/failed request must come back as None, distinct from a real [] (a
+# request that succeeded and genuinely found no aircraft in range).
+
+@pytest.mark.asyncio
+async def test_fetch_aircraft_near_returns_the_ac_list_on_success():
+    session = _FakeSession(_FakeResponse(200, {"ac": [{"hex": "a1"}]}))
+    result = await fetch_aircraft_near(session, 0.0, 0.0, 200.0)
+    assert result == [{"hex": "a1"}]
+
+
+@pytest.mark.asyncio
+async def test_fetch_aircraft_near_returns_an_empty_list_when_ac_key_is_absent():
+    """A 200 with no aircraft in range is a real, confirmed-empty result -- unlike a
+    rejected request, it's fine to report this as []."""
+    session = _FakeSession(_FakeResponse(200, {}))
+    result = await fetch_aircraft_near(session, 0.0, 0.0, 200.0)
+    assert result == []
+
+
+@pytest.mark.asyncio
+async def test_fetch_aircraft_near_returns_none_not_empty_on_a_non_200_status():
+    session = _FakeSession(_FakeResponse(429))
+    result = await fetch_aircraft_near(session, 0.0, 0.0, 200.0)
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_fetch_aircraft_near_returns_none_on_a_raised_exception():
+    result = await fetch_aircraft_near(_RaisingSession(), 0.0, 0.0, 200.0)
+    assert result is None
 
 
 # ---- RegionManager: subscription lifecycle + grace period -----------------------
@@ -168,6 +235,44 @@ def test_region_manager_last_result_returns_the_most_recently_recorded_records()
 def test_region_manager_last_result_for_a_never_polled_region_is_empty():
     rm = RegionManager(grace_period_s=30.0, hot_cadence_s=2.0, gentle_cadence_s=20.0)
     assert rm.last_result((0, 0)) == []
+
+
+def test_region_manager_default_hot_cadence_is_ten_seconds():
+    """adsb.lol's free tier rejects requests far more readily than the old 2.0s
+    default assumed (see fetch_aircraft_near's docstring) -- 10.0s is the new default."""
+    rm = RegionManager(grace_period_s=30.0)
+    rm.subscribe((0, 0), "conn-1", tier="hot", now=0.0)
+    rm.record_poll_result((0, 0), [{"hex": "a1"}], now=0.0)
+    assert (0, 0) not in rm.regions_due_for_poll(now=9.999)
+    assert (0, 0) in rm.regions_due_for_poll(now=10.001)
+
+
+def test_record_poll_result_of_none_preserves_previously_seen_aircraft():
+    """None (a failed/rejected fetch, per fetch_aircraft_near) must not overwrite the
+    last real sighting with a false 'no aircraft here'."""
+    rm = RegionManager(grace_period_s=30.0, hot_cadence_s=10.0, gentle_cadence_s=20.0)
+    rm.subscribe((0, 0), "conn-1", tier="hot", now=0.0)
+    rm.record_poll_result((0, 0), [{"hex": "a1"}], now=0.0)
+    rm.record_poll_result((0, 0), None, now=10.0)
+    assert rm.last_result((0, 0)) == [{"hex": "a1"}]
+
+
+def test_record_poll_result_of_none_for_a_never_successful_region_stays_empty():
+    rm = RegionManager(grace_period_s=30.0, hot_cadence_s=10.0, gentle_cadence_s=20.0)
+    rm.subscribe((0, 0), "conn-1", tier="hot", now=0.0)
+    rm.record_poll_result((0, 0), None, now=0.0)
+    assert rm.last_result((0, 0)) == []
+
+
+def test_a_failed_poll_still_backs_off_at_the_normal_cadence():
+    """A failed fetch must not be retried every tick -- it advances the same cadence
+    clock a successful poll would, so a run of adsb.lol rejections doesn't become a
+    tight retry loop that just gets rejected again and again."""
+    rm = RegionManager(grace_period_s=30.0, hot_cadence_s=10.0, gentle_cadence_s=20.0)
+    rm.subscribe((0, 0), "conn-1", tier="hot", now=0.0)
+    rm.record_poll_result((0, 0), None, now=0.0)
+    assert (0, 0) not in rm.regions_due_for_poll(now=1.0)
+    assert (0, 0) in rm.regions_due_for_poll(now=10.001)
 
 
 def test_region_manager_subscribers_of_returns_current_connection_ids():
