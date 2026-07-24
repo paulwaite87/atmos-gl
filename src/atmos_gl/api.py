@@ -19,6 +19,7 @@ from atmos_gl.routes import (
     backfill,
     markers,
     status,
+    flightradar,
 )
 from atmos_gl.lib.config import AtmosGLConfig
 
@@ -70,6 +71,15 @@ app.include_router(config.ui_router)
 app.include_router(markers.router)
 app.include_router(backfill.router)
 app.include_router(status.router)
+app.include_router(flightradar.router)
+
+
+@app.on_event("startup")
+async def _start_flightradar_poller():
+    # The one background asyncio task map_api runs -- see routes/flightradar.py's
+    # module docstring and docs/adr/0009 for why this lives here rather than as a
+    # separate collector/service.
+    await flightradar.start_background_poller()
 
 
 @app.get("/")
