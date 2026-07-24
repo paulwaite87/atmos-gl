@@ -237,6 +237,7 @@ The full list is:
 * Earthquakes
 * Volcanoes
 * Shipping
+* Flight Radar
 * Satellites
 * Place markers
 
@@ -481,6 +482,34 @@ It also logs the position in the tracking table `ship_position` so we can displa
 If it doesn't find an existing `ships` record it creates a `shadow` record with scant data about
 the ship, basically just the name and the `mmsi` identifier. At some point we would hope to
 back-fill that data when a `ShipStaticData` is acquired for it.
+
+### Flight Radar
+Live aircraft positions overlaid on the globe, sourced from [adsb.lol](https://adsb.lol)'s
+free community ADS-B receiver network. Each aircraft is drawn as a simplified plane
+silhouette — a distinct straight-wing shape for gliders/balloons/drones — tinted by
+broad size/class, from near-white for widebody jets down to light blue for helicopters,
+military types and anything unrecognised, and rotated to match its heading. Positions
+are dead-reckoned smoothly from each aircraft's last known speed and track between
+updates, rather than snapping every time fresh data arrives.
+
+Hover over an aircraft for its flight number, aircraft type/class, registration, a
+climb/descend/level/landed status, current altitude, the autopilot's selected target
+altitude (once one is set and reachable), ground speed, heading and ICAO hex code. Like
+Shipping, low-altitude and on-the-ground traffic only reveals itself once you're zoomed
+in reasonably close, so busy airspace around major airports doesn't turn into a wall of
+icons from further out.
+![Flight Radar](docs/atmos-gl-flightradar.png)
+
+#### Flight Radar Data Acquisition
+Unlike every other layer, Flight Radar isn't handled by the `data_collector` and nothing
+is stored in the database for it — it's demand-driven, and only polled at all while the
+layer is switched on and someone's actually looking. `map_api` runs a dedicated
+WebSocket route your browser connects to directly: as you pan and zoom, your viewport is
+mapped onto a coarse grid, and the backend polls adsb.lol on a shared timer per grid
+cell, so however many browsers happen to be looking at roughly the same patch of sky,
+adsb.lol only gets asked about it once. adsb.lol's free tier only tolerates a fairly
+limited request rate, so the cell right under your view refreshes quicker than the
+surrounding fill-in area around it.
 
 ### Data Collector
 The data collector is a separate background process which collects data for:
