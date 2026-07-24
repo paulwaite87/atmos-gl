@@ -3,7 +3,7 @@
 // for 1 hour = 60 nautical miles = exactly 1 degree of latitude), not recomputed the
 // way the code does, so a broken formula can actually disagree with the test.
 import { describe, test, expect } from 'vitest';
-import { interpolatedPosition, boundedElapsedSeconds, isFrozen } from './flightradar.js';
+import { interpolatedPosition, boundedElapsedSeconds, isFrozen, flightStatus, targetAltitudeLabel } from './flightradar.js';
 
 describe('interpolatedPosition', () => {
     test('due-north flight for 1 hour at 60kts moves exactly 1 degree of latitude', () => {
@@ -80,5 +80,61 @@ describe('isFrozen', () => {
     test('defaults the cap to MAX_EXTRAPOLATION_S when omitted', () => {
         expect(isFrozen(0, 3000)).toBe(false);
         expect(isFrozen(0, 60000)).toBe(true);
+    });
+});
+
+describe('flightStatus', () => {
+    test('a clearly positive climb rate is Climbing', () => {
+        expect(flightStatus(1000)).toBe('Climbing');
+    });
+
+    test('a clearly negative rate is Descending', () => {
+        expect(flightStatus(-1000)).toBe('Descending');
+    });
+
+    test('zero rate is Level flight', () => {
+        expect(flightStatus(0)).toBe('Level flight');
+    });
+
+    test('small positive noise within the deadband stays Level flight', () => {
+        expect(flightStatus(100, 150)).toBe('Level flight');
+    });
+
+    test('small negative noise within the deadband stays Level flight', () => {
+        expect(flightStatus(-100, 150)).toBe('Level flight');
+    });
+
+    test('just past the deadband on either side switches state', () => {
+        expect(flightStatus(151, 150)).toBe('Climbing');
+        expect(flightStatus(-151, 150)).toBe('Descending');
+    });
+
+    test('missing rate data defaults to Level flight', () => {
+        expect(flightStatus(null)).toBe('Level flight');
+        expect(flightStatus(undefined)).toBe('Level flight');
+    });
+});
+
+describe('targetAltitudeLabel', () => {
+    test('an exact match reads as Reached', () => {
+        expect(targetAltitudeLabel(37000, 37000)).toBe('Reached');
+    });
+
+    test('within tolerance (real-world sensor/MCP noise) also reads as Reached', () => {
+        // A real adsb.lol record at cruise: alt_baro=37000, nav_altitude_mcp=36992.
+        expect(targetAltitudeLabel(36992, 37000)).toBe('Reached');
+    });
+
+    test('a target well away from current altitude renders the formatted number', () => {
+        expect(targetAltitudeLabel(38000, 35000)).toBe('38,000 ft');
+    });
+
+    test('no target altitude data available renders nothing', () => {
+        expect(targetAltitudeLabel(null, 35000)).toBe(null);
+        expect(targetAltitudeLabel(undefined, 35000)).toBe(null);
+    });
+
+    test('current altitude unknown still shows the raw target', () => {
+        expect(targetAltitudeLabel(37000, null)).toBe('37,000 ft');
     });
 });
