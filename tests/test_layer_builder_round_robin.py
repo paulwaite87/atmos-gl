@@ -8,6 +8,7 @@ multi-hour sections in rounds of one hour each instead of one all-hours call, so
 single section's backlog can monopolise the pool.
 """
 import inspect
+import os
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -18,7 +19,10 @@ from atmos_gl.layer_builder import (
     TASK_CLASSES,
     _render_worker,
     _updater_class,
+    build_layer_channel_keys,
     LayerBuilder,
+    workers_for_tier,
+    dispatchable_sections,
 )
 
 
@@ -30,6 +34,32 @@ def test_multi_hour_and_single_shot_sections_partition_task_classes():
         "isobars", "precipitation", "wind", "currents", "jetstream", "waves",
         "temperature", "ozone", "stormwatch", "pwat", "fires",
     }
+
+
+def test_workers_for_tier_low_is_always_one():
+    """Low is the one tier that actually guarantees no concurrent-process pile-up
+    regardless of core count -- fully sequential, one worker at a time."""
+    assert workers_for_tier("low", cpu_count=1) == 1
+    assert workers_for_tier("low", cpu_count=4) == 1
+    assert workers_for_tier("low", cpu_count=32) == 1
+
+
+def test_workers_for_tier_medium_scales_with_cores_floored_at_two():
+    assert workers_for_tier("medium", cpu_count=1) == 2
+    assert workers_for_tier("medium", cpu_count=4) == 2
+    assert workers_for_tier("medium", cpu_count=8) == 4
+
+
+def test_workers_for_tier_high_matches_todays_unchanged_formula():
+    """High must stay a complete no-op relative to LayerBuilder's pre-existing
+    hardcoded formula: min(len(TASK_CLASSES), cpu_count or 4)."""
+    assert workers_for_tier("high", cpu_count=2) == min(len(TASK_CLASSES), 2)
+    assert workers_for_tier("high", cpu_count=100) == len(TASK_CLASSES)
+    assert workers_for_tier("high", cpu_count=None) == min(len(TASK_CLASSES), 4)
+
+
+def test_workers_for_tier_defaults_unknown_tier_to_medium():
+    assert workers_for_tier("bogus", cpu_count=8) == workers_for_tier("medium", cpu_count=8)
 
 
 def test_updater_class_unwraps_partial_bindings():
@@ -103,10 +133,169 @@ def test_render_worker_catches_exceptions():
     assert plotted == 0
 
 
+def testbuild_layer_channel_keys_maps_every_field_collector_product():
+    class _FakeGfsAtmos:
+        channel_key = "gfs_atmos"
+        products = {"isobars": None, "wind": None, "humidity": None}
+
+    class _FakeGfsWaves:
+        channel_key = "gfs_waves"
+        products = {"waves": None}
+
+    mapping = build_layer_channel_keys((_FakeGfsAtmos, _FakeGfsWaves), ())
+
+    assert mapping == {
+        "isobars": "gfs_atmos",
+        "wind": "gfs_atmos",
+        "humidity": "gfs_atmos",
+        "waves": "gfs_waves",
+    }
+
+
+def testbuild_layer_channel_keys_maps_cache_collectors_by_section():
+    class _FakeSst:
+        channel_key = "sst"
+        section = "sst"
+
+    mapping = build_layer_channel_keys((), (_FakeSst,))
+
+    assert mapping == {"sst": "sst"}
+
+
+def testbuild_layer_channel_keys_skips_a_collector_with_no_channel_key():
+    """markers isn't part of channel_enabled -- must not appear in the mapping at all
+    (not even as None), since a `None` value would be indistinguishable from
+    "channel_key wasn't set" if ever iterated rather than looked up by key."""
+    class _FakeUngated:
+        channel_key = None
+        products = {"markers": None}
+        section = "markers"
+
+    field_mapping = build_layer_channel_keys((_FakeUngated,), ())
+    cache_mapping = build_layer_channel_keys((), (_FakeUngated,))
+
+    assert field_mapping == {}
+    assert cache_mapping == {}
+
+
+def test_dispatchable_sections_excludes_a_section_whose_channel_is_disabled():
+    channel_enabled = {"rtofs_currents": False}
+    layer_channel_keys = {"currents": "rtofs_currents", "jetstream": "gfs_atmos"}
+
+    result = dispatchable_sections(channel_enabled, layer_channel_keys, ["currents", "jetstream"])
+
+    assert result == ["jetstream"]
+
+
+def test_dispatchable_sections_keeps_a_section_with_no_channel_mapping():
+    """markers has no channel_key at all (not every layer maps to exactly one
+    toggleable channel) -- must never be excluded, regardless of channel_enabled."""
+    channel_enabled = {"gfs_atmos": False}
+    layer_channel_keys = {"isobars": "gfs_atmos"}  # "markers" absent entirely
+
+    result = dispatchable_sections(channel_enabled, layer_channel_keys, ["isobars", "markers"])
+
+    assert result == ["markers"]
+
+
+def test_dispatchable_sections_defaults_an_unwritten_channel_to_enabled():
+    """Matches _serialize()'s existing convention: a channel_key not yet written to
+    channel_enabled (e.g. right after upgrading to this feature) defaults to True."""
+    result = dispatchable_sections({}, {"isobars": "gfs_atmos"}, ["isobars"])
+
+    assert result == ["isobars"]
+
+
+def test_dispatchable_sections_preserves_input_order():
+    channel_enabled = {}
+    layer_channel_keys = {}
+
+    result = dispatchable_sections(channel_enabled, layer_channel_keys, ["waves", "isobars", "sst"])
+
+    assert result == ["waves", "isobars", "sst"]
+
+
 def make_bare_layer_builder():
     lb = LayerBuilder.__new__(LayerBuilder)
     lb.process_status_adapter = MagicMock()
+    # Permissive defaults (no channels disabled, no channel mapping at all) so tests
+    # unconcerned with channel-aware dispatch keep dispatching every section, same as
+    # before that feature existed. Tests that DO care override .config/
+    # ._layer_channel_keys themselves.
+    lb.config = MagicMock()
+    lb.config.get_setting.return_value = {}
+    lb._layer_channel_keys = {}
     return lb
+
+
+def _stub_config(performance_tier, enabled=True, log_level=None):
+    """A config double whose get_setting() answers exactly the three calls
+    refresh_settings() makes -- (layer_builder, enabled), (common, log_level),
+    (common, performance_tier) -- regardless of call order or default arg presence."""
+    values = {
+        ("layer_builder", "enabled"): enabled,
+        ("common", "log_level"): log_level,
+        ("common", "performance_tier"): performance_tier,
+    }
+    cfg = MagicMock()
+    cfg.get_setting.side_effect = lambda section, key, default=None: values.get(
+        (section, key), default
+    )
+    return cfg
+
+
+def test_refresh_settings_recreates_the_pool_when_the_tier_changes():
+    lb = make_bare_layer_builder()
+    lb.config = _stub_config(performance_tier="low")
+    lb._tier = "medium"
+    lb._max_workers = 2
+    old_pool = MagicMock()
+    lb._pool = old_pool
+    new_pool = MagicMock()
+    lb._new_pool = MagicMock(return_value=new_pool)
+
+    lb.refresh_settings()
+
+    old_pool.shutdown.assert_called_once_with(wait=False, cancel_futures=True)
+    lb._new_pool.assert_called_once()
+    assert lb._pool is new_pool
+    assert lb._tier == "low"
+    assert lb._max_workers == workers_for_tier("low", os.cpu_count())
+
+
+def test_refresh_settings_leaves_the_pool_alone_when_the_tier_is_unchanged():
+    lb = make_bare_layer_builder()
+    lb.config = _stub_config(performance_tier="medium")
+    lb._tier = "medium"
+    lb._max_workers = workers_for_tier("medium", os.cpu_count())
+    old_pool = MagicMock()
+    lb._pool = old_pool
+    lb._new_pool = MagicMock()
+
+    lb.refresh_settings()
+
+    old_pool.shutdown.assert_not_called()
+    lb._new_pool.assert_not_called()
+    assert lb._pool is old_pool
+
+
+def test_refresh_settings_updates_max_workers_without_touching_the_pool_before_one_exists():
+    """The very first refresh_settings() call inside start_scheduler() runs before
+    self._pool has been created -- a tier change detected then must not try to shut
+    down a pool that doesn't exist yet."""
+    lb = make_bare_layer_builder()
+    lb.config = _stub_config(performance_tier="low")
+    lb._tier = "medium"
+    lb._max_workers = 2
+    lb._pool = None
+    lb._new_pool = MagicMock()
+
+    lb.refresh_settings()
+
+    lb._new_pool.assert_not_called()
+    assert lb._pool is None
+    assert lb._tier == "low"
+    assert lb._max_workers == workers_for_tier("low", os.cpu_count())
 
 
 def test_handle_results_reports_plotted_count_per_section():
@@ -162,6 +351,49 @@ async def test_run_dispatch_cycle_drops_sections_once_they_stop_reporting_progre
     round_2_sections = set(lb._dispatch_round.call_args_list[1].args[1])
     assert round_1_sections == set(SINGLE_SHOT_SECTIONS) | set(MULTI_HOUR_SECTIONS)
     assert round_2_sections == set(round_1) - {"pwat"}  # dropped: no backlog, single-shot
+
+
+@pytest.mark.asyncio
+async def test_run_dispatch_cycle_skips_a_section_whose_channel_is_disabled():
+    """A section whose backing channel is manually disabled never gets its worker
+    process spawned at all -- not even once, and not just dropped after round 1."""
+    lb = make_bare_layer_builder()
+    cfg = MagicMock()
+    cfg.get_setting.side_effect = lambda section, key, default=None: (
+        {"rtofs_currents": False}
+        if (section, key) == ("data_collector", "channel_enabled")
+        else default
+    )
+    lb.config = cfg
+    lb._layer_channel_keys = {"currents": "rtofs_currents"}
+    lb._dispatch_round = AsyncMock(return_value={})
+
+    await lb._run_dispatch_cycle(loop=MagicMock(), baseline={})
+
+    lb._dispatch_round.assert_called_once()
+    dispatched_sections = set(lb._dispatch_round.call_args_list[0].args[1])
+    assert "currents" not in dispatched_sections
+    assert dispatched_sections == (
+        (set(SINGLE_SHOT_SECTIONS) | set(MULTI_HOUR_SECTIONS)) - {"currents"}
+    )
+
+
+@pytest.mark.asyncio
+async def test_run_dispatch_cycle_dispatches_everything_when_no_channel_mapping_is_set():
+    """A bare LayerBuilder with no _layer_channel_keys computed yet (or an empty
+    mapping) must not accidentally exclude every section -- absence of a mapping means
+    "not applicable", not "disabled"."""
+    lb = make_bare_layer_builder()
+    cfg = MagicMock()
+    cfg.get_setting.return_value = {}
+    lb.config = cfg
+    lb._layer_channel_keys = {}
+    lb._dispatch_round = AsyncMock(return_value={})
+
+    await lb._run_dispatch_cycle(loop=MagicMock(), baseline={})
+
+    dispatched_sections = set(lb._dispatch_round.call_args_list[0].args[1])
+    assert dispatched_sections == set(SINGLE_SHOT_SECTIONS) | set(MULTI_HOUR_SECTIONS)
 
 
 @pytest.mark.asyncio

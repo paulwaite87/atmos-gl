@@ -23,7 +23,7 @@ from atmos_gl.collectors import (
     resolve_embeddable,
 )
 
-from atmos_gl.layer_builder import TASK_CLASSES
+from atmos_gl.layer_builder import TASK_CLASSES, build_layer_channel_keys
 from atmos_gl.tasks.common import MapData
 from atmos_gl.routes.field_specs import section_label
 
@@ -169,22 +169,6 @@ def _collect_status_rows(
     return rows
 
 
-def _build_layer_channel_keys(field_collector_classes, cache_collector_classes) -> dict:
-    """Maps a layer's TASK_CLASSES section name (e.g. "isobars") to the channel_key
-    that feeds it (e.g. "gfs_atmos"), so the Data Status UI can gray out every layer a
-    disabled channel backs. Derived from the collector classes' own `products`/
-    `channel_key` rather than hand-duplicated, so the two can't drift apart."""
-    mapping = {}
-    for CollectorCls in field_collector_classes:
-        if getattr(CollectorCls, "channel_key", None):
-            for product_name in CollectorCls.products:
-                mapping[product_name] = getattr(CollectorCls, "channel_key", None)
-    for CollectorCls in cache_collector_classes:
-        if getattr(CollectorCls, "channel_key", None):
-            mapping[CollectorCls.section] = getattr(CollectorCls, "channel_key", None)
-    return mapping
-
-
 # --- Class-registry providers (architecture review candidate "Give routers the seam
 # the Fakes are waiting for" -- the deferred status.py follow-on). This route's real
 # untestability was never the one FieldCatalogAdapter it constructs (fieldstore.get_store
@@ -276,7 +260,7 @@ def get_data_status(
             construct=lambda cls: cls(config.config_path),
         )
 
-        layer_channel_keys = _build_layer_channel_keys(
+        layer_channel_keys = build_layer_channel_keys(
             field_collector_classes, cache_collector_classes
         )
         layers = []
