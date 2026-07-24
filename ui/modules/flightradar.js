@@ -148,6 +148,34 @@ export function aircraftClass(typeCode) {
     return AIRCRAFT_CLASS_REGISTER[typeCode.toUpperCase()] || DEFAULT_AIRCRAFT_CLASS;
 }
 
+// Coarser than aircraftClass() -- 4 icon-color groups, roughly by size/prominence
+// (a widebody is more globally significant than a light aircraft, same reasoning
+// docs/adr/0008 uses for the altitude zoom filter). 'other' is the catch-all for
+// anything that isn't a fixed-wing airliner/GA type -- helicopters, military, and
+// anything aircraftClass() couldn't identify at all.
+export function aircraftGroup(typeCode) {
+    const cls = aircraftClass(typeCode);
+    if (cls === 'Widebody Jet') return 'widebody';
+    if (cls === 'Narrowbody Jet' || cls === 'Regional Jet') return 'airliner';
+    if (cls === 'Turboprop' || cls === 'Business Jet' || cls === 'Light Aircraft') return 'light';
+    return 'other';
+}
+
+// Brightness/warmth roughly tracks group size: near-white for the largest widebodies,
+// down to light blue for the smallest/other-shaped craft. Multiplied onto the SDF
+// icon at render time (icon-color paint property) rather than baked into the PNG, so
+// one shape asset per icon (aircraft/glider) covers every group.
+const AIRCRAFT_GROUP_COLORS = {
+    widebody: '#f2f2f2',
+    airliner: '#ffd166',
+    light: '#ff8c42',
+    other: '#8ec9ff',
+};
+
+export function aircraftGroupColor(typeCode) {
+    return AIRCRAFT_GROUP_COLORS[aircraftGroup(typeCode)];
+}
+
 // ---------------------------------------------------------------------------------
 // Layer wiring: WebSocket client, requestAnimationFrame render loop, MapLibre
 // filters/icons, hover popup. Not unit-tested (same boundary every other layer module
@@ -175,9 +203,12 @@ const ALT_ZOOM_STEP = ['step', ['zoom'], 30000, 4, 20000, 5, 10000, 6, 3000, 7, 
 // Nose points north (track=0), matching icon-rotate's rotation-from-north semantics.
 // docs/adr/0008: B* categories (gliders/balloons/drones) get distinct treatment
 // (aircraft_light.png) rather than being folded into the generic aircraft icon.
+// Both are plain white silhouettes registered as SDF (sdf: true) so the layer can tint
+// them per aircraftGroupColor() at render time -- one shape asset per icon covers
+// every color group, rather than needing a separately-baked PNG per group per shape.
 const FLIGHTRADAR_ICONS = [
-    { id: 'flightradar-aircraft', url: '/images/aircraft_generic.png' },
-    { id: 'flightradar-glider', url: '/images/aircraft_light.png' },
+    { id: 'flightradar-aircraft', url: '/images/aircraft_generic.png', sdf: true },
+    { id: 'flightradar-glider', url: '/images/aircraft_light.png', sdf: true },
 ];
 
 // docs/adr/0008: category C* (ground vehicles/obstacles) is filtered out entirely --
@@ -206,6 +237,7 @@ function buildFeatureCollection(aircraftByHex, now) {
                 gs: rec.gs ?? 0,
                 track: rec.track ?? 0,
                 icon: category.startsWith('B') ? 'flightradar-glider' : 'flightradar-aircraft',
+                color: aircraftGroupColor(rec.t),
                 frozen: isFrozen(rec.receivedAt, now),
             },
         });
@@ -317,6 +349,10 @@ export function loadLayer(map, config) {
                 'icon-rotate': ['get', 'track'],
                 'icon-rotation-alignment': 'map',
                 'icon-allow-overlap': true, 'icon-ignore-placement': true,
+            },
+            // Tints the SDF icon per aircraftGroupColor() -- see FLIGHTRADAR_ICONS.
+            paint: {
+                'icon-color': ['get', 'color'],
             },
         });
 
