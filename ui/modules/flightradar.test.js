@@ -3,7 +3,7 @@
 // for 1 hour = 60 nautical miles = exactly 1 degree of latitude), not recomputed the
 // way the code does, so a broken formula can actually disagree with the test.
 import { describe, test, expect } from 'vitest';
-import { interpolatedPosition, boundedElapsedSeconds, isFrozen, flightStatus, targetAltitudeLabel } from './flightradar.js';
+import { interpolatedPosition, boundedElapsedSeconds, isFrozen, flightStatus, targetAltitudeLabel, aircraftClass } from './flightradar.js';
 
 describe('interpolatedPosition', () => {
     test('due-north flight for 1 hour at 60kts moves exactly 1 degree of latitude', () => {
@@ -136,5 +136,36 @@ describe('targetAltitudeLabel', () => {
 
     test('current altitude unknown still shows the raw target', () => {
         expect(targetAltitudeLabel(37000, null)).toBe('37,000 ft');
+    });
+});
+
+describe('aircraftClass', () => {
+    test('a real live-captured widebody type designator resolves correctly', () => {
+        // B77W = Boeing 777-300ER, captured from real adsb.lol traffic (see #203's popup work).
+        expect(aircraftClass('B77W')).toBe('Widebody Jet');
+    });
+
+    test('resolves one designator from each register category', () => {
+        expect(aircraftClass('B738')).toBe('Narrowbody Jet');   // 737-800
+        expect(aircraftClass('E190')).toBe('Regional Jet');     // Embraer E190
+        expect(aircraftClass('AT76')).toBe('Turboprop');        // ATR72-600
+        expect(aircraftClass('GLF6')).toBe('Business Jet');     // Gulfstream G650
+        expect(aircraftClass('C172')).toBe('Light Aircraft');   // Cessna 172
+        expect(aircraftClass('R44')).toBe('Helicopter');        // Robinson R44
+        expect(aircraftClass('F16')).toBe('Military Aircraft'); // F-16
+    });
+
+    test('is case-insensitive (adsb.lol always sends uppercase, but do not depend on it)', () => {
+        expect(aircraftClass('b77w')).toBe('Widebody Jet');
+    });
+
+    test('an unregistered designator falls back to a vague default', () => {
+        expect(aircraftClass('ZZZZ')).toBe('Aircraft (unclassified)');
+    });
+
+    test('missing type data falls back to the same vague default', () => {
+        expect(aircraftClass(null)).toBe('Aircraft (unclassified)');
+        expect(aircraftClass(undefined)).toBe('Aircraft (unclassified)');
+        expect(aircraftClass('')).toBe('Aircraft (unclassified)');
     });
 });
