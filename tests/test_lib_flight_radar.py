@@ -225,6 +225,57 @@ def test_region_manager_an_inactive_region_is_never_due():
     assert (0, 0) not in rm.regions_due_for_poll(now=0.0)
 
 
+# ---- RegionManager: next_due_region (one-region-per-tick prioritization) --------
+# adsb.lol tolerates roughly one successful request every 10-12s per IP regardless of
+# how many different regions are asked about (see fetch_aircraft_near/poll_due_regions'
+# docstrings) -- firing every due region in the same tick just means most lose the race
+# to 429. next_due_region hands back exactly one region per call, longest-waiting-first,
+# so requests stagger naturally and no region is perpetually crowded out.
+
+def test_next_due_region_is_none_when_nothing_is_due():
+    rm = RegionManager(grace_period_s=30.0, hot_cadence_s=10.0, gentle_cadence_s=20.0)
+    assert rm.next_due_region(now=0.0) is None
+
+
+def test_next_due_region_returns_the_only_due_region():
+    rm = RegionManager(grace_period_s=30.0, hot_cadence_s=10.0, gentle_cadence_s=20.0)
+    rm.subscribe((0, 0), "conn-1", tier="hot", now=0.0)
+    assert rm.next_due_region(now=0.0) == (0, 0)
+
+
+def test_next_due_region_prefers_a_never_attempted_region_over_one_attempted_before():
+    """A region that's never had a poll attempt at all outranks one that has, even if
+    the attempted one's cadence has since elapsed and it's due again too -- otherwise a
+    region that already got its first (possibly failed) attempt would keep winning
+    against regions still waiting for their very first try."""
+    rm = RegionManager(grace_period_s=30.0, hot_cadence_s=10.0, gentle_cadence_s=20.0)
+    rm.subscribe((0, 0), "conn-1", tier="hot", now=0.0)
+    rm.subscribe((1, 1), "conn-1", tier="gentle", now=0.0)
+    rm.record_poll_result((0, 0), [{"hex": "a1"}], now=0.0)  # already attempted once
+
+    assert rm.next_due_region(now=20.0) == (1, 1)  # never attempted -- wins
+
+
+def test_next_due_region_prefers_the_longest_waiting_previously_attempted_region():
+    rm = RegionManager(grace_period_s=30.0, hot_cadence_s=2.0, gentle_cadence_s=2.0)
+    rm.subscribe((0, 0), "conn-1", tier="hot", now=0.0)
+    rm.subscribe((1, 1), "conn-1", tier="hot", now=0.0)
+    rm.record_poll_result((0, 0), [{"hex": "a1"}], now=5.0)   # attempted more recently
+    rm.record_poll_result((1, 1), [{"hex": "a2"}], now=1.0)   # attempted longer ago
+
+    assert rm.next_due_region(now=10.0) == (1, 1)
+
+
+def test_next_due_region_only_considers_regions_that_are_actually_due():
+    rm = RegionManager(grace_period_s=30.0, hot_cadence_s=10.0, gentle_cadence_s=10.0)
+    rm.subscribe((0, 0), "conn-1", tier="hot", now=0.0)
+    rm.subscribe((1, 1), "conn-1", tier="hot", now=0.0)
+    rm.record_poll_result((0, 0), [{"hex": "a1"}], now=9.0)   # not due yet at now=10
+    rm.record_poll_result((1, 1), [{"hex": "a2"}], now=0.0)   # due at now=10
+
+    assert rm.next_due_region(now=10.0) == (1, 1)
+
+
 def test_region_manager_last_result_returns_the_most_recently_recorded_records():
     rm = RegionManager(grace_period_s=30.0, hot_cadence_s=2.0, gentle_cadence_s=20.0)
     rm.subscribe((0, 0), "conn-1", tier="hot", now=0.0)

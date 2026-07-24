@@ -5,12 +5,13 @@ never multiply adsb.lol's request load.
 
 The route handler itself only manages subscribe/unsubscribe state (which regions is
 this connection currently watching, driven by the viewport messages it sends). The
-actual polling -- querying adsb.lol for whatever regions are due, and pushing results
-to their current subscribers -- is poll_due_regions(), a standalone coroutine kept
-independent of any real WebSocket/network so it's directly testable (see
-tests/test_flightradar_route.py). start_background_poller() is the thin,
-untested-by-design wrapper that calls it on a fixed tick forever -- same split as
-LayerBuilder.start_scheduler()'s outer loop vs. its tested _run_dispatch_cycle().
+actual polling -- querying adsb.lol for at most one due region per call (see
+RegionManager.next_due_region()), and pushing its result to its current subscribers --
+is poll_due_regions(), a standalone coroutine kept independent of any real
+WebSocket/network so it's directly testable (see tests/test_flightradar_route.py).
+start_background_poller() is the thin, untested-by-design wrapper that calls it on a
+fixed tick forever -- same split as LayerBuilder.start_scheduler()'s outer loop vs. its
+tested _run_dispatch_cycle().
 """
 import asyncio
 import itertools
@@ -48,14 +49,24 @@ def get_region_manager() -> RegionManager:
 
 
 async def poll_due_regions(region_manager: RegionManager, connections: dict, fetch_fn, *, now: float) -> None:
-    """One polling pass: query adsb.lol for every region currently due (per the
-    caller's region_manager/now), record the result, and push it to every connection
-    subscribed to that region. `connections` maps connection_id -> anything with an
+    """One polling pass: query adsb.lol for AT MOST ONE region -- the longest-waiting
+    due region, per RegionManager.next_due_region() -- and push its result to every
+    connection subscribed to it. `connections` maps connection_id -> anything with an
     async send_json(dict) method (a real WebSocket in production, a stub in tests).
     `fetch_fn(lat, lon, radius_nm)` is the injected adsb.lol query -- production wires
     fetch_aircraft_near bound to a shared aiohttp.ClientSession; tests inject a fake.
     A failed push to one connection must never stop the others -- that connection is
     very likely mid-disconnect, which its own handler's finally-block will clean up.
+
+    Deliberately not "every due region, each call": adsb.lol's per-IP rate limit (see
+    fetch_aircraft_near) tolerates roughly one successful request every 10-12s no
+    matter how many different regions are asked about, so firing every due region in
+    the same tick just means most of them lose the race to 429 and sit unchanged for a
+    full cadence -- confirmed live, 6 of 8 gentle regions around one hot region stayed
+    at zero data for minutes. Capping to one call's worth of request per tick, chosen
+    by longest-waiting-first, staggers requests to roughly what adsb.lol can actually
+    sustain and guarantees every region eventually gets its turn instead of losing to
+    whichever region wins a plain iteration-order race every single time.
 
     fetch_fn returning None means the request failed (adsb.lol rejected/timed out --
     see fetch_aircraft_near) rather than confirming zero aircraft: record_poll_result
@@ -63,21 +74,23 @@ async def poll_due_regions(region_manager: RegionManager, connections: dict, fet
     is nothing new to tell subscribers, so no message is pushed for it this pass --
     their existing markers (from the last successful poll) are left alone rather than
     being overwritten with a false "no aircraft here"."""
-    for region_key in region_manager.regions_due_for_poll(now=now):
-        lat, lon, radius = circle_for_region_key(region_key)
-        records = await fetch_fn(lat, lon, radius)
-        region_manager.record_poll_result(region_key, records, now=now)
-        if records is None:
+    region_key = region_manager.next_due_region(now=now)
+    if region_key is None:
+        return
+    lat, lon, radius = circle_for_region_key(region_key)
+    records = await fetch_fn(lat, lon, radius)
+    region_manager.record_poll_result(region_key, records, now=now)
+    if records is None:
+        return
+    message = {"type": "aircraft_update", "region_key": list(region_key), "aircraft": records}
+    for conn_id in region_manager.subscribers_of(region_key):
+        ws = connections.get(conn_id)
+        if ws is None:
             continue
-        message = {"type": "aircraft_update", "region_key": list(region_key), "aircraft": records}
-        for conn_id in region_manager.subscribers_of(region_key):
-            ws = connections.get(conn_id)
-            if ws is None:
-                continue
-            try:
-                await ws.send_json(message)
-            except Exception as exc:
-                logger.debug(f"push to {conn_id} failed: {exc}")
+        try:
+            await ws.send_json(message)
+        except Exception as exc:
+            logger.debug(f"push to {conn_id} failed: {exc}")
 
 
 async def start_background_poller() -> None:
