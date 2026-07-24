@@ -10,7 +10,7 @@
 // a stale heading indefinitely.
 
 const NM_PER_DEGREE_LAT = 60.0;
-const MAX_EXTRAPOLATION_S = 10.0;
+const MAX_EXTRAPOLATION_S = 30.0;
 
 export function boundedElapsedSeconds(lastSeenMs, nowMs, maxExtrapolationS = MAX_EXTRAPOLATION_S) {
     const elapsed = (nowMs - lastSeenMs) / 1000.0;
@@ -23,6 +23,31 @@ export function boundedElapsedSeconds(lastSeenMs, nowMs, maxExtrapolationS = MAX
 // Testing Decisions ("should we freeze" kept separate from the interpolation itself).
 export function isFrozen(lastSeenMs, nowMs, maxExtrapolationS = MAX_EXTRAPOLATION_S) {
     return (nowMs - lastSeenMs) / 1000.0 >= maxExtrapolationS;
+}
+
+// adsb.lol's baro_rate (ft/min, barometric vertical rate) is noisy even in level
+// flight -- a deadband avoids the popup flickering between Climbing/Descending/Level
+// on sensor jitter alone. 150ft/min is a conservative starting guess (real level-flight
+// noise is usually well under 100ft/min), tunable like every other numeric constant in
+// this feature.
+export function flightStatus(baroRateFpm, deadbandFpm = 150) {
+    if (typeof baroRateFpm !== 'number') return 'Level flight';
+    if (baroRateFpm > deadbandFpm) return 'Climbing';
+    if (baroRateFpm < -deadbandFpm) return 'Descending';
+    return 'Level flight';
+}
+
+// nav_altitude_mcp (the autopilot/MCP-selected target altitude) rarely matches
+// alt_baro (the actual sensed altitude) exactly even once an aircraft has settled at
+// cruise -- a real adsb.lol record: alt_baro=37000, nav_altitude_mcp=36992. A small
+// tolerance (rather than bit-exact equality) is what makes "Reached" actually fire in
+// practice.
+export function targetAltitudeLabel(navAltitudeMcpFt, altBaroFt, toleranceFt = 50) {
+    if (typeof navAltitudeMcpFt !== 'number') return null;
+    if (typeof altBaroFt === 'number' && Math.abs(navAltitudeMcpFt - altBaroFt) <= toleranceFt) {
+        return 'Reached';
+    }
+    return `${Math.round(navAltitudeMcpFt).toLocaleString()} ft`;
 }
 
 // Flat-earth dead reckoning -- accurate enough over the few-second gaps this bridges
@@ -94,6 +119,8 @@ function buildFeatureCollection(aircraftByHex, now) {
                 registration: rec.r || '',
                 aircraft_type: rec.t || '',
                 alt_baro_ft: typeof rec.alt_baro === 'number' ? rec.alt_baro : 0,
+                baro_rate_fpm: typeof rec.baro_rate === 'number' ? rec.baro_rate : null,
+                nav_altitude_mcp_ft: typeof rec.nav_altitude_mcp === 'number' ? rec.nav_altitude_mcp : null,
                 gs: rec.gs ?? 0,
                 track: rec.track ?? 0,
                 icon: category.startsWith('B') ? 'flightradar-glider' : 'flightradar-aircraft',
@@ -113,13 +140,16 @@ function pruneStale(aircraftByHex, now) {
 function popupHtml(f) {
     const p = f.properties;
     const alt = p.alt_baro_ft ? `${Math.round(p.alt_baro_ft).toLocaleString()} ft` : 'ground';
+    const target = targetAltitudeLabel(p.nav_altitude_mcp_ft, p.alt_baro_ft);
     const staleNote = p.frozen
         ? '<div style="color:#c0392b;font-size:11px;margin-top:4px;">&#9888; Signal lost -- position frozen</div>' : '';
     return `<div style="font-family:sans-serif;font-size:12px;color:#000;padding:5px;">
             <strong style="color:#007bff;font-size:14px;">${p.flight}</strong><br>
             ${p.aircraft_type ? `<span style="color:#666;">Type:</span> ${p.aircraft_type}<br>` : ''}
             ${p.registration ? `<span style="color:#666;">Registration:</span> ${p.registration}<br>` : ''}
+            <span style="color:#666;">Status:</span> ${flightStatus(p.baro_rate_fpm)}<br>
             <span style="color:#666;">Altitude:</span> ${alt}<br>
+            ${target ? `<span style="color:#666;">Target altitude:</span> ${target}<br>` : ''}
             <span style="color:#666;">Speed:</span> ${Math.round(p.gs)} kts<br>
             <span style="color:#666;">Heading:</span> ${Math.round(p.track)}&deg;<br>
             <span style="color:#666;">ICAO:</span> ${p.hex}${staleNote}
@@ -203,12 +233,6 @@ export function loadLayer(map, config) {
                 'icon-rotate': ['get', 'track'],
                 'icon-rotation-alignment': 'map',
                 'icon-allow-overlap': true, 'icon-ignore-placement': true,
-            },
-            // Dimmed once extrapolation has run past MAX_EXTRAPOLATION_S with no fresh
-            // push -- the visible "signal lost" cue issue #203 asks for alongside the
-            // popup's staleNote, so a frozen aircraft reads as stale even unhovered.
-            paint: {
-                'icon-opacity': ['case', ['get', 'frozen'], 0.4, 1.0],
             },
         });
 
