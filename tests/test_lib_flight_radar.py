@@ -33,8 +33,10 @@ class _FakeResponse:
 class _FakeSession:
     def __init__(self, response):
         self._response = response
+        self.last_url = None
 
     def get(self, url, timeout=None):
+        self.last_url = url
         return self._response
 
 
@@ -92,3 +94,21 @@ async def test_fetch_aircraft_near_returns_none_not_empty_on_a_non_200_status():
 async def test_fetch_aircraft_near_returns_none_on_a_raised_exception():
     result = await fetch_aircraft_near(_RaisingSession(), 0.0, 0.0, 200.0)
     assert result is None
+
+
+@pytest.mark.asyncio
+async def test_fetch_aircraft_near_uses_the_default_base_url_when_not_overridden():
+    session = _FakeSession(_FakeResponse(200, {"ac": []}))
+    await fetch_aircraft_near(session, 0.0, 0.0, 200.0)
+    assert session.last_url.startswith("https://api.adsb.lol/v2/")
+
+
+@pytest.mark.asyncio
+async def test_fetch_aircraft_near_honors_a_configured_base_url():
+    """AircraftCollector passes flightradar_collector's configured
+    data_collector.datasources.flightradar value here rather than always using the
+    hardcoded ADSB_LOL_BASE default -- the same maintainable-datasources-list
+    convention every other collector follows."""
+    session = _FakeSession(_FakeResponse(200, {"ac": []}))
+    await fetch_aircraft_near(session, 0.0, 0.0, 200.0, base_url="https://my-mirror.example/v2")
+    assert session.last_url.startswith("https://my-mirror.example/v2/")

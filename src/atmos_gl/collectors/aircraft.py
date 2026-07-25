@@ -36,13 +36,25 @@ logger = logging.getLogger(__name__)
 
 class AircraftCollector(AsyncCollectorBase):
     section = "flightradar_collector"
+    # data_collector.datasources.flightradar -- the same shared, maintainable URL list
+    # every other collector's datasource lives in, rather than a hardcoded constant.
+    datasource_key = "flightradar"
 
     def __init__(self, config_path: str):
         super().__init__(config_path)
         self.aircraft_adapter = AircraftAdapter()
 
-    def source_url(self):
-        return ADSB_LOL_BASE
+    def refresh_settings(self) -> None:
+        super().refresh_settings()
+        # Cached, not resolved fresh per tick, since run()'s loop calls
+        # fetch_aircraft_near() far more often than settings actually change.
+        # self.base_url is derived from source_url() (the same method the Data Status
+        # link uses) rather than a second independent config read, so the two can't
+        # silently disagree -- mirrors ShippingCollector.refresh_settings()'s self.url.
+        # Falls back to ADSB_LOL_BASE (unlike shipping's AIS URL, which requires an
+        # operator-supplied API key) since adsb.lol needs no key and this default is
+        # always safe to use even if the datasource entry is ever removed.
+        self.base_url = self.source_url() or ADSB_LOL_BASE
 
     def _tick_interval_seconds(self) -> float:
         """flightradar_collector.requests_per_minute (1-60) is the whole collector's
@@ -112,7 +124,9 @@ class AircraftCollector(AsyncCollectorBase):
                     if cell is not None:
                         grid_deg, ix, iy = cell
                         lat, lon, radius = circle_for_region_key((ix, iy), grid_deg=grid_deg)
-                        records = await fetch_aircraft_near(session, lat, lon, radius)
+                        records = await fetch_aircraft_near(
+                            session, lat, lon, radius, base_url=self.base_url
+                        )
                         scheduler.record_result(cell, records, now=now)
 
                         if records:

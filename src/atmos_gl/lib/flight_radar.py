@@ -50,7 +50,8 @@ def circle_for_region_key(
 
 
 async def fetch_aircraft_near(
-    session: aiohttp.ClientSession, lat: float, lon: float, radius_nm: float, *, timeout: float = 10.0,
+    session: aiohttp.ClientSession, lat: float, lon: float, radius_nm: float,
+    *, base_url: str = ADSB_LOL_BASE, timeout: float = 10.0,
 ) -> list[dict] | None:
     """One adsb.lol point+radius query -> its `ac` (aircraft) list, or None on any
     failure (timeout, non-200 -- adsb.lol's free tier 429s far more readily than its
@@ -58,8 +59,13 @@ async def fetch_aircraft_near(
     from [] : a failed request must never crash the poll loop, but it also must never
     be reported to callers as "confirmed zero aircraft here" -- see
     GlobalSampleScheduler.record_result(), whose whole reason for accepting None is
-    this distinction."""
-    url = f"{ADSB_LOL_BASE}/lat/{lat}/lon/{lon}/dist/{radius_nm}"
+    this distinction.
+
+    base_url defaults to ADSB_LOL_BASE but is normally overridden by the caller with
+    the configured data_collector.datasources.flightradar value (AircraftCollector) --
+    same "URL lives in the shared datasources dict, not hardcoded" convention every
+    other collector follows."""
+    url = f"{base_url}/lat/{lat}/lon/{lon}/dist/{radius_nm}"
     try:
         async with session.get(url, timeout=timeout) as resp:
             if resp.status != 200:
