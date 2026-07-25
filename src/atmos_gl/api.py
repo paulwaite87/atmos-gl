@@ -74,14 +74,6 @@ app.include_router(status.router)
 app.include_router(flightradar.router)
 
 
-@app.on_event("startup")
-async def _start_flightradar_poller():
-    # The one background asyncio task map_api runs -- see routes/flightradar.py's
-    # module docstring and docs/adr/0009 for why this lives here rather than as a
-    # separate collector/service.
-    await flightradar.start_background_poller()
-
-
 @app.get("/")
 def health_check():
     return {"status": "online", "message": "Atmos GL Engine routing operational."}

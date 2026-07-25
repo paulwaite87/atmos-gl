@@ -244,23 +244,32 @@ export function airlineForFlight(flightCallsign) {
 }
 
 // ---------------------------------------------------------------------------------
-// Layer wiring: WebSocket client, requestAnimationFrame render loop, MapLibre
-// filters/icons, hover popup. Not unit-tested (same boundary every other layer module
-// in this codebase draws: pure math/config-mapping gets tests -- buildLUT/
-// speedFromConfig in jetstream.js, interpolatedPosition/boundedElapsedSeconds above --
-// the DOM/network/map glue below is verified live instead, same as mount/refresh/
-// unmount in shipping.js/markers.js/satellites.js).
+// Layer wiring: periodic REST poll, requestAnimationFrame render loop, MapLibre
+// filters/icons, hover popup + hover-track (issue #215, docs/adr/0010 -- supersedes
+// the WebSocket-push client this replaced). Not unit-tested (same boundary every
+// other layer module in this codebase draws: pure math/config-mapping gets tests --
+// buildLUT/speedFromConfig in jetstream.js, interpolatedPosition/boundedElapsedSeconds
+// above -- the DOM/network/map glue below is verified live instead, same as
+// mount/refresh/unmount in shipping.js/markers.js/satellites.js).
 // ---------------------------------------------------------------------------------
 import { liveDataSync } from './_datasync.js';
 import { hoverPopup } from './_hoverpopup.js';
-import { preloadIcons } from './_feedhelpers.js';
+import { fetchOrThrow, preloadIcons } from './_feedhelpers.js';
 
-// An aircraft with no push for this long is assumed to have left every region this
-// connection is subscribed to (backend never sends an explicit "removed" message --
-// see docs/adr/0009) and is dropped from the map rather than frozen in place forever.
-// 3x the gentle-tier cadence (routes/flightradar.py's GENTLE_CADENCE_S=20s) tolerates
-// a couple of missed slow-tier updates before pruning.
-const STALE_PRUNE_MS = 60000;
+// AircraftCollector's cache-warming sweep guarantees every part of the globe is
+// resampled at least once every flightradar_collector.starvation_floor_minutes
+// (default 30 min) -- an aircraft in a background (non-hotspot) cell can legitimately
+// go that long between real updates without having actually left. STALE_PRUNE_MS is
+// set well above that floor (40 min) so it only prunes aircraft that are genuinely
+// gone, not ones merely waiting on the next background sweep; isFrozen's much shorter
+// MAX_EXTRAPOLATION_S (30s) is what shows the "signal lost" cue in the meantime.
+const STALE_PRUNE_MS = 40 * 60 * 1000;
+
+// How often the frontend polls GET /api/flightradar/geojson. Independent of
+// AircraftCollector's own adsb.lol request budget -- this is a local DB read, cheap
+// regardless of poll rate -- chosen only for how smooth the render loop should feel
+// between dead-reckoning interpolation steps.
+const POLL_INTERVAL_MS = 3000;
 
 // docs/adr/0008: alt_baro (not category) drives the zoom-density filter -- high-
 // altitude traffic is visible zoomed out, low-altitude/ground traffic only reveals
@@ -358,60 +367,83 @@ function popupHtml(f) {
         </div>`;
 }
 
-// ws:// (or wss:// over https) sibling of window.MAP_UI, the same origin every other
-// layer's fetch() calls already target.
-function wsUrl() {
-    return `${window.MAP_UI.replace(/^http/, 'ws')}/api/ws/flightradar`;
+// One id per page load, sent on every poll so AircraftCollector's aircraft_interest
+// table can tell this viewer's viewport apart from any other concurrent session
+// (issue #215's per-viewer, not single-global, hotspot signal).
+const viewerId = (typeof crypto !== 'undefined' && crypto.randomUUID)
+    ? crypto.randomUUID()
+    : `viewer-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+// A GeoJSON feature from GET /api/flightradar/geojson -> the same raw-record shape
+// buildFeatureCollection/pruneStale already expect (adsb.lol's own field names),
+// so those two pure functions need no changes for the WS->poll transport swap.
+// receivedAt is the SERVER's last_seen timestamp, not "when this poll happened to
+// include the row" -- the endpoint returns the full unfiltered fleet every call (same
+// shape as ships/geojson), so mere presence in a response is no longer evidence of a
+// fresh sighting the way a WS push used to be.
+function recordFromFeature(feature, fallbackNowMs) {
+    const p = feature.properties;
+    const [lon, lat] = feature.geometry.coordinates;
+    const receivedAt = Date.parse(p.last_seen);
+    return {
+        hex: p.hex,
+        flight: p.flight,
+        r: p.registration,
+        t: p.aircraft_type,
+        category: p.category,
+        alt_baro: p.on_ground ? 'ground' : p.alt_baro_ft,
+        gs: p.gs,
+        track: p.track,
+        baro_rate: p.baro_rate,
+        nav_altitude_mcp: p.nav_altitude_mcp,
+        lat, lon,
+        receivedAt: Number.isNaN(receivedAt) ? fallbackNowMs : receivedAt,
+    };
 }
 
 export function loadLayer(map, config) {
     const sourceId = 'flightradar-source';
     const layerId = 'flightradar-layer';
+    const trackSourceId = 'flightradar-track-source';
+    const trackLayerId = 'flightradar-track-layer';
 
-    const aircraftByHex = new Map();   // hex -> {...adsb.lol record fields, receivedAt}
-    let ws = null;
-    let closedByUs = false;
-    let reconnectTimer = null;
+    const aircraftByHex = new Map();   // hex -> {...adsb.lol-shaped record fields, receivedAt}
+    let currentCfg = config;
+    let pollTimer = null;
     let rafId = null;
     let stopPopup = null;
+    let hoveredHex = null;
 
-    const sendViewport = () => {
-        if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    const geojsonUrlFor = () => {
         const b = map.getBounds();
-        ws.send(JSON.stringify({
-            type: 'viewport',
+        const params = new URLSearchParams({
             west: b.getWest(), south: b.getSouth(), east: b.getEast(), north: b.getNorth(),
-        }));
+            viewer_id: viewerId, t: Date.now(),
+        });
+        return `${window.WM_API}/flightradar/geojson?${params}`;
     };
 
-    const onMessage = (evt) => {
-        let msg;
-        try { msg = JSON.parse(evt.data); } catch { return; }
-        if (msg.type !== 'aircraft_update') return;
-        const now = Date.now();
-        // One message per region key this connection subscribes to (routes/
-        // flightradar.py's poll_due_regions -- not deduped server-side); an aircraft
-        // seen from two overlapping regions just gets upserted twice, latest wins.
-        for (const rec of msg.aircraft || []) {
-            if (!rec.hex) continue;
-            aircraftByHex.set(rec.hex, { ...rec, receivedAt: now });
+    // The read request IS the interest signal (docs/adr/0010) -- the bbox this fetch
+    // sends is what AircraftCollector reads back out of aircraft_interest, no separate
+    // "tell the server where I'm looking" call.
+    const pollOnce = async () => {
+        let geojson;
+        try {
+            geojson = await fetchOrThrow(geojsonUrlFor());
+        } catch (err) {
+            console.warn('[flightradar] poll failed', err);
+            return;
         }
-    };
-
-    // docs/adr/0009: reconnection needs no special handling -- polling state is keyed
-    // by region server-side, not connection identity, so a fresh connection + a fresh
-    // viewport message on open is the entire recovery path.
-    const scheduleReconnect = () => {
-        clearTimeout(reconnectTimer);
-        reconnectTimer = setTimeout(connect, 3000);
-    };
-
-    const connect = () => {
-        ws = new WebSocket(wsUrl());
-        ws.onopen = sendViewport;
-        ws.onmessage = onMessage;
-        ws.onclose = () => { if (!closedByUs) scheduleReconnect(); };
-        ws.onerror = () => ws.close();
+        const now = Date.now();
+        for (const feature of geojson.features || []) {
+            const rec = recordFromFeature(feature, now);
+            if (!rec.hex) continue;
+            // Mirrors shipping.js's own age-filter-on-fetch (max_age_days) -- a row
+            // the collector hasn't refreshed recently enough is left out of this
+            // merge entirely rather than resetting its receivedAt to "now".
+            if (now - rec.receivedAt > STALE_PRUNE_MS) continue;
+            aircraftByHex.set(rec.hex, rec);
+        }
     };
 
     const renderFrame = () => {
@@ -421,7 +453,53 @@ export function loadLayer(map, config) {
         rafId = requestAnimationFrame(renderFrame);
     };
 
+    // Hover-only track (flightradar.view_tracks/track_limit/track_color): empty until
+    // an aircraft is hovered, cleared again on mouseleave -- same shape as shipping.js's
+    // hover-track (see docs/adr/0002 for why this stays bespoke rather than widening
+    // hoverPopup's contract).
+    const emptyTrack = () => ({ type: 'FeatureCollection', features: [] });
+
+    const trackUrlFor = (hex, limit) =>
+        `${window.WM_API}/flightradar/${hex}/track?limit=${limit}&t=${Date.now()}`;
+
+    const showTrack = async (hex) => {
+        hoveredHex = hex;
+        let points;
+        try {
+            const resp = await fetchOrThrow(trackUrlFor(hex, currentCfg.track_limit || 50));
+            points = resp.data || [];
+        } catch (err) {
+            console.warn(`[flightradar] track fetch failed for ${hex}`, err);
+            return;
+        }
+        // The hover may have moved to a different aircraft (or left entirely) while
+        // this request was in flight -- a stale response must not overwrite what's shown.
+        if (hoveredHex !== hex) return;
+        if (!map.getSource(trackSourceId)) return;
+
+        // newest-first from the API -- reverse so the line is drawn oldest -> newest.
+        const coords = points.slice().reverse().map(p => [p.lon, p.lat]);
+        map.getSource(trackSourceId).setData(coords.length >= 2
+            ? { type: 'FeatureCollection', features: [
+                { type: 'Feature', geometry: { type: 'LineString', coordinates: coords }, properties: {} },
+            ] }
+            : emptyTrack());
+    };
+
+    const clearTrack = () => {
+        hoveredHex = null;
+        map.getSource(trackSourceId)?.setData(emptyTrack());
+    };
+
+    const onTrackEnter = (e) => {
+        if (!currentCfg.view_tracks || !e.features.length) return;
+        const hex = e.features[0].properties.hex;
+        if (hex) showTrack(hex);
+    };
+    const onTrackLeave = () => clearTrack();
+
     const mount = async (cfg) => {
+        currentCfg = cfg;
         if (map.getSource(sourceId)) return;
         await preloadIcons(map, FLIGHTRADAR_ICONS);
 
@@ -442,29 +520,45 @@ export function loadLayer(map, config) {
             },
         });
 
-        stopPopup = hoverPopup(map, layerId, { offset: 10, html: popupHtml });
-        map.on('moveend', sendViewport);
+        // Added BEFORE layerId so the line renders underneath the aircraft icons.
+        map.addSource(trackSourceId, { type: 'geojson', data: emptyTrack() });
+        map.addLayer({
+            id: trackLayerId, type: 'line', source: trackSourceId,
+            layout: { 'line-cap': 'round', 'line-join': 'round' },
+            paint: { 'line-color': cfg.track_color || 'white', 'line-width': 2 },
+        }, layerId);
 
-        closedByUs = false;
-        connect();
+        stopPopup = hoverPopup(map, layerId, { offset: 10, html: popupHtml });
+        map.on('mouseenter', layerId, onTrackEnter);
+        map.on('mouseleave', layerId, onTrackLeave);
+
+        await pollOnce();
+        pollTimer = setInterval(pollOnce, POLL_INTERVAL_MS);
         rafId = requestAnimationFrame(renderFrame);
     };
 
     const refresh = async (cfg) => {
+        currentCfg = cfg;
         if (map.getLayer(layerId)) {
             map.setLayoutProperty(layerId, 'icon-size', 0.5 * (cfg.icon_zoom ?? 1.0));
+        }
+        if (map.getLayer(trackLayerId)) {
+            map.setPaintProperty(trackLayerId, 'line-color', cfg.track_color || 'white');
         }
     };
 
     const unmount = () => {
-        closedByUs = true;
-        clearTimeout(reconnectTimer);
+        if (pollTimer != null) clearInterval(pollTimer);
+        pollTimer = null;
         if (rafId != null) cancelAnimationFrame(rafId);
         rafId = null;
-        if (ws) { try { ws.close(); } catch { /* already closed */ } ws = null; }
-        map.off('moveend', sendViewport);
         stopPopup?.();
+        map.off('mouseenter', layerId, onTrackEnter);
+        map.off('mouseleave', layerId, onTrackLeave);
+        hoveredHex = null;
         aircraftByHex.clear();
+        if (map.getLayer(trackLayerId))   map.removeLayer(trackLayerId);
+        if (map.getSource(trackSourceId)) map.removeSource(trackSourceId);
         if (map.getLayer(layerId)) map.removeLayer(layerId);
         if (map.getSource(sourceId)) map.removeSource(sourceId);
     };
@@ -472,6 +566,6 @@ export function loadLayer(map, config) {
     return liveDataSync(map, {
         sectionKey: 'flightradar', initialConfig: config,
         mount, refresh, unmount,
-        refreshMs: 3600000,   // data arrives via WS push, not a periodic fetch -- see mount()
+        refreshMs: 3600000,   // data arrives via POLL_INTERVAL_MS's own timer, not this -- see mount()
     });
 }

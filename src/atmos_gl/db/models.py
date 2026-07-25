@@ -321,6 +321,10 @@ class Aircraft(Base):
     hex: Mapped[str] = mapped_column(String(12), primary_key=True)
     registration: Mapped[str | None] = mapped_column(String(20))
     aircraft_type: Mapped[str | None] = mapped_column(String(10))
+    # ADS-B emitter category (adsb.lol's `category`, e.g. "A3"/"B2"/"C1") -- the
+    # frontend needs this raw code for ADR 0008's ground-vehicle filter (C*) and
+    # glider-icon selection (B*), not just aircraft_type.
+    category: Mapped[str | None] = mapped_column(String(4))
     flight: Mapped[str | None] = mapped_column(String(20))
     lat: Mapped[float | None] = mapped_column()
     lon: Mapped[float | None] = mapped_column()
@@ -365,6 +369,7 @@ class AircraftTrack(Base):
     gs: Mapped[float | None] = mapped_column(REAL)
     track: Mapped[float | None] = mapped_column(REAL)
     baro_rate: Mapped[float | None] = mapped_column(REAL)
+    category: Mapped[str | None] = mapped_column(String(4))
     squawk: Mapped[str | None] = mapped_column(String(4))
     acquired_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
