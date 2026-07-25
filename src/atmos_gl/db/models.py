@@ -304,3 +304,89 @@ class Marker(Base):
     wx_wind_dir_deg: Mapped[float | None] = mapped_column(REAL)
     wx_valid_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     wx_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class Aircraft(Base):
+    """Flight Radar master record (issue #215) -- keyed on the ICAO 24-bit address
+    ("hex", the aircraft equivalent of Ship.mmsi), mirroring Ship's split of static
+    identity fields alongside a redundant current-variable-state snapshot (see
+    AircraftTrack for the append-only history of the same variable fields)."""
+
+    __tablename__ = "aircraft"
+    __table_args__ = (
+        Index("idx_aircraft_geom", "geom", postgresql_using="gist"),
+        Index("idx_aircraft_last_seen", "last_seen"),
+    )
+
+    hex: Mapped[str] = mapped_column(String(12), primary_key=True)
+    registration: Mapped[str | None] = mapped_column(String(20))
+    aircraft_type: Mapped[str | None] = mapped_column(String(10))
+    flight: Mapped[str | None] = mapped_column(String(20))
+    lat: Mapped[float | None] = mapped_column()
+    lon: Mapped[float | None] = mapped_column()
+    geom: Mapped[str | None] = mapped_column(Geometry("POINT", srid=4326, spatial_index=False))
+    alt_baro_ft: Mapped[float | None] = mapped_column(REAL)
+    on_ground: Mapped[bool | None] = mapped_column(Boolean, default=False)
+    gs: Mapped[float | None] = mapped_column(REAL)
+    track: Mapped[float | None] = mapped_column(REAL)
+    baro_rate: Mapped[float | None] = mapped_column(REAL)
+    nav_altitude_mcp: Mapped[float | None] = mapped_column(REAL)
+    squawk: Mapped[str | None] = mapped_column(String(4))
+    last_seen: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), server_default=func.current_timestamp()
+    )
+    last_position_update: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class AircraftTrack(Base):
+    """Append-only Flight Radar history (issue #215) -- deliberately NOT named
+    "AircraftPosition": ShipPosition already demonstrates that name is a misnomer once
+    a table carries speed/course/status alongside position, so this one is named for
+    what it actually is from the start (renaming ShipPosition itself is a separate,
+    out-of-scope future fix). One row per sample the collector records; pruned only by
+    Housekeeper.prune_aircraft_tracks, never inline by the collector."""
+
+    __tablename__ = "aircraft_track"
+    __table_args__ = (
+        Index("idx_aircraft_track_geom", "geom", postgresql_using="gist"),
+        Index("idx_aircraft_track_hex", "hex"),
+        Index("idx_aircraft_track_time", "acquired_at"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    hex: Mapped[str] = mapped_column(
+        String(12), ForeignKey("aircraft.hex", ondelete="CASCADE"), nullable=False
+    )
+    lat: Mapped[float | None] = mapped_column()
+    lon: Mapped[float | None] = mapped_column()
+    geom: Mapped[str | None] = mapped_column(Geometry("POINT", srid=4326, spatial_index=False))
+    alt_baro_ft: Mapped[float | None] = mapped_column(REAL)
+    on_ground: Mapped[bool | None] = mapped_column(Boolean, default=False)
+    gs: Mapped[float | None] = mapped_column(REAL)
+    track: Mapped[float | None] = mapped_column(REAL)
+    baro_rate: Mapped[float | None] = mapped_column(REAL)
+    squawk: Mapped[str | None] = mapped_column(String(4))
+    acquired_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class AircraftInterest(Base):
+    """One row per active Flight Radar viewer/session (issue #215) -- the DB-mediated
+    'hotspot' signal AircraftCollector reads each cycle to prioritize whichever areas
+    have an active viewer. Written as a side effect of the frontend's own viewport-read
+    requests (upsert-by-viewer_id, keyed on a client-generated session id -- not yet
+    wired up; that's the REST-route half of issue #215, still to come). A row not
+    refreshed within the collector's configured max-age is treated as gone, same as a
+    disconnected RegionManager subscriber."""
+
+    __tablename__ = "aircraft_interest"
+
+    viewer_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    west: Mapped[float] = mapped_column(nullable=False)
+    south: Mapped[float] = mapped_column(nullable=False)
+    east: Mapped[float] = mapped_column(nullable=False)
+    north: Mapped[float] = mapped_column(nullable=False)
+    last_seen_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )

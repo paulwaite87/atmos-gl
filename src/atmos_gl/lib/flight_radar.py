@@ -214,3 +214,149 @@ class RegionManager:
     def last_result(self, region_key: tuple) -> list[dict]:
         last = self._last_poll.get(region_key)
         return last[1] if last is not None else []
+
+
+# --- Global cache-warming sweep (issue #215, supersedes RegionManager's own live poll
+# loop above once AircraftCollector fully replaces the WS route -- see AircraftCollector
+# in collectors/aircraft.py, which is what actually drives this class). ---
+
+# The fine grid shares GRID_DEG (the viewport hot-cell resolution) so an active viewer's
+# hot cell lines up exactly with what the frontend itself considers "the area in view."
+FINE_GRID_DEG = GRID_DEG
+
+# The background sweep's own, much coarser grid -- required arithmetically, not just for
+# convenience: a 30-minute starvation floor (STARVATION_FLOOR_S) at a 6/minute request
+# budget can cover at most 180 cells globally (30 * 6). GRID_DEG's own 2,592 cells
+# (72 x 36) would need ~14x that budget, or a ~7-hour floor, to keep the same guarantee --
+# so the background tier tiles the globe far more coarsely instead. 30deg -> 12 x 6 = 72
+# cells, comfortably under budget with headroom for hot-cell traffic interleaved.
+COARSE_GRID_DEG = 30.0
+
+HOT_CADENCE_S = 10.0
+BACKGROUND_CADENCE_S = 60.0
+STARVATION_FLOOR_S = 1800.0
+
+# A background cell needs this many consecutive empty results before its effective
+# cadence starts being stretched out (see GlobalSampleScheduler._effective_cadence) --
+# below this it's still treated as "unknown", not "reliably empty".
+EMPTY_STREAK_THRESHOLD = 3
+# Cap on how far a persistently-empty cell's effective cadence can be stretched, so it's
+# deprioritized, never fully starved outright (STARVATION_FLOOR_S still forces a
+# recheck regardless).
+EMPTY_STREAK_MAX_PENALTY = 10.0
+
+
+class GlobalSampleScheduler:
+    """Pure, now-driven priority queue for AircraftCollector's cache-warming sweep
+    (issue #215). Generalizes RegionManager's due/longest-waiting-first shape (above)
+    from "regions a WebSocket viewport subscribed to" to the whole globe: a fine grid
+    (FINE_GRID_DEG) covers whichever cells currently have an active viewer (per
+    set_interest()), sampled at HOT_CADENCE_S; a fixed coarse grid (COARSE_GRID_DEG)
+    covers everywhere else, sampled at BACKGROUND_CADENCE_S but adaptively slowed down
+    for cells that keep coming back empty. A hard STARVATION_FLOOR_S ceiling overrides
+    both, so no part of the globe goes unsampled indefinitely.
+
+    Not asyncio-aware itself: owns no tasks, does no I/O, and doesn't read viewer
+    interest from the database itself -- the caller (AircraftCollector) reads
+    AircraftAdapter.get_active_interest() and hands the result to set_interest() each
+    cycle. Takes an explicit `now` on every call, same tick-driven-state-machine shape
+    as RegionManager, so it's testable with controlled timestamps."""
+
+    def __init__(
+        self,
+        *,
+        fine_grid_deg: float = FINE_GRID_DEG,
+        coarse_grid_deg: float = COARSE_GRID_DEG,
+        hot_cadence_s: float = HOT_CADENCE_S,
+        background_cadence_s: float = BACKGROUND_CADENCE_S,
+        starvation_floor_s: float = STARVATION_FLOOR_S,
+    ):
+        self._fine_grid_deg = fine_grid_deg
+        self._coarse_grid_deg = coarse_grid_deg
+        self._hot_cadence_s = hot_cadence_s
+        self._background_cadence_s = background_cadence_s
+        self._starvation_floor_s = starvation_floor_s
+
+        # cell key: (grid_deg, ix, iy). Absent from _last_sampled_at => never sampled.
+        self._last_sampled_at: dict[tuple, float] = {}
+        self._empty_streak: dict[tuple, int] = {}
+        # Fine cells backed by at least one active interest viewport as of the most
+        # recent set_interest() call -- recomputed fresh every tick, never accumulated.
+        self._hot_cells: set[tuple] = set()
+
+    def set_interest(self, viewports: list[tuple[float, float, float, float]]) -> None:
+        """Recomputes which fine-grid cells are 'hot' this tick, from the caller's
+        fresh read of currently-active viewer interest (west, south, east, north).
+        Callers are expected to have already filtered out stale/expired interest rows
+        (see AircraftAdapter.get_active_interest's max_age_s) -- this method doesn't
+        read a clock itself, it just takes whatever's handed to it, the same way
+        RegionManager.subscribe() doesn't decide who's still connected."""
+        hot = set()
+        for west, south, east, north in viewports:
+            center_lon = (west + east) / 2.0
+            center_lat = (south + north) / 2.0
+            ix, iy = _cell(center_lon, center_lat, self._fine_grid_deg)
+            hot.add((self._fine_grid_deg, ix, iy))
+        self._hot_cells = hot
+
+    def _all_coarse_cells(self) -> list[tuple]:
+        n_lon = int(360 / self._coarse_grid_deg)
+        n_lat = int(180 / self._coarse_grid_deg)
+        lon0 = math.floor(-180.0 / self._coarse_grid_deg)
+        lat0 = math.floor(-90.0 / self._coarse_grid_deg)
+        return [
+            (self._coarse_grid_deg, lon0 + i, lat0 + j)
+            for i in range(n_lon)
+            for j in range(n_lat)
+        ]
+
+    def _elapsed(self, cell: tuple, *, now: float) -> float:
+        last = self._last_sampled_at.get(cell)
+        return float("inf") if last is None else now - last
+
+    def _effective_cadence(self, cell: tuple) -> float:
+        """Hot cells are never adaptively deprioritized -- an active viewer's own cell
+        should always use hot_cadence_s. Background cells that keep coming back empty
+        get a slower effective cadence (capped at EMPTY_STREAK_MAX_PENALTY x), freeing
+        budget for cells with actual traffic; the starvation floor still eventually
+        forces a recheck regardless of streak."""
+        if cell in self._hot_cells:
+            return self._hot_cadence_s
+        streak = self._empty_streak.get(cell, 0)
+        if streak < EMPTY_STREAK_THRESHOLD:
+            return self._background_cadence_s
+        penalty = min(EMPTY_STREAK_MAX_PENALTY, 1 + (streak - EMPTY_STREAK_THRESHOLD + 1))
+        return self._background_cadence_s * penalty
+
+    def next_cell(self, *, now: float) -> tuple | None:
+        """The next cell to sample this tick: any cell that has breached the
+        starvation floor wins outright (oldest-first, never-sampled first); otherwise
+        the most-overdue cell against its own effective cadence -- same never-sampled-
+        sorts-first, longest-waiting-first tie-break as RegionManager.next_due_region().
+        None if nothing is due at all."""
+        candidates = set(self._hot_cells) | set(self._all_coarse_cells())
+        if not candidates:
+            return None
+
+        floored = [c for c in candidates if self._elapsed(c, now=now) >= self._starvation_floor_s]
+        if floored:
+            return min(floored, key=lambda c: self._last_sampled_at.get(c, float("-inf")))
+
+        due = [c for c in candidates if self._elapsed(c, now=now) >= self._effective_cadence(c)]
+        if not due:
+            return None
+        return min(due, key=lambda c: self._last_sampled_at.get(c, float("-inf")))
+
+    def record_result(self, cell: tuple, records: list[dict] | None, *, now: float) -> None:
+        """records=None (failed fetch) still advances last_sampled_at (so the cell
+        backs off at its normal cadence rather than being retried immediately) but
+        does NOT count toward the empty streak -- a rejected request isn't evidence a
+        cell has no traffic, just that the request failed, mirroring the same
+        distinction RegionManager.record_poll_result() makes."""
+        self._last_sampled_at[cell] = now
+        if records is None:
+            return
+        if records:
+            self._empty_streak[cell] = 0
+        else:
+            self._empty_streak[cell] = self._empty_streak.get(cell, 0) + 1

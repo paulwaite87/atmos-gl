@@ -95,6 +95,7 @@ FIELD_COLLECTOR_CLASSES = (GfsAtmosCollector, GfsWavesCollector, RtofsCurrentsCo
 EMBEDDABLE_COLLECTORS = {
     "shipping_collector": ("atmos_gl.collectors.shipping", "ShippingCollector"),
     "lightning_collector": ("atmos_gl.collectors.lightning", "LightningCollector"),
+    "flightradar_collector": ("atmos_gl.collectors.aircraft", "AircraftCollector"),
 }
 
 
