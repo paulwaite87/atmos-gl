@@ -375,6 +375,11 @@ FIELD_SPECS = {
     ("markers", "marker_fontsize"): _FONTSIZE,
     ("markers", "weather_popup"): ToggleSpec(),
     ("flightradar", "icon_zoom"): _ICON_ZOOM,
+    # Track shown only while hovering an aircraft (flightradar.js) -- same hover-only
+    # shape as shipping's track below, not a persistent overlay.
+    ("flightradar", "view_tracks"): ToggleSpec(),
+    ("flightradar", "track_limit"): SliderSpec(min=5, max=100, step=5),
+    ("flightradar", "track_color"): ColorSpec(),
     # --- Shipping (shipping) ---
     ("shipping", "icon_zoom"): _ICON_ZOOM,
     # Track shown only while hovering a ship (shipping.js) -- not a persistent overlay,
@@ -537,6 +542,19 @@ FIELD_SPECS = {
     ("lightning_collector", "sleep_interval"): _SLEEP_INTERVAL_MINUTES,
     ("lightning_collector", "expiry_hours"): _HOURS,
     ("lightning_collector", "log_level"): _LOG_LEVEL,
+    # AircraftCollector's cache-warming sweep (issue #215) -- requests_per_minute is
+    # the whole collector's adsb.lol budget, shared across hotspot and background
+    # sampling alike (see GlobalSampleScheduler). aircraft_track_expiry_hours is
+    # hours-scale (not shipping_collector's days-scale vessel_track_expiry_days),
+    # since flights last hours, not days.
+    ("flightradar_collector", "requests_per_minute"): SliderSpec(min=1, max=60, step=1, suffix="/min"),
+    ("flightradar_collector", "starvation_floor_minutes"): SliderSpec(min=1, max=120, step=1, suffix=" min"),
+    ("flightradar_collector", "coarse_grid_deg"): SliderSpec(min=5, max=90, step=5, suffix=" deg"),
+    ("flightradar_collector", "interest_max_age_seconds"): SliderSpec(min=5, max=120, step=5, suffix="s"),
+    ("flightradar_collector", "aircraft_track_expiry_hours"): SliderSpec(
+        min=0, max=72, step=1, suffix=" hour", zero_label="Never", pluralize=True
+    ),
+    ("flightradar_collector", "log_level"): _LOG_LEVEL,
     ("satellites_collector", "groups"): _CELESTRAK_GROUPS,
     ("satellites_collector", "log_level"): _LOG_LEVEL,
     # data_collector.datasources is deliberately NOT here -- see

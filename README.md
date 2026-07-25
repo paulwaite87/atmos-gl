@@ -503,15 +503,16 @@ icons from further out.
 ![Flight Radar](docs/atmos-gl-flightradar.png)
 
 #### Flight Radar Data Acquisition
-Unlike every other layer, Flight Radar isn't handled by the `data_collector` and nothing
-is stored in the database for it — it's demand-driven, and only polled at all while the
-layer is switched on and someone's actually looking. `map_api` runs a dedicated
-WebSocket route your browser connects to directly: as you pan and zoom, your viewport is
-mapped onto a coarse grid, and the backend polls adsb.lol on a shared timer per grid
-cell, so however many browsers happen to be looking at roughly the same patch of sky,
-adsb.lol only gets asked about it once. adsb.lol's free tier only tolerates a fairly
-limited request rate, so the cell right under your view refreshes quicker than the
-surrounding fill-in area around it.
+Like every other layer, Flight Radar is now backed by a `data_collector` process and a
+database table — the browser never talks to adsb.lol directly. A dedicated collector
+continuously sweeps the globe: it samples fastest wherever a viewer's browser is
+actually looking right now (read from the same request your browser makes to fetch
+aircraft), and falls back to a coarser, slower background sweep everywhere else, so
+there's always some picture of global air traffic even where nobody's currently
+watching. adsb.lol's request tolerance is limited, so this all happens within a fixed,
+shared request budget — the collector, not your browser, is adsb.lol's only consumer.
+Your browser just polls the database periodically, the same way every other data
+layer on the map works.
 
 ### Data Collector
 The data collector is a separate background process which collects data for:
@@ -532,6 +533,7 @@ The data collector is a separate background process which collects data for:
 * Currents
 * Shipping
 * Lightning
+* Flight Radar
 * Markers (Cities, Towns etc)
 
 There is a status page in the configuration UI which shows the amount of data currently

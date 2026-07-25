@@ -1,221 +1,64 @@
 #!/usr/bin/env python3
-"""Tests for routes/flightradar.py (issue #203, docs/adr/0009).
+"""Route-level tests for GET /api/flightradar/geojson and GET /api/flightradar/{hex}/track
+(issue #215), mirroring tests/test_shipping_route.py's DI-override pattern. Only proves
+the override takes effect, the response contract holds, and that a read request also
+records viewer interest -- adapter-level upsert/read/prune behavior is already covered
+by tests/test_aircraft_adapter.py against the Fake directly."""
+from datetime import datetime, timezone
 
-poll_due_regions() is tested directly (no real WebSocket, no real network) with a
-plain dict of connection-id -> fake-connection stubs and an injected fetch_fn. The
-route's viewport-subscribe/unsubscribe handling is tested via FastAPI's
-TestClient.websocket_connect, with get_region_manager overridden to a fresh
-RegionManager per test -- mirroring the DI-seam pattern routes/status.py already uses
-for its collector-class registries."""
-import time
-from unittest.mock import AsyncMock
-
-import pytest
-from fastapi.testclient import TestClient
-
+from atmos_gl.db.aircraft_adapter import FakeAircraftAdapter
+from atmos_gl.routes.flightradar import get_aircraft_adapter
 from atmos_gl.api import app
-from atmos_gl.lib.flight_radar import RegionManager
-from atmos_gl.routes.flightradar import get_region_manager, poll_due_regions
 
 
-# ---- poll_due_regions --------------------------------------------------------
-
-@pytest.mark.asyncio
-async def test_poll_due_regions_pushes_to_all_subscribers_of_a_polled_region():
-    rm = RegionManager(grace_period_s=30.0, hot_cadence_s=2.0, gentle_cadence_s=20.0)
-    rm.subscribe((0, 0), "conn-1", tier="hot", now=0.0)
-    rm.subscribe((0, 0), "conn-2", tier="gentle", now=0.0)
-    ws1, ws2 = AsyncMock(), AsyncMock()
-    connections = {"conn-1": ws1, "conn-2": ws2}
-    fetch_fn = AsyncMock(return_value=[{"hex": "a1"}])
-
-    await poll_due_regions(rm, connections, fetch_fn, now=0.0)
-
-    ws1.send_json.assert_awaited_once()
-    ws2.send_json.assert_awaited_once()
-    assert ws1.send_json.call_args.args[0]["aircraft"] == [{"hex": "a1"}]
+def _bbox_params(viewer_id="viewer-1"):
+    return {"west": 0.0, "south": 0.0, "east": 1.0, "north": 1.0, "viewer_id": viewer_id}
 
 
-@pytest.mark.asyncio
-async def test_poll_due_regions_skips_regions_not_due():
-    rm = RegionManager(grace_period_s=30.0, hot_cadence_s=2.0, gentle_cadence_s=20.0)
-    rm.subscribe((0, 0), "conn-1", tier="hot", now=0.0)
-    rm.record_poll_result((0, 0), [{"hex": "a1"}], now=0.0)
-    connections = {"conn-1": AsyncMock()}
-    fetch_fn = AsyncMock()
+def test_flightradar_geojson_uses_the_overridden_fake(client):
+    fake = FakeAircraftAdapter()
+    app.dependency_overrides[get_aircraft_adapter] = lambda: fake
 
-    await poll_due_regions(rm, connections, fetch_fn, now=1.0)  # cadence is 2.0s
+    resp = client.get("/api/flightradar/geojson", params=_bbox_params())
 
-    fetch_fn.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_poll_due_regions_a_send_failure_does_not_stop_other_pushes():
-    rm = RegionManager(grace_period_s=30.0, hot_cadence_s=2.0, gentle_cadence_s=20.0)
-    rm.subscribe((0, 0), "conn-1", tier="hot", now=0.0)
-    rm.subscribe((0, 0), "conn-2", tier="hot", now=0.0)
-    ws1 = AsyncMock()
-    ws1.send_json.side_effect = RuntimeError("connection closing")
-    ws2 = AsyncMock()
-    connections = {"conn-1": ws1, "conn-2": ws2}
-    fetch_fn = AsyncMock(return_value=[])
-
-    await poll_due_regions(rm, connections, fetch_fn, now=0.0)
-
-    ws2.send_json.assert_awaited_once()
+    # If the override didn't take effect, this would hit the real AircraftAdapter and
+    # fail on a DB connection error instead of returning a clean empty collection.
+    assert resp.status_code == 200
+    assert resp.json() == {"type": "FeatureCollection", "features": []}
 
 
-@pytest.mark.asyncio
-async def test_poll_due_regions_records_the_result_so_it_is_not_due_again_immediately():
-    rm = RegionManager(grace_period_s=30.0, hot_cadence_s=2.0, gentle_cadence_s=20.0)
-    rm.subscribe((0, 0), "conn-1", tier="hot", now=0.0)
-    fetch_fn = AsyncMock(return_value=[{"hex": "a1"}])
+def test_flightradar_geojson_records_viewer_interest_as_a_side_effect(client):
+    fake = FakeAircraftAdapter()
+    app.dependency_overrides[get_aircraft_adapter] = lambda: fake
 
-    await poll_due_regions(rm, {"conn-1": AsyncMock()}, fetch_fn, now=0.0)
+    client.get("/api/flightradar/geojson", params=_bbox_params(viewer_id="viewer-42"))
 
-    assert (0, 0) not in rm.regions_due_for_poll(now=0.5)
-    assert rm.last_result((0, 0)) == [{"hex": "a1"}]
+    assert fake.get_active_interest(max_age_s=60.0) == [(0.0, 0.0, 1.0, 1.0)]
 
 
-@pytest.mark.asyncio
-async def test_poll_due_regions_does_not_push_when_the_fetch_fails():
-    """fetch_fn returning None (adsb.lol rejected/timed out -- see
-    fetch_aircraft_near) must not be forwarded to subscribers as a fake empty
-    aircraft_update -- there's nothing new to tell them this pass."""
-    rm = RegionManager(grace_period_s=30.0, hot_cadence_s=2.0, gentle_cadence_s=20.0)
-    rm.subscribe((0, 0), "conn-1", tier="hot", now=0.0)
-    ws1 = AsyncMock()
-    fetch_fn = AsyncMock(return_value=None)
+def test_flightradar_geojson_requires_all_bbox_params(client):
+    app.dependency_overrides[get_aircraft_adapter] = lambda: FakeAircraftAdapter()
 
-    await poll_due_regions(rm, {"conn-1": ws1}, fetch_fn, now=0.0)
+    resp = client.get("/api/flightradar/geojson", params={"west": 0.0, "viewer_id": "v"})
 
-    ws1.send_json.assert_not_awaited()
+    assert resp.status_code == 422
 
 
-@pytest.mark.asyncio
-async def test_poll_due_regions_a_failed_fetch_still_backs_off_the_next_poll():
-    rm = RegionManager(grace_period_s=30.0, hot_cadence_s=2.0, gentle_cadence_s=20.0)
-    rm.subscribe((0, 0), "conn-1", tier="hot", now=0.0)
-    fetch_fn = AsyncMock(return_value=None)
+def test_flightradar_track_uses_the_overridden_fake(client):
+    fake = FakeAircraftAdapter()
+    fake._tracks.append(
+        {"hex": "a1b2c3", "lat": 1.0, "lon": 2.0, "acquired_at": datetime(2026, 1, 1, tzinfo=timezone.utc)}
+    )
+    app.dependency_overrides[get_aircraft_adapter] = lambda: fake
 
-    await poll_due_regions(rm, {"conn-1": AsyncMock()}, fetch_fn, now=0.0)
+    resp = client.get("/api/flightradar/a1b2c3/track")
 
-    assert (0, 0) not in rm.regions_due_for_poll(now=0.5)  # cadence is 2.0s
-
-
-@pytest.mark.asyncio
-async def test_poll_due_regions_a_failed_fetch_does_not_clobber_previously_seen_aircraft():
-    rm = RegionManager(grace_period_s=30.0, hot_cadence_s=2.0, gentle_cadence_s=20.0)
-    rm.subscribe((0, 0), "conn-1", tier="hot", now=0.0)
-    rm.record_poll_result((0, 0), [{"hex": "a1"}], now=-5.0)
-
-    await poll_due_regions(rm, {"conn-1": AsyncMock()}, AsyncMock(return_value=None), now=0.0)
-
-    assert rm.last_result((0, 0)) == [{"hex": "a1"}]
+    assert resp.status_code == 200
+    assert resp.json() == {"status": "success", "data": [{"lat": 1.0, "lon": 2.0}]}
 
 
-@pytest.mark.asyncio
-async def test_poll_due_regions_services_only_one_region_per_call_even_with_several_due():
-    """adsb.lol tolerates roughly one successful request every 10-12s per IP no matter
-    how many regions are asked about (see fetch_aircraft_near) -- firing every due
-    region in the same tick just burns most of them on a 429. poll_due_regions must
-    issue at most one fetch per call, staggering the rest to later ticks instead."""
-    rm = RegionManager(grace_period_s=30.0, hot_cadence_s=10.0, gentle_cadence_s=10.0)
-    rm.subscribe((0, 0), "conn-1", tier="hot", now=0.0)
-    rm.subscribe((1, 1), "conn-1", tier="gentle", now=0.0)
-    rm.subscribe((2, 2), "conn-1", tier="gentle", now=0.0)
-    fetch_fn = AsyncMock(return_value=[{"hex": "a1"}])
+def test_flightradar_track_rejects_a_limit_outside_the_slider_range(client):
+    app.dependency_overrides[get_aircraft_adapter] = lambda: FakeAircraftAdapter()
 
-    await poll_due_regions(rm, {"conn-1": AsyncMock()}, fetch_fn, now=0.0)
-
-    fetch_fn.assert_awaited_once()
-
-
-@pytest.mark.asyncio
-async def test_poll_due_regions_picks_the_longest_waiting_region_among_several_due():
-    """A region that's already had an attempt must not keep winning against one still
-    waiting for its very first try -- otherwise whichever region wins the plain
-    iteration-order race (empirically: the hot region) starves the rest indefinitely."""
-    rm = RegionManager(grace_period_s=30.0, hot_cadence_s=10.0, gentle_cadence_s=20.0)
-    rm.subscribe((0, 0), "conn-1", tier="hot", now=0.0)
-    rm.subscribe((1, 1), "conn-1", tier="gentle", now=0.0)
-    rm.record_poll_result((0, 0), [{"hex": "a1"}], now=0.0)  # hot: already attempted once
-    fetch_fn = AsyncMock(return_value=[{"hex": "a2"}])
-
-    await poll_due_regions(rm, {"conn-1": AsyncMock()}, fetch_fn, now=20.0)
-
-    fetch_fn.assert_awaited_once()
-    assert rm.last_result((1, 1)) == [{"hex": "a2"}]   # the never-attempted gentle region won
-    assert rm.last_result((0, 0)) == [{"hex": "a1"}]    # hot untouched this call
-
-
-# ---- WebSocket route: viewport subscribe/unsubscribe -------------------------
-
-def _wait_until(predicate, *, timeout=1.0, interval=0.01):
-    """TestClient's websocket_connect runs the server in a background thread -- its
-    __exit__ returning doesn't guarantee the server-side disconnect handler's finally
-    block has already run. Bounded poll instead of a fixed sleep, so this is fast on
-    the happy path and fails outright (not silently flaky) if the condition never
-    becomes true within timeout."""
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        if predicate():
-            return
-        time.sleep(interval)
-    assert predicate(), "condition never became true within timeout"
-
-
-@pytest.fixture
-def region_manager():
-    rm = RegionManager(grace_period_s=30.0, hot_cadence_s=2.0, gentle_cadence_s=20.0)
-    app.dependency_overrides[get_region_manager] = lambda: rm
-    yield rm
-    app.dependency_overrides.pop(get_region_manager, None)
-
-
-def test_flightradar_ws_subscribes_to_region_keys_from_the_viewport_message(region_manager):
-    client = TestClient(app)
-    with client.websocket_connect("/api/ws/flightradar") as ws:
-        ws.send_json({"type": "viewport", "west": 0.1, "south": 0.1, "east": 0.2, "north": 0.2})
-        ack = ws.receive_json()  # synchronizes with the server having processed it
-
-    assert ack["type"] == "subscribed"
-    # The route timestamps subscribe/unsubscribe with the real time.monotonic() (not
-    # an injected clock, unlike RegionManager's own unit tests) -- query with the same
-    # clock rather than a literal 0.0, or a grace-period comparison against a huge
-    # real monotonic value would look bogus.
-    assert (0, 0) in region_manager.active_regions(now=time.monotonic())
-
-
-def test_flightradar_ws_moving_the_viewport_unsubscribes_the_old_region(region_manager):
-    client = TestClient(app)
-    with client.websocket_connect("/api/ws/flightradar") as ws:
-        ws.send_json({"type": "viewport", "west": 0.1, "south": 0.1, "east": 0.2, "north": 0.2})
-        ws.receive_json()
-        ws.send_json({"type": "viewport", "west": 30.1, "south": 30.1, "east": 30.2, "north": 30.2})
-        ack = ws.receive_json()  # synchronizes with the server having processed the second viewport
-
-    assert ack["hot_key"] == [6, 6]
-    assert (6, 6) in region_manager.active_regions(now=time.monotonic())
-    # (0, 0) can still report as "active" for up to its 30s grace period after its last
-    # subscriber leaves -- that's RegionManager's designed behavior (see
-    # tests/test_lib_flight_radar.py's grace-period tests), not a bug. Check that this
-    # connection was actually removed from (0, 0)'s subscriber set instead.
-    _wait_until(lambda: region_manager.subscribers_of((0, 0)) == set())
-
-
-def test_flightradar_ws_disconnect_unsubscribes_from_every_region(region_manager):
-    client = TestClient(app)
-    with client.websocket_connect("/api/ws/flightradar") as ws:
-        ws.send_json({"type": "viewport", "west": 0.1, "south": 0.1, "east": 10.0, "north": 10.0})
-        ack = ws.receive_json()
-        regions = [tuple(ack["hot_key"])] + [tuple(g) for g in ack["gentle_keys"]]
-        assert all(region_manager.subscribers_of(rk) for rk in regions)  # non-empty while connected
-
-    # After the `with` block exits, the client has disconnected -- but the server-side
-    # handler's finally-block cleanup runs in a background thread and isn't guaranteed
-    # to have completed by the time __exit__ returns control here, so poll rather than
-    # assert once. Regions may still report as "active" for up to their 30s grace
-    # period (by design -- see the comment above), so check each region's subscriber
-    # set directly rather than active_regions().
-    _wait_until(lambda: all(not region_manager.subscribers_of(rk) for rk in regions))
+    assert client.get("/api/flightradar/a1b2c3/track", params={"limit": 4}).status_code == 422
+    assert client.get("/api/flightradar/a1b2c3/track", params={"limit": 101}).status_code == 422

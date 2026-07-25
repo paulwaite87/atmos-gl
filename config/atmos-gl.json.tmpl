@@ -221,7 +221,10 @@
   },
   "flightradar": {
     "enabled": false,
-    "icon_zoom": 1.0
+    "icon_zoom": 1.0,
+    "view_tracks": true,
+    "track_limit": 50,
+    "track_color": "White"
   },
   "data_collector": {
     "enabled": true,
@@ -271,6 +274,15 @@
     "enabled": false,
     "sleep_interval": 10,
     "expiry_hours": 24,
+    "log_level": "INFO"
+  },
+  "flightradar_collector": {
+    "enabled": false,
+    "requests_per_minute": 6,
+    "starvation_floor_minutes": 30,
+    "coarse_grid_deg": 30,
+    "interest_max_age_seconds": 30,
+    "aircraft_track_expiry_hours": 24,
     "log_level": "INFO"
   },
   "layer_builder": {

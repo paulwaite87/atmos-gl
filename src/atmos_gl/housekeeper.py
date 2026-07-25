@@ -22,6 +22,7 @@ from atmos_gl.lib.logging import setup_logging, set_loglevel
 from atmos_gl.lib import fieldstore
 from atmos_gl.lib.scheduling import interval_elapsed
 from atmos_gl.db.ship_adapter import ShipAdapter
+from atmos_gl.db.aircraft_adapter import AircraftAdapter
 
 logger = logging.getLogger("atmos_gl.housekeeper")
 
@@ -169,6 +170,23 @@ class Housekeeper:
                 )
         except Exception as e:
             logger.warning(f"Housekeeper: vessel track prune failed: {e}")
+
+    def prune_aircraft_tracks(self, expiry_hours: float):
+        """Prune aircraft_track rows older than expiry_hours (0/missing -> keep
+        forever) -- the aircraft equivalent of prune_vessel_tracks. AircraftCollector
+        writes one row per sample with nothing else capping table growth, same
+        reasoning as the vessel-track case above."""
+        if not expiry_hours or expiry_hours <= 0:
+            return
+        try:
+            deleted = AircraftAdapter().prune_aircraft_tracks(expiry_hours)
+            if deleted:
+                logger.info(
+                    f"Housekeeper pruned {deleted} aircraft track record(s) "
+                    f"older than {expiry_hours:g}h."
+                )
+        except Exception as e:
+            logger.warning(f"Housekeeper: aircraft track prune failed: {e}")
 
     def prune_orphaned_hour_outputs(self):
         """Delete per-hour render outputs whose (layer, hour) no longer has any
@@ -322,6 +340,12 @@ class Housekeeper:
                         )
                     )
                     self.prune_vessel_tracks(vessel_expiry_d)
+                    aircraft_expiry_h = float(
+                        self.config.get_setting(
+                            "flightradar_collector", "aircraft_track_expiry_hours", 0
+                        )
+                    )
+                    self.prune_aircraft_tracks(aircraft_expiry_h)
                     last_run = now
             else:
                 logger.debug("Housekeeper disabled; skipping.")

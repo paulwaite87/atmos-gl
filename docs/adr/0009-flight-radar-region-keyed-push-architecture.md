@@ -1,8 +1,16 @@
 ---
-status: supersedes 0007
+status: superseded by 0010
 ---
 
 # Flight Radar: region-keyed backend polling, pushed to browsers over WebSocket, hosted inside map_api
+
+**Superseded by `docs/adr/0010-flight-radar-database-backed-cache-warming-architecture.md`.**
+This ADR's region-keyed *scheduling* idea (due/longest-waiting-first, one-cell-per-tick)
+survives, generalized to the whole globe -- but "no DB, no Postgres table, aircraft
+state entirely in memory" and "lives entirely inside `map_api`" do not: `0010` moves
+Flight Radar onto a database-backed collector, the same shape every other event-feed
+layer in this app already uses. Kept here, unmodified below, as the record of what was
+tried first and why it changed.
 
 Supersedes `docs/adr/0007-flight-radar-has-no-collector-or-db-table.md`. That ADR's
 "no DB, no Postgres table" conclusion still holds — this design keeps aircraft state
