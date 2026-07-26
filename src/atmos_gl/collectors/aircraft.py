@@ -23,6 +23,7 @@ import aiohttp
 
 from .base import AsyncCollectorBase
 from atmos_gl.db.aircraft_adapter import AircraftAdapter
+from atmos_gl.db.flight_route_adapter import FlightRouteAdapter
 from atmos_gl.lib.data_status import (
     build_status,
     estimate_next_update,
@@ -31,10 +32,13 @@ from atmos_gl.lib.data_status import (
 )
 from atmos_gl.lib.flight_radar import (
     ADSB_LOL_BASE,
+    ADSB_LOL_ROUTESET_BASE,
     COARSE_GRID_DEG,
+    ROUTESET_BATCH_LIMIT,
     GlobalSampleScheduler,
     circle_for_region_key,
     fetch_aircraft_near,
+    fetch_routes,
 )
 
 logger = logging.getLogger(__name__)
@@ -56,6 +60,7 @@ class AircraftCollector(AsyncCollectorBase):
     def __init__(self, config_path: str):
         super().__init__(config_path)
         self.aircraft_adapter = AircraftAdapter()
+        self.flight_route_adapter = FlightRouteAdapter()
 
     def refresh_settings(self) -> None:
         super().refresh_settings()
@@ -68,6 +73,10 @@ class AircraftCollector(AsyncCollectorBase):
         # operator-supplied API key) since adsb.lol needs no key and this default is
         # always safe to use even if the datasource entry is ever removed.
         self.base_url = self.source_url() or ADSB_LOL_BASE
+        # routeset is a different host entirely by default (see
+        # ADSB_LOL_ROUTESET_BASE's comment for why) -- its own datasources entry via
+        # the explicit-key form of datasource_url(), not derivable from self.base_url.
+        self.routeset_base_url = self.datasource_url("flightradar_routeset") or ADSB_LOL_ROUTESET_BASE
 
     def _tick_interval_seconds(self) -> float:
         """flightradar_collector.requests_per_minute (1-60) is the whole collector's
@@ -108,6 +117,73 @@ class AircraftCollector(AsyncCollectorBase):
             return float(self.settings.get("interest_max_age_seconds", 30))
         except (TypeError, ValueError):
             return 30.0
+
+    def _route_enrichment_interval_seconds(self) -> float:
+        """flightradar_collector.route_enrichment_interval_seconds -- how often the
+        route-lookup batch call (see _enrich_routes()) fires, independent of
+        _tick_interval_seconds()'s position-sampling budget (issue #215's route-lookup
+        follow-on, Q2). Floored at 5s purely as a sanity bound, not a tuned value."""
+        try:
+            return max(5.0, float(self.settings.get("route_enrichment_interval_seconds", 60)))
+        except (TypeError, ValueError):
+            return 60.0
+
+    def _route_batch_size(self) -> int:
+        """flightradar_collector.route_batch_size -- how many callsigns one routeset
+        call resolves at once. Clamped to ROUTESET_BATCH_LIMIT, the server's own hard
+        cap (verified against adsblol/api's source), not a guessed ceiling."""
+        try:
+            size = int(self.settings.get("route_batch_size", 25))
+        except (TypeError, ValueError):
+            size = 25
+        return min(ROUTESET_BATCH_LIMIT, max(1, size))
+
+    def _route_backstop_days(self) -> float:
+        """flightradar_collector.route_backstop_days -- how long a stored route (match
+        or confirmed non-match alike, per Q3/Q4) is trusted before re-checking."""
+        try:
+            return max(0.1, float(self.settings.get("route_backstop_days", 7)))
+        except (TypeError, ValueError):
+            return 7.0
+
+    async def _enrich_routes(self, session: aiohttp.ClientSession) -> None:
+        """Runs on its own independent cadence (route_enrichment_interval_seconds),
+        deliberately separate from the position-sampling tick budget above (issue
+        #215's route-lookup follow-on): pulls a viewport-priority-ordered candidate
+        feed (AircraftAdapter.get_active_flight_positions), narrows it to whichever
+        callsigns actually need a fresh lookup (FlightRouteAdapter.filter_stale), and
+        resolves up to route_batch_size of them in ONE batched routeset call.
+
+        candidate_limit is a multiple of batch_size (not batch_size itself): most
+        currently-active callsigns will usually already have a fresh route, so this
+        needs headroom beyond batch_size to still find enough STALE ones after
+        filter_stale() narrows the list down."""
+        batch_size = self._route_batch_size()
+        candidate_limit = batch_size * 5
+        candidates = await asyncio.to_thread(
+            self.aircraft_adapter.get_active_flight_positions,
+            self._interest_max_age_seconds(), candidate_limit,
+        )
+        if not candidates:
+            return
+
+        callsigns = [c["callsign"] for c in candidates]
+        stale = await asyncio.to_thread(
+            self.flight_route_adapter.filter_stale, callsigns, self._route_backstop_days(),
+        )
+        if not stale:
+            return
+
+        stale_set = set(stale)
+        batch = [c for c in candidates if c["callsign"] in stale_set][:batch_size]
+        if not batch:
+            return
+
+        routes = await fetch_routes(
+            session, batch, base_url=self.routeset_base_url, report_status=self._report_status,
+        )
+        if routes:
+            await asyncio.to_thread(self.flight_route_adapter.record_routes, routes)
 
     def _report_status(self, status: int) -> None:
         """fetch_aircraft_near's report_status hook -- classifies a raw adsb.lol HTTP
@@ -180,6 +256,10 @@ class AircraftCollector(AsyncCollectorBase):
             starvation_floor_s=self._starvation_floor_seconds(),
             coarse_grid_deg=self._coarse_grid_deg(),
         )
+        # Route enrichment (issue #215's route-lookup follow-on) runs on its own
+        # independent cadence -- None means "never fired yet", so the very first tick
+        # always fires it rather than waiting a full interval after startup.
+        last_route_enrichment: float | None = None
 
         async with aiohttp.ClientSession() as session:
             while True:
@@ -188,6 +268,8 @@ class AircraftCollector(AsyncCollectorBase):
                     logger.debug("AircraftCollector: disabled.")
                     await asyncio.sleep(60)
                     continue
+
+                now = time.monotonic()
 
                 try:
                     viewports = await asyncio.to_thread(
@@ -206,8 +288,6 @@ class AircraftCollector(AsyncCollectorBase):
                         HOTSPOT_STATUS_NAME, "layer",
                         progress["queried"], progress["total"],
                     )
-
-                    now = time.monotonic()
 
                     # Global coverage (see data_status()): unlike the hotspot progress
                     # bar above, this is unconditional of any active viewport -- it's a
@@ -246,6 +326,20 @@ class AircraftCollector(AsyncCollectorBase):
                     self.process_status_adapter.record_process_run(
                         self.section, "collector", success=False, error=str(exc)
                     )
+
+                # Own try/except, own cadence check -- a route-enrichment failure must
+                # never mask or interfere with the position-sampling tick's own
+                # success/failure reporting above (they're independent activities, see
+                # _enrich_routes()'s docstring).
+                if (
+                    last_route_enrichment is None
+                    or (now - last_route_enrichment) >= self._route_enrichment_interval_seconds()
+                ):
+                    try:
+                        await self._enrich_routes(session)
+                    except Exception as exc:
+                        logger.error(f"AircraftCollector: route enrichment error: {exc}", exc_info=True)
+                    last_route_enrichment = now
 
                 await asyncio.sleep(self._tick_interval_seconds())
 
