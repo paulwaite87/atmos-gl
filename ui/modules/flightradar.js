@@ -302,6 +302,19 @@ const STALE_PRUNE_MS = 10 * 60 * 1000;
 // between dead-reckoning interpolation steps.
 const POLL_INTERVAL_MS = 3000;
 
+// Throttles how often renderFrame's requestAnimationFrame loop actually rebuilds and
+// pushes the feature collection via setData(), rather than doing so on every single
+// frame (~60/s). This is not a performance optimization -- it's the fix for a
+// long-standing MapLibre/Mapbox limitation (mapbox-gl-js#6052): every setData() call
+// makes a symbol layer re-fade-in and re-run collision detection, so with
+// icon-allow-overlap:false (see mount()'s layer definition) two overlapping aircraft
+// can flip which one "wins" the overlap on every single update -- visible as a rapid
+// flicker at 60 updates/sec. Dead-reckoned positions drift slowly enough that a
+// human eye can't tell ~4 updates/sec (250ms) apart from 60, so this trades
+// imperceptible smoothness for making the flicker rare enough not to notice, rather
+// than trying to eliminate it outright (recognized upstream as not fully fixable).
+const RENDER_UPDATE_MS = 250;
+
 // docs/adr/0008: alt_baro (not category) drives the zoom-density filter -- high-
 // altitude traffic is visible zoomed out, low-altitude/ground traffic only reveals
 // once zoomed in close, mirroring shipping.js's length-based step filter. Feet.
@@ -516,6 +529,7 @@ export function loadLayer(map, config) {
     let currentCfg = config;
     let pollTimer = null;
     let rafId = null;
+    let lastRenderAt = 0;
     let stopPopup = null;
     let hoveredHex = null;
 
@@ -553,8 +567,16 @@ export function loadLayer(map, config) {
 
     const renderFrame = () => {
         const now = Date.now();
-        pruneStale(aircraftByHex, now);
-        map.getSource(sourceId)?.setData(buildFeatureCollection(aircraftByHex, now));
+        // Still scheduled via requestAnimationFrame every frame (so it stays paused
+        // when the tab isn't visible, like any other rAF loop), but only actually
+        // rebuilds + pushes to setData() at most every RENDER_UPDATE_MS -- see that
+        // constant's comment for why (MapLibre symbol-collision flicker on frequent
+        // setData(), not a performance concern).
+        if (now - lastRenderAt >= RENDER_UPDATE_MS) {
+            lastRenderAt = now;
+            pruneStale(aircraftByHex, now);
+            map.getSource(sourceId)?.setData(buildFeatureCollection(aircraftByHex, now));
+        }
         rafId = requestAnimationFrame(renderFrame);
     };
 
