@@ -283,14 +283,18 @@ import { liveDataSync } from './_datasync.js';
 import { hoverPopup } from './_hoverpopup.js';
 import { fetchOrThrow, preloadIcons } from './_feedhelpers.js';
 
-// AircraftCollector's cache-warming sweep guarantees every part of the globe is
-// resampled at least once every flightradar_collector.starvation_floor_minutes
-// (default 30 min) -- an aircraft in a background (non-hotspot) cell can legitimately
-// go that long between real updates without having actually left. STALE_PRUNE_MS is
-// set well above that floor (40 min) so it only prunes aircraft that are genuinely
-// gone, not ones merely waiting on the next background sweep; isFrozen's much shorter
-// MAX_EXTRAPOLATION_S (30s) is what shows the "signal lost" cue in the meantime.
-const STALE_PRUNE_MS = 40 * 60 * 1000;
+// Deliberately tightened below flightradar_collector.starvation_floor_minutes
+// (default 30 min, AircraftCollector's cache-warming sweep's worst-case gap for a
+// background/non-hotspot cell) -- a lower prune threshold means an aircraft outside
+// wherever the viewport's own hot cells currently are can occasionally get pruned
+// and briefly disappear before its next scheduled background resample brings it
+// back, rather than sitting frozen on the map for up to 40 minutes. Traded off
+// against exactly that decluttering benefit (issue: "way too many aircraft,
+// particularly in dense regions like Europe") -- an aircraft actually being looked
+// at sits in a hot cell refreshed on a ~60s cycle regardless, so this mostly thins
+// out stale aircraft the user isn't currently focused on. isFrozen's much shorter
+// MAX_EXTRAPOLATION_S (60s) is what shows the "signal lost" cue in the meantime.
+const STALE_PRUNE_MS = 10 * 60 * 1000;
 
 // How often the frontend polls GET /api/flightradar/geojson. Independent of
 // AircraftCollector's own adsb.lol request budget -- this is a local DB read, cheap
@@ -613,7 +617,15 @@ export function loadLayer(map, config) {
                 'icon-size': 0.5 * (cfg.icon_zoom ?? 1.0),
                 'icon-rotate': ['get', 'track'],
                 'icon-rotation-alignment': 'map',
-                'icon-allow-overlap': true, 'icon-ignore-placement': true,
+                // false/false (MapLibre's own default) lets its built-in collision
+                // detection hide icons that would visually overlap at the current
+                // zoom -- the actual fix for "way too many aircraft, particularly in
+                // dense regions like Europe": previously forcing every icon to
+                // render regardless of overlap defeated that decluttering entirely.
+                // Denser regions thin out at low zoom and repopulate as you zoom in
+                // past the point icons stop colliding; sparse regions are
+                // unaffected either way, since nothing there was overlapping.
+                'icon-allow-overlap': false, 'icon-ignore-placement': false,
             },
             // Tints the SDF icon per aircraftGroupColor() -- see FLIGHTRADAR_ICONS.
             paint: {
