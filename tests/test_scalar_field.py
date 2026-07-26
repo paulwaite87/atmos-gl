@@ -27,6 +27,7 @@ def make_bare_updater(spec):
     u.section = spec.product
     u.status_product = spec.product
     u.settings = {}
+    u.common = {}
     u.map_region_bbox = (-180, -90, 180, 90)
     u.output_path = "/tmp/out/layer.png"
     u.map_data = MagicMock()
@@ -83,10 +84,12 @@ def test_write_legend_key_uses_resolved_cmap_and_spec_ticks_title(key):
     effect when should_plot_for_hour's data-freshness gate let plot() run, so a
     settings-only change could leave a stale key on screen indefinitely.
     _write_legend_key must be independently callable (run() invokes it every cycle,
-    unconditionally) and must reflect the live settings."""
+    unconditionally) and must reflect the live settings. key_fontsize is a shared
+    common.key_fontsize setting, not this layer's own section (issue: consolidate
+    the 11 per-layer key_fontsize settings)."""
     spec = SPECS[key]
     u = make_bare_updater(spec)
-    u.settings = {"key_fontsize": 8}
+    u.common = {"key_fontsize": 8}
 
     u._write_legend_key()
 

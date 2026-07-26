@@ -93,7 +93,7 @@ class WavesUpdater(Updater, MultiHourRenderMixin):
             norm,
             [0, 2, 4, 6, 8],
             title,
-            key_fontsize=self.settings.get("key_fontsize", 10),
+            key_fontsize=self.common.get("key_fontsize", 10),
             labelsize=8,
             weight="bold",
             decorate=_mark_threshold,

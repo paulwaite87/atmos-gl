@@ -79,11 +79,37 @@
                is the one place client-built legend text needs to match. */
             font-family: sans-serif;
         }
+        /* One global show/hide-all control, not per-legend (ui/modules/_legend.js's
+           initLegendToggle()) -- hides the whole .legend-slot box (chrome included),
+           not just its <img>, so no empty dark boxes are left floating when hidden. */
+        #legend-stack.legends-hidden .legend-slot {
+            display: none;
+        }
+        #legend-toggle {
+            background: rgba(0, 0, 0, 0.6);
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 4px;
+            width: 24px;
+            height: 24px;
+            line-height: 1;
+            font-size: 14px;
+            font-family: sans-serif;
+            cursor: pointer;
+            pointer-events: auto;
+            align-self: flex-start;
+        }
     </style>
     <script src="https://unpkg.com/maplibre-gl@^5.0.0/dist/maplibre-gl.js"></script>
 </head>
 <body>
     <div id="legend-stack"></div>
+    <script type="module">
+        // Independent of the main map bootstrap below -- #legend-stack exists in the
+        // static markup, so this doesn't need to wait on config/map load at all.
+        import { initLegendToggle } from './modules/_legend.js';
+        initLegendToggle();
+    </script>
     <a href="http://localhost:9000/config" id="settingsBtn" target="_blank">Configuration Control</a>
     <div id="basemap-picker-host"></div>
     <div id="zoomDisplay"></div>

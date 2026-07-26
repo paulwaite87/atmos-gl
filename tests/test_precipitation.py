@@ -8,11 +8,12 @@ from unittest.mock import MagicMock
 from atmos_gl.tasks.precipitation import PrecipitationUpdater
 
 
-def make_bare_updater(settings=None):
+def make_bare_updater(settings=None, common=None):
     """Bypass Updater.__init__ (does config/IO) and wire only what
     save_precipitation_key reads."""
     u = PrecipitationUpdater.__new__(PrecipitationUpdater)
     u.settings = settings or {}
+    u.common = common or {}
     # ListedColormap needs at least as many colors as BoundaryNorm's bins (5, from
     # save_precipitation_key's 6 fixed key_ticks) -- matches the real "standard"
     # palette's 7 colors, just not the exact values (irrelevant to what's under test).
@@ -41,7 +42,9 @@ def test_save_precipitation_key_matches_the_shared_key_style():
 
 
 def test_save_precipitation_key_honours_a_configured_key_fontsize():
-    u = make_bare_updater(settings={"key_fontsize": 14})
+    """key_fontsize is a shared common.key_fontsize setting, not this layer's own
+    section (issue: consolidate the 11 per-layer key_fontsize settings)."""
+    u = make_bare_updater(common={"key_fontsize": 14})
 
     u.save_precipitation_key("/tmp/out/precipitation.png")
 

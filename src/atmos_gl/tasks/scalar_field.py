@@ -235,7 +235,7 @@ class ScalarFieldUpdater(Updater, MultiHourRenderMixin):
             norm,
             self.spec.ticks,
             self.spec.title,
-            key_fontsize=self.settings.get("key_fontsize", 10),
+            key_fontsize=self.common.get("key_fontsize", 10),
             labelsize=8,
             weight="bold",
             tick_format="%d",

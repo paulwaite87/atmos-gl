@@ -168,7 +168,7 @@ class SSTUpdater(Updater):
             norm,
             calculated_ticks,
             title_text,
-            key_fontsize=self.settings.get("key_fontsize", 10),
+            key_fontsize=self.common.get("key_fontsize", 10),
             labelsize=8,
             tick_format=tick_format,
             weight="bold",

@@ -340,6 +340,12 @@ FIELD_SPECS = {
     ),
     ("common", "log_level"): _LOG_LEVEL,
     ("common", "performance_tier"): _PERFORMANCE_TIER,
+    # Single shared fontsize for every layer's colourbar-key PNG (sst/waves/currents/
+    # ozone/precipitation/temperature/wind/jetstream/stormwatch/pwat), replacing what
+    # used to be 11 identical per-layer key_fontsize settings -- consolidated here
+    # since every layer already defaulted to the same value (10) and there was no
+    # actual per-layer customization to preserve.
+    ("common", "key_fontsize"): _FONTSIZE,
     ("animation", "forecast_stepping"): ToggleSpec(),
     ("animation", "stepping_rate"): _PARTICLE_SPEED_LIKE,
     # --- Events (quakes, volcanoes) ---
@@ -359,7 +365,6 @@ FIELD_SPECS = {
     # FIRMS hotspot settings above, so the Show tab needs only one "Wildfires" toggle.
     ("fires", "level_of_detail"): _LEVEL_OF_DETAIL,
     ("fires", "opacity"): _OPACITY,
-    ("fires", "key_fontsize"): _FONTSIZE,
     ("fires", "min_risk_display"): SliderSpec(min=0, max=100, step=5, suffix=""),
     ("fires", "min_risk_filter"): SliderSpec(min=0, max=100, step=5, suffix="", zero_label="off"),
     # --- Misc (satellites, terminator, markers, flightradar) ---
@@ -419,7 +424,6 @@ FIELD_SPECS = {
     ("wind", "flow_coherence_radius"): _FLOW_COHERENCE_RADIUS,
     ("wind", "trail_length"): SliderSpec(min=10, max=100, step=1),
     ("wind", "trail_thickness"): SliderSpec(min=1, max=5, step=1),
-    ("wind", "key_fontsize"): _FONTSIZE,
     ("wind", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
     # Jet stream is speed-colored particles with no heatmap, like currents (not
     # wind's flat-colored particles + separate heatmap) -- shares currents' particle
@@ -440,7 +444,6 @@ FIELD_SPECS = {
     ("jetstream", "flow_coherence_radius"): _FLOW_COHERENCE_RADIUS,
     ("jetstream", "trail_length"): _TRAIL_LENGTH,
     ("jetstream", "trail_thickness"): _TRAIL_THICKNESS,
-    ("jetstream", "key_fontsize"): _FONTSIZE,
     ("jetstream", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
     ("precipitation", "level_of_detail"): _LEVEL_OF_DETAIL,
     ("precipitation", "min_mm_hr"): SliderSpec(min=0.0, max=10.0, step=0.1, decimals=1),
@@ -450,7 +453,6 @@ FIELD_SPECS = {
         ("ocean_blue", "Ocean blue"),
         ("high_contrast", "High contrast"),
     ]),
-    ("precipitation", "key_fontsize"): _FONTSIZE,
     ("precipitation", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
     ("pwat", "level_of_detail"): _LEVEL_OF_DETAIL,
     ("pwat", "palette"): SelectSpec([
@@ -460,7 +462,6 @@ FIELD_SPECS = {
     ]),
     ("pwat", "critical_pwat"): SliderSpec(min=0.0, max=80.0, step=5.0, decimals=0, suffix="mm"),
     ("pwat", "opacity"): _OPACITY,
-    ("pwat", "key_fontsize"): _FONTSIZE,
     ("pwat", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
     ("lightning", "icon_zoom"): _ICON_ZOOM,
     ("lightning", "strike_recent_minutes"): _MINUTES,
@@ -479,7 +480,6 @@ FIELD_SPECS = {
     ]),
     ("sst", "min_c"): _MIN_MAX_C,
     ("sst", "max_c"): _MIN_MAX_C,
-    ("sst", "key_fontsize"): _FONTSIZE,
     ("sst", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
     ("currents", "level_of_detail"): _LEVEL_OF_DETAIL,
     ("currents", "palette"): SelectSpec([
@@ -498,7 +498,6 @@ FIELD_SPECS = {
     ("currents", "trail_thickness"): _TRAIL_THICKNESS,
     ("currents", "fill_floor"): SliderSpec(min=0.0, max=1.0, step=0.05, decimals=2, suffix=" m/s"),
     ("currents", "fill_knee"): SliderSpec(min=0.0, max=2.5, step=0.05, decimals=2, suffix=" m/s"),
-    ("currents", "key_fontsize"): _FONTSIZE,
     ("currents", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
     ("waves", "level_of_detail"): _LEVEL_OF_DETAIL,
     ("waves", "palette"): SelectSpec([
@@ -508,7 +507,6 @@ FIELD_SPECS = {
     ]),
     ("waves", "opacity"): _OPACITY,
     ("waves", "min_wave_height"): SliderSpec(min=0, max=5, step=0.25, suffix=" m", zero_label="off"),
-    ("waves", "key_fontsize"): _FONTSIZE,
     ("waves", "particle_speed"): _PARTICLE_SPEED_LIKE,
     ("waves", "particle_size"): _PARTICLE_SIZE,
     ("waves", "bar_length"): SliderSpec(min=1, max=8, step=1),
@@ -516,7 +514,6 @@ FIELD_SPECS = {
     ("waves", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
     ("temperature", "level_of_detail"): _LEVEL_OF_DETAIL,
     ("temperature", "opacity"): _OPACITY,
-    ("temperature", "key_fontsize"): _FONTSIZE,
     ("temperature", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
     ("ozone", "level_of_detail"): _LEVEL_OF_DETAIL,
     ("ozone", "palette"): SelectSpec([
@@ -525,13 +522,11 @@ FIELD_SPECS = {
     ]),
     ("ozone", "critical_du"): SliderSpec(min=150.0, max=500.0, step=10.0, decimals=1, suffix="du"),
     ("ozone", "opacity"): _OPACITY,
-    ("ozone", "key_fontsize"): _FONTSIZE,
     ("ozone", "stormwatch"): ToggleSpec(),
     ("ozone", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
     ("stormwatch", "level_of_detail"): _LEVEL_OF_DETAIL,
     ("stormwatch", "min_cape"): SliderSpec(min=0, max=5000, step=100, suffix="J/Kg"),
     ("stormwatch", "opacity"): _OPACITY,
-    ("stormwatch", "key_fontsize"): _FONTSIZE,
     ("stormwatch", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
     # --- Background (shipping_collector, lightning_collector, satellites_collector,
     # data_collector, housekeeper) ---

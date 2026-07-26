@@ -9,9 +9,10 @@ import numpy as np
 from atmos_gl.tasks.jetstream import JetStreamUpdater
 
 
-def make_bare_updater(settings=None):
+def make_bare_updater(settings=None, common=None):
     u = JetStreamUpdater.__new__(JetStreamUpdater)
     u.settings = settings or {}
+    u.common = common or {}
     u.save_key_image = MagicMock()
     u.status_product = "jetstream"
     u.output_path = "/tmp/out/jetstream.png"
@@ -50,7 +51,9 @@ def test_save_key_uses_whole_number_ticks():
 
 
 def test_save_key_honours_a_configured_key_fontsize():
-    u = make_bare_updater(settings={"key_fontsize": 16})
+    """key_fontsize is a shared common.key_fontsize setting (issue: consolidate the
+    11 per-layer key_fontsize settings), not this layer's own section."""
+    u = make_bare_updater(common={"key_fontsize": 16})
     u.save_key("/tmp/out/jetstream.png")
     assert u.save_key_image.call_args.kwargs["key_fontsize"] == 16
 

@@ -4,16 +4,34 @@
 // dependency in this repo), so `document` is faked minimally here rather than
 // relying on a real DOM -- same approach _reconcile.test.js takes for `window`.
 import { describe, test, expect, beforeEach } from 'vitest';
-import { keyFilename, showLegend, removeLegend, replaceSlot } from './_legend.js';
+import { keyFilename, showLegend, removeLegend, replaceSlot, initLegendToggle } from './_legend.js';
 
 function fakeDocument() {
     const byId = {};
     const makeElement = () => {
-        const el = { id: '', className: '', style: {}, children: [] };
+        const el = {
+            id: '', className: '', style: {}, children: [], textContent: '', title: '',
+            _classes: new Set(),
+        };
         el.appendChild = (child) => {
             el.children.push(child);
             if (child.id) byId[child.id] = child;
         };
+        el.insertBefore = (child, ref) => {
+            const idx = ref ? el.children.indexOf(ref) : -1;
+            if (idx === -1) el.children.push(child); else el.children.splice(idx, 0, child);
+            if (child.id) byId[child.id] = child;
+        };
+        Object.defineProperty(el, 'firstChild', { get: () => el.children[0] ?? null });
+        el.classList = {
+            toggle: (name, force) => {
+                const shouldHave = force !== undefined ? force : !el._classes.has(name);
+                if (shouldHave) el._classes.add(name); else el._classes.delete(name);
+                return shouldHave;
+            },
+            contains: (name) => el._classes.has(name),
+        };
+        el.addEventListener = (evt, fn) => { (el._listeners ??= {})[evt] = fn; };
         el.remove = () => { delete byId[el.id]; };
         return el;
     };
@@ -24,6 +42,16 @@ function fakeDocument() {
         getElementById: (id) => byId[id] || null,
         createElement: makeElement,
         _stack: stack,
+    };
+}
+
+function fakeLocalStorage() {
+    const store = {};
+    return {
+        getItem: (k) => (k in store ? store[k] : null),
+        setItem: (k, v) => { store[k] = String(v); },
+        removeItem: (k) => { delete store[k]; },
+        _store: store,
     };
 }
 
@@ -119,5 +147,73 @@ describe('replaceSlot', () => {
             slot.appendChild(img);
         });
         expect(document.getElementById('sst-legend-slot').children[0].src).toBe('http://test/x.png');
+    });
+});
+
+describe('initLegendToggle', () => {
+    beforeEach(() => {
+        globalThis.document = fakeDocument();
+        globalThis.localStorage = fakeLocalStorage();
+    });
+
+    test('does nothing when #legend-stack is absent', () => {
+        globalThis.document.getElementById = () => null;
+        expect(() => initLegendToggle()).not.toThrow();
+    });
+
+    test('inserts a single #legend-toggle button as the first child of the stack', () => {
+        initLegendToggle();
+        const stack = document._stack;
+        expect(stack.children.length).toBe(1);
+        expect(stack.firstChild.id).toBe('legend-toggle');
+    });
+
+    test('defaults to shown ("−") when localStorage has no prior preference', () => {
+        initLegendToggle();
+        const btn = document.getElementById('legend-toggle');
+        expect(document._stack.classList.contains('legends-hidden')).toBe(false);
+        expect(btn.textContent).toBe('−');
+        expect(btn.title).toBe('Hide legends');
+    });
+
+    test('restores a previously hidden state from localStorage on init', () => {
+        localStorage.setItem('atmosgl.legendsHidden', 'true');
+        initLegendToggle();
+        const btn = document.getElementById('legend-toggle');
+        expect(document._stack.classList.contains('legends-hidden')).toBe(true);
+        expect(btn.textContent).toBe('+');
+        expect(btn.title).toBe('Show legends');
+    });
+
+    test('clicking toggles the class, the symbol, and persists to localStorage', () => {
+        initLegendToggle();
+        const stack = document._stack;
+        const btn = document.getElementById('legend-toggle');
+
+        btn._listeners.click();
+        expect(stack.classList.contains('legends-hidden')).toBe(true);
+        expect(btn.textContent).toBe('+');
+        expect(localStorage.getItem('atmosgl.legendsHidden')).toBe('true');
+
+        btn._listeners.click();
+        expect(stack.classList.contains('legends-hidden')).toBe(false);
+        expect(btn.textContent).toBe('−');
+        expect(localStorage.getItem('atmosgl.legendsHidden')).toBe('false');
+    });
+
+    test('is idempotent -- calling it again does not create a second toggle', () => {
+        initLegendToggle();
+        initLegendToggle();
+        const stack = document._stack;
+        expect(stack.children.filter((c) => c.id === 'legend-toggle').length).toBe(1);
+    });
+
+    test('new legend slots are appended after the toggle, which stays first', () => {
+        initLegendToggle();
+        showLegend('sst-legend-slot', 'http://test/sst_key.png');
+
+        const stack = document._stack;
+        expect(stack.firstChild.id).toBe('legend-toggle');
+        expect(stack.children[1].id).toBe('sst-legend-slot');
     });
 });
