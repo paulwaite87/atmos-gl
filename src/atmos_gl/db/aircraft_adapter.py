@@ -212,21 +212,36 @@ class AircraftAdapter:
 
     def get_aircraft_track(self, hex_id, limit=100):
         """Historical positions for one aircraft, newest first -- the aircraft
-        equivalent of ShipAdapter.get_ship_track."""
+        equivalent of ShipAdapter.get_ship_track.
+
+        Truncated to the CURRENT flight leg: the fetch is still capped at `limit`
+        rows exactly as before, but the result is then cut at the most recent
+        on_ground=true row (inclusive -- kept as the line's ground anchor, so the
+        drawn track starts at the airport rather than mid-air) -- older rows belong
+        to a previous leg and would otherwise draw a spurious line joining two
+        separate flights together. If no on_ground row exists within the fetched
+        window (e.g. the aircraft has only ever been seen airborne), the full
+        fetched set is returned unchanged."""
         if not hex_id:
             return []
         try:
             with Session() as session:
                 rows = session.execute(
-                    select(AircraftTrack.lat, AircraftTrack.lon)
+                    select(AircraftTrack.lat, AircraftTrack.lon, AircraftTrack.on_ground)
                     .where(AircraftTrack.hex == str(hex_id).lower())
                     .order_by(AircraftTrack.acquired_at.desc())
                     .limit(limit)
                 ).all()
-                return [{"lat": r.lat, "lon": r.lon} for r in rows]
         except Exception as e:
             logger.error(f"Error fetching track for aircraft {hex_id}: {e}")
             return []
+
+        truncated = []
+        for row in rows:
+            truncated.append(row)
+            if row.on_ground:
+                break
+        return [{"lat": r.lat, "lon": r.lon} for r in truncated]
 
     def prune_aircraft_tracks(self, expiry_hours: float) -> int:
         """Removes aircraft_track history older than expiry_hours -- the aircraft
@@ -443,7 +458,14 @@ class FakeAircraftAdapter:
         hex_id = str(hex_id).lower()
         rows = [t for t in self._tracks if t["hex"] == hex_id]
         rows.sort(key=lambda t: t["acquired_at"], reverse=True)
-        return [{"lat": t["lat"], "lon": t["lon"]} for t in rows[:limit]]
+        rows = rows[:limit]
+
+        truncated = []
+        for row in rows:
+            truncated.append(row)
+            if row.get("on_ground"):
+                break
+        return [{"lat": t["lat"], "lon": t["lon"]} for t in truncated]
 
     def prune_aircraft_tracks(self, expiry_hours: float) -> int:
         if not expiry_hours or expiry_hours <= 0:

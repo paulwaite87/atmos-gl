@@ -121,6 +121,50 @@ def test_get_aircraft_track_respects_limit():
     assert len(adapter.get_aircraft_track("a1b2c3", limit=2)) == 2
 
 
+# ---- get_aircraft_track: truncated to the current flight leg (since last on_ground)
+
+def _track_row(hex, lat, hour, on_ground=False):
+    return {
+        "hex": hex, "lat": lat, "lon": lat, "on_ground": on_ground,
+        "acquired_at": datetime(2026, 1, 1, tzinfo=timezone.utc) + timedelta(hours=hour),
+    }
+
+
+def test_get_aircraft_track_truncates_at_the_most_recent_ground_point():
+    """Rows are newest-first: hour 5 (airborne, most recent) down to hour 0
+    (on_ground -- the last takeoff). Everything at/before hour 0 belongs to a
+    PREVIOUS leg and must not be included."""
+    adapter = FakeAircraftAdapter()
+    adapter._tracks.append(_track_row("a1b2c3", 0.0, hour=-1, on_ground=True))   # previous leg
+    adapter._tracks.append(_track_row("a1b2c3", 1.0, hour=0, on_ground=True))    # last takeoff
+    adapter._tracks.append(_track_row("a1b2c3", 2.0, hour=1))
+    adapter._tracks.append(_track_row("a1b2c3", 3.0, hour=2))
+
+    track = adapter.get_aircraft_track("a1b2c3", limit=100)
+    assert [p["lat"] for p in track] == [3.0, 2.0, 1.0]
+
+
+def test_get_aircraft_track_returns_full_history_when_never_seen_on_ground():
+    adapter = FakeAircraftAdapter()
+    for i in range(3):
+        adapter._tracks.append(_track_row("a1b2c3", float(i), hour=i))
+    track = adapter.get_aircraft_track("a1b2c3", limit=100)
+    assert len(track) == 3
+
+
+def test_get_aircraft_track_ground_truncation_still_respects_the_limit():
+    """The limit is still the outer cap, applied BEFORE truncation -- a ground point
+    older than the fetch window simply isn't seen, same as if it didn't exist."""
+    adapter = FakeAircraftAdapter()
+    adapter._tracks.append(_track_row("a1b2c3", 0.0, hour=0, on_ground=True))
+    for i in range(1, 5):
+        adapter._tracks.append(_track_row("a1b2c3", float(i), hour=i))
+    # limit=2 only fetches the 2 newest rows (hour 4, hour 3) -- the ground point at
+    # hour 0 is outside that window entirely, so no truncation happens.
+    track = adapter.get_aircraft_track("a1b2c3", limit=2)
+    assert len(track) == 2
+
+
 def test_prune_aircraft_tracks_noop_on_falsy_expiry():
     adapter = FakeAircraftAdapter()
     assert adapter.prune_aircraft_tracks(0) == 0
