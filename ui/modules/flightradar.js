@@ -302,19 +302,6 @@ const STALE_PRUNE_MS = 10 * 60 * 1000;
 // between dead-reckoning interpolation steps.
 const POLL_INTERVAL_MS = 3000;
 
-// Throttles how often renderFrame's requestAnimationFrame loop actually rebuilds and
-// pushes the feature collection via setData(), rather than doing so on every single
-// frame (~60/s). This is not a performance optimization -- it's the fix for a
-// long-standing MapLibre/Mapbox limitation (mapbox-gl-js#6052): every setData() call
-// makes a symbol layer re-fade-in and re-run collision detection, so with
-// icon-allow-overlap:false (see mount()'s layer definition) two overlapping aircraft
-// can flip which one "wins" the overlap on every single update -- visible as a rapid
-// flicker at 60 updates/sec. Dead-reckoned positions drift slowly enough that a
-// human eye can't tell ~4 updates/sec (250ms) apart from 60, so this trades
-// imperceptible smoothness for making the flicker rare enough not to notice, rather
-// than trying to eliminate it outright (recognized upstream as not fully fixable).
-const RENDER_UPDATE_MS = 250;
-
 // docs/adr/0008: alt_baro (not category) drives the zoom-density filter -- high-
 // altitude traffic is visible zoomed out, low-altitude/ground traffic only reveals
 // once zoomed in close, mirroring shipping.js's length-based step filter. Feet.
@@ -336,22 +323,6 @@ const FLIGHTRADAR_ICONS = [
 // itself only needs the altitude density step. Position AND altitude are dead-reckoned
 // from each record's last known state -- see interpolatedPosition/extrapolatedAltitude/
 // boundedElapsedSeconds above.
-// A simple, deterministic string hash (djb2) -- used as MapLibre's symbol-sort-key
-// (mount()'s layer definition) so which of two overlapping aircraft "wins" placement
-// (icon-allow-overlap:false) is a fixed property of the aircraft itself, not
-// whatever order happened to fall out of a particular setData() call. Without this,
-// the winner could still flip between updates even with RENDER_UPDATE_MS's throttle
-// in place -- that throttle fixes the flicker's FREQUENCY, this fixes its root
-// cause (an unstable, effectively-random tie-break) for the remaining "dancing
-// icons" seen even at the throttled rate.
-export function stableSortKey(hex) {
-    let hash = 5381;
-    for (let i = 0; i < hex.length; i++) {
-        hash = ((hash << 5) + hash + hex.charCodeAt(i)) | 0;
-    }
-    return hash;
-}
-
 export function buildFeatureCollection(aircraftByHex, now) {
     const features = [];
     for (const rec of aircraftByHex.values()) {
@@ -366,7 +337,6 @@ export function buildFeatureCollection(aircraftByHex, now) {
             geometry: { type: 'Point', coordinates: [pos.lon, pos.lat] },
             properties: {
                 hex: rec.hex,
-                sort_key: stableSortKey(rec.hex),
                 flight: (rec.flight || '').trim() || rec.hex,
                 // Derived from the raw callsign, before the hex fallback above --
                 // airlineForFlight() needs the real callsign (or nothing), not a hex
@@ -546,7 +516,6 @@ export function loadLayer(map, config) {
     let currentCfg = config;
     let pollTimer = null;
     let rafId = null;
-    let lastRenderAt = 0;
     let stopPopup = null;
     let hoveredHex = null;
 
@@ -584,16 +553,8 @@ export function loadLayer(map, config) {
 
     const renderFrame = () => {
         const now = Date.now();
-        // Still scheduled via requestAnimationFrame every frame (so it stays paused
-        // when the tab isn't visible, like any other rAF loop), but only actually
-        // rebuilds + pushes to setData() at most every RENDER_UPDATE_MS -- see that
-        // constant's comment for why (MapLibre symbol-collision flicker on frequent
-        // setData(), not a performance concern).
-        if (now - lastRenderAt >= RENDER_UPDATE_MS) {
-            lastRenderAt = now;
-            pruneStale(aircraftByHex, now);
-            map.getSource(sourceId)?.setData(buildFeatureCollection(aircraftByHex, now));
-        }
+        pruneStale(aircraftByHex, now);
+        map.getSource(sourceId)?.setData(buildFeatureCollection(aircraftByHex, now));
         rafId = requestAnimationFrame(renderFrame);
     };
 
@@ -656,21 +617,20 @@ export function loadLayer(map, config) {
                 'icon-size': 0.5 * (cfg.icon_zoom ?? 1.0),
                 'icon-rotate': ['get', 'track'],
                 'icon-rotation-alignment': 'map',
-                // false/false (MapLibre's own default) lets its built-in collision
-                // detection hide icons that would visually overlap at the current
-                // zoom -- the actual fix for "way too many aircraft, particularly in
-                // dense regions like Europe": previously forcing every icon to
-                // render regardless of overlap defeated that decluttering entirely.
-                // Denser regions thin out at low zoom and repopulate as you zoom in
-                // past the point icons stop colliding; sparse regions are
-                // unaffected either way, since nothing there was overlapping.
-                'icon-allow-overlap': false, 'icon-ignore-placement': false,
-                // Pins overlap-placement priority to a per-aircraft constant (see
-                // stableSortKey()) instead of leaving it to whatever order MapLibre
-                // happened to process features in for a given setData() call --
-                // otherwise the winner of an overlap could still flip between
-                // updates ("dancing icons") even with the render throttle above.
-                'symbol-sort-key': ['get', 'sort_key'],
+                // true/true: every aircraft always renders regardless of visual
+                // overlap. MapLibre's collision-based decluttering (false/false) was
+                // tried to help dense regions like Europe, but produced its own
+                // problems worse than the clutter it fixed -- a long-standing
+                // MapLibre/Mapbox flicker bug on frequent setData() calls
+                // (mapbox-gl-js#6052) that a render throttle + stable sort-key could
+                // only partially mitigate, plus an artificial, grid-like spacing
+                // pattern from the collision algorithm's own minimum-distance
+                // enforcement. Reverted; if regional density needs addressing again,
+                // real point-clustering (MapLibre's native cluster:true, a "N
+                // aircraft" bubble that expands on zoom) is the next thing to try --
+                // it doesn't fight per-aircraft icon rotation/color the way
+                // overlap-collision does.
+                'icon-allow-overlap': true, 'icon-ignore-placement': true,
             },
             // Tints the SDF icon per aircraftGroupColor() -- see FLIGHTRADAR_ICONS.
             paint: {
