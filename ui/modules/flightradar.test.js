@@ -3,7 +3,7 @@
 // for 1 hour = 60 nautical miles = exactly 1 degree of latitude), not recomputed the
 // way the code does, so a broken formula can actually disagree with the test.
 import { describe, test, expect } from 'vitest';
-import { interpolatedPosition, extrapolatedAltitude, boundedElapsedSeconds, isFrozen, flightStatus, targetAltitudeLabel, aircraftClass, aircraftGroup, aircraftGroupColor, airlineForFlight } from './flightradar.js';
+import { interpolatedPosition, extrapolatedAltitude, boundedElapsedSeconds, isFrozen, flightStatus, targetAltitudeLabel, aircraftClass, aircraftGroup, aircraftGroupColor, airlineForFlight, stopCode, routePathHtml, plausibleWarningHtml } from './flightradar.js';
 
 describe('interpolatedPosition', () => {
     test('due-north flight for 1 hour at 60kts moves exactly 1 degree of latitude', () => {
@@ -126,6 +126,80 @@ describe('isFrozen', () => {
     test('defaults the cap to MAX_EXTRAPOLATION_S when omitted', () => {
         expect(isFrozen(0, 3000)).toBe(false);
         expect(isFrozen(0, 60000)).toBe(true);
+    });
+});
+
+describe('stopCode', () => {
+    test('prefers IATA over ICAO', () => {
+        expect(stopCode({ iata: 'WLG', icao: 'NZWN' })).toBe('WLG');
+    });
+
+    test('falls back to ICAO when IATA is missing', () => {
+        expect(stopCode({ iata: null, icao: 'NZWN' })).toBe('NZWN');
+    });
+
+    test('falls back to an empty string when both are missing', () => {
+        expect(stopCode({})).toBe('');
+    });
+});
+
+describe('routePathHtml', () => {
+    test('returns an empty string for a missing or empty stop list', () => {
+        expect(routePathHtml(null)).toBe('');
+        expect(routePathHtml(undefined)).toBe('');
+        expect(routePathHtml([])).toBe('');
+    });
+
+    test('joins two stops with an arrow', () => {
+        const html = routePathHtml([
+            { iata: 'WLG', icao: 'NZWN', name: 'Wellington International Airport' },
+            { iata: 'AKL', icao: 'NZAA', name: 'Auckland International Airport' },
+        ]);
+        expect(html).toContain('WLG');
+        expect(html).toContain('&rarr;');
+        expect(html).toContain('AKL');
+        expect(html.indexOf('WLG')).toBeLessThan(html.indexOf('AKL'));
+    });
+
+    test('preserves the full path including an intermediate technical stop, in order', () => {
+        const html = routePathHtml([
+            { iata: 'WLG', icao: 'NZWN', name: 'Wellington' },
+            { iata: 'CHC', icao: 'NZCH', name: 'Christchurch' },
+            { iata: 'AKL', icao: 'NZAA', name: 'Auckland' },
+        ]);
+        expect(html.indexOf('WLG')).toBeLessThan(html.indexOf('CHC'));
+        expect(html.indexOf('CHC')).toBeLessThan(html.indexOf('AKL'));
+    });
+
+    test('carries each stop\'s full name as a title tooltip', () => {
+        const html = routePathHtml([{ iata: 'WLG', icao: 'NZWN', name: 'Wellington International Airport' }]);
+        expect(html).toContain('title="Wellington International Airport"');
+    });
+
+    test('escapes a double quote in an airport name so it cannot break the title attribute', () => {
+        const html = routePathHtml([{ iata: 'WLG', name: 'Wellington "Intl"' }]);
+        expect(html).toContain('Wellington &quot;Intl&quot;');
+        expect(html).not.toContain('"Wellington "Intl""');
+    });
+
+    test('falls back to ICAO for a stop with no IATA code', () => {
+        const html = routePathHtml([{ iata: null, icao: 'NZWN', name: 'Wellington' }]);
+        expect(html).toContain('NZWN');
+    });
+});
+
+describe('plausibleWarningHtml', () => {
+    test('shows a warning only when plausible is exactly false', () => {
+        expect(plausibleWarningHtml(false)).toContain('&#9888;');
+    });
+
+    test('shows nothing when the route is plausible', () => {
+        expect(plausibleWarningHtml(true)).toBe('');
+    });
+
+    test('shows nothing when there is no route to judge', () => {
+        expect(plausibleWarningHtml(null)).toBe('');
+        expect(plausibleWarningHtml(undefined)).toBe('');
     });
 });
 
