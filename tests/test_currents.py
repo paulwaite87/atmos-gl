@@ -11,7 +11,7 @@ import numpy as np
 from atmos_gl.tasks.currents import CurrentsUpdater
 
 
-def make_bare_updater(settings=None):
+def make_bare_updater(settings=None, common=None):
     """Bypass Updater.__init__ (does config/IO); wire only what _palette/save_currents_key
     (or, post-refactor, _palette/save_key) read. PALETTES is set explicitly here (rather
     than relying on __init__) since it's currently an instance attribute -- if the #182
@@ -19,6 +19,7 @@ def make_bare_updater(settings=None):
     the test keeps working either way."""
     u = CurrentsUpdater.__new__(CurrentsUpdater)
     u.settings = settings or {}
+    u.common = common or {}
     u.save_key_image = MagicMock()
     u.status_product = "currents"
     u.PALETTES = {
@@ -82,7 +83,9 @@ def test_save_currents_key_matches_the_shared_key_style():
 
 
 def test_save_currents_key_honours_a_configured_key_fontsize():
-    u = make_bare_updater(settings={"key_fontsize": 14})
+    """key_fontsize is a shared common.key_fontsize setting, not this layer's own
+    section (issue: consolidate the 11 per-layer key_fontsize settings)."""
+    u = make_bare_updater(common={"key_fontsize": 14})
     method = getattr(u, "save_currents_key", None) or getattr(u, "save_key")
     method("/tmp/out/currents.png")
     assert u.save_key_image.call_args.kwargs["key_fontsize"] == 14

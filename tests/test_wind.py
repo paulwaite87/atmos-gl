@@ -10,11 +10,12 @@ from unittest.mock import MagicMock
 from atmos_gl.tasks.wind import WindUpdater
 
 
-def make_bare_updater(settings=None, vmax_speed_ms=100.0 / 3.6):
+def make_bare_updater(settings=None, vmax_speed_ms=100.0 / 3.6, common=None):
     """Bypass Updater.__init__ (does config/IO) and wire only what save_wind_key
     reads."""
     u = WindUpdater.__new__(WindUpdater)
     u.settings = settings or {}
+    u.common = common or {}
     u.VMAX_SPEED = vmax_speed_ms
     u.save_key_image = MagicMock()
     return u
@@ -45,7 +46,9 @@ def test_save_wind_key_matches_the_shared_key_style():
 
 
 def test_save_wind_key_honours_a_configured_key_fontsize():
-    u = make_bare_updater(settings={"key_fontsize": 14})
+    """key_fontsize is a shared common.key_fontsize setting, not this layer's own
+    section (issue: consolidate the 11 per-layer key_fontsize settings)."""
+    u = make_bare_updater(common={"key_fontsize": 14})
 
     u.save_wind_key("/tmp/out/wind.png")
 

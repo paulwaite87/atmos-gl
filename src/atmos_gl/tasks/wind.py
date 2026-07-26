@@ -69,7 +69,7 @@ class WindUpdater(Updater, MultiHourRenderMixin):
             norm,
             ticks,
             "Wind speed (km/h)",
-            key_fontsize=self.settings.get("key_fontsize", 10),
+            key_fontsize=self.common.get("key_fontsize", 10),
             labelsize=8,
             weight="bold",
             tick_format="%d",

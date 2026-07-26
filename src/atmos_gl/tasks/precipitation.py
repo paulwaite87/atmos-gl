@@ -90,7 +90,7 @@ class PrecipitationUpdater(Updater, MultiHourRenderMixin):
             norm,
             key_ticks,
             "Precipitation (mm/hr)",
-            key_fontsize=self.settings.get("key_fontsize", 10),
+            key_fontsize=self.common.get("key_fontsize", 10),
             labelsize=8,
             weight="bold",
             tick_format="%.1f",

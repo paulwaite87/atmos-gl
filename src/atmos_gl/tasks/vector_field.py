@@ -74,7 +74,7 @@ class VectorFieldUpdater(Updater, MultiHourRenderMixin):
             norm,
             ticks,
             self.KEY_TITLE,
-            key_fontsize=self.settings.get("key_fontsize", 10),
+            key_fontsize=self.common.get("key_fontsize", 10),
             labelsize=8,
             tick_format=self.KEY_TICK_FORMAT,
             weight="bold",
