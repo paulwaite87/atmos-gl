@@ -3,7 +3,7 @@
 // for 1 hour = 60 nautical miles = exactly 1 degree of latitude), not recomputed the
 // way the code does, so a broken formula can actually disagree with the test.
 import { describe, test, expect } from 'vitest';
-import { interpolatedPosition, extrapolatedAltitude, boundedElapsedSeconds, isFrozen, flightStatus, targetAltitudeLabel, aircraftClass, aircraftGroup, aircraftGroupColor, airlineForFlight, stopCode, routePathHtml, plausibleWarningHtml, parseRouteStops, buildFeatureCollection } from './flightradar.js';
+import { interpolatedPosition, extrapolatedAltitude, boundedElapsedSeconds, isFrozen, flightStatus, targetAltitudeLabel, aircraftClass, aircraftGroup, aircraftGroupColor, airlineForFlight, stopCode, routePathHtml, plausibleWarningHtml, parseRouteStops, buildFeatureCollection, stableSortKey } from './flightradar.js';
 
 describe('interpolatedPosition', () => {
     test('due-north flight for 1 hour at 60kts moves exactly 1 degree of latitude', () => {
@@ -226,6 +226,32 @@ describe('parseRouteStops', () => {
 // broke hover/mouseenter feature-querying for the WHOLE flightradar layer, not just
 // aircraft carrying a route. Every property buildFeatureCollection hands to
 // setData() must stay a primitive (string/number/boolean/null).
+describe('stableSortKey', () => {
+    test('is deterministic for the same hex', () => {
+        expect(stableSortKey('a1b2c3')).toBe(stableSortKey('a1b2c3'));
+    });
+
+    test('differs for different hexes (not a guarantee, but expected in practice)', () => {
+        expect(stableSortKey('a1b2c3')).not.toBe(stableSortKey('c3b2a1'));
+    });
+
+    test('returns a plain number', () => {
+        expect(typeof stableSortKey('a1b2c3')).toBe('number');
+        expect(Number.isFinite(stableSortKey('a1b2c3'))).toBe(true);
+    });
+});
+
+describe('buildFeatureCollection sort_key', () => {
+    test('assigns the same stableSortKey value MapLibre uses for overlap priority', () => {
+        const rec = {
+            hex: 'a1b2c3', flight: 'ANZ423', category: '', receivedAt: 1000,
+            lat: -41.3, lon: 174.8, gs: 200, track: 0, alt_baro: 5000,
+        };
+        const fc = buildFeatureCollection(new Map([['a1b2c3', rec]]), 1000);
+        expect(fc.features[0].properties.sort_key).toBe(stableSortKey('a1b2c3'));
+    });
+});
+
 describe('buildFeatureCollection route_stops shape', () => {
     function recFor(overrides = {}) {
         return {

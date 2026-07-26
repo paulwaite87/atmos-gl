@@ -336,6 +336,22 @@ const FLIGHTRADAR_ICONS = [
 // itself only needs the altitude density step. Position AND altitude are dead-reckoned
 // from each record's last known state -- see interpolatedPosition/extrapolatedAltitude/
 // boundedElapsedSeconds above.
+// A simple, deterministic string hash (djb2) -- used as MapLibre's symbol-sort-key
+// (mount()'s layer definition) so which of two overlapping aircraft "wins" placement
+// (icon-allow-overlap:false) is a fixed property of the aircraft itself, not
+// whatever order happened to fall out of a particular setData() call. Without this,
+// the winner could still flip between updates even with RENDER_UPDATE_MS's throttle
+// in place -- that throttle fixes the flicker's FREQUENCY, this fixes its root
+// cause (an unstable, effectively-random tie-break) for the remaining "dancing
+// icons" seen even at the throttled rate.
+export function stableSortKey(hex) {
+    let hash = 5381;
+    for (let i = 0; i < hex.length; i++) {
+        hash = ((hash << 5) + hash + hex.charCodeAt(i)) | 0;
+    }
+    return hash;
+}
+
 export function buildFeatureCollection(aircraftByHex, now) {
     const features = [];
     for (const rec of aircraftByHex.values()) {
@@ -350,6 +366,7 @@ export function buildFeatureCollection(aircraftByHex, now) {
             geometry: { type: 'Point', coordinates: [pos.lon, pos.lat] },
             properties: {
                 hex: rec.hex,
+                sort_key: stableSortKey(rec.hex),
                 flight: (rec.flight || '').trim() || rec.hex,
                 // Derived from the raw callsign, before the hex fallback above --
                 // airlineForFlight() needs the real callsign (or nothing), not a hex
@@ -648,6 +665,12 @@ export function loadLayer(map, config) {
                 // past the point icons stop colliding; sparse regions are
                 // unaffected either way, since nothing there was overlapping.
                 'icon-allow-overlap': false, 'icon-ignore-placement': false,
+                // Pins overlap-placement priority to a per-aircraft constant (see
+                // stableSortKey()) instead of leaving it to whatever order MapLibre
+                // happened to process features in for a given setData() call --
+                // otherwise the winner of an overlap could still flip between
+                // updates ("dancing icons") even with the render throttle above.
+                'symbol-sort-key': ['get', 'sort_key'],
             },
             // Tints the SDF icon per aircraftGroupColor() -- see FLIGHTRADAR_ICONS.
             paint: {
