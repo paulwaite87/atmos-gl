@@ -287,6 +287,14 @@ class ProcessStatus(Base):
     health: Mapped[str | None] = mapped_column(String(20))
     health_detail: Mapped[str | None] = mapped_column(Text)
     health_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # progress_current/progress_total: a generic "N of M units done" counter, set ONLY
+    # by record_progress() -- issue #215's Flight Radar hotspot-coverage bar is the
+    # first user (AircraftCollector reports how many of the currently-prioritized
+    # viewport cells have been sampled), but the shape is generic enough for any
+    # future collector wanting a similar Data Status progress bar. Deliberately
+    # independent of status/last_error/health above, same reasoning as those.
+    progress_current: Mapped[int | None] = mapped_column(Integer)
+    progress_total: Mapped[int | None] = mapped_column(Integer)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

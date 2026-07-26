@@ -117,6 +117,13 @@ EMPTY_STREAK_THRESHOLD = 3
 # recheck regardless).
 EMPTY_STREAK_MAX_PENALTY = 10.0
 
+# Cap on how many fine-grid cells a single viewport can claim as "hot", so an extremely
+# zoomed-out viewport can't blow the request budget by claiming hundreds of cells at
+# HOT_CADENCE_S. The cells actually kept are always the ones nearest the viewport
+# center -- same nearest-first-under-a-cap shape the old (removed) RegionManager-era
+# viewport_to_region_keys used for its gentle tier.
+MAX_HOT_CELLS_PER_VIEWPORT = 12
+
 
 class GlobalSampleScheduler:
     """Pure, now-driven priority queue for AircraftCollector's cache-warming sweep
@@ -160,16 +167,61 @@ class GlobalSampleScheduler:
     def set_interest(self, viewports: list[tuple[float, float, float, float]]) -> None:
         """Recomputes which fine-grid cells are 'hot' this tick, from the caller's
         fresh read of currently-active viewer interest (west, south, east, north).
+        Every fine cell the viewport actually touches becomes hot (capped at
+        MAX_HOT_CELLS_PER_VIEWPORT, nearest-to-center first) -- not just the cell at
+        its center: "the hotspot" means the whole visible area, with the coarse
+        background sweep picking up just outside it, matching this feature's original
+        design intent (issue #215).
+
         Callers are expected to have already filtered out stale/expired interest rows
         (see AircraftAdapter.get_active_interest's max_age_s) -- this method doesn't
-        read a clock itself, it just takes whatever's handed to it."""
+        read a clock itself, it just takes whatever's handed to it. Doesn't handle a
+        viewport crossing the antimeridian (west > east) -- a known simplification for
+        v1, inherited from the pre-issue-#215 viewport_to_region_keys this replaces."""
         hot = set()
-        for west, south, east, north in viewports:
-            center_lon = (west + east) / 2.0
-            center_lat = (south + north) / 2.0
-            ix, iy = _cell(center_lon, center_lat, self._fine_grid_deg)
-            hot.add((self._fine_grid_deg, ix, iy))
+        for viewport in viewports:
+            hot.update(self._cells_for_viewport(viewport))
         self._hot_cells = hot
+
+    def _cells_for_viewport(self, viewport: tuple[float, float, float, float]) -> list[tuple]:
+        """Every fine-grid cell a viewport bbox touches, nearest-to-center first and
+        capped at MAX_HOT_CELLS_PER_VIEWPORT -- shared by set_interest() (which only
+        needs the resulting set) and hotspot_progress() (which needs this exact same
+        per-viewport list to report "N of M cells queried" for just this viewport)."""
+        west, south, east, north = viewport
+        center_lon, center_lat = (west + east) / 2.0, (south + north) / 2.0
+        center = _cell(center_lon, center_lat, self._fine_grid_deg)
+
+        lon_lo, lon_hi = _cell(west, 0.0, self._fine_grid_deg)[0], _cell(east, 0.0, self._fine_grid_deg)[0]
+        lat_lo, lat_hi = _cell(0.0, south, self._fine_grid_deg)[1], _cell(0.0, north, self._fine_grid_deg)[1]
+
+        candidates = [
+            (lx, ly)
+            for lx in range(lon_lo, lon_hi + 1)
+            for ly in range(lat_lo, lat_hi + 1)
+        ]
+        candidates.sort(key=lambda c: (c[0] - center[0]) ** 2 + (c[1] - center[1]) ** 2)
+        return [
+            (self._fine_grid_deg, ix, iy)
+            for ix, iy in candidates[:MAX_HOT_CELLS_PER_VIEWPORT]
+        ]
+
+    def hotspot_progress(self, viewports: list[tuple[float, float, float, float]]) -> dict:
+        """{"queried": n, "total": m} across every fine-grid cell the given viewports
+        touch (deduplicated -- two overlapping viewports don't double-count a shared
+        cell), "queried" meaning ever sampled at all (not just since becoming hot --
+        a cell the background sweep already warmed before anyone looked at it is
+        genuinely already populated, not a bug). Callers should pass the SAME
+        viewports list just given to set_interest() -- this doesn't read
+        self._hot_cells directly since that's a flat union with no per-call viewport
+        boundary to report progress against. {"queried": 0, "total": 0} when
+        `viewports` is empty (no active viewer to report progress for)."""
+        cells: set[tuple] = set()
+        for viewport in viewports:
+            cells.update(self._cells_for_viewport(viewport))
+        total = len(cells)
+        queried = sum(1 for c in cells if self._last_sampled_at.get(c) is not None)
+        return {"queried": queried, "total": total}
 
     def _all_coarse_cells(self) -> list[tuple]:
         n_lon = int(360 / self._coarse_grid_deg)

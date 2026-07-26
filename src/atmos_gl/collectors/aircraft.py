@@ -33,6 +33,13 @@ from atmos_gl.lib.flight_radar import (
 
 logger = logging.getLogger(__name__)
 
+# process_status name for the Flight Radar hotspot-coverage progress bar (issue #215)
+# -- deliberately distinct from both `section` ("flightradar_collector", the
+# collector's OWN row in the Data Status Collectors panel) and the "flightradar"
+# config section (the frontend layer), since this is a third, separate row rendered
+# in the Layers panel instead (see routes/status.py).
+HOTSPOT_STATUS_NAME = "flightradar_hotspot"
+
 
 class AircraftCollector(AsyncCollectorBase):
     section = "flightradar_collector"
@@ -134,6 +141,17 @@ class AircraftCollector(AsyncCollectorBase):
                         self._interest_max_age_seconds(),
                     )
                     scheduler.set_interest(viewports)
+
+                    # Hotspot-coverage progress bar (issue #215): "N of M currently-
+                    # prioritized cells have data" for whichever viewport(s) are
+                    # active right now -- {"queried": 0, "total": 0} when none are,
+                    # which routes/status.py reads as "no active viewport" rather
+                    # than leaving a stale prior reading on screen.
+                    progress = scheduler.hotspot_progress(viewports)
+                    self.process_status_adapter.record_progress(
+                        HOTSPOT_STATUS_NAME, "layer",
+                        progress["queried"], progress["total"],
+                    )
 
                     now = time.monotonic()
                     cell = scheduler.next_cell(now=now)

@@ -721,15 +721,28 @@
         // of a single solid fill, so which hours are actually rendered vs. still
         // pending is visible at a glance. Every other row (collectors, single-shot
         // layers) has segments == null and gets the plain fill bar.
+        //
+        // Flight Radar's hotspot-coverage row (issue #215, routes/status.py's
+        // _flightradar_hotspot_status()) reuses this same segmented-bar mechanism with
+        // a different segment shape ({"queried": bool}, no per-hour/run identity to
+        // show) -- detected by "queried" being present on the first segment rather than
+        // "hour", since it's a genuinely different label but the same bar/dot styling.
         function renderStatusTrack(item, pct, fillClass) {
             if (!item.segments || !item.segments.length) {
                 return `<div class="status-fill ${fillClass}" style="width: ${pct}%;"></div>`;
             }
+            const isHotspot = "queried" in item.segments[0];
             const segmentsHtml = item.segments.map(seg => {
-                const fhour = String(seg.hour).padStart(3, "0");
-                const label = `Run ${item.run_id}Z ${item.run_date} · f${fhour} `
-                    + (seg.rendered ? "(rendered)" : "(pending)");
-                return `<div class="status-segment ${seg.rendered ? "rendered" : "pending"}" title="${escapeHtml(label)}"></div>`;
+                let done, label;
+                if (isHotspot) {
+                    done = seg.queried;
+                    label = done ? "Hotspot cell: queried" : "Hotspot cell: pending";
+                } else {
+                    const fhour = String(seg.hour).padStart(3, "0");
+                    done = seg.rendered;
+                    label = `Run ${item.run_id}Z ${item.run_date} · f${fhour} ` + (done ? "(rendered)" : "(pending)");
+                }
+                return `<div class="status-segment ${done ? "rendered" : "pending"}" title="${escapeHtml(label)}"></div>`;
             }).join("");
             return `<div class="status-segmented-track">${segmentsHtml}</div>`;
         }

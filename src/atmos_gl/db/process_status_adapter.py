@@ -19,6 +19,8 @@ def _row_to_dict(row: ProcessStatus) -> dict:
         "health": row.health,
         "health_detail": row.health_detail,
         "health_at": row.health_at,
+        "progress_current": row.progress_current,
+        "progress_total": row.progress_total,
     }
 
 
@@ -121,6 +123,34 @@ class ProcessStatusAdapter:
             session.execute(stmt)
             session.commit()
 
+    def record_progress(self, name, kind, current, total):
+        """Sets a generic "current of total units done" counter (e.g. how many of
+        the currently-prioritized Flight Radar hotspot cells have been sampled) --
+        independent of record_process_run()'s pass/fail tracking and record_health()'s
+        upstream-condition signal, same reasoning as those: this is a THIRD
+        orthogonal concern, so it gets its own method rather than being folded into
+        either. Deliberately NOT touched by record_process_start()/record_process_run()/
+        record_health() -- only this method ever writes these two columns."""
+        stmt = pg_insert(ProcessStatus).values(
+            name=name,
+            kind=kind,
+            progress_current=current,
+            progress_total=total,
+            updated_at=func.now(),
+        )
+        stmt = stmt.on_conflict_do_update(
+            index_elements=[ProcessStatus.name],
+            set_={
+                "kind": stmt.excluded.kind,
+                "progress_current": stmt.excluded.progress_current,
+                "progress_total": stmt.excluded.progress_total,
+                "updated_at": func.now(),
+            },
+        )
+        with Session() as session:
+            session.execute(stmt)
+            session.commit()
+
     def get_process_status(self, name):
         with Session() as session:
             row = session.get(ProcessStatus, name)
@@ -155,6 +185,8 @@ class FakeProcessStatusAdapter:
             "health": existing["health"] if existing else None,
             "health_detail": existing["health_detail"] if existing else None,
             "health_at": existing["health_at"] if existing else None,
+            "progress_current": existing["progress_current"] if existing else None,
+            "progress_total": existing["progress_total"] if existing else None,
         }
 
     def record_process_run(self, name, kind, success, error=None):
@@ -170,11 +202,13 @@ class FakeProcessStatusAdapter:
             "status": "success" if success else "failed",
             "started_at": None,
             "updated_at": now,
-            # See record_process_start()'s identical comment -- health fields are
-            # never touched by this method either.
+            # See record_process_start()'s identical comment -- health/progress fields
+            # are never touched by this method either.
             "health": existing["health"] if existing else None,
             "health_detail": existing["health_detail"] if existing else None,
             "health_at": existing["health_at"] if existing else None,
+            "progress_current": existing["progress_current"] if existing else None,
+            "progress_total": existing["progress_total"] if existing else None,
         }
 
     def record_health(self, name, kind, health, detail=None):
@@ -183,11 +217,26 @@ class FakeProcessStatusAdapter:
         row = dict(existing) if existing else {
             "name": name, "kind": kind, "last_updated": None,
             "last_error": None, "status": None, "started_at": None,
+            "progress_current": None, "progress_total": None,
         }
         row["kind"] = kind
         row["health"] = health
         row["health_detail"] = detail
         row["health_at"] = now
+        row["updated_at"] = now
+        self._rows[name] = row
+
+    def record_progress(self, name, kind, current, total):
+        existing = self._rows.get(name)
+        now = datetime.now(timezone.utc)
+        row = dict(existing) if existing else {
+            "name": name, "kind": kind, "last_updated": None,
+            "last_error": None, "status": None, "started_at": None,
+            "health": None, "health_detail": None, "health_at": None,
+        }
+        row["kind"] = kind
+        row["progress_current"] = current
+        row["progress_total"] = total
         row["updated_at"] = now
         self._rows[name] = row
 

@@ -98,3 +98,19 @@ def test_record_health_none_clears_a_prior_health_signal(kind, real_db):
 
         assert row["health"] is None
         assert row["health_detail"] is None
+
+
+@pytest.mark.parametrize("kind", ["real", "fake"])
+def test_record_progress_survives_a_subsequent_process_run(kind, real_db):
+    """record_progress()'s two columns are deliberately untouched by
+    record_process_run()/record_process_start()/record_health() -- same class of
+    conditional-update drift as the health tests above."""
+    adapter, ctx = _make_adapter(kind, real_db)
+    with ctx:
+        adapter.record_progress("flightradar_hotspot", "layer", 3, 8)
+        adapter.record_process_run("flightradar_hotspot", "layer", success=True)
+        row = adapter.get_process_status("flightradar_hotspot")
+
+        assert row["status"] == "success"
+        assert row["progress_current"] == 3
+        assert row["progress_total"] == 8
