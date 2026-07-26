@@ -223,6 +223,21 @@ class GlobalSampleScheduler:
         queried = sum(1 for c in cells if self._last_sampled_at.get(c) is not None)
         return {"queried": queried, "total": total}
 
+    def global_coverage(self, *, now: float) -> dict:
+        """{"fresh": n, "total": m} across the FIXED coarse-grid tiling that covers the
+        WHOLE globe (_all_coarse_cells(), independent of any viewer's viewport) --
+        "fresh" meaning sampled within the starvation floor window (never overdue for
+        its guaranteed recheck), not merely "ever sampled" the way hotspot_progress()
+        counts a cell as queried. This answers "how much of the globe currently has
+        up-to-date data", the metric AircraftCollector.data_status() surfaces on the
+        Data Status Collectors panel -- see that method for why this replaces a plain
+        liveness heartbeat there. A never-sampled cell's _elapsed() is +inf, so it
+        never counts as fresh."""
+        cells = self._all_coarse_cells()
+        total = len(cells)
+        fresh = sum(1 for c in cells if self._elapsed(c, now=now) < self._starvation_floor_s)
+        return {"fresh": fresh, "total": total}
+
     def _all_coarse_cells(self) -> list[tuple]:
         n_lon = int(360 / self._coarse_grid_deg)
         n_lat = int(180 / self._coarse_grid_deg)

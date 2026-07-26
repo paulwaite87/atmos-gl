@@ -23,6 +23,12 @@ import aiohttp
 
 from .base import AsyncCollectorBase
 from atmos_gl.db.aircraft_adapter import AircraftAdapter
+from atmos_gl.lib.data_status import (
+    build_status,
+    estimate_next_update,
+    read_health_status,
+    read_process_status,
+)
 from atmos_gl.lib.flight_radar import (
     ADSB_LOL_BASE,
     COARSE_GRID_DEG,
@@ -119,6 +125,46 @@ class AircraftCollector(AsyncCollectorBase):
                 self.section, "collector", "blocked", f"Blocked (HTTP {status})"
             )
 
+    def data_status(self) -> dict:
+        """Coverage-based override of AsyncCollectorBase.data_status(): percent is the
+        fraction of the globe (GlobalSampleScheduler's fixed background grid, NOT just
+        whatever a viewer happens to be looking at) currently within its starvation-
+        floor freshness window -- "how many of the global regions have up-to-date
+        data right now", not a liveness heartbeat. The inherited default
+        (freshness_data_status()) would read 100% for as long as run()'s loop kept
+        ticking every few seconds, regardless of how much of the globe actually had
+        fresh data -- a heartbeat, not a coverage measure.
+
+        progress_current/progress_total are written every tick by run() via
+        record_progress(self.section, ...) -- the same decoupled progress columns
+        HOTSPOT_STATUS_NAME's row uses, just on this row instead. record_progress(),
+        record_health(), and record_process_run() each touch only their own column
+        set, so all three coexist on this one process_status row without clobbering
+        each other (see test_process_status_adapter_real_vs_fake.py's coverage of
+        exactly this). last_updated/status/health still come from the same row, read
+        the normal way."""
+        last_updated, last_error, status = read_process_status(
+            self.process_status_adapter, self.section
+        )
+        row = self.process_status_adapter.get_process_status(self.section) or {}
+        total = row.get("progress_total") or 0
+        current = row.get("progress_current") or 0
+        percent = 100.0 * current / total if total else 0.0
+        detail = last_error or (
+            f"{current}/{total} global region(s) up to date" if total else None
+        )
+        return build_status(
+            name=self.section,
+            kind="collector",
+            percent=percent,
+            last_updated=last_updated,
+            next_update=estimate_next_update(last_updated, self.heartbeat_period_s, self.enabled),
+            enabled=self.enabled,
+            detail=detail,
+            status=status,
+            health=read_health_status(self.process_status_adapter, self.section),
+        )
+
     async def run(self) -> None:
         # Startup heartbeat, same reasoning as ShippingCollector.run()'s: the Data
         # Status UI should show "alive" from the moment this task starts, decaying
@@ -162,6 +208,18 @@ class AircraftCollector(AsyncCollectorBase):
                     )
 
                     now = time.monotonic()
+
+                    # Global coverage (see data_status()): unlike the hotspot progress
+                    # bar above, this is unconditional of any active viewport -- it's a
+                    # property of the scheduler's whole background-grid state, written
+                    # onto this collector's OWN row every tick regardless of who's
+                    # looking at the map right now.
+                    coverage = scheduler.global_coverage(now=now)
+                    self.process_status_adapter.record_progress(
+                        self.section, "collector",
+                        coverage["fresh"], coverage["total"],
+                    )
+
                     cell = scheduler.next_cell(now=now)
                     if cell is not None:
                         grid_deg, ix, iy = cell
