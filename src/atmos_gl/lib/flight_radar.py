@@ -17,6 +17,28 @@ logger = logging.getLogger("atmos_gl.lib.flight_radar")
 
 ADSB_LOL_BASE = "https://api.adsb.lol/v2"
 
+# The routeset endpoint lives at a different path prefix on the same host as
+# ADSB_LOL_BASE (/api/0/routeset, not /v2/...) -- not derivable from ADSB_LOL_BASE by
+# string surgery, so it's its own constant/datasource entry
+# (data_collector.datasources.flightradar_routeset).
+#
+# Points at adsb.im, NOT api.adsb.lol, despite the constant name's "ADSB_LOL" prefix
+# (kept for naming consistency with ADSB_LOL_BASE/ADSB_LOL_BASE-derived code, since
+# both hosts run the identical open-source adsblol/api project). Verified live
+# (2026-07-26): api.adsb.lol/api/0/routeset -- and even its own OPTIONS preflight,
+# which the server source hardcodes to return 200 -- currently returns a bare 201
+# with an empty body and no CORS headers, while every GET endpoint on that same host
+# (including /api/0/airport/{icao}, the same router) works fine. adsb.im runs the
+# same codebase and responds correctly with the exact schema this module expects.
+# Safe to repoint back to api.adsb.lol via the datasources config entry alone if
+# that gets fixed upstream -- no code change needed either way.
+ADSB_LOL_ROUTESET_BASE = "https://adsb.im/api/0/routeset"
+
+# adsblol/api's own server-side cap (src/adsb_api/utils/api_routes.py: a request with
+# more than 100 planes gets rejected with a plain 400) -- verified against the actual
+# server source, not a guess.
+ROUTESET_BATCH_LIMIT = 100
+
 # Grid cell size in degrees for the fine/hotspot tier -- also GlobalSampleScheduler's
 # FINE_GRID_DEG, so an active viewer's hot cell lines up with what the frontend itself
 # considers "the area in view." Not tuned against real adsb.lol traffic yet; ~5deg
@@ -50,7 +72,8 @@ def circle_for_region_key(
 
 
 async def fetch_aircraft_near(
-    session: aiohttp.ClientSession, lat: float, lon: float, radius_nm: float, *, timeout: float = 10.0,
+    session: aiohttp.ClientSession, lat: float, lon: float, radius_nm: float,
+    *, base_url: str = ADSB_LOL_BASE, timeout: float = 10.0, report_status=None,
 ) -> list[dict] | None:
     """One adsb.lol point+radius query -> its `ac` (aircraft) list, or None on any
     failure (timeout, non-200 -- adsb.lol's free tier 429s far more readily than its
@@ -58,10 +81,24 @@ async def fetch_aircraft_near(
     from [] : a failed request must never crash the poll loop, but it also must never
     be reported to callers as "confirmed zero aircraft here" -- see
     GlobalSampleScheduler.record_result(), whose whole reason for accepting None is
-    this distinction."""
-    url = f"{ADSB_LOL_BASE}/lat/{lat}/lon/{lon}/dist/{radius_nm}"
+    this distinction.
+
+    base_url defaults to ADSB_LOL_BASE but is normally overridden by the caller with
+    the configured data_collector.datasources.flightradar value (AircraftCollector) --
+    same "URL lives in the shared datasources dict, not hardcoded" convention every
+    other collector follows.
+
+    report_status, if given, is called with the raw HTTP status code once a response
+    is actually received (never called if the request raised before completing --
+    a timeout/connection error, as opposed to a real rejection). Purely a side-channel
+    for Data Status health reporting (see AircraftCollector._report_status()),
+    independent of this function's own None-vs-[] success/failure contract -- a single
+    rate-limited request shouldn't be conflated with "the fetch failed"."""
+    url = f"{base_url}/lat/{lat}/lon/{lon}/dist/{radius_nm}"
     try:
         async with session.get(url, timeout=timeout) as resp:
+            if report_status:
+                report_status(resp.status)
             if resp.status != 200:
                 logger.debug(f"adsb.lol {url} returned {resp.status}")
                 return None
@@ -70,6 +107,71 @@ async def fetch_aircraft_near(
     except Exception as exc:
         logger.debug(f"adsb.lol fetch failed for {url}: {exc}")
         return None
+
+
+async def fetch_routes(
+    session: aiohttp.ClientSession, planes: list[dict],
+    *, base_url: str = ADSB_LOL_ROUTESET_BASE, timeout: float = 10.0, report_status=None,
+) -> dict[str, dict | None] | None:
+    """Batch-resolves callsign -> route via adsb.lol's routeset endpoint (issue #215's
+    route-lookup follow-on). `planes` is [{"callsign": str, "lat": float, "lng": float}, ...]
+    (real current position, not a 0/0 placeholder -- it's what lets adsb.lol compute the
+    "plausible" great-circle sanity check below); callers must keep each batch at or
+    under ROUTESET_BATCH_LIMIT, the server's own hard cap.
+
+    Returns {callsign: {"stops": [...], "plausible": bool} | None} for every callsign
+    the server actually responded about -- None (whole-batch failure: timeout, non-200)
+    on any request-level failure, the same None-vs-populated-dict distinction
+    fetch_aircraft_near makes, so a rejected batch is never misread as "every callsign
+    in it has no route". A per-callsign None inside the dict is the server's own
+    confirmed no-match ("airport_codes": "unknown"), distinct from a callsign simply
+    absent from the response (left out of the returned dict entirely, so the caller
+    retries it rather than wrongly recording a confirmed non-match).
+
+    Matched by the "callsign" field each response entry carries (adsblol/api's
+    api_routeset echoes it back onto every entry it builds), not by array position --
+    more robust than assuming response order mirrors request order.
+
+    stops preserves the full `_airports` list in order (origin first, destination
+    last, any technical/intermediate stop(s) kept in between) rather than collapsing to
+    just origin/destination, per this feature's Q8 design decision."""
+    if not planes:
+        return {}
+    body = {
+        "planes": [
+            {"callsign": p["callsign"], "lat": p.get("lat", 0.0), "lng": p.get("lng", 0.0)}
+            for p in planes
+        ]
+    }
+    try:
+        async with session.post(base_url, json=body, timeout=timeout) as resp:
+            if report_status:
+                report_status(resp.status)
+            if resp.status != 200:
+                logger.debug(f"adsb.lol routeset {base_url} returned {resp.status}")
+                return None
+            data = await resp.json()
+    except Exception as exc:
+        logger.debug(f"adsb.lol routeset fetch failed for {base_url}: {exc}")
+        return None
+
+    results: dict[str, dict | None] = {}
+    for entry in data or []:
+        callsign = entry.get("callsign")
+        if not callsign:
+            continue
+        airports = entry.get("_airports") or []
+        if entry.get("airport_codes") == "unknown" or not airports:
+            results[callsign] = None
+            continue
+        results[callsign] = {
+            "stops": [
+                {"icao": a.get("icao"), "iata": a.get("iata"), "name": a.get("name")}
+                for a in airports
+            ],
+            "plausible": entry.get("plausible"),
+        }
+    return results
 
 
 # --- Global cache-warming sweep (issue #215): GlobalSampleScheduler is what
@@ -101,6 +203,13 @@ EMPTY_STREAK_THRESHOLD = 3
 # deprioritized, never fully starved outright (STARVATION_FLOOR_S still forces a
 # recheck regardless).
 EMPTY_STREAK_MAX_PENALTY = 10.0
+
+# Cap on how many fine-grid cells a single viewport can claim as "hot", so an extremely
+# zoomed-out viewport can't blow the request budget by claiming hundreds of cells at
+# HOT_CADENCE_S. The cells actually kept are always the ones nearest the viewport
+# center -- same nearest-first-under-a-cap shape the old (removed) RegionManager-era
+# viewport_to_region_keys used for its gentle tier.
+MAX_HOT_CELLS_PER_VIEWPORT = 12
 
 
 class GlobalSampleScheduler:
@@ -145,16 +254,76 @@ class GlobalSampleScheduler:
     def set_interest(self, viewports: list[tuple[float, float, float, float]]) -> None:
         """Recomputes which fine-grid cells are 'hot' this tick, from the caller's
         fresh read of currently-active viewer interest (west, south, east, north).
+        Every fine cell the viewport actually touches becomes hot (capped at
+        MAX_HOT_CELLS_PER_VIEWPORT, nearest-to-center first) -- not just the cell at
+        its center: "the hotspot" means the whole visible area, with the coarse
+        background sweep picking up just outside it, matching this feature's original
+        design intent (issue #215).
+
         Callers are expected to have already filtered out stale/expired interest rows
         (see AircraftAdapter.get_active_interest's max_age_s) -- this method doesn't
-        read a clock itself, it just takes whatever's handed to it."""
+        read a clock itself, it just takes whatever's handed to it. Doesn't handle a
+        viewport crossing the antimeridian (west > east) -- a known simplification for
+        v1, inherited from the pre-issue-#215 viewport_to_region_keys this replaces."""
         hot = set()
-        for west, south, east, north in viewports:
-            center_lon = (west + east) / 2.0
-            center_lat = (south + north) / 2.0
-            ix, iy = _cell(center_lon, center_lat, self._fine_grid_deg)
-            hot.add((self._fine_grid_deg, ix, iy))
+        for viewport in viewports:
+            hot.update(self._cells_for_viewport(viewport))
         self._hot_cells = hot
+
+    def _cells_for_viewport(self, viewport: tuple[float, float, float, float]) -> list[tuple]:
+        """Every fine-grid cell a viewport bbox touches, nearest-to-center first and
+        capped at MAX_HOT_CELLS_PER_VIEWPORT -- shared by set_interest() (which only
+        needs the resulting set) and hotspot_progress() (which needs this exact same
+        per-viewport list to report "N of M cells queried" for just this viewport)."""
+        west, south, east, north = viewport
+        center_lon, center_lat = (west + east) / 2.0, (south + north) / 2.0
+        center = _cell(center_lon, center_lat, self._fine_grid_deg)
+
+        lon_lo, lon_hi = _cell(west, 0.0, self._fine_grid_deg)[0], _cell(east, 0.0, self._fine_grid_deg)[0]
+        lat_lo, lat_hi = _cell(0.0, south, self._fine_grid_deg)[1], _cell(0.0, north, self._fine_grid_deg)[1]
+
+        candidates = [
+            (lx, ly)
+            for lx in range(lon_lo, lon_hi + 1)
+            for ly in range(lat_lo, lat_hi + 1)
+        ]
+        candidates.sort(key=lambda c: (c[0] - center[0]) ** 2 + (c[1] - center[1]) ** 2)
+        return [
+            (self._fine_grid_deg, ix, iy)
+            for ix, iy in candidates[:MAX_HOT_CELLS_PER_VIEWPORT]
+        ]
+
+    def hotspot_progress(self, viewports: list[tuple[float, float, float, float]]) -> dict:
+        """{"queried": n, "total": m} across every fine-grid cell the given viewports
+        touch (deduplicated -- two overlapping viewports don't double-count a shared
+        cell), "queried" meaning ever sampled at all (not just since becoming hot --
+        a cell the background sweep already warmed before anyone looked at it is
+        genuinely already populated, not a bug). Callers should pass the SAME
+        viewports list just given to set_interest() -- this doesn't read
+        self._hot_cells directly since that's a flat union with no per-call viewport
+        boundary to report progress against. {"queried": 0, "total": 0} when
+        `viewports` is empty (no active viewer to report progress for)."""
+        cells: set[tuple] = set()
+        for viewport in viewports:
+            cells.update(self._cells_for_viewport(viewport))
+        total = len(cells)
+        queried = sum(1 for c in cells if self._last_sampled_at.get(c) is not None)
+        return {"queried": queried, "total": total}
+
+    def global_coverage(self, *, now: float) -> dict:
+        """{"fresh": n, "total": m} across the FIXED coarse-grid tiling that covers the
+        WHOLE globe (_all_coarse_cells(), independent of any viewer's viewport) --
+        "fresh" meaning sampled within the starvation floor window (never overdue for
+        its guaranteed recheck), not merely "ever sampled" the way hotspot_progress()
+        counts a cell as queried. This answers "how much of the globe currently has
+        up-to-date data", the metric AircraftCollector.data_status() surfaces on the
+        Data Status Collectors panel -- see that method for why this replaces a plain
+        liveness heartbeat there. A never-sampled cell's _elapsed() is +inf, so it
+        never counts as fresh."""
+        cells = self._all_coarse_cells()
+        total = len(cells)
+        fresh = sum(1 for c in cells if self._elapsed(c, now=now) < self._starvation_floor_s)
+        return {"fresh": fresh, "total": total}
 
     def _all_coarse_cells(self) -> list[tuple]:
         n_lon = int(360 / self._coarse_grid_deg)

@@ -93,3 +93,85 @@ def test_never_run_row_has_no_status_key_error():
     exists once a row does."""
     adapter = FakeProcessStatusAdapter()
     assert adapter.get_process_status("sst") is None
+
+
+# --- record_health: decoupled from record_process_run/record_process_start ---
+
+def test_record_health_sets_health_and_detail():
+    adapter = FakeProcessStatusAdapter()
+    adapter.record_health("flightradar_collector", "collector", "rate_limited", "Rate limited (HTTP 429)")
+    row = adapter.get_process_status("flightradar_collector")
+    assert row["health"] == "rate_limited"
+    assert row["health_detail"] == "Rate limited (HTTP 429)"
+    assert row["health_at"] is not None
+
+
+def test_record_health_clears_with_none():
+    adapter = FakeProcessStatusAdapter()
+    adapter.record_health("flightradar_collector", "collector", "blocked", "Blocked (HTTP 529)")
+    adapter.record_health("flightradar_collector", "collector", None)
+    row = adapter.get_process_status("flightradar_collector")
+    assert row["health"] is None
+    assert row["health_detail"] is None
+
+
+def test_record_process_run_does_not_clobber_an_existing_health_signal():
+    adapter = FakeProcessStatusAdapter()
+    adapter.record_health("flightradar_collector", "collector", "rate_limited", "Rate limited (HTTP 429)")
+    adapter.record_process_run("flightradar_collector", "collector", success=True)
+    row = adapter.get_process_status("flightradar_collector")
+    assert row["status"] == "success"
+    assert row["health"] == "rate_limited"  # untouched by record_process_run
+
+
+def test_record_process_start_does_not_clobber_an_existing_health_signal():
+    adapter = FakeProcessStatusAdapter()
+    adapter.record_health("flightradar_collector", "collector", "blocked", "Blocked (HTTP 529)")
+    adapter.record_process_start("flightradar_collector", "collector")
+    row = adapter.get_process_status("flightradar_collector")
+    assert row["status"] == "running"
+    assert row["health"] == "blocked"  # untouched by record_process_start
+
+
+def test_health_defaults_to_none_on_a_fresh_row():
+    adapter = FakeProcessStatusAdapter()
+    adapter.record_process_run("flightradar_collector", "collector", success=True)
+    row = adapter.get_process_status("flightradar_collector")
+    assert row["health"] is None
+    assert row["health_detail"] is None
+
+
+# --- record_progress: a third signal, orthogonal to run/health tracking ---
+
+def test_record_progress_sets_current_and_total():
+    adapter = FakeProcessStatusAdapter()
+    adapter.record_progress("flightradar_hotspot", "layer", 3, 8)
+    row = adapter.get_process_status("flightradar_hotspot")
+    assert row["progress_current"] == 3
+    assert row["progress_total"] == 8
+
+
+def test_record_progress_does_not_clobber_an_existing_health_signal():
+    adapter = FakeProcessStatusAdapter()
+    adapter.record_health("flightradar_hotspot", "layer", "rate_limited", "Rate limited (HTTP 429)")
+    adapter.record_progress("flightradar_hotspot", "layer", 5, 8)
+    row = adapter.get_process_status("flightradar_hotspot")
+    assert row["health"] == "rate_limited"
+    assert row["progress_current"] == 5
+
+
+def test_record_process_run_does_not_clobber_existing_progress():
+    adapter = FakeProcessStatusAdapter()
+    adapter.record_progress("flightradar_hotspot", "layer", 5, 8)
+    adapter.record_process_run("flightradar_hotspot", "layer", success=True)
+    row = adapter.get_process_status("flightradar_hotspot")
+    assert row["progress_current"] == 5
+    assert row["progress_total"] == 8
+
+
+def test_progress_defaults_to_none_on_a_fresh_row():
+    adapter = FakeProcessStatusAdapter()
+    adapter.record_process_run("flightradar_hotspot", "layer", success=True)
+    row = adapter.get_process_status("flightradar_hotspot")
+    assert row["progress_current"] is None
+    assert row["progress_total"] is None

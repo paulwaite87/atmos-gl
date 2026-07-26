@@ -150,3 +150,61 @@ def test_get_active_interest_excludes_stale_rows():
     adapter.record_interest("viewer-1", west=0.0, south=0.0, east=1.0, north=1.0)
     adapter._interest["viewer-1"]["last_seen_at"] = datetime.now(timezone.utc) - timedelta(seconds=120)
     assert adapter.get_active_interest(max_age_s=30.0) == []
+
+
+# ---- get_active_flight_positions: the priority feed AircraftCollector's route-
+# enrichment tick reads from (issue #215's route-lookup follow-on) -----------------
+
+def test_get_active_flight_positions_excludes_aircraft_without_a_callsign():
+    adapter = FakeAircraftAdapter()
+    adapter.record_sighting(_record(hex="aa1111", flight=None))
+    adapter.record_sighting(_record(hex="bb2222", flight="ANZ423"))
+    positions = adapter.get_active_flight_positions(interest_max_age_s=30.0, limit=10)
+    assert [p["callsign"] for p in positions] == ["ANZ423"]
+
+
+def test_get_active_flight_positions_dedupes_by_callsign():
+    """Two different physical aircraft (hexes) sharing one live callsign must only
+    contribute ONE candidate -- a route lookup is per-callsign, not per-hex."""
+    adapter = FakeAircraftAdapter()
+    adapter.record_sighting(_record(hex="aa1111", flight="ANZ423"))
+    adapter.record_sighting(_record(hex="bb2222", flight="ANZ423"))
+    positions = adapter.get_active_flight_positions(interest_max_age_s=30.0, limit=10)
+    assert len(positions) == 1
+    assert positions[0]["callsign"] == "ANZ423"
+
+
+def test_get_active_flight_positions_prioritizes_callsigns_inside_an_active_viewport():
+    adapter = FakeAircraftAdapter()
+    adapter.record_sighting(_record(hex="aa1111", flight="OUTSIDE1", lat=10.0, lon=10.0))
+    adapter.record_sighting(_record(hex="bb2222", flight="INSIDE1", lat=0.5, lon=0.5))
+    adapter.record_interest("viewer-1", west=0.0, south=0.0, east=1.0, north=1.0)
+
+    positions = adapter.get_active_flight_positions(interest_max_age_s=30.0, limit=10)
+    assert positions[0]["callsign"] == "INSIDE1"
+
+
+def test_get_active_flight_positions_ignores_an_expired_viewport():
+    adapter = FakeAircraftAdapter()
+    adapter.record_sighting(_record(hex="aa1111", flight="A", lat=0.5, lon=0.5))
+    adapter.record_interest("viewer-1", west=0.0, south=0.0, east=1.0, north=1.0)
+    adapter._interest["viewer-1"]["last_seen_at"] = datetime.now(timezone.utc) - timedelta(seconds=120)
+
+    # No active viewport -> no in-viewport boost, but the callsign is still returned.
+    positions = adapter.get_active_flight_positions(interest_max_age_s=30.0, limit=10)
+    assert [p["callsign"] for p in positions] == ["A"]
+
+
+def test_get_active_flight_positions_respects_the_limit():
+    adapter = FakeAircraftAdapter()
+    for i in range(5):
+        adapter.record_sighting(_record(hex=f"hex{i}", flight=f"CALL{i}"))
+    positions = adapter.get_active_flight_positions(interest_max_age_s=30.0, limit=2)
+    assert len(positions) == 2
+
+
+def test_get_active_flight_positions_returns_lat_lng_shape():
+    adapter = FakeAircraftAdapter()
+    adapter.record_sighting(_record(hex="aa1111", flight="ANZ423", lat=-41.3, lon=174.8))
+    positions = adapter.get_active_flight_positions(interest_max_age_s=30.0, limit=10)
+    assert positions == [{"callsign": "ANZ423", "lat": -41.3, "lng": 174.8}]

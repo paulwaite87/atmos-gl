@@ -118,6 +118,40 @@ def read_process_status(process_status_adapter, name: str):
     return row["last_updated"], row["last_error"], row.get("status")
 
 
+# How long a health condition (see read_health_status()/record_health()) stays shown
+# before decaying back to "ok" once nothing re-affirms it -- the same "assume
+# recovered" shape freshness_percent already uses for staleness, applied to a
+# transient upstream condition instead. A flat default across every collector for now;
+# may need to vary per collector (a slow-cadence collector might not get a chance to
+# re-hit the same endpoint for a while) once more of them adopt record_health() --
+# AircraftCollector is the first (issue #215's Data Status health-icon feature).
+HEALTH_TTL_S = 60.0
+
+
+def read_health_status(process_status_adapter, name: str, *, ttl_s: float = HEALTH_TTL_S) -> dict | None:
+    """{"code": ..., "detail": ...} for `name`'s currently-active health condition
+    (e.g. "rate_limited"/"blocked", set via ProcessStatusAdapter.record_health()), or
+    None if never set or older than ttl_s -- an unrenewed condition is assumed resolved
+    rather than shown stale forever.
+
+    Deliberately independent of read_process_status()'s pass/fail run tracking (its
+    own separate get_process_status() call, not folded into that function) -- a
+    handful of throttled requests doesn't mean the collector's whole run failed, so
+    this must never be conflated with `status`/`last_error` above."""
+    row = process_status_adapter.get_process_status(name)
+    if not row:
+        return None
+    health, health_at = row.get("health"), row.get("health_at")
+    if not health or not health_at:
+        return None
+    if health_at.tzinfo is None:
+        health_at = health_at.replace(tzinfo=timezone.utc)
+    age_s = (datetime.now(timezone.utc) - health_at).total_seconds()
+    if age_s > ttl_s:
+        return None
+    return {"code": health, "detail": row.get("health_detail")}
+
+
 def build_status(
     *,
     name: str,
@@ -128,13 +162,16 @@ def build_status(
     enabled: bool,
     detail,
     status: str | None = None,
+    health: dict | None = None,
 ) -> dict:
     """Assembles the final Data Status dict shape every data_status()/layer_status()
     implementation returns. `percent` is rounded here so callers pass the raw computed
     value rather than each remembering `round(percent, 1)` themselves. `status` is
     optional -- callers that don't track a "running" state (nothing calls
     record_process_start() for them yet) simply omit it and the UI treats null the
-    same as before this field existed."""
+    same as before this field existed. `health` (see read_health_status()) is
+    similarly optional -- layers and collectors that haven't adopted record_health()
+    yet simply omit it, and the UI shows the plain "ok" icon."""
     return {
         "name": name,
         "kind": kind,
@@ -144,6 +181,8 @@ def build_status(
         "enabled": enabled,
         "detail": detail,
         "status": status,
+        "health": health["code"] if health else None,
+        "health_detail": health["detail"] if health else None,
     }
 
 
@@ -203,4 +242,5 @@ def freshness_data_status(
         enabled=enabled,
         detail=last_error,
         status=status,
+        health=read_health_status(process_status_adapter, section),
     )

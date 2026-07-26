@@ -10,7 +10,13 @@
 // a stale heading indefinitely.
 
 const NM_PER_DEGREE_LAT = 60.0;
-const MAX_EXTRAPOLATION_S = 30.0;
+// 60s, not a tighter cap: AircraftCollector's GlobalSampleScheduler round-robins up
+// to MAX_HOT_CELLS_PER_VIEWPORT (12) hot cells through one shared
+// requests_per_minute budget, so any single cell's worst-case refresh cycle is
+// ~(hot cell count * tick interval) -- comfortably under 60s at the collector's
+// default 12rpm (5s/tick * 12 cells = 60s), but a much shorter cap here would flag
+// "signal lost" on effectively every aircraft in view, every cycle.
+const MAX_EXTRAPOLATION_S = 60.0;
 
 export function boundedElapsedSeconds(lastSeenMs, nowMs, maxExtrapolationS = MAX_EXTRAPOLATION_S) {
     const elapsed = (nowMs - lastSeenMs) / 1000.0;
@@ -80,6 +86,27 @@ export function interpolatedPosition({ lat, lon, gs, track }, elapsedSeconds) {
     const cosLat = Math.cos((lat * Math.PI) / 180.0);
     const deltaLon = cosLat !== 0 ? ((distanceNm / NM_PER_DEGREE_LAT) * Math.sin(trackRad)) / cosLat : 0;
     return { lat: lat + deltaLat, lon: lon + deltaLon };
+}
+
+// Vertical counterpart to interpolatedPosition -- projects baro_rate (ft/min) forward
+// by elapsedSeconds, same dead-reckoning idea as the lat/lon case. Clamped so the
+// projection never overshoots the aircraft's own MCP-selected target
+// (nav_altitude_mcp, same field targetAltitudeLabel reads) in the direction of
+// travel: a real aircraft levels off at its target between polls rather than
+// climbing/descending straight through it, and naively projecting baro_rate forward
+// unclamped would show it doing exactly that. Only clamps when the target is
+// actually ahead in the current direction of travel (climbing toward a higher
+// target, or descending toward a lower one) -- a stale/contradictory MCP reading
+// (e.g. still showing a past target behind the aircraft) is left unclamped rather
+// than snapping the projection back to it.
+export function extrapolatedAltitude(altBaroFt, baroRateFpm, targetAltitudeFt, elapsedSeconds) {
+    if (typeof altBaroFt !== 'number') return altBaroFt;
+    if (typeof baroRateFpm !== 'number' || !elapsedSeconds) return altBaroFt;
+    const projected = altBaroFt + baroRateFpm * (elapsedSeconds / 60.0);
+    if (typeof targetAltitudeFt !== 'number') return projected;
+    if (baroRateFpm > 0 && targetAltitudeFt > altBaroFt) return Math.min(projected, targetAltitudeFt);
+    if (baroRateFpm < 0 && targetAltitudeFt < altBaroFt) return Math.max(projected, targetAltitudeFt);
+    return projected;
 }
 
 // ICAO aircraft type designator (adsb.lol's `t` field, e.g. "B77W") -> a broad,
@@ -289,8 +316,9 @@ const FLIGHTRADAR_ICONS = [
 
 // docs/adr/0008: category C* (ground vehicles/obstacles) is filtered out entirely --
 // done here at feature-build time rather than as a MapLibre style filter, so the style
-// itself only needs the altitude density step. Position is dead-reckoned from each
-// record's last known state -- see interpolatedPosition/boundedElapsedSeconds above.
+// itself only needs the altitude density step. Position AND altitude are dead-reckoned
+// from each record's last known state -- see interpolatedPosition/extrapolatedAltitude/
+// boundedElapsedSeconds above.
 function buildFeatureCollection(aircraftByHex, now) {
     const features = [];
     for (const rec of aircraftByHex.values()) {
@@ -299,6 +327,7 @@ function buildFeatureCollection(aircraftByHex, now) {
         if (category.startsWith('C')) continue;
         const elapsed = boundedElapsedSeconds(rec.receivedAt, now);
         const pos = interpolatedPosition({ lat: rec.lat, lon: rec.lon, gs: rec.gs, track: rec.track }, elapsed);
+        const altBaroFt = extrapolatedAltitude(rec.alt_baro, rec.baro_rate, rec.nav_altitude_mcp, elapsed);
         features.push({
             type: 'Feature',
             geometry: { type: 'Point', coordinates: [pos.lon, pos.lat] },
@@ -316,8 +345,9 @@ function buildFeatureCollection(aircraftByHex, now) {
                 // alt_baro_known/on_ground -- adsb.lol's alt_baro is either a number, the
                 // literal string "ground" (on-ground transponder state, unrelated to this
                 // value), or simply absent (no reading yet) -- three states popupHtml must
-                // not conflate (see its "ground" vs "unknown" altitude display).
-                alt_baro_ft: typeof rec.alt_baro === 'number' ? rec.alt_baro : 0,
+                // not conflate (see its "ground" vs "unknown" altitude display). Dead-reckoned
+                // (extrapolatedAltitude) when it's a genuine number, same as position.
+                alt_baro_ft: typeof altBaroFt === 'number' ? altBaroFt : 0,
                 alt_baro_known: typeof rec.alt_baro === 'number',
                 on_ground: rec.alt_baro === 'ground',
                 baro_rate_fpm: typeof rec.baro_rate === 'number' ? rec.baro_rate : null,

@@ -38,6 +38,119 @@ def test_set_interest_recenters_every_call():
     assert sched._hot_cells == {(5.0, 20, 0)}
 
 
+def test_set_interest_covers_the_whole_viewport_not_just_its_center_cell():
+    """A viewport spanning multiple fine cells must mark ALL of them hot -- the whole
+    visible area is "the hotspot", not just its center point (issue #215's original
+    design intent; a bug in the first implementation only marked the center cell)."""
+    sched = _make_scheduler()
+    sched.set_interest([(0.0, 0.0, 12.0, 1.0)])  # spans lon cells 0, 1, 2 at 5deg
+    assert sched._hot_cells == {(5.0, 0, 0), (5.0, 1, 0), (5.0, 2, 0)}
+
+
+def test_set_interest_caps_hot_cells_per_viewport_nearest_center_first():
+    sched = _make_scheduler()
+    # A very wide, zoomed-out viewport touches far more than MAX_HOT_CELLS_PER_VIEWPORT
+    # fine cells -- must degrade gracefully to the ones nearest the center instead of
+    # claiming the whole visible area as hot (which would blow the request budget).
+    sched.set_interest([(-50.0, -50.0, 50.0, 50.0)])
+    assert len(sched._hot_cells) == 12  # MAX_HOT_CELLS_PER_VIEWPORT
+    assert (5.0, 0, 0) in sched._hot_cells  # the center cell is always kept
+
+
+def test_set_interest_unions_hot_cells_across_multiple_viewports():
+    sched = _make_scheduler()
+    sched.set_interest([(0.0, 0.0, 1.0, 1.0), (100.0, 0.0, 101.0, 1.0)])
+    assert sched._hot_cells == {(5.0, 0, 0), (5.0, 20, 0)}
+
+
+# ---- hotspot_progress: "N of M currently-prioritized cells have data" -----------
+
+def test_hotspot_progress_is_zero_zero_with_no_active_viewport():
+    sched = _make_scheduler()
+    assert sched.hotspot_progress([]) == {"queried": 0, "total": 0}
+
+
+def test_hotspot_progress_counts_an_unsampled_cell_as_not_queried():
+    sched = _make_scheduler()
+    viewports = [(0.0, 0.0, 1.0, 1.0)]
+    assert sched.hotspot_progress(viewports) == {"queried": 0, "total": 1}
+
+
+def test_hotspot_progress_reflects_a_sampled_cell():
+    sched = _make_scheduler()
+    viewports = [(0.0, 0.0, 1.0, 1.0)]
+    sched.record_result((5.0, 0, 0), [{"hex": "a1"}], now=0.0)
+    assert sched.hotspot_progress(viewports) == {"queried": 1, "total": 1}
+
+
+def test_hotspot_progress_counts_partial_coverage_across_a_multi_cell_viewport():
+    sched = _make_scheduler()
+    viewports = [(0.0, 0.0, 12.0, 1.0)]  # 3 cells: (0,0), (1,0), (2,0)
+    sched.record_result((5.0, 0, 0), [{"hex": "a1"}], now=0.0)
+    assert sched.hotspot_progress(viewports) == {"queried": 1, "total": 3}
+
+
+def test_hotspot_progress_counts_a_failed_fetch_as_queried():
+    """A rejected/failed request still ATTEMPTED the cell -- record_result(None) still
+    advances last_sampled_at, so it correctly counts toward "queried" here even though
+    it didn't confirm any aircraft."""
+    sched = _make_scheduler()
+    viewports = [(0.0, 0.0, 1.0, 1.0)]
+    sched.record_result((5.0, 0, 0), None, now=0.0)
+    assert sched.hotspot_progress(viewports) == {"queried": 1, "total": 1}
+
+
+def test_hotspot_progress_does_not_double_count_overlapping_viewports():
+    sched = _make_scheduler()
+    viewports = [(0.0, 0.0, 1.0, 1.0), (0.0, 0.0, 1.0, 1.0)]  # identical, fully overlapping
+    assert sched.hotspot_progress(viewports) == {"queried": 0, "total": 1}
+
+
+# ---- global_coverage: "how much of the WHOLE globe has up-to-date data" --------
+# (the Data Status Collectors panel's flightradar_collector percent -- see
+# AircraftCollector.data_status()) -- deliberately independent of any viewport/
+# hot cell, over the fixed coarse-grid tiling only.
+
+def test_global_coverage_is_zero_of_total_before_anything_is_sampled():
+    sched = _make_scheduler()  # coarse_grid_deg=180.0 -> 2 coarse cells
+    assert sched.global_coverage(now=0.0) == {"fresh": 0, "total": 2}
+
+
+def test_global_coverage_counts_a_cell_sampled_within_the_starvation_floor_as_fresh():
+    sched = _make_scheduler(starvation_floor_s=1800.0)
+    c1, c2 = sched._all_coarse_cells()
+    sched.record_result(c1, [{"hex": "a1"}], now=0.0)
+    assert sched.global_coverage(now=900.0) == {"fresh": 1, "total": 2}
+
+
+def test_global_coverage_stops_counting_a_cell_once_past_the_starvation_floor():
+    sched = _make_scheduler(starvation_floor_s=1800.0)
+    c1, c2 = sched._all_coarse_cells()
+    sched.record_result(c1, [{"hex": "a1"}], now=0.0)
+    sched.record_result(c2, [{"hex": "a2"}], now=0.0)
+    # c1 gets refreshed again well inside the floor; c2 is left to go stale.
+    sched.record_result(c1, [{"hex": "a1"}], now=1700.0)
+    assert sched.global_coverage(now=1800.1) == {"fresh": 1, "total": 2}
+
+
+def test_global_coverage_counts_a_failed_fetch_as_fresh_same_as_hotspot_progress():
+    """record_result(None) (a failed/rejected request) still advances last_sampled_at
+    -- the cell was attempted this recently, even though nothing was confirmed."""
+    sched = _make_scheduler()
+    c1, c2 = sched._all_coarse_cells()
+    sched.record_result(c1, None, now=0.0)
+    assert sched.global_coverage(now=1.0) == {"fresh": 1, "total": 2}
+
+
+def test_global_coverage_is_independent_of_hot_cells():
+    """Hot cells (fine grid) never appear in _all_coarse_cells() -- an active,
+    fully-covered viewport must not inflate global_coverage's total or fresh count."""
+    sched = _make_scheduler()
+    sched.set_interest([(0.0, 0.0, 1.0, 1.0)])
+    sched.record_result((5.0, 0, 0), [{"hex": "a1"}], now=0.0)  # a hot cell, not coarse
+    assert sched.global_coverage(now=0.0) == {"fresh": 0, "total": 2}
+
+
 def test_next_cell_returns_the_hot_cell_once_it_is_the_only_due_cell():
     sched = _make_scheduler()
     _prime_coarse_cells(sched, now=0.0)

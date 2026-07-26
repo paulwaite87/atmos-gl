@@ -68,3 +68,49 @@ def test_run_failure_after_start_clears_started_at_and_sets_failed(kind, real_db
         assert row["status"] == "failed"
         assert row["started_at"] is None
         assert row["last_error"] == "timeout"
+
+
+@pytest.mark.parametrize("kind", ["real", "fake"])
+def test_record_process_run_does_not_clobber_an_existing_health_signal(kind, real_db):
+    """record_health()'s three columns are deliberately untouched by
+    record_process_run()/record_process_start() -- a handful of throttled requests
+    doesn't mean the collector's whole run failed. Scoped here (not just the Fake's
+    own tests) because this is exactly the class of Real/Fake conditional-update
+    drift test_ship_adapter_real_vs_fake.py was created to catch."""
+    adapter, ctx = _make_adapter(kind, real_db)
+    with ctx:
+        adapter.record_health("flightradar_collector", "collector", "rate_limited", "Rate limited (HTTP 429)")
+        adapter.record_process_run("flightradar_collector", "collector", success=True)
+        row = adapter.get_process_status("flightradar_collector")
+
+        assert row["status"] == "success"
+        assert row["health"] == "rate_limited"
+        assert row["health_detail"] == "Rate limited (HTTP 429)"
+
+
+@pytest.mark.parametrize("kind", ["real", "fake"])
+def test_record_health_none_clears_a_prior_health_signal(kind, real_db):
+    adapter, ctx = _make_adapter(kind, real_db)
+    with ctx:
+        adapter.record_health("flightradar_collector", "collector", "blocked", "Blocked (HTTP 529)")
+        adapter.record_health("flightradar_collector", "collector", None)
+        row = adapter.get_process_status("flightradar_collector")
+
+        assert row["health"] is None
+        assert row["health_detail"] is None
+
+
+@pytest.mark.parametrize("kind", ["real", "fake"])
+def test_record_progress_survives_a_subsequent_process_run(kind, real_db):
+    """record_progress()'s two columns are deliberately untouched by
+    record_process_run()/record_process_start()/record_health() -- same class of
+    conditional-update drift as the health tests above."""
+    adapter, ctx = _make_adapter(kind, real_db)
+    with ctx:
+        adapter.record_progress("flightradar_hotspot", "layer", 3, 8)
+        adapter.record_process_run("flightradar_hotspot", "layer", success=True)
+        row = adapter.get_process_status("flightradar_hotspot")
+
+        assert row["status"] == "success"
+        assert row["progress_current"] == 3
+        assert row["progress_total"] == 8

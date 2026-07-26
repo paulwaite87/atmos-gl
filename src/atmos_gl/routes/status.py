@@ -11,6 +11,7 @@ import logging
 from fastapi import APIRouter, HTTPException, Depends
 
 from atmos_gl.db.field_catalog_adapter import FieldCatalogAdapter
+from atmos_gl.db.process_status_adapter import ProcessStatusAdapter
 from atmos_gl.lib import fieldstore
 from atmos_gl.lib.data_status import RUNS_PER_DAY_CHOICES
 from atmos_gl.routes.config import load_config
@@ -116,6 +117,48 @@ def _serialize(
     return out
 
 
+def _flightradar_hotspot_status(config, channel_enabled: dict, process_status_adapter) -> dict:
+    """Layers-panel row for Flight Radar's hotspot-coverage progress (issue #215) --
+    "N of M currently-prioritized cells have data yet", written each tick by
+    AircraftCollector (collectors/aircraft.py's HOTSPOT_STATUS_NAME) via
+    ProcessStatusAdapter.record_progress(). Not a TASK_CLASSES entry: Flight Radar has
+    no render Updater (it's a direct DB->GeoJSON layer, not a rendered raster), so this
+    is built by hand rather than forced through TaskCls(...).layer_status().
+
+    segments (one {"queried": bool} per currently-prioritized cell) reuses the exact
+    same segmented-progress-bar rendering config.html's GFS layers already have --
+    see renderStatusTrack()'s "queried" branch. Cell IDENTITY isn't preserved here
+    (only the count), so segments are ordered queried-first purely for a left-to-right
+    fill effect, not because any specific segment corresponds to a specific cell."""
+    row = process_status_adapter.get_process_status("flightradar_hotspot") or {}
+    current = row.get("progress_current") or 0
+    total = row.get("progress_total") or 0
+    percent = 100.0 * current / total if total else 0.0
+    segments = (
+        [{"queried": i < current} for i in range(total)] if total else None
+    )
+    detail = (
+        f"{current}/{total} hotspot cell(s) populated" if total
+        else "No active viewport"
+    )
+    status = {
+        "name": "flightradar_hotspot",
+        "kind": "layer",
+        "percent": round(percent, 1),
+        "last_updated": row.get("updated_at"),
+        "next_update": None,
+        "enabled": bool(config.get_setting("flightradar", "enabled", False)),
+        "detail": detail,
+        "status": None,
+        "health": None,
+        "health_detail": None,
+        "segments": segments,
+        "run_date": None,
+        "run_id": None,
+    }
+    return _serialize(status, None, channel_enabled, display_label="Flight Radar Hotspot")
+
+
 def _collect_status_rows(
     classes,
     channel_enabled: dict,
@@ -206,6 +249,10 @@ def get_task_classes():
     return TASK_CLASSES
 
 
+def get_process_status_adapter() -> ProcessStatusAdapter:
+    return ProcessStatusAdapter()
+
+
 @router.get("/data_status")
 def get_data_status(
     collector_classes=Depends(get_collector_classes),
@@ -213,6 +260,7 @@ def get_data_status(
     field_collector_classes=Depends(get_field_collector_classes),
     embeddable_collector_classes=Depends(get_embeddable_collector_classes),
     task_classes=Depends(get_task_classes),
+    process_status_adapter=Depends(get_process_status_adapter),
 ):
     try:
         config = load_config()
@@ -276,6 +324,13 @@ def get_data_status(
                 )
             except Exception as e:
                 logger.error(f"layer_status failed for {section}: {e}")
+
+        try:
+            layers.append(
+                _flightradar_hotspot_status(config, channel_enabled, process_status_adapter)
+            )
+        except Exception as e:
+            logger.error(f"flightradar hotspot status failed: {e}")
 
         # Group the background-service collectors (satellites_collector,
         # shipping_collector, lightning_collector -- named for the service they run,

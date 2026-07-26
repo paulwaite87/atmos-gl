@@ -238,7 +238,9 @@
       "fires": "https://firms.modaps.eosdis.nasa.gov/api/area/csv",
       "satellites": "https://celestrak.org/NORAD/elements",
       "shipping": "wss://stream.aisstream.io/v0/stream",
-      "lightning": "https://demo.openweathermap.org/lightning/1.0/data"
+      "lightning": "https://demo.openweathermap.org/lightning/1.0/data",
+      "flightradar": "https://api.adsb.lol/v2",
+      "flightradar_routeset": "https://adsb.im/api/0/routeset"
     },
     "channel_enabled": {
       "gfs_atmos": true,
@@ -278,11 +280,14 @@
   },
   "flightradar_collector": {
     "enabled": false,
-    "requests_per_minute": 6,
+    "requests_per_minute": 12,
     "starvation_floor_minutes": 30,
     "coarse_grid_deg": 30,
     "interest_max_age_seconds": 30,
     "aircraft_track_expiry_hours": 24,
+    "route_enrichment_interval_seconds": 60,
+    "route_batch_size": 25,
+    "route_backstop_days": 7,
     "log_level": "INFO"
   },
   "layer_builder": {

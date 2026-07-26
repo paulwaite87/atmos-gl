@@ -22,12 +22,14 @@ from atmos_gl.routes.status import (
     get_field_collector_classes,
     get_embeddable_collector_classes,
     get_task_classes,
+    get_process_status_adapter,
     _collect_status_rows,
     _serialize,
     _display_name,
     RUNS_PER_DAY_SECTIONS,
 )
 from atmos_gl.api import app
+from atmos_gl.db.process_status_adapter import FakeProcessStatusAdapter
 
 
 class _StubCollector:
@@ -701,3 +703,64 @@ def test_set_runs_per_day_rejects_a_boolean():
     with pytest.raises(HTTPException) as exc_info:
         set_runs_per_day("quakes", {"runs_per_day": True})
     assert exc_info.value.status_code == 422
+
+
+# --- Flight Radar hotspot-coverage progress row (issue #215) -- a hand-built Layers
+# entry (no TASK_CLASSES/Updater involved), sourced from AircraftCollector's
+# record_progress() writes via a dedicated process_status_adapter DI seam.
+
+def _hotspot_row(data):
+    return next(r for r in data["data"]["layers"] if r["name"] == "flightradar_hotspot")
+
+
+def test_flightradar_hotspot_shows_idle_with_no_active_viewport(client):
+    _override_all_empty()
+    app.dependency_overrides[get_process_status_adapter] = lambda: FakeProcessStatusAdapter()
+
+    resp = client.get("/api/data_status")
+
+    row = _hotspot_row(resp.json())
+    assert row["percent"] == 0.0
+    assert row["segments"] is None
+    assert row["detail"] == "No active viewport"
+
+
+def test_flightradar_hotspot_reflects_partial_progress(client):
+    _override_all_empty()
+    fake = FakeProcessStatusAdapter()
+    fake.record_progress("flightradar_hotspot", "layer", 3, 8)
+    app.dependency_overrides[get_process_status_adapter] = lambda: fake
+
+    resp = client.get("/api/data_status")
+
+    row = _hotspot_row(resp.json())
+    assert row["percent"] == 37.5
+    assert row["detail"] == "3/8 hotspot cell(s) populated"
+    assert len(row["segments"]) == 8
+    assert sum(1 for seg in row["segments"] if seg["queried"]) == 3
+
+
+def test_flightradar_hotspot_shows_full_progress(client):
+    _override_all_empty()
+    fake = FakeProcessStatusAdapter()
+    fake.record_progress("flightradar_hotspot", "layer", 8, 8)
+    app.dependency_overrides[get_process_status_adapter] = lambda: fake
+
+    resp = client.get("/api/data_status")
+
+    row = _hotspot_row(resp.json())
+    assert row["percent"] == 100.0
+    assert all(seg["queried"] for seg in row["segments"])
+
+
+def test_flightradar_hotspot_is_a_layer_row_not_gated_by_a_channel(client):
+    _override_all_empty()
+    app.dependency_overrides[get_process_status_adapter] = lambda: FakeProcessStatusAdapter()
+
+    resp = client.get("/api/data_status")
+
+    row = _hotspot_row(resp.json())
+    assert row["kind"] == "layer"
+    assert row["channel_key"] is None
+    assert row["channel_on"] is None
+    assert row["display_name"] == "Flight Radar Hotspot"

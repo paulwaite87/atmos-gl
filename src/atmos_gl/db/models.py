@@ -277,6 +277,24 @@ class ProcessStatus(Base):
     # "running".
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default="idle")
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # health/health_detail/health_at: a transient upstream-condition signal (e.g.
+    # "rate_limited"/"blocked"), set ONLY by record_health() -- deliberately
+    # independent of status/last_error above, since a handful of throttled requests
+    # doesn't mean the collector's whole run failed (see record_health()'s docstring).
+    # Read-time TTL expiry (lib/data_status.py's read_health_status()) treats an
+    # unrenewed condition as resolved rather than showing it stale forever, so nothing
+    # ever explicitly clears these back to NULL in the common case.
+    health: Mapped[str | None] = mapped_column(String(20))
+    health_detail: Mapped[str | None] = mapped_column(Text)
+    health_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # progress_current/progress_total: a generic "N of M units done" counter, set ONLY
+    # by record_progress() -- issue #215's Flight Radar hotspot-coverage bar is the
+    # first user (AircraftCollector reports how many of the currently-prioritized
+    # viewport cells have been sampled), but the shape is generic enough for any
+    # future collector wanting a similar Data Status progress bar. Deliberately
+    # independent of status/last_error/health above, same reasoning as those.
+    progress_current: Mapped[int | None] = mapped_column(Integer)
+    progress_total: Mapped[int | None] = mapped_column(Integer)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -395,3 +413,42 @@ class AircraftInterest(Base):
     last_seen_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+
+
+class FlightRoute(Base):
+    """Callsign -> route lookup (issue #215's route-enrichment follow-on), resolved via
+    adsb.lol's routeset endpoint (data_collector.datasources.flightradar_routeset).
+
+    Keyed on `flight` (the ICAO callsign, e.g. "ANZ423"), NOT on `hex` -- a route is a
+    fact about the SCHEDULED FLIGHT NUMBER, not the physical airframe that happens to
+    be operating it today, so this is deliberately independent of Aircraft/AircraftTrack
+    (no FK, no join key back to hex at all). A single row here serves every aircraft
+    that has ever flown this callsign, rather than one lookup per hex.
+
+    `stops` is the ordered `_airports` list from the routeset response verbatim (origin
+    first, destination last, any technical/intermediate stop(s) in between) -- a JSONB
+    array rather than a child table, since it's always read/written as one atomic unit
+    alongside its parent row and never queried or updated independently (unlike
+    AircraftTrack, which genuinely needs per-row inserts and time-based pruning). NULL
+    when adsb.lol has no route for this callsign (GA/charter/military/unlisted).
+
+    `plausible` is adsb.lol's own great-circle sanity check (the aircraft's real
+    position at lookup time against the route's path) -- NULL when there's no match to
+    check, True/False when there is.
+
+    `checked_at` drives staleness uniformly for both matches and non-matches (see
+    flight_route_adapter.py) -- no separate per-column invalidation logic is needed
+    here, since keying by callsign (not hex) means there's no "route resolved for a
+    stale callsign" case to detect: whichever callsign an aircraft is currently
+    squawking is simply looked up fresh against this table.
+
+    No Housekeeper pruning: unlike AircraftTrack's continuously-growing sighting
+    history, this is a small, slowly-changing reference table (at most one row per
+    distinct callsign ever seen), refreshed in place rather than deleted."""
+
+    __tablename__ = "flight_route"
+
+    flight: Mapped[str] = mapped_column(String(20), primary_key=True)
+    stops: Mapped[list | None] = mapped_column(JSONB)
+    plausible: Mapped[bool | None] = mapped_column(Boolean)
+    checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

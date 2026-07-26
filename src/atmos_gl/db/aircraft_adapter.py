@@ -1,15 +1,22 @@
 import logging
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import cast, delete, func, select
+from sqlalchemy import case, cast, delete, exists, func, select
 from sqlalchemy.dialects.postgresql import JSONB, insert as pg_insert
 from sqlalchemy.types import Text as SqlText
 
 from atmos_gl.db.engine import Session
 from atmos_gl.db.geojson import as_feature_collection, EMPTY_FEATURE_COLLECTION
-from atmos_gl.db.models import Aircraft, AircraftInterest, AircraftTrack
+from atmos_gl.db.models import Aircraft, AircraftInterest, AircraftTrack, FlightRoute
 
 logger = logging.getLogger(__name__)
+
+# get_active_flight_positions() overfetches this many rows per requested distinct
+# callsign, then dedupes (first-seen-wins, already priority-ordered) in Python --
+# simpler than composing DISTINCT ON with a viewport-priority ORDER BY in one
+# SQLAlchemy statement, since multiple simultaneous aircraft sharing one live
+# callsign is rare enough not to warrant that complexity.
+FLIGHT_POSITIONS_OVERFETCH_FACTOR = 3
 
 
 def _normalize_sighting(record: dict) -> dict | None:
@@ -176,10 +183,25 @@ class AircraftAdapter:
                 Aircraft.squawk,
                 "last_seen",
                 func.to_jsonb(Aircraft.last_seen),
+                # Route enrichment (issue #215's route-lookup follow-on) -- joined in
+                # directly rather than a separate per-hover fetch (Q6: the popup
+                # that would need it is already open, and it's a cheap join). NULL
+                # for both when flight_route has no row yet for this callsign, or
+                # the callsign has no known route at all -- popupHtml hides the
+                # whole "Route" line in either case rather than showing a partial one.
+                "route_stops",
+                FlightRoute.stops,
+                "route_plausible",
+                FlightRoute.plausible,
             ),
         )
         collection = as_feature_collection(feature)
-        stmt = select(cast(collection, SqlText)).where(Aircraft.geom.isnot(None))
+        stmt = (
+            select(cast(collection, SqlText))
+            .select_from(Aircraft)
+            .outerjoin(FlightRoute, FlightRoute.flight == Aircraft.flight)
+            .where(Aircraft.geom.isnot(None))
+        )
         try:
             with Session() as session:
                 result = session.scalar(stmt)
@@ -275,6 +297,48 @@ class AircraftAdapter:
         except Exception as e:
             logger.error(f"Error fetching active aircraft interest: {e}")
             return []
+
+    def get_active_flight_positions(self, interest_max_age_s: float, limit: int) -> list[dict]:
+        """Up to `limit` DISTINCT currently-known callsigns (Aircraft.flight), each
+        with one representative (lat, lng) -- the priority feed AircraftCollector's
+        route-enrichment tick reads from (issue #215's route-lookup follow-on), ordered
+        so callsigns currently within an active viewer's viewport (same max-age
+        semantics as get_active_interest) sort first, then by most-recently-seen.
+
+        Deliberately no knowledge of flight_route here -- this is "what callsigns
+        exist and where are they, prioritized", not "which of them need a lookup"
+        (see FlightRouteAdapter.filter_stale, which narrows this list down without
+        needing to know anything about Aircraft/AircraftInterest itself)."""
+        in_viewport = exists(
+            select(AircraftInterest.viewer_id).where(
+                AircraftInterest.last_seen_at >= func.now() - timedelta(seconds=interest_max_age_s),
+                Aircraft.lon >= AircraftInterest.west,
+                Aircraft.lon <= AircraftInterest.east,
+                Aircraft.lat >= AircraftInterest.south,
+                Aircraft.lat <= AircraftInterest.north,
+            )
+        ).correlate(Aircraft)
+
+        stmt = (
+            select(Aircraft.flight, Aircraft.lat, Aircraft.lon)
+            .where(Aircraft.flight.isnot(None), Aircraft.flight != "")
+            .order_by(case((in_viewport, 0), else_=1), Aircraft.last_seen.desc())
+            .limit(limit * FLIGHT_POSITIONS_OVERFETCH_FACTOR)
+        )
+        try:
+            with Session() as session:
+                rows = session.execute(stmt).all()
+        except Exception as e:
+            logger.error(f"Error fetching active flight positions: {e}")
+            return []
+
+        seen: dict[str, dict] = {}
+        for r in rows:
+            if r.flight not in seen:
+                seen[r.flight] = {"callsign": r.flight, "lat": r.lat or 0.0, "lng": r.lon or 0.0}
+                if len(seen) >= limit:
+                    break
+        return list(seen.values())
 
 
 class FakeAircraftAdapter:
@@ -402,3 +466,32 @@ class FakeAircraftAdapter:
             for row in self._interest.values()
             if row["last_seen_at"] >= cutoff
         ]
+
+    def get_active_flight_positions(self, interest_max_age_s: float, limit: int) -> list[dict]:
+        cutoff = datetime.now(timezone.utc) - timedelta(seconds=interest_max_age_s)
+        active_viewports = [row for row in self._interest.values() if row["last_seen_at"] >= cutoff]
+
+        def in_viewport(lat, lon):
+            if lat is None or lon is None:
+                return False
+            return any(
+                v["west"] <= lon <= v["east"] and v["south"] <= lat <= v["north"]
+                for v in active_viewports
+            )
+
+        candidates = [ac for ac in self._aircraft.values() if ac.get("flight")]
+        candidates.sort(
+            key=lambda ac: (
+                0 if in_viewport(ac.get("lat"), ac.get("lon")) else 1,
+                -ac["last_seen"].timestamp(),
+            )
+        )
+
+        seen: dict[str, dict] = {}
+        for ac in candidates:
+            flight = ac["flight"]
+            if flight not in seen:
+                seen[flight] = {"callsign": flight, "lat": ac.get("lat") or 0.0, "lng": ac.get("lon") or 0.0}
+                if len(seen) >= limit:
+                    break
+        return list(seen.values())

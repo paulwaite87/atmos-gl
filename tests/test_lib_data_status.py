@@ -13,6 +13,7 @@ from atmos_gl.lib.data_status import (
     estimate_next_update,
     period_s_from_runs_per_day,
     read_process_status,
+    read_health_status,
     resolve_run_epoch_utc,
     build_status,
     resolve_datasource_url,
@@ -169,6 +170,50 @@ def test_read_process_status_defaults_status_to_none_when_row_lacks_it():
     assert read_process_status(adapter, "quakes") == (now, None, None)
 
 
+# --- read_health_status (decoupled from read_process_status's pass/fail tracking) ---
+
+
+def test_read_health_status_none_when_no_row():
+    adapter = MagicMock()
+    adapter.get_process_status.return_value = None
+    assert read_health_status(adapter, "flightradar_collector") is None
+
+
+def test_read_health_status_none_when_never_set():
+    adapter = MagicMock()
+    adapter.get_process_status.return_value = {"health": None, "health_at": None}
+    assert read_health_status(adapter, "flightradar_collector") is None
+
+
+def test_read_health_status_returns_code_and_detail_when_fresh():
+    adapter = MagicMock()
+    now = datetime.now(timezone.utc)
+    adapter.get_process_status.return_value = {
+        "health": "rate_limited", "health_detail": "Rate limited (HTTP 429)", "health_at": now,
+    }
+    result = read_health_status(adapter, "flightradar_collector", ttl_s=60.0)
+    assert result == {"code": "rate_limited", "detail": "Rate limited (HTTP 429)"}
+
+
+def test_read_health_status_expires_after_ttl():
+    adapter = MagicMock()
+    stale = datetime.now(timezone.utc) - timedelta(seconds=120)
+    adapter.get_process_status.return_value = {
+        "health": "blocked", "health_detail": "Blocked (HTTP 529)", "health_at": stale,
+    }
+    assert read_health_status(adapter, "flightradar_collector", ttl_s=60.0) is None
+
+
+def test_read_health_status_handles_a_naive_health_at():
+    adapter = MagicMock()
+    naive = datetime.now() - timedelta(seconds=5)
+    adapter.get_process_status.return_value = {
+        "health": "rate_limited", "health_detail": None, "health_at": naive,
+    }
+    result = read_health_status(adapter, "flightradar_collector", ttl_s=60.0)
+    assert result == {"code": "rate_limited", "detail": None}
+
+
 # --- build_status ---
 
 
@@ -193,6 +238,8 @@ def test_build_status_assembles_the_expected_shape():
         "enabled": True,
         "detail": None,
         "status": None,
+        "health": None,
+        "health_detail": None,
     }
 
 
@@ -202,6 +249,16 @@ def test_build_status_includes_status_when_provided():
         next_update=None, enabled=True, detail=None, status="running",
     )
     assert result["status"] == "running"
+
+
+def test_build_status_includes_health_when_provided():
+    result = build_status(
+        name="flightradar_collector", kind="collector", percent=100.0, last_updated=None,
+        next_update=None, enabled=True, detail=None,
+        health={"code": "rate_limited", "detail": "Rate limited (HTTP 429)"},
+    )
+    assert result["health"] == "rate_limited"
+    assert result["health_detail"] == "Rate limited (HTTP 429)"
 
 
 def test_build_status_rounds_percent_to_one_decimal():
@@ -287,6 +344,20 @@ def test_freshness_data_status_default_respects_enabled_for_next_update():
     result = freshness_data_status(adapter, "shipping_collector", 300.0, False)
 
     assert result["next_update"] is None
+
+
+def test_freshness_data_status_surfaces_a_fresh_health_signal():
+    adapter = MagicMock()
+    now = datetime.now(timezone.utc)
+    adapter.get_process_status.return_value = {
+        "last_updated": now, "last_error": None,
+        "health": "rate_limited", "health_detail": "Rate limited (HTTP 429)", "health_at": now,
+    }
+
+    result = freshness_data_status(adapter, "flightradar_collector", 3600.0, True)
+
+    assert result["health"] == "rate_limited"
+    assert result["health_detail"] == "Rate limited (HTTP 429)"
 
 
 def test_freshness_data_status_can_ignore_enabled_for_next_update():

@@ -23,36 +23,78 @@ import aiohttp
 
 from .base import AsyncCollectorBase
 from atmos_gl.db.aircraft_adapter import AircraftAdapter
+from atmos_gl.db.flight_route_adapter import FlightRouteAdapter
+from atmos_gl.lib.data_status import (
+    build_status,
+    estimate_next_update,
+    read_health_status,
+    read_process_status,
+)
 from atmos_gl.lib.flight_radar import (
     ADSB_LOL_BASE,
+    ADSB_LOL_ROUTESET_BASE,
     COARSE_GRID_DEG,
+    ROUTESET_BATCH_LIMIT,
     GlobalSampleScheduler,
     circle_for_region_key,
     fetch_aircraft_near,
+    fetch_routes,
 )
 
 logger = logging.getLogger(__name__)
 
+# process_status name for the Flight Radar hotspot-coverage progress bar (issue #215)
+# -- deliberately distinct from both `section` ("flightradar_collector", the
+# collector's OWN row in the Data Status Collectors panel) and the "flightradar"
+# config section (the frontend layer), since this is a third, separate row rendered
+# in the Layers panel instead (see routes/status.py).
+HOTSPOT_STATUS_NAME = "flightradar_hotspot"
+
 
 class AircraftCollector(AsyncCollectorBase):
     section = "flightradar_collector"
+    # data_collector.datasources.flightradar -- the same shared, maintainable URL list
+    # every other collector's datasource lives in, rather than a hardcoded constant.
+    datasource_key = "flightradar"
 
     def __init__(self, config_path: str):
         super().__init__(config_path)
         self.aircraft_adapter = AircraftAdapter()
+        self.flight_route_adapter = FlightRouteAdapter()
 
-    def source_url(self):
-        return ADSB_LOL_BASE
+    def refresh_settings(self) -> None:
+        super().refresh_settings()
+        # Cached, not resolved fresh per tick, since run()'s loop calls
+        # fetch_aircraft_near() far more often than settings actually change.
+        # self.base_url is derived from source_url() (the same method the Data Status
+        # link uses) rather than a second independent config read, so the two can't
+        # silently disagree -- mirrors ShippingCollector.refresh_settings()'s self.url.
+        # Falls back to ADSB_LOL_BASE (unlike shipping's AIS URL, which requires an
+        # operator-supplied API key) since adsb.lol needs no key and this default is
+        # always safe to use even if the datasource entry is ever removed.
+        self.base_url = self.source_url() or ADSB_LOL_BASE
+        # routeset is a different host entirely by default (see
+        # ADSB_LOL_ROUTESET_BASE's comment for why) -- its own datasources entry via
+        # the explicit-key form of datasource_url(), not derivable from self.base_url.
+        self.routeset_base_url = self.datasource_url("flightradar_routeset") or ADSB_LOL_ROUTESET_BASE
 
     def _tick_interval_seconds(self) -> float:
         """flightradar_collector.requests_per_minute (1-60) is the whole collector's
         adsb.lol request budget -- shared across hotspot and background sampling alike,
         since GlobalSampleScheduler's priority scoring (not a separate sub-budget)
-        decides which cell "wins" a given tick."""
+        decides which cell "wins" a given tick.
+
+        Default 12 (not the original 6): one fetch/tick means a full round-robin of
+        MAX_HOT_CELLS_PER_VIEWPORT (12) hot cells takes (12 cells * tick interval) in
+        the worst case -- at 6rpm/10s-ticks that's 120s per cell, far past the
+        frontend's freeze threshold (flightradar.js's MAX_EXTRAPOLATION_S) almost all
+        of the time. 12rpm/5s-ticks brings that worst case down to 60s, matching
+        MAX_EXTRAPOLATION_S's own bump to 60s -- see that constant's comment for the
+        other half of this same tradeoff."""
         try:
-            rpm = float(self.settings.get("requests_per_minute", 6))
+            rpm = float(self.settings.get("requests_per_minute", 12))
         except (TypeError, ValueError):
-            rpm = 6.0
+            rpm = 12.0
         rpm = min(60.0, max(1.0, rpm))
         return 60.0 / rpm
 
@@ -76,6 +118,129 @@ class AircraftCollector(AsyncCollectorBase):
         except (TypeError, ValueError):
             return 30.0
 
+    def _route_enrichment_interval_seconds(self) -> float:
+        """flightradar_collector.route_enrichment_interval_seconds -- how often the
+        route-lookup batch call (see _enrich_routes()) fires, independent of
+        _tick_interval_seconds()'s position-sampling budget (issue #215's route-lookup
+        follow-on, Q2). Floored at 5s purely as a sanity bound, not a tuned value."""
+        try:
+            return max(5.0, float(self.settings.get("route_enrichment_interval_seconds", 60)))
+        except (TypeError, ValueError):
+            return 60.0
+
+    def _route_batch_size(self) -> int:
+        """flightradar_collector.route_batch_size -- how many callsigns one routeset
+        call resolves at once. Clamped to ROUTESET_BATCH_LIMIT, the server's own hard
+        cap (verified against adsblol/api's source), not a guessed ceiling."""
+        try:
+            size = int(self.settings.get("route_batch_size", 25))
+        except (TypeError, ValueError):
+            size = 25
+        return min(ROUTESET_BATCH_LIMIT, max(1, size))
+
+    def _route_backstop_days(self) -> float:
+        """flightradar_collector.route_backstop_days -- how long a stored route (match
+        or confirmed non-match alike, per Q3/Q4) is trusted before re-checking."""
+        try:
+            return max(0.1, float(self.settings.get("route_backstop_days", 7)))
+        except (TypeError, ValueError):
+            return 7.0
+
+    async def _enrich_routes(self, session: aiohttp.ClientSession) -> None:
+        """Runs on its own independent cadence (route_enrichment_interval_seconds),
+        deliberately separate from the position-sampling tick budget above (issue
+        #215's route-lookup follow-on): pulls a viewport-priority-ordered candidate
+        feed (AircraftAdapter.get_active_flight_positions), narrows it to whichever
+        callsigns actually need a fresh lookup (FlightRouteAdapter.filter_stale), and
+        resolves up to route_batch_size of them in ONE batched routeset call.
+
+        candidate_limit is a multiple of batch_size (not batch_size itself): most
+        currently-active callsigns will usually already have a fresh route, so this
+        needs headroom beyond batch_size to still find enough STALE ones after
+        filter_stale() narrows the list down."""
+        batch_size = self._route_batch_size()
+        candidate_limit = batch_size * 5
+        candidates = await asyncio.to_thread(
+            self.aircraft_adapter.get_active_flight_positions,
+            self._interest_max_age_seconds(), candidate_limit,
+        )
+        if not candidates:
+            return
+
+        callsigns = [c["callsign"] for c in candidates]
+        stale = await asyncio.to_thread(
+            self.flight_route_adapter.filter_stale, callsigns, self._route_backstop_days(),
+        )
+        if not stale:
+            return
+
+        stale_set = set(stale)
+        batch = [c for c in candidates if c["callsign"] in stale_set][:batch_size]
+        if not batch:
+            return
+
+        routes = await fetch_routes(
+            session, batch, base_url=self.routeset_base_url, report_status=self._report_status,
+        )
+        if routes:
+            await asyncio.to_thread(self.flight_route_adapter.record_routes, routes)
+
+    def _report_status(self, status: int) -> None:
+        """fetch_aircraft_near's report_status hook -- classifies a raw adsb.lol HTTP
+        status into the Data Status page's health icon (issue #215). Deliberately NOT
+        called on every 2xx (only on the abnormal cases): read_health_status()'s
+        read-time TTL expiry (lib/data_status.py) already reverts the icon to "ok" once
+        nothing bad has been reported recently, so there's no need to pay a DB write
+        confirming health on every single successful tick."""
+        if status == 429:
+            self.process_status_adapter.record_health(
+                self.section, "collector", "rate_limited", "Rate limited (HTTP 429)"
+            )
+        elif status >= 400:
+            self.process_status_adapter.record_health(
+                self.section, "collector", "blocked", f"Blocked (HTTP {status})"
+            )
+
+    def data_status(self) -> dict:
+        """Coverage-based override of AsyncCollectorBase.data_status(): percent is the
+        fraction of the globe (GlobalSampleScheduler's fixed background grid, NOT just
+        whatever a viewer happens to be looking at) currently within its starvation-
+        floor freshness window -- "how many of the global regions have up-to-date
+        data right now", not a liveness heartbeat. The inherited default
+        (freshness_data_status()) would read 100% for as long as run()'s loop kept
+        ticking every few seconds, regardless of how much of the globe actually had
+        fresh data -- a heartbeat, not a coverage measure.
+
+        progress_current/progress_total are written every tick by run() via
+        record_progress(self.section, ...) -- the same decoupled progress columns
+        HOTSPOT_STATUS_NAME's row uses, just on this row instead. record_progress(),
+        record_health(), and record_process_run() each touch only their own column
+        set, so all three coexist on this one process_status row without clobbering
+        each other (see test_process_status_adapter_real_vs_fake.py's coverage of
+        exactly this). last_updated/status/health still come from the same row, read
+        the normal way."""
+        last_updated, last_error, status = read_process_status(
+            self.process_status_adapter, self.section
+        )
+        row = self.process_status_adapter.get_process_status(self.section) or {}
+        total = row.get("progress_total") or 0
+        current = row.get("progress_current") or 0
+        percent = 100.0 * current / total if total else 0.0
+        detail = last_error or (
+            f"{current}/{total} global region(s) up to date" if total else None
+        )
+        return build_status(
+            name=self.section,
+            kind="collector",
+            percent=percent,
+            last_updated=last_updated,
+            next_update=estimate_next_update(last_updated, self.heartbeat_period_s, self.enabled),
+            enabled=self.enabled,
+            detail=detail,
+            status=status,
+            health=read_health_status(self.process_status_adapter, self.section),
+        )
+
     async def run(self) -> None:
         # Startup heartbeat, same reasoning as ShippingCollector.run()'s: the Data
         # Status UI should show "alive" from the moment this task starts, decaying
@@ -91,6 +256,10 @@ class AircraftCollector(AsyncCollectorBase):
             starvation_floor_s=self._starvation_floor_seconds(),
             coarse_grid_deg=self._coarse_grid_deg(),
         )
+        # Route enrichment (issue #215's route-lookup follow-on) runs on its own
+        # independent cadence -- None means "never fired yet", so the very first tick
+        # always fires it rather than waiting a full interval after startup.
+        last_route_enrichment: float | None = None
 
         async with aiohttp.ClientSession() as session:
             while True:
@@ -100,6 +269,8 @@ class AircraftCollector(AsyncCollectorBase):
                     await asyncio.sleep(60)
                     continue
 
+                now = time.monotonic()
+
                 try:
                     viewports = await asyncio.to_thread(
                         self.aircraft_adapter.get_active_interest,
@@ -107,12 +278,36 @@ class AircraftCollector(AsyncCollectorBase):
                     )
                     scheduler.set_interest(viewports)
 
-                    now = time.monotonic()
+                    # Hotspot-coverage progress bar (issue #215): "N of M currently-
+                    # prioritized cells have data" for whichever viewport(s) are
+                    # active right now -- {"queried": 0, "total": 0} when none are,
+                    # which routes/status.py reads as "no active viewport" rather
+                    # than leaving a stale prior reading on screen.
+                    progress = scheduler.hotspot_progress(viewports)
+                    self.process_status_adapter.record_progress(
+                        HOTSPOT_STATUS_NAME, "layer",
+                        progress["queried"], progress["total"],
+                    )
+
+                    # Global coverage (see data_status()): unlike the hotspot progress
+                    # bar above, this is unconditional of any active viewport -- it's a
+                    # property of the scheduler's whole background-grid state, written
+                    # onto this collector's OWN row every tick regardless of who's
+                    # looking at the map right now.
+                    coverage = scheduler.global_coverage(now=now)
+                    self.process_status_adapter.record_progress(
+                        self.section, "collector",
+                        coverage["fresh"], coverage["total"],
+                    )
+
                     cell = scheduler.next_cell(now=now)
                     if cell is not None:
                         grid_deg, ix, iy = cell
                         lat, lon, radius = circle_for_region_key((ix, iy), grid_deg=grid_deg)
-                        records = await fetch_aircraft_near(session, lat, lon, radius)
+                        records = await fetch_aircraft_near(
+                            session, lat, lon, radius, base_url=self.base_url,
+                            report_status=self._report_status,
+                        )
                         scheduler.record_result(cell, records, now=now)
 
                         if records:
@@ -131,6 +326,20 @@ class AircraftCollector(AsyncCollectorBase):
                     self.process_status_adapter.record_process_run(
                         self.section, "collector", success=False, error=str(exc)
                     )
+
+                # Own try/except, own cadence check -- a route-enrichment failure must
+                # never mask or interfere with the position-sampling tick's own
+                # success/failure reporting above (they're independent activities, see
+                # _enrich_routes()'s docstring).
+                if (
+                    last_route_enrichment is None
+                    or (now - last_route_enrichment) >= self._route_enrichment_interval_seconds()
+                ):
+                    try:
+                        await self._enrich_routes(session)
+                    except Exception as exc:
+                        logger.error(f"AircraftCollector: route enrichment error: {exc}", exc_info=True)
+                    last_route_enrichment = now
 
                 await asyncio.sleep(self._tick_interval_seconds())
 
