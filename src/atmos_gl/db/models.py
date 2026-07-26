@@ -277,6 +277,16 @@ class ProcessStatus(Base):
     # "running".
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default="idle")
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # health/health_detail/health_at: a transient upstream-condition signal (e.g.
+    # "rate_limited"/"blocked"), set ONLY by record_health() -- deliberately
+    # independent of status/last_error above, since a handful of throttled requests
+    # doesn't mean the collector's whole run failed (see record_health()'s docstring).
+    # Read-time TTL expiry (lib/data_status.py's read_health_status()) treats an
+    # unrenewed condition as resolved rather than showing it stale forever, so nothing
+    # ever explicitly clears these back to NULL in the common case.
+    health: Mapped[str | None] = mapped_column(String(20))
+    health_detail: Mapped[str | None] = mapped_column(Text)
+    health_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

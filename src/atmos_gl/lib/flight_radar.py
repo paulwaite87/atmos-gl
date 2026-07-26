@@ -51,7 +51,7 @@ def circle_for_region_key(
 
 async def fetch_aircraft_near(
     session: aiohttp.ClientSession, lat: float, lon: float, radius_nm: float,
-    *, base_url: str = ADSB_LOL_BASE, timeout: float = 10.0,
+    *, base_url: str = ADSB_LOL_BASE, timeout: float = 10.0, report_status=None,
 ) -> list[dict] | None:
     """One adsb.lol point+radius query -> its `ac` (aircraft) list, or None on any
     failure (timeout, non-200 -- adsb.lol's free tier 429s far more readily than its
@@ -64,10 +64,19 @@ async def fetch_aircraft_near(
     base_url defaults to ADSB_LOL_BASE but is normally overridden by the caller with
     the configured data_collector.datasources.flightradar value (AircraftCollector) --
     same "URL lives in the shared datasources dict, not hardcoded" convention every
-    other collector follows."""
+    other collector follows.
+
+    report_status, if given, is called with the raw HTTP status code once a response
+    is actually received (never called if the request raised before completing --
+    a timeout/connection error, as opposed to a real rejection). Purely a side-channel
+    for Data Status health reporting (see AircraftCollector._report_status()),
+    independent of this function's own None-vs-[] success/failure contract -- a single
+    rate-limited request shouldn't be conflated with "the fetch failed"."""
     url = f"{base_url}/lat/{lat}/lon/{lon}/dist/{radius_nm}"
     try:
         async with session.get(url, timeout=timeout) as resp:
+            if report_status:
+                report_status(resp.status)
             if resp.status != 200:
                 logger.debug(f"adsb.lol {url} returned {resp.status}")
                 return None

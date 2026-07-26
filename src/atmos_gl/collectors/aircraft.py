@@ -88,6 +88,22 @@ class AircraftCollector(AsyncCollectorBase):
         except (TypeError, ValueError):
             return 30.0
 
+    def _report_status(self, status: int) -> None:
+        """fetch_aircraft_near's report_status hook -- classifies a raw adsb.lol HTTP
+        status into the Data Status page's health icon (issue #215). Deliberately NOT
+        called on every 2xx (only on the abnormal cases): read_health_status()'s
+        read-time TTL expiry (lib/data_status.py) already reverts the icon to "ok" once
+        nothing bad has been reported recently, so there's no need to pay a DB write
+        confirming health on every single successful tick."""
+        if status == 429:
+            self.process_status_adapter.record_health(
+                self.section, "collector", "rate_limited", "Rate limited (HTTP 429)"
+            )
+        elif status >= 400:
+            self.process_status_adapter.record_health(
+                self.section, "collector", "blocked", f"Blocked (HTTP {status})"
+            )
+
     async def run(self) -> None:
         # Startup heartbeat, same reasoning as ShippingCollector.run()'s: the Data
         # Status UI should show "alive" from the moment this task starts, decaying
@@ -125,7 +141,8 @@ class AircraftCollector(AsyncCollectorBase):
                         grid_deg, ix, iy = cell
                         lat, lon, radius = circle_for_region_key((ix, iy), grid_deg=grid_deg)
                         records = await fetch_aircraft_near(
-                            session, lat, lon, radius, base_url=self.base_url
+                            session, lat, lon, radius, base_url=self.base_url,
+                            report_status=self._report_status,
                         )
                         scheduler.record_result(cell, records, now=now)
 

@@ -112,3 +112,39 @@ async def test_fetch_aircraft_near_honors_a_configured_base_url():
     session = _FakeSession(_FakeResponse(200, {"ac": []}))
     await fetch_aircraft_near(session, 0.0, 0.0, 200.0, base_url="https://my-mirror.example/v2")
     assert session.last_url.startswith("https://my-mirror.example/v2/")
+
+
+# ---- report_status: the health-reporting side-channel (issue #215's Data Status
+# health icons) -- independent of the records None/[]/list contract above.
+
+@pytest.mark.asyncio
+async def test_fetch_aircraft_near_reports_status_on_success():
+    session = _FakeSession(_FakeResponse(200, {"ac": []}))
+    reported = []
+    await fetch_aircraft_near(session, 0.0, 0.0, 200.0, report_status=reported.append)
+    assert reported == [200]
+
+
+@pytest.mark.asyncio
+async def test_fetch_aircraft_near_reports_status_on_rate_limit():
+    session = _FakeSession(_FakeResponse(429))
+    reported = []
+    await fetch_aircraft_near(session, 0.0, 0.0, 200.0, report_status=reported.append)
+    assert reported == [429]
+
+
+@pytest.mark.asyncio
+async def test_fetch_aircraft_near_never_reports_status_on_a_raised_exception():
+    """A timeout/connection error never gets a response at all -- there's no status
+    code to report, unlike a real rejection (429/5xx)."""
+    reported = []
+    await fetch_aircraft_near(_RaisingSession(), 0.0, 0.0, 200.0, report_status=reported.append)
+    assert reported == []
+
+
+@pytest.mark.asyncio
+async def test_fetch_aircraft_near_works_without_a_report_status_callback():
+    """report_status is optional -- omitting it (the default None) must not raise."""
+    session = _FakeSession(_FakeResponse(200, {"ac": [{"hex": "a1"}]}))
+    result = await fetch_aircraft_near(session, 0.0, 0.0, 200.0)
+    assert result == [{"hex": "a1"}]
