@@ -3,7 +3,7 @@
 // for 1 hour = 60 nautical miles = exactly 1 degree of latitude), not recomputed the
 // way the code does, so a broken formula can actually disagree with the test.
 import { describe, test, expect } from 'vitest';
-import { interpolatedPosition, extrapolatedAltitude, boundedElapsedSeconds, isFrozen, flightStatus, targetAltitudeLabel, aircraftClass, aircraftGroup, aircraftGroupColor, airlineForFlight, stopCode, routePathHtml, plausibleWarningHtml } from './flightradar.js';
+import { interpolatedPosition, extrapolatedAltitude, boundedElapsedSeconds, isFrozen, flightStatus, targetAltitudeLabel, aircraftClass, aircraftGroup, aircraftGroupColor, airlineForFlight, stopCode, routePathHtml, plausibleWarningHtml, parseRouteStops, buildFeatureCollection } from './flightradar.js';
 
 describe('interpolatedPosition', () => {
     test('due-north flight for 1 hour at 60kts moves exactly 1 degree of latitude', () => {
@@ -200,6 +200,64 @@ describe('plausibleWarningHtml', () => {
     test('shows nothing when there is no route to judge', () => {
         expect(plausibleWarningHtml(null)).toBe('');
         expect(plausibleWarningHtml(undefined)).toBe('');
+    });
+});
+
+describe('parseRouteStops', () => {
+    test('round-trips a JSON-stringified stop list back into an array', () => {
+        const stops = [{ iata: 'WLG', icao: 'NZWN', name: 'Wellington' }];
+        expect(parseRouteStops(JSON.stringify(stops))).toEqual(stops);
+    });
+
+    test('returns null for a missing/empty value', () => {
+        expect(parseRouteStops(null)).toBeNull();
+        expect(parseRouteStops(undefined)).toBeNull();
+        expect(parseRouteStops('')).toBeNull();
+    });
+
+    test('returns null (not a throw) for malformed JSON', () => {
+        expect(parseRouteStops('{not valid json')).toBeNull();
+    });
+});
+
+// Regression guard (the actual live bug this feature shipped with): MapLibre tiles
+// every GeoJSON source internally for rendering, and that pipeline doesn't safely
+// round-trip non-primitive property values -- a bare array/object in route_stops
+// broke hover/mouseenter feature-querying for the WHOLE flightradar layer, not just
+// aircraft carrying a route. Every property buildFeatureCollection hands to
+// setData() must stay a primitive (string/number/boolean/null).
+describe('buildFeatureCollection route_stops shape', () => {
+    function recFor(overrides = {}) {
+        return {
+            hex: 'a1b2c3', flight: 'ANZ423', category: '', receivedAt: 1000,
+            lat: -41.3, lon: 174.8, gs: 200, track: 0, alt_baro: 5000,
+            ...overrides,
+        };
+    }
+
+    test('a matched route is JSON-stringified, never a bare array, in the built feature properties', () => {
+        const stops = [
+            { iata: 'WLG', icao: 'NZWN', name: 'Wellington' },
+            { iata: 'AKL', icao: 'NZAA', name: 'Auckland' },
+        ];
+        const aircraftByHex = new Map([['a1b2c3', recFor({ route_stops: stops, route_plausible: true })]]);
+        const fc = buildFeatureCollection(aircraftByHex, 1000);
+        const props = fc.features[0].properties;
+
+        expect(typeof props.route_stops).toBe('string');
+        expect(JSON.parse(props.route_stops)).toEqual(stops);
+    });
+
+    test('no route stays null, not an empty string or array', () => {
+        const aircraftByHex = new Map([['a1b2c3', recFor({ route_stops: null, route_plausible: null })]]);
+        const fc = buildFeatureCollection(aircraftByHex, 1000);
+        expect(fc.features[0].properties.route_stops).toBeNull();
+    });
+
+    test('route_plausible stays a plain boolean (already primitive, no encoding needed)', () => {
+        const aircraftByHex = new Map([['a1b2c3', recFor({ route_stops: null, route_plausible: false })]]);
+        const fc = buildFeatureCollection(aircraftByHex, 1000);
+        expect(fc.features[0].properties.route_plausible).toBe(false);
     });
 });
 

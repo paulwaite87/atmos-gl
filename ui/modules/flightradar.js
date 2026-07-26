@@ -319,7 +319,7 @@ const FLIGHTRADAR_ICONS = [
 // itself only needs the altitude density step. Position AND altitude are dead-reckoned
 // from each record's last known state -- see interpolatedPosition/extrapolatedAltitude/
 // boundedElapsedSeconds above.
-function buildFeatureCollection(aircraftByHex, now) {
+export function buildFeatureCollection(aircraftByHex, now) {
     const features = [];
     for (const rec of aircraftByHex.values()) {
         if (typeof rec.lat !== 'number' || typeof rec.lon !== 'number') continue;
@@ -357,7 +357,15 @@ function buildFeatureCollection(aircraftByHex, now) {
                 icon: category.startsWith('B') ? 'flightradar-glider' : 'flightradar-aircraft',
                 color: aircraftGroupColor(rec.t),
                 frozen: isFrozen(rec.receivedAt, now),
-                route_stops: rec.route_stops || null,
+                // JSON-stringified, not a bare array/object: MapLibre tiles every
+                // GeoJSON source internally (geojson-vt) for rendering, and that
+                // pipeline doesn't safely round-trip non-primitive property values --
+                // a nested array here broke hover/mouseenter feature-querying for the
+                // WHOLE layer, not just the aircraft carrying a route, when verified
+                // live. Every property handed to setData() must stay a primitive
+                // (string/number/boolean/null); popupHtml parses this back out via
+                // parseRouteStops(). route_plausible (bool/null) is already primitive.
+                route_stops: rec.route_stops ? JSON.stringify(rec.route_stops) : null,
                 route_plausible: rec.route_plausible ?? null,
             },
         });
@@ -405,6 +413,19 @@ export function plausibleWarningHtml(plausible) {
     return ' <span title="This route may not match the aircraft&#39;s current position" style="cursor:help;">&#9888;</span>';
 }
 
+// buildFeatureCollection JSON-stringifies route_stops before it ever reaches
+// MapLibre's setData() (see that function's comment) -- this undoes it for display.
+// Malformed/unparseable input (shouldn't happen, but a hover mid-poll-update is
+// timing-sensitive) is treated the same as "no route" rather than throwing.
+export function parseRouteStops(raw) {
+    if (!raw) return null;
+    try {
+        return JSON.parse(raw);
+    } catch (e) {
+        return null;
+    }
+}
+
 function popupHtml(f) {
     const p = f.properties;
     // On the ground but still moving: taxiing, just-landed rollout, and takeoff roll
@@ -422,7 +443,7 @@ function popupHtml(f) {
     // when adsb.lol confirmed it has no route (the API can't distinguish the two --
     // see FlightRoute's own docstring) -- either way, hide the route line and its
     // separating <hr> entirely rather than showing a placeholder.
-    const routePath = routePathHtml(p.route_stops);
+    const routePath = routePathHtml(parseRouteStops(p.route_stops));
     const routeBlock = routePath
         ? `<div style="font-weight:bold;color:#000;font-size:20px;margin-top:2px;">${routePath}${plausibleWarningHtml(p.route_plausible)}</div>
             <hr style="border:0;border-top:1px solid #ccc;margin:4px 0;">`
