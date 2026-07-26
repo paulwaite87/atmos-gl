@@ -3,7 +3,7 @@
 // for 1 hour = 60 nautical miles = exactly 1 degree of latitude), not recomputed the
 // way the code does, so a broken formula can actually disagree with the test.
 import { describe, test, expect } from 'vitest';
-import { interpolatedPosition, boundedElapsedSeconds, isFrozen, flightStatus, targetAltitudeLabel, aircraftClass, aircraftGroup, aircraftGroupColor, airlineForFlight } from './flightradar.js';
+import { interpolatedPosition, extrapolatedAltitude, boundedElapsedSeconds, isFrozen, flightStatus, targetAltitudeLabel, aircraftClass, aircraftGroup, aircraftGroupColor, airlineForFlight } from './flightradar.js';
 
 describe('interpolatedPosition', () => {
     test('due-north flight for 1 hour at 60kts moves exactly 1 degree of latitude', () => {
@@ -43,6 +43,52 @@ describe('interpolatedPosition', () => {
     test('missing track (no heading data) means no movement', () => {
         const pos = interpolatedPosition({ lat: 10, lon: 20, gs: 400, track: undefined }, 100);
         expect(pos).toEqual({ lat: 10, lon: 20 });
+    });
+});
+
+describe('extrapolatedAltitude', () => {
+    test('climbing at 1000ft/min for 30s gains 500ft', () => {
+        expect(extrapolatedAltitude(10000, 1000, null, 30)).toBeCloseTo(10500, 6);
+    });
+
+    test('descending at 1000ft/min for 30s loses 500ft', () => {
+        expect(extrapolatedAltitude(10000, -1000, null, 30)).toBeCloseTo(9500, 6);
+    });
+
+    test('zero elapsed time means no altitude change', () => {
+        expect(extrapolatedAltitude(10000, 1000, null, 0)).toBe(10000);
+    });
+
+    test('no baro_rate reading means no altitude change', () => {
+        expect(extrapolatedAltitude(10000, null, null, 30)).toBe(10000);
+    });
+
+    test('altitude not a number (on ground / unknown) passes through unchanged', () => {
+        expect(extrapolatedAltitude('ground', 1000, null, 30)).toBe('ground');
+        expect(extrapolatedAltitude(undefined, 1000, null, 30)).toBeUndefined();
+    });
+
+    test('climbing toward a higher target clamps at the target instead of overshooting', () => {
+        // Unclamped this would project to 10600; the MCP target is only 300ft away.
+        expect(extrapolatedAltitude(10000, 1200, 10300, 30)).toBe(10300);
+    });
+
+    test('descending toward a lower target clamps at the target instead of undershooting', () => {
+        expect(extrapolatedAltitude(10000, -1200, 9700, 30)).toBe(9700);
+    });
+
+    test('climbing well short of a higher target is not clamped', () => {
+        expect(extrapolatedAltitude(10000, 1000, 20000, 30)).toBeCloseTo(10500, 6);
+    });
+
+    test('a stale target behind the direction of travel is not clamped', () => {
+        // Climbing, but the MCP target is below current altitude (contradictory/stale) --
+        // don't snap the projection back down to it.
+        expect(extrapolatedAltitude(10000, 1000, 9000, 30)).toBeCloseTo(10500, 6);
+    });
+
+    test('no target given means the projection is unclamped', () => {
+        expect(extrapolatedAltitude(10000, 1000, undefined, 60)).toBeCloseTo(11000, 6);
     });
 });
 

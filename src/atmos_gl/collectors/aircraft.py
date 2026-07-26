@@ -67,11 +67,19 @@ class AircraftCollector(AsyncCollectorBase):
         """flightradar_collector.requests_per_minute (1-60) is the whole collector's
         adsb.lol request budget -- shared across hotspot and background sampling alike,
         since GlobalSampleScheduler's priority scoring (not a separate sub-budget)
-        decides which cell "wins" a given tick."""
+        decides which cell "wins" a given tick.
+
+        Default 12 (not the original 6): one fetch/tick means a full round-robin of
+        MAX_HOT_CELLS_PER_VIEWPORT (12) hot cells takes (12 cells * tick interval) in
+        the worst case -- at 6rpm/10s-ticks that's 120s per cell, far past the
+        frontend's freeze threshold (flightradar.js's MAX_EXTRAPOLATION_S) almost all
+        of the time. 12rpm/5s-ticks brings that worst case down to 60s, matching
+        MAX_EXTRAPOLATION_S's own bump to 60s -- see that constant's comment for the
+        other half of this same tradeoff."""
         try:
-            rpm = float(self.settings.get("requests_per_minute", 6))
+            rpm = float(self.settings.get("requests_per_minute", 12))
         except (TypeError, ValueError):
-            rpm = 6.0
+            rpm = 12.0
         rpm = min(60.0, max(1.0, rpm))
         return 60.0 / rpm
 
