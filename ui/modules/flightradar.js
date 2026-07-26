@@ -357,6 +357,8 @@ function buildFeatureCollection(aircraftByHex, now) {
                 icon: category.startsWith('B') ? 'flightradar-glider' : 'flightradar-aircraft',
                 color: aircraftGroupColor(rec.t),
                 frozen: isFrozen(rec.receivedAt, now),
+                route_stops: rec.route_stops || null,
+                route_plausible: rec.route_plausible ?? null,
             },
         });
     }
@@ -367,6 +369,40 @@ function pruneStale(aircraftByHex, now) {
     for (const [hex, rec] of aircraftByHex) {
         if (now - rec.receivedAt > STALE_PRUNE_MS) aircraftByHex.delete(hex);
     }
+}
+
+function _escapeAttr(s) {
+    return String(s).replace(/"/g, '&quot;');
+}
+
+// IATA preferred over ICAO (this feature's own worked examples throughout --
+// "WLG"/"AKL" -- are IATA-style, the codes people actually recognize), falling back
+// to ICAO only when a stop has no IATA code (some smaller airports are ICAO-only).
+export function stopCode(stop) {
+    return stop.iata || stop.icao || '';
+}
+
+// route_stops -> an arrow-joined path covering the FULL route (any technical/
+// intermediate stop(s) included, not collapsed to just origin/destination -- that
+// detail is genuinely worth keeping visible, not just stored). Each code carries a
+// title tooltip with that stop's full airport name. Returns '' for an empty/missing
+// list -- popupHtml hides the whole route block (and its separating <hr>) in that
+// case, same as every other optional field on this popup.
+export function routePathHtml(stops) {
+    if (!stops || !stops.length) return '';
+    return stops
+        .map((s) => `<span title="${_escapeAttr(s.name || '')}">${stopCode(s)}</span>`)
+        .join(' &rarr; ');
+}
+
+// A small, separate warning glyph -- not a change to the route line's own color/
+// weight, which stays prominent regardless -- shown only when adsb.lol's own
+// great-circle sanity check says this match doesn't fit the aircraft's actual
+// current position. Nothing shown for a genuine match (true) or when there's no
+// route to judge in the first place (null).
+export function plausibleWarningHtml(plausible) {
+    if (plausible !== false) return '';
+    return ' <span title="This route may not match the aircraft&#39;s current position" style="cursor:help;">&#9888;</span>';
 }
 
 function popupHtml(f) {
@@ -382,8 +418,18 @@ function popupHtml(f) {
     const cls = aircraftClass(p.aircraft_type);
     const staleNote = p.frozen
         ? '<div style="color:#c0392b;font-size:11px;margin-top:4px;">&#9888; Signal lost -- position frozen</div>' : '';
+    // route_stops is null both when this callsign has never been enriched yet AND
+    // when adsb.lol confirmed it has no route (the API can't distinguish the two --
+    // see FlightRoute's own docstring) -- either way, hide the route line and its
+    // separating <hr> entirely rather than showing a placeholder.
+    const routePath = routePathHtml(p.route_stops);
+    const routeBlock = routePath
+        ? `<div style="font-weight:bold;color:#000;font-size:20px;margin-top:2px;">${routePath}${plausibleWarningHtml(p.route_plausible)}</div>
+            <hr style="border:0;border-top:1px solid #ccc;margin:4px 0;">`
+        : '';
     return `<div style="font-family:sans-serif;font-size:12px;color:#000;padding:5px;">
-            <strong style="color:#007bff;font-size:14px;">${p.flight}</strong><br>
+            <strong style="color:#007bff;font-size:16px;">${p.flight}</strong><br>
+            ${routeBlock}
             ${p.aircraft_type ? `<span style="color:#666;">Type:</span> ${p.aircraft_type}<br>` : ''}
             <span style="color:#666;">Class:</span> ${cls}<br>
             ${p.airline ? `<span style="color:#666;">Airline:</span> ${p.airline}<br>` : ''}
@@ -428,6 +474,10 @@ function recordFromFeature(feature, fallbackNowMs) {
         nav_altitude_mcp: p.nav_altitude_mcp,
         lat, lon,
         receivedAt: Number.isNaN(receivedAt) ? fallbackNowMs : receivedAt,
+        // Carried through as-is (no dead-reckoning/transformation needed, unlike
+        // position/altitude) -- see AircraftAdapter.get_fleet_as_geojson's route join.
+        route_stops: p.route_stops || null,
+        route_plausible: p.route_plausible ?? null,
     };
 }
 
