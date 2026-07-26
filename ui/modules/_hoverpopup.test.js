@@ -5,12 +5,23 @@
 import { describe, test, expect, vi, beforeEach } from 'vitest';
 import { hoverPopup } from './_hoverpopup.js';
 
+function fakePopupElement() {
+    const listeners = {};
+    return {
+        _listeners: listeners,
+        addEventListener: vi.fn((evt, fn) => { listeners[evt] = fn; }),
+        removeEventListener: vi.fn((evt, fn) => { if (listeners[evt] === fn) delete listeners[evt]; }),
+    };
+}
+
 function fakePopup() {
     const p = { html: null, lngLat: null, onMap: false };
+    const element = fakePopupElement();
     p.setLngLat = vi.fn((c) => { p.lngLat = c; return p; });
     p.setHTML = vi.fn((h) => { p.html = h; return p; });
     p.addTo = vi.fn(() => { p.onMap = true; return p; });
     p.remove = vi.fn(() => { p.onMap = false; return p; });
+    p.getElement = vi.fn(() => element);
     return p;
 }
 
@@ -82,6 +93,65 @@ describe('hoverPopup', () => {
         expect(popup.remove).toHaveBeenCalled();
     });
 
+    // ---- "sticky" while hovered: stays open until the mouse has left BOTH the
+    // marker and the popup's own DOM content -----------------------------------
+
+    test('leaving the marker does NOT close the popup while the mouse is over the popup itself', () => {
+        const map = fakeMap();
+        hoverPopup(map, 'flightradar-layer', { html: () => '<div/>' });
+        const popup = globalThis.maplibregl.Popup.mock.results[0].value;
+
+        map._handlers['mouseenter:flightradar-layer']({
+            features: [{ properties: {}, geometry: { coordinates: [0, 0] } }],
+        });
+        popup.getElement()._listeners.mouseenter();   // mouse moves onto the popup
+        map._handlers['mouseleave:flightradar-layer'](); // ...then off the marker
+
+        expect(popup.remove).not.toHaveBeenCalled();
+    });
+
+    test('leaving the popup after leaving the marker finally closes it', () => {
+        const map = fakeMap();
+        hoverPopup(map, 'flightradar-layer', { html: () => '<div/>' });
+        const popup = globalThis.maplibregl.Popup.mock.results[0].value;
+
+        map._handlers['mouseenter:flightradar-layer']({
+            features: [{ properties: {}, geometry: { coordinates: [0, 0] } }],
+        });
+        popup.getElement()._listeners.mouseenter();
+        map._handlers['mouseleave:flightradar-layer']();
+        popup.getElement()._listeners.mouseleave();   // mouse now leaves the popup too
+
+        expect(popup.remove).toHaveBeenCalled();
+        expect(map.getCanvas().style.cursor).toBe('');
+    });
+
+    test('leaving the popup while still over the marker does not close it', () => {
+        const map = fakeMap();
+        hoverPopup(map, 'flightradar-layer', { html: () => '<div/>' });
+        const popup = globalThis.maplibregl.Popup.mock.results[0].value;
+
+        map._handlers['mouseenter:flightradar-layer']({
+            features: [{ properties: {}, geometry: { coordinates: [0, 0] } }],
+        });
+        popup.getElement()._listeners.mouseenter();
+        popup.getElement()._listeners.mouseleave();   // back onto the marker, never left it
+
+        expect(popup.remove).not.toHaveBeenCalled();
+    });
+
+    test('re-wires the popup element listeners on every re-open (a fresh element each addTo)', () => {
+        const map = fakeMap();
+        hoverPopup(map, 'flightradar-layer', { html: () => '<div/>' });
+        const popup = globalThis.maplibregl.Popup.mock.results[0].value;
+
+        map._handlers['mouseenter:flightradar-layer']({
+            features: [{ properties: {}, geometry: { coordinates: [0, 0] } }],
+        });
+        expect(popup.getElement().addEventListener).toHaveBeenCalledWith('mouseenter', expect.any(Function));
+        expect(popup.getElement().addEventListener).toHaveBeenCalledWith('mouseleave', expect.any(Function));
+    });
+
     test('passes offset through to the Popup constructor, defaulting to 15', () => {
         const map = fakeMap();
         hoverPopup(map, 'quakes-layer', { html: () => '<div/>' });
@@ -119,5 +189,19 @@ describe('hoverPopup', () => {
         expect(map._handlers['mouseenter:quakes-layer']).toBeUndefined();
         expect(map._handlers['mouseleave:quakes-layer']).toBeUndefined();
         expect(popup.remove).toHaveBeenCalled();
+    });
+
+    test('stop() also cleans up the popup element listeners it wired on open', () => {
+        const map = fakeMap();
+        const stop = hoverPopup(map, 'flightradar-layer', { html: () => '<div/>' });
+        const popup = globalThis.maplibregl.Popup.mock.results[0].value;
+
+        map._handlers['mouseenter:flightradar-layer']({
+            features: [{ properties: {}, geometry: { coordinates: [0, 0] } }],
+        });
+        stop();
+
+        expect(popup.getElement().removeEventListener).toHaveBeenCalledWith('mouseenter', expect.any(Function));
+        expect(popup.getElement().removeEventListener).toHaveBeenCalledWith('mouseleave', expect.any(Function));
     });
 });
