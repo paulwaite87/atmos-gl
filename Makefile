@@ -15,6 +15,13 @@ DB_PORT = 15432
 BUILDER_SERVICE = layer_builder
 DUMP_FILE = atmos_gl_dump.sql
 
+# Host UID/GID so containers writing to bind-mounted volumes (e.g. atmos_gl_db's
+# data dir) match your user instead of drifting per-machine via a hand-edited .env.
+# Named DOCKER_UID/DOCKER_GID, not UID/GID, because UID is a bash readonly builtin
+# and can't be exported.
+export DOCKER_UID := $(shell id -u)
+export DOCKER_GID := $(shell id -g)
+
 # Backend services that run your mounted Python code (everything except UI/DB).
 BACKEND_SERVICES = data_collector layer_builder housekeeper map_api
 
@@ -157,7 +164,7 @@ psql:
 migrate:
 	@echo "Ensuring atmos_gl database is running"
 	@docker compose up $(DB_SERVICE) -d
-	PGHOST=localhost PGPORT=$(DB_PORT) PGUSER=$(DB_USER) PGPASSWORD=$(DB_PASS) PGDATABASE=$(DB_NAME) uv run alembic upgrade head
+	POSTGRES_HOST=localhost POSTGRES_PORT=$(DB_PORT) POSTGRES_USER=$(DB_USER) POSTGRES_PASSWORD=$(DB_PASS) POSTGRES_DB=$(DB_NAME) uv run alembic upgrade head
 
 ## status: Database Status Report
 status:

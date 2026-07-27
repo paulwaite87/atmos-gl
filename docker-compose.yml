@@ -14,11 +14,11 @@ services:
       - TZ=Pacific/Auckland
       - PYTHONPATH=/opt/project/src
       - PYTHONUNBUFFERED=1
-      - PGHOST=atmos_gl_db
-      - PGPORT=5432
-      - PGDATABASE=atmos_gl
-      - PGUSER=agl
-      - PGPASSWORD=agl
+      - POSTGRES_HOST=atmos_gl_db
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
     restart: unless-stopped
     depends_on:
       atmos_gl_db:
@@ -41,11 +41,11 @@ services:
       - TZ=Pacific/Auckland
       - PYTHONPATH=/opt/project/src
       - PYTHONUNBUFFERED=1
-      - PGHOST=atmos_gl_db
-      - PGPORT=5432
-      - PGDATABASE=atmos_gl
-      - PGUSER=agl
-      - PGPASSWORD=agl
+      - POSTGRES_HOST=atmos_gl_db
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
     restart: unless-stopped
     depends_on:
       atmos_gl_db:
@@ -90,11 +90,11 @@ services:
       - TZ=Pacific/Auckland
       - PYTHONPATH=/opt/project/src
       - PYTHONUNBUFFERED=1
-      - PGHOST=atmos_gl_db
-      - PGPORT=5432
-      - PGDATABASE=atmos_gl
-      - PGUSER=agl
-      - PGPASSWORD=agl
+      - POSTGRES_HOST=atmos_gl_db
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - CONFIG_PATH=/opt/project/config/atmos-gl.json
       - MAPTILER_API_KEY=${MAPTILER_API_KEY}
       - FIRMS_API_KEY=${FIRMS_API_KEY}
@@ -123,8 +123,8 @@ services:
   atmos_gl_db_init:
     image: alpine:latest
     command: >
-      sh -c "chown ${UID:-1000}:${GID:-1000} /var/lib/postgresql/data && 
-             chown ${UID:-1000}:${GID:-1000} /var/log/postgresql"
+      sh -c "chown ${DOCKER_UID:-1000}:${DOCKER_GID:-1000} /var/lib/postgresql/data &&
+             chown ${DOCKER_UID:-1000}:${DOCKER_GID:-1000} /var/log/postgresql"
     volumes:
       - agl-pgdata:/var/lib/postgresql/data
       - postgres_logs:/var/log/postgresql
@@ -135,14 +135,14 @@ services:
     image: postgis/postgis:15-3.3
     # The database STILL needs the user directive because it uses a pre-built image,
     # not your custom Dockerfile
-    user: "${UID:-1000}:${GID:-1000}"
+    user: "${DOCKER_UID:-1000}:${DOCKER_GID:-1000}"
     depends_on:
       atmos_gl_db_init:
         condition: service_completed_successfully
     environment:
-      POSTGRES_USER: agl
-      POSTGRES_PASSWORD: agl
-      POSTGRES_DB: atmos_gl
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
       PGTZ: Pacific/Auckland
     ports:
       - "15432:5432"
@@ -163,7 +163,7 @@ services:
       -c log_filename='postgresql.log'
       -c log_rotation_size=10MB
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U agl -d atmos_gl"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -182,11 +182,11 @@ services:
       - .env
     environment:
       - PYTHONPATH=/opt/project/src
-      - PGHOST=atmos_gl_db
-      - PGPORT=5432
-      - PGDATABASE=atmos_gl
-      - PGUSER=agl
-      - PGPASSWORD=agl
+      - POSTGRES_HOST=atmos_gl_db
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
     depends_on:
       atmos_gl_db:
         condition: service_healthy
