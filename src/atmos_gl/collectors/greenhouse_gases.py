@@ -190,14 +190,20 @@ class CamsGhgForecastCollector(CollectorBase):
 # Anomaly mode's baseline source: CAMS EGG4 reanalysis, 2003-2020 only. Confirmed live
 # against the real CDS API -- see the published spec's issue comments.
 _EGG4_DATASET = "cams-global-ghg-reanalysis-egg4"
-_EGG4_TIMEOUT_S = 300
+# Live testing found the full 3-hourly request (2920 timesteps/year) takes well over
+# 300s server-side with no sign of finishing (tracked a real job past 7 minutes still
+# "running") -- CO2/CH4 don't have enough intra-day variability at the column-mean
+# level for that resolution to matter for an ANNUAL-MEAN baseline anyway, so the
+# request only asks for one sample per day (365 timesteps/year, an 8x smaller job)
+# instead. Timeout kept generous (600s) as a margin on top of that.
+_EGG4_TIMEOUT_S = 600
 _EGG4_VARS = ("co2_column_mean_molar_fraction", "ch4_column_mean_molar_fraction")
-_EGG4_STEPS = ("0", "3", "6", "9", "12", "15", "18", "21")  # hour-of-day, full daily cycle
+_EGG4_STEPS = ("0",)  # one sample/day -- see the sizing note above
 
 
 def build_egg4_request(year: int) -> dict:
-    """CDS API request for CAMS EGG4's CO2+CH4 fields across a full baseline year at
-    3-hourly cadence -- GhgUpdater averages across time into a single annual-mean
+    """CDS API request for CAMS EGG4's CO2+CH4 fields across a full baseline year, one
+    sample per day -- GhgUpdater averages across the year into a single annual-mean
     baseline field (a fixed single day would introduce a seasonal bias, e.g. always
     comparing "today" against the baseline year's January 1st regardless of the
     current date)."""

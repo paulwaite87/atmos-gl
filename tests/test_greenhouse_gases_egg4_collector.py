@@ -52,10 +52,14 @@ def _fake_retrieve_writing_zip(make_netcdf_zip_bytes, content: bytes):
     return fake_retrieve
 
 
-def test_build_egg4_request_spans_the_full_baseline_year_at_3_hourly_steps():
+def test_build_egg4_request_spans_the_full_baseline_year_at_one_sample_per_day():
+    """One sample/day (365/year), not the original 3-hourly (2920/year) -- live
+    testing found the larger request taking well over 300s server-side with no sign
+    of finishing, and CO2/CH4 don't have enough intra-day variability at the
+    column-mean level for finer sampling to matter for an annual-mean baseline."""
     request = build_egg4_request(2010)
     assert request["date"] == "2010-01-01/2010-12-31"
-    assert request["step"] == ["0", "3", "6", "9", "12", "15", "18", "21"]
+    assert request["step"] == ["0"]
     assert set(request["variable"]) == {
         "co2_column_mean_molar_fraction", "ch4_column_mean_molar_fraction",
     }
