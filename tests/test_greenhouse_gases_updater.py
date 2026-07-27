@@ -21,6 +21,7 @@ def make_bare_ghg_updater(species, mode, workdir, output_path, baseline_year=200
     u.section = "greenhouse_gases"
     u.output_path = output_path
     u.settings = {"baseline_year": baseline_year}
+    u.common = {}
     u.plot = MagicMock()
     u._publish_current = MagicMock()
     return u
@@ -83,15 +84,37 @@ def test_run_skips_anomaly_combinations_when_baseline_not_yet_cached(tmp_path):
 def test_run_skips_a_combination_whose_output_is_already_fresh(tmp_path):
     _touch(_current_nc(tmp_path))
     _touch(_egg4_nc(tmp_path))
-    _touch(tmp_path / "data" / "greenhouse_gases_co2_absolute.png", mtime_offset=10)
     out_path = tmp_path / "data" / "greenhouse_gases.png"
 
     u = make_bare_ghg_updater("co2", "absolute", str(tmp_path), str(out_path))
+    co2_abs_out = tmp_path / "data" / "greenhouse_gases_co2_absolute.png"
+    _touch(co2_abs_out, mtime_offset=10)
+    u._write_render_signature(str(co2_abs_out), u._mode_settings_signature("co2", "absolute"))
+
     u.run()
 
     called = {(call.args[0], call.args[1]) for call in u.plot.call_args_list}
     assert ("co2", "absolute") not in called
     assert len(called) == 3
+
+
+def test_run_re_renders_a_combination_whose_output_is_data_fresh_but_settings_changed(tmp_path):
+    """The bug this closes: a palette/scale-only config change (no new source
+    data) must still force a re-render, not sit stale until the CAMS forecast
+    cache next refreshes."""
+    _touch(_current_nc(tmp_path))
+    _touch(_egg4_nc(tmp_path))
+    out_path = tmp_path / "data" / "greenhouse_gases.png"
+
+    u = make_bare_ghg_updater("co2", "absolute", str(tmp_path), str(out_path))
+    co2_abs_out = tmp_path / "data" / "greenhouse_gases_co2_absolute.png"
+    _touch(co2_abs_out, mtime_offset=10)
+    u._write_render_signature(str(co2_abs_out), "stale-signature-from-a-different-palette")
+
+    u.run()
+
+    called = {(call.args[0], call.args[1]) for call in u.plot.call_args_list}
+    assert ("co2", "absolute") in called
 
 
 def test_run_publishes_only_the_currently_configured_species_and_mode(tmp_path):

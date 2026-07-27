@@ -282,6 +282,38 @@ class Updater(PlottingMixin):
         if output_path and os.path.exists(output_path) and os.path.isfile(output_path):
             os.remove(output_path)
 
+    def _settings_signature(self, values: dict) -> str:
+        """Stable hash-equivalent of render-relevant settings, for _is_render_fresh.
+        Callers pass just the settings that actually affect the rendered pixels
+        (palette, min/max, opacity, key_fontsize, ...) -- not the whole config
+        section, so an unrelated setting changing elsewhere doesn't force a
+        needless re-render."""
+        return json.dumps(values, sort_keys=True)
+
+    def _is_render_fresh(self, out: str, sources: list[str], sig: str) -> bool:
+        """Whether `out` is up to date against both its data SOURCES (mtime, the
+        original check) and the render-relevant SETTINGS captured in `sig` (from
+        _settings_signature). A settings-only change (e.g. a palette edit) touches
+        neither `out` nor `sources`' mtimes, so relying on mtime alone silently
+        never re-renders until the source data itself next changes -- the
+        persisted '<out>.sig' sidecar closes that gap. Missing/mismatched sig
+        (including outputs rendered before this check existed) counts as stale
+        rather than trusted, so the fix takes effect on next run rather than only
+        once the source data happens to refresh."""
+        if not os.path.exists(out):
+            return False
+        if not all(os.path.getmtime(out) >= os.path.getmtime(s) for s in sources):
+            return False
+        try:
+            with open(out + ".sig") as f:
+                return f.read() == sig
+        except FileNotFoundError:
+            return False
+
+    def _write_render_signature(self, out: str, sig: str):
+        with open(out + ".sig", "w") as f:
+            f.write(sig)
+
     def get_db_field_at_hour(self, state: "ForecastState", product_name: str) -> dict | None:
         """Fetch a pre-processed field from the fieldstore for a specific forecast run
         + hour. Used by animation frame loops and other multi-hour operations.

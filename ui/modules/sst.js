@@ -48,10 +48,14 @@ export function loadLayer(map, config) {
         removeLegend(slotId);
     };
 
-    // Palette/mode changes never touch the raster image's own mtime the way a genuine
-    // mode switch does (mode IS part of urlFor, so that case is already covered by the
-    // default imageUrl regen chase) -- but a palette-only change re-renders just the
-    // legend key server-side, which keyUrl's independent chase catches.
+    // A mode switch changes urlFor itself (mode IS part of the filename), so that case
+    // is already covered by the default imageUrl regen chase. A palette/scale-only
+    // change doesn't change the filename, but it DOES force a full server-side
+    // re-render of both the image and its key together -- SSTUpdater.run()'s freshness
+    // check also compares a persisted settings signature, not just source-data mtime
+    // (see Updater._is_render_fresh / SSTUpdater._mode_settings_signature in
+    // tasks/sst.py) -- so keyUrl's independent chase is what actually catches that
+    // case landing.
     const keyUrlFor = (cfg) => keyFilename(modeFilename(cfg.outfile, cfg.mode));
 
     return liveLayerSync(map, {

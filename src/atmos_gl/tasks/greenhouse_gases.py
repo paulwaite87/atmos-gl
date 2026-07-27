@@ -222,6 +222,29 @@ class GhgUpdater(Updater):
             shutil.copy2(src, tmp)
             os.replace(tmp, dst)
 
+    def _mode_settings_signature(self, species: str, mode: str) -> str:
+        """Render-relevant settings for (species, mode), for _is_render_fresh --
+        opacity and key_fontsize are baked into the rendered pixels for both modes
+        (see plot()'s alpha and save_key_image's key_fontsize); min/max/palette only
+        apply to absolute (anomaly is auto-scaled from the data). baseline_year is
+        included for anomaly even though it also selects a different egg4_nc source
+        path -- belt and suspenders, and it's what actually changed from the user's
+        perspective if they edit it."""
+        values = {
+            "opacity": self.settings.get("opacity", 60),
+            "key_fontsize": self.common.get("key_fontsize", 10),
+        }
+        if mode == "absolute":
+            min_key, max_key = _SCALE_SETTING_KEYS[species]
+            values.update({
+                "min": self.settings.get(min_key, 0),
+                "max": self.settings.get(max_key, 1),
+                "palette": self.settings.get(f"{species}_palette", "thermal"),
+            })
+        else:
+            values["baseline_year"] = resolve_baseline_year(self.settings)
+        return self._settings_signature(values)
+
     def run(self, max_hours=None):
         # max_hours is a no-op here -- GHG renders once per cycle per (species, mode),
         # not per forecast hour. Accepted only so layer_builder's dispatch can call
@@ -249,14 +272,14 @@ class GhgUpdater(Updater):
 
                 out = self._output_path_for(species, mode)
                 sources = [current_nc] + ([egg4_nc] if mode == "anomaly" else [])
-                fresh = os.path.exists(out) and all(
-                    os.path.getmtime(out) >= os.path.getmtime(s) for s in sources
-                )
+                sig = self._mode_settings_signature(species, mode)
+                fresh = self._is_render_fresh(out, sources, sig)
                 if not fresh:
                     logger.info(f"Generating greenhouse gases {species} {mode} plot...")
                     self.plot(
                         species, mode, current_nc, egg4_nc if mode == "anomaly" else None, out
                     )
+                    self._write_render_signature(out, sig)
 
         # Publish whichever (species, mode) is currently configured -- unconditionally
         # of whether it needed re-rendering above, same as SSTUpdater.run(). Skipped
