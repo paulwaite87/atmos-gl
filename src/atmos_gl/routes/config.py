@@ -219,14 +219,14 @@ def _build_config_data() -> dict:
             data["fires"]["RULE__missing_firms_apikey"] = True
 
     if "greenhouse_gases" in data:
-        # Unlike every other RULE__missing_* case above, a missing CDSAPI_KEY does
-        # NOT disable the whole section -- Absolute mode (GEOS-CF) needs no API key
-        # at all, only the Anomaly baseline (CAMS EGG4) does. So this only forces
-        # `mode` back to absolute and flags it, leaving `enabled` untouched.
+        # Both Absolute and Anomaly modes are sourced from CAMS via the CDS API, so
+        # (unlike the original design, where GEOS-CF supplied a keyless Absolute
+        # mode) a missing CDSAPI_KEY disables the whole layer -- same shape as every
+        # other RULE__missing_* case above. GEOS-CF was dropped after live testing
+        # found it doesn't serve CO2 at all; see the published spec's issue comments.
         if not cdsapi_key:
+            data["greenhouse_gases"]["enabled"] = False
             data["greenhouse_gases"]["RULE__missing_cdsapi_key"] = True
-            if data["greenhouse_gases"].get("mode") == "anomaly":
-                data["greenhouse_gases"]["mode"] = "absolute"
 
     # Not stored in config.json, not user-editable (see lib/output_files.py) -- injected
     # here so the frontend can still read cfg.outfile exactly as before, just sourced

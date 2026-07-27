@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """CamsEgg4BaselineCollector: fetches the CAMS EGG4 reanalysis baseline field for the
 configured greenhouse_gases.baseline_year via the CDS API (submit-then-poll), bounded
-by a bounded bounded-blocking timeout so a slow/queued job never stalls
-collect_once()'s single-threaded synchronous loop indefinitely (see the GHG design
-grill). Mocks the cdsapi.Client boundary, matching the SST collector test seam.
+by a bounded-blocking timeout so a slow/queued job never stalls collect_once()'s
+single-threaded synchronous loop indefinitely (see the GHG design grill). Mocks the
+cdsapi.Client boundary, matching the SST collector test seam.
 """
 import concurrent.futures
 import os
@@ -13,6 +13,7 @@ import pytest
 
 from atmos_gl.collectors.greenhouse_gases import (
     CamsEgg4BaselineCollector,
+    build_egg4_request,
     _retrieve_with_timeout,
 )
 from atmos_gl.lib.greenhouse_gases import egg4_baseline_cache_path
@@ -41,6 +42,26 @@ def make_bare_egg4_collector(
     return c
 
 
+def _fake_retrieve_writing_zip(make_netcdf_zip_bytes, content: bytes):
+    zip_bytes = make_netcdf_zip_bytes("data.nc", content)
+
+    def fake_retrieve(dataset, request, target):
+        with open(target, "wb") as f:
+            f.write(zip_bytes)
+
+    return fake_retrieve
+
+
+def test_build_egg4_request_spans_the_full_baseline_year_at_3_hourly_steps():
+    request = build_egg4_request(2010)
+    assert request["date"] == "2010-01-01/2010-12-31"
+    assert request["step"] == ["0", "3", "6", "9", "12", "15", "18", "21"]
+    assert set(request["variable"]) == {
+        "co2_column_mean_molar_fraction", "ch4_column_mean_molar_fraction",
+    }
+    assert request["data_format"] == "netcdf_zip"
+
+
 def test_collect_skips_when_configured_year_already_cached(tmp_path, monkeypatch):
     year = 2010
     c = make_bare_egg4_collector(monkeypatch, settings={"baseline_year": year}, workdir=str(tmp_path))
@@ -56,16 +77,12 @@ def test_collect_skips_when_configured_year_already_cached(tmp_path, monkeypatch
     assert dest and open(egg4_baseline_cache_path(str(tmp_path), year), "rb").read() == b"already-cached"
 
 
-def test_collect_fetches_and_caches_when_missing(tmp_path, monkeypatch):
+def test_collect_fetches_unzips_and_caches_when_missing(tmp_path, monkeypatch, make_netcdf_zip_bytes):
     year = 2015
     c = make_bare_egg4_collector(monkeypatch, settings={"baseline_year": year}, workdir=str(tmp_path))
 
-    def fake_retrieve(dataset, request, target):
-        with open(target, "wb") as f:
-            f.write(b"fake-egg4-netcdf")
-
     mock_client = MagicMock()
-    mock_client.retrieve.side_effect = fake_retrieve
+    mock_client.retrieve.side_effect = _fake_retrieve_writing_zip(make_netcdf_zip_bytes, b"fake-egg4-netcdf")
 
     with patch(
         "atmos_gl.collectors.greenhouse_gases.cdsapi.Client", return_value=mock_client
@@ -78,15 +95,10 @@ def test_collect_fetches_and_caches_when_missing(tmp_path, monkeypatch):
     assert open(dest, "rb").read() == b"fake-egg4-netcdf"
 
 
-def test_collect_clamps_baseline_year_outside_egg4_coverage(tmp_path, monkeypatch):
+def test_collect_clamps_baseline_year_outside_egg4_coverage(tmp_path, monkeypatch, make_netcdf_zip_bytes):
     c = make_bare_egg4_collector(monkeypatch, settings={"baseline_year": 2099}, workdir=str(tmp_path))
-
-    def fake_retrieve(dataset, request, target):
-        with open(target, "wb") as f:
-            f.write(b"fake-egg4-netcdf")
-
     mock_client = MagicMock()
-    mock_client.retrieve.side_effect = fake_retrieve
+    mock_client.retrieve.side_effect = _fake_retrieve_writing_zip(make_netcdf_zip_bytes, b"fake-egg4-netcdf")
 
     with patch(
         "atmos_gl.collectors.greenhouse_gases.cdsapi.Client", return_value=mock_client
@@ -95,7 +107,7 @@ def test_collect_clamps_baseline_year_outside_egg4_coverage(tmp_path, monkeypatc
 
     assert mock_client.retrieve.call_count == 1
     request = mock_client.retrieve.call_args[0][1]
-    assert request["year"] == "2020"  # clamped to BASELINE_YEAR_MAX
+    assert request["date"] == "2020-01-01/2020-12-31"  # clamped to BASELINE_YEAR_MAX
 
 
 def test_collect_returns_gracefully_without_raising_on_timeout(tmp_path, monkeypatch):

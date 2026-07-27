@@ -66,7 +66,7 @@ class CollectorBase:
     # Config section to read settings from, if different from `section`. "" (default)
     # means "use section" -- a no-op for every existing subclass. Set this when two
     # collectors must share one settings section (e.g. the greenhouse_gases layer's
-    # GeosCfGhgCollector/CamsEgg4BaselineCollector both read species/mode/baseline_year
+    # CamsGhgForecastCollector/CamsEgg4BaselineCollector both read species/mode/baseline_year
     # from "greenhouse_gases") while keeping independent `section` identities for
     # _drive()'s scheduling/status/channel_enabled bookkeeping -- the plain-CollectorBase
     # counterpart to FieldCollectorBase's status_name/section split.

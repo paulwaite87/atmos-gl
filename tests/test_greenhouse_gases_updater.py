@@ -9,6 +9,7 @@ published), not rendering internals (netCDF parsing, unit conversion, matplotlib
 import os
 from unittest.mock import MagicMock
 
+from atmos_gl.lib.greenhouse_gases import camsforecast_cache_path, egg4_baseline_cache_path
 from atmos_gl.tasks.greenhouse_gases import GhgUpdater
 
 
@@ -34,16 +35,16 @@ def _touch(path, mtime_offset=0):
         os.utime(path, (t, t))
 
 
-def _geoscf_nc(tmp_path):
-    return tmp_path / "data" / "greenhouse_gases_cache_geoscf.nc"
+def _current_nc(tmp_path):
+    return camsforecast_cache_path(str(tmp_path))
 
 
 def _egg4_nc(tmp_path, year=2003):
-    return tmp_path / "data" / f"greenhouse_gases_cache_egg4_{year}.nc"
+    return egg4_baseline_cache_path(str(tmp_path), year)
 
 
 def test_run_renders_all_four_species_mode_combinations_to_separate_paths(tmp_path):
-    _touch(_geoscf_nc(tmp_path))
+    _touch(_current_nc(tmp_path))
     _touch(_egg4_nc(tmp_path))
     out_path = tmp_path / "data" / "greenhouse_gases.png"
 
@@ -58,7 +59,7 @@ def test_run_renders_all_four_species_mode_combinations_to_separate_paths(tmp_pa
     }
 
 
-def test_run_skips_when_geoscf_cache_missing(tmp_path):
+def test_run_skips_when_current_cache_missing(tmp_path):
     out_path = tmp_path / "data" / "greenhouse_gases.png"
     u = make_bare_ghg_updater("co2", "absolute", str(tmp_path), str(out_path))
     u.run()
@@ -68,7 +69,7 @@ def test_run_skips_when_geoscf_cache_missing(tmp_path):
 
 
 def test_run_skips_anomaly_combinations_when_baseline_not_yet_cached(tmp_path):
-    _touch(_geoscf_nc(tmp_path))
+    _touch(_current_nc(tmp_path))
     # No EGG4 baseline cache -- first boot / not fetched yet for this baseline_year.
     out_path = tmp_path / "data" / "greenhouse_gases.png"
 
@@ -80,7 +81,7 @@ def test_run_skips_anomaly_combinations_when_baseline_not_yet_cached(tmp_path):
 
 
 def test_run_skips_a_combination_whose_output_is_already_fresh(tmp_path):
-    _touch(_geoscf_nc(tmp_path))
+    _touch(_current_nc(tmp_path))
     _touch(_egg4_nc(tmp_path))
     _touch(tmp_path / "data" / "greenhouse_gases_co2_absolute.png", mtime_offset=10)
     out_path = tmp_path / "data" / "greenhouse_gases.png"
@@ -94,7 +95,7 @@ def test_run_skips_a_combination_whose_output_is_already_fresh(tmp_path):
 
 
 def test_run_publishes_only_the_currently_configured_species_and_mode(tmp_path):
-    _touch(_geoscf_nc(tmp_path))
+    _touch(_current_nc(tmp_path))
     _touch(_egg4_nc(tmp_path))
     out_path = tmp_path / "data" / "greenhouse_gases.png"
 
@@ -107,7 +108,7 @@ def test_run_publishes_only_the_currently_configured_species_and_mode(tmp_path):
 
 
 def test_run_publishes_nothing_when_configured_mode_is_anomaly_but_baseline_missing(tmp_path):
-    _touch(_geoscf_nc(tmp_path))
+    _touch(_current_nc(tmp_path))
     # No EGG4 baseline -- configured mode is anomaly, so nothing is published even
     # though absolute renders happen for both species.
     out_path = tmp_path / "data" / "greenhouse_gases.png"

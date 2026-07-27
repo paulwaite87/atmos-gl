@@ -1,0 +1,174 @@
+#!/usr/bin/env python3
+"""CamsGhgForecastCollector: fetches CAMS's current CO2+CH4 forecast snapshot
+(Absolute mode's source) via the CDS API. Same test seam as the EGG4 baseline
+collector -- mock the cdsapi.Client boundary, assert on cache file existence and the
+constructed request, not on netCDF contents.
+
+NASA GEOS-CF was the original Absolute-mode choice; live testing found it doesn't
+serve CO2 at all, so this collector (and CAMS generally) replaced it -- see the
+published spec's issue comments.
+"""
+import concurrent.futures
+import os
+from unittest.mock import MagicMock, patch
+
+from atmos_gl.collectors.greenhouse_gases import (
+    CamsGhgForecastCollector,
+    build_cams_forecast_request,
+)
+from atmos_gl.lib.greenhouse_gases import camsforecast_cache_path
+
+
+def make_bare_forecast_collector(settings=None, workdir=".", api_key="secret-token", monkeypatch=None):
+    c = CamsGhgForecastCollector.__new__(CamsGhgForecastCollector)
+    c.settings = settings or {}
+    url = c.settings.get("cams_ads_url", "https://ads.example.com/api")
+
+    def fake_get_setting(section, key, default=None):
+        if section == "data_collector" and key == "datasources":
+            return {"cams_ads": url}
+        if section == "common" and key == "workdir":
+            return workdir
+        return default
+
+    c.config = MagicMock()
+    c.config.get_setting.side_effect = fake_get_setting
+    if api_key is not None:
+        monkeypatch.setenv("CDSAPI_KEY", api_key)
+    else:
+        monkeypatch.delenv("CDSAPI_KEY", raising=False)
+    return c
+
+
+def test_build_cams_forecast_request_targets_leadtime_zero_and_both_species():
+    request = build_cams_forecast_request("2026-07-27")
+    assert request["leadtime_hour"] == ["0"]
+    assert request["date"] == "2026-07-27/2026-07-27"
+    assert set(request["variable"]) == {
+        "co2_column_mean_molar_fraction", "ch4_column_mean_molar_fraction",
+    }
+    assert request["data_format"] == "netcdf_zip"
+
+
+def test_collect_fetches_unzips_and_caches(tmp_path, monkeypatch, make_netcdf_zip_bytes):
+    c = make_bare_forecast_collector(workdir=str(tmp_path), monkeypatch=monkeypatch)
+    zip_bytes = make_netcdf_zip_bytes("data.nc", b"fake-netcdf-bytes")
+
+    def fake_retrieve(dataset, request, target):
+        with open(target, "wb") as f:
+            f.write(zip_bytes)
+
+    mock_client = MagicMock()
+    mock_client.retrieve.side_effect = fake_retrieve
+
+    with patch(
+        "atmos_gl.collectors.greenhouse_gases.cdsapi.Client", return_value=mock_client
+    ) as mock_client_cls:
+        c.collect()
+
+    mock_client_cls.assert_called_once_with(url="https://ads.example.com/api", key="secret-token")
+    dest = camsforecast_cache_path(str(tmp_path))
+    assert os.path.exists(dest)
+    assert open(dest, "rb").read() == b"fake-netcdf-bytes"
+
+
+def test_collect_returns_gracefully_without_raising_on_timeout(tmp_path, monkeypatch):
+    c = make_bare_forecast_collector(workdir=str(tmp_path), monkeypatch=monkeypatch)
+
+    with patch("atmos_gl.collectors.greenhouse_gases.cdsapi.Client"), patch(
+        "atmos_gl.collectors.greenhouse_gases._retrieve_with_timeout",
+        side_effect=concurrent.futures.TimeoutError,
+    ):
+        c.collect()  # must not raise
+
+    assert not os.path.exists(camsforecast_cache_path(str(tmp_path)))
+
+
+def test_collect_skips_without_raising_when_no_api_key(tmp_path, monkeypatch):
+    c = make_bare_forecast_collector(
+        workdir=str(tmp_path), api_key=None, monkeypatch=monkeypatch
+    )
+
+    with patch("atmos_gl.collectors.greenhouse_gases.cdsapi.Client") as mock_client_cls:
+        c.collect()
+
+    mock_client_cls.assert_not_called()
+
+
+def test_collect_refetches_every_call_unlike_the_once_per_year_baseline(
+    tmp_path, monkeypatch, make_netcdf_zip_bytes
+):
+    """Unlike CamsEgg4BaselineCollector (fetch once per baseline_year, then done),
+    the forecast is current conditions -- collect() must always attempt a fresh
+    fetch when called; _drive()'s runs_per_day cadence is what limits how often
+    that happens, not an existence check inside collect() itself."""
+    c = make_bare_forecast_collector(workdir=str(tmp_path), monkeypatch=monkeypatch)
+    zip_bytes = make_netcdf_zip_bytes("data.nc", b"second-fetch")
+
+    def fake_retrieve(dataset, request, target):
+        with open(target, "wb") as f:
+            f.write(zip_bytes)
+
+    mock_client = MagicMock()
+    mock_client.retrieve.side_effect = fake_retrieve
+
+    dest = camsforecast_cache_path(str(tmp_path))
+    os.makedirs(os.path.dirname(dest), exist_ok=True)
+    with open(dest, "wb") as f:
+        f.write(b"stale-data")
+
+    with patch(
+        "atmos_gl.collectors.greenhouse_gases.cdsapi.Client", return_value=mock_client
+    ):
+        c.collect()
+
+    mock_client.retrieve.assert_called_once()
+    assert open(dest, "rb").read() == b"second-fetch"
+
+
+def test_collect_falls_back_to_an_earlier_date_when_todays_run_is_not_yet_published(
+    tmp_path, monkeypatch, make_netcdf_zip_bytes
+):
+    """CAMS issues one forecast per day, but "today"'s run isn't always published
+    yet when this collector happens to run (confirmed live: requesting today can 400
+    while yesterday succeeds) -- collect() must search a few days back rather than
+    giving up on the first rejection, same fallback shape resolve_gfs_baseline() uses
+    for GFS's own publish lag."""
+    c = make_bare_forecast_collector(workdir=str(tmp_path), monkeypatch=monkeypatch)
+    zip_bytes = make_netcdf_zip_bytes("data.nc", b"yesterdays-run")
+    seen_dates = []
+
+    def fake_retrieve(dataset, request, target):
+        date_str = request["date"].split("/")[0]
+        seen_dates.append(date_str)
+        if len(seen_dates) == 1:
+            raise RuntimeError("400 Client Error: today's run not published yet")
+        with open(target, "wb") as f:
+            f.write(zip_bytes)
+
+    mock_client = MagicMock()
+    mock_client.retrieve.side_effect = fake_retrieve
+
+    with patch(
+        "atmos_gl.collectors.greenhouse_gases.cdsapi.Client", return_value=mock_client
+    ):
+        c.collect()
+
+    assert len(seen_dates) == 2
+    assert seen_dates[1] < seen_dates[0]  # tried an earlier date second
+    dest = camsforecast_cache_path(str(tmp_path))
+    assert open(dest, "rb").read() == b"yesterdays-run"
+
+
+def test_collect_gives_up_gracefully_when_no_recent_run_is_available(tmp_path, monkeypatch):
+    c = make_bare_forecast_collector(workdir=str(tmp_path), monkeypatch=monkeypatch)
+    mock_client = MagicMock()
+    mock_client.retrieve.side_effect = RuntimeError("400 Client Error")
+
+    with patch(
+        "atmos_gl.collectors.greenhouse_gases.cdsapi.Client", return_value=mock_client
+    ):
+        c.collect()  # must not raise
+
+    assert mock_client.retrieve.call_count == 3  # _CAMS_FORECAST_SEARCH_DAYS
+    assert not os.path.exists(camsforecast_cache_path(str(tmp_path)))

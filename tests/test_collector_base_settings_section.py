@@ -2,7 +2,7 @@
 """CollectorBase.settings_section: an optional override letting a collector read its
 settings from a DIFFERENT config section than the one it uses for scheduling/status
 identity (self.section). Needed by the greenhouse_gases layer's two collectors
-(GeosCfGhgCollector, CamsEgg4BaselineCollector), which share one config section
+(CamsGhgForecastCollector, CamsEgg4BaselineCollector), which share one config section
 ("greenhouse_gases") but must keep independent Data Status rows / _drive() scheduling
 -- the same section-vs-identity split FieldCollectorBase already has via status_name,
 here for plain CollectorBase subclasses instead.
@@ -34,7 +34,7 @@ def test_settings_read_from_section_by_default():
 
 def test_settings_read_from_settings_section_override_when_set():
     class SharedSettingsCollector(CollectorBase):
-        section = "ghg_geoscf"
+        section = "ghg_forecast"
         settings_section = "greenhouse_gases"
 
     config = make_config({"greenhouse_gases": {"species": "co2"}})

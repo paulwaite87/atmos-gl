@@ -16,9 +16,9 @@ from atmos_gl.lib.config import AtmosGLConfig
 from atmos_gl.lib.coastline import coastline_land_mask
 from atmos_gl.lib.greenhouse_gases import (
     SPECIES,
+    camsforecast_cache_path,
     compute_anomaly,
     egg4_baseline_cache_path,
-    geoscf_cache_path,
     resolve_baseline_year,
 )
 from .common import Updater, MapData
@@ -26,18 +26,25 @@ from .plotting import Plot
 
 logger = logging.getLogger(__name__)
 
-# GEOS-CF's native resolution is already ~0.25 deg -- no LOD coarsening needed on top
-# of it, unlike SST's much coarser OISST source.
-_REGRID_STEP_DEG = 0.25
+# CAMS's high-resolution forecast is ~9km (~0.1 deg) native -- no further LOD
+# coarsening needed on top of it, unlike SST's much coarser OISST source.
+_REGRID_STEP_DEG = 0.1
 
 _LAND_TINT_COLOR = "#5a5a5a"
 
-# NOTE: variable names and native units below are the best-documented identifiers for
-# each source as of this layer's design research -- NASA/Copernicus's live metadata
-# endpoints didn't return confirmation during that research (see the published spec's
-# "Further Notes"). Confirm against the live sources and correct here if they differ.
-_GEOSCF_VARS = {"co2": "CO2", "ch4": "CH4"}
-_EGG4_VARS = {"co2": "co2_mass_mixing_ratio", "ch4": "ch4_column_mean_molar_fraction"}
+# Both CAMS datasets (the current forecast and the EGG4 baseline) use the same CDS
+# variable identifiers for these two species.
+#
+# NOTE: these are the request-time CDS variable identifiers, confirmed live against
+# the real API (see the published spec's issue comments) -- but the corresponding
+# in-file netCDF variable name (what xarray actually sees once a request is
+# downloaded) was NOT confirmed, since completing a download requires accepting the
+# dataset's CDS/ADS license first (a one-time step only the account owner can do).
+# Column-mean molar fraction is the standard XCO2/XCH4 convention, normally reported
+# directly in ppm/ppb (no unit-conversion factor assumed here, unlike GEOS-CF's raw
+# mixing ratio) -- confirm both the variable name and units against a real downloaded
+# file and correct here if either differs.
+_CAMS_VARS = {"co2": "co2_column_mean_molar_fraction", "ch4": "ch4_column_mean_molar_fraction"}
 _DISPLAY_UNIT = {"co2": "ppm", "ch4": "ppb"}
 _PALETTES = {"thermal": "magma", "vivid": "turbo", "deep": "viridis", "ocean": "inferno"}
 # Flat, species-prefixed setting keys (co2_min_ppm, ch4_palette, ...) rather than a
@@ -48,12 +55,21 @@ _PALETTES = {"thermal": "magma", "vivid": "turbo", "deep": "viridis", "ocean": "
 _SCALE_SETTING_KEYS = {"co2": ("co2_min_ppm", "co2_max_ppm"), "ch4": ("ch4_min_ppb", "ch4_max_ppb")}
 
 
-def _load_field(nc_path: str, var: str):
+def _load_field(nc_path: str, var: str, *, reduce: str = "first"):
     """(matrix, lats, lons) from a cached netCDF, lon-normalised to -180..180 and
-    sorted, matching the convention SSTUpdater.plot() uses for OISST."""
+    sorted, matching the convention SSTUpdater.plot() uses for OISST.
+
+    reduce controls how a time dimension (if present) collapses: "first" (the
+    current-conditions cache holds a single reading) or "mean" (the EGG4 baseline
+    cache holds a full baseline year at 3-hourly cadence -- averaging across it gives
+    a genuine annual-mean baseline rather than an arbitrarily-seasonally-biased single
+    day, e.g. always comparing "today" against the baseline year's January 1st
+    regardless of the current date)."""
     ds = xr.open_dataset(nc_path)
     da = ds[var]
-    raw_matrix = (da.isel(time=0) if "time" in da.dims else da).values.squeeze()
+    if "time" in da.dims:
+        da = da.mean(dim="time") if reduce == "mean" else da.isel(time=0)
+    raw_matrix = da.values.squeeze()
     lat_name = "lat" if "lat" in ds.coords else "latitude"
     lon_name = "lon" if "lon" in ds.coords else "longitude"
     lat_raw = ds[lat_name].values
@@ -87,15 +103,15 @@ class GhgUpdater(Updater):
         base, ext = os.path.splitext(self.output_path)
         return f"{base}_{species}_{mode}{ext}"
 
-    def plot(self, species: str, mode: str, geoscf_nc: str, egg4_nc: str | None, output_path: str):
+    def plot(self, species: str, mode: str, current_nc: str, egg4_nc: str | None, output_path: str):
         alpha = float(self.settings.get("opacity", 60) / 100)
         title_species = "CO2" if species == "co2" else "CH4"
 
-        display_data, lat_raw, lon_norm = _load_field(geoscf_nc, _GEOSCF_VARS[species])
+        display_data, lat_raw, lon_norm = _load_field(current_nc, _CAMS_VARS[species])
 
         if mode == "anomaly":
             baseline_matrix, baseline_lat, baseline_lon = _load_field(
-                egg4_nc, _EGG4_VARS[species]
+                egg4_nc, _CAMS_VARS[species], reduce="mean"
             )
             display_data = compute_anomaly(
                 display_data, lat_raw, lon_norm, baseline_matrix, baseline_lat, baseline_lon
@@ -200,10 +216,10 @@ class GhgUpdater(Updater):
         # max_hours is a no-op here -- GHG renders once per cycle per (species, mode),
         # not per forecast hour. Accepted only so layer_builder's dispatch can call
         # every TASK_CLASSES entry's run() the same way.
-        geoscf_nc = geoscf_cache_path(self.workdir)
-        if not os.path.exists(geoscf_nc):
+        current_nc = camsforecast_cache_path(self.workdir)
+        if not os.path.exists(current_nc):
             logger.info(
-                "Greenhouse gases: GEOS-CF cache not present yet "
+                "Greenhouse gases: CAMS forecast cache not present yet "
                 "(data collector hasn't fetched it); skipping."
             )
             return
@@ -222,14 +238,14 @@ class GhgUpdater(Updater):
                     continue
 
                 out = self._output_path_for(species, mode)
-                sources = [geoscf_nc] + ([egg4_nc] if mode == "anomaly" else [])
+                sources = [current_nc] + ([egg4_nc] if mode == "anomaly" else [])
                 fresh = os.path.exists(out) and all(
                     os.path.getmtime(out) >= os.path.getmtime(s) for s in sources
                 )
                 if not fresh:
                     logger.info(f"Generating greenhouse gases {species} {mode} plot...")
                     self.plot(
-                        species, mode, geoscf_nc, egg4_nc if mode == "anomaly" else None, out
+                        species, mode, current_nc, egg4_nc if mode == "anomaly" else None, out
                     )
 
         # Publish whichever (species, mode) is currently configured -- unconditionally

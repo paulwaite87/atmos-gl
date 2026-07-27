@@ -3,10 +3,17 @@
 collectors (collectors/greenhouse_gases.py) and the updater (tasks/greenhouse_gases.py)
 -- same "one source of truth for path/URL conventions" role lib/oisst.py plays for SST.
 
+Both Absolute (current conditions) and Anomaly (vs. a historical baseline year) are
+sourced from Copernicus CAMS via the CDS API, covering CO2 and CH4 together --
+NASA GEOS-CF was the original Absolute-mode choice, but live testing against its real
+OPeNDAP server found it does not serve CO2 at all (only CH4), so both modes now share
+one data source family. See the published spec's "Further Notes"/issue comments for
+the correction.
+
 Unlike SST, no upstream source ships a pre-computed CO2/CH4 anomaly: it's the current
-GEOS-CF field minus a CAMS EGG4 historical baseline field, computed here. The two
-sources are on different native grids (GEOS-CF ~0.25 deg, EGG4 0.75 deg), so the
-baseline is upsampled onto the current field's finer grid before subtracting --
+CAMS forecast field minus a CAMS EGG4 historical baseline field, computed here. The two
+sources are on different native grids (forecast ~0.1 deg, EGG4 reanalysis ~0.75 deg), so
+the baseline is upsampled onto the current field's finer grid before subtracting --
 downsampling the current field to match the baseline's coarser grid instead would make
 Anomaly mode visibly blockier than Absolute mode when a user switches between them.
 """
@@ -37,9 +44,10 @@ def resolve_baseline_year(settings: dict) -> int:
     return min(max(year, BASELINE_YEAR_MIN), BASELINE_YEAR_MAX)
 
 
-def geoscf_cache_path(workdir: str) -> str:
-    """Cache path for the GEOS-CF current CO2+CH4 netCDF."""
-    return os.path.join(workdir, "data", "greenhouse_gases_cache_geoscf.nc")
+def camsforecast_cache_path(workdir: str) -> str:
+    """Cache path for the current CO2+CH4 netCDF (CAMS global greenhouse gas
+    forecasts, leadtime_hour=0 -- the nearest-to-now analysis-initialised step)."""
+    return os.path.join(workdir, "data", "greenhouse_gases_cache_camsforecast.nc")
 
 
 def egg4_baseline_cache_path(workdir: str, baseline_year: int) -> str:

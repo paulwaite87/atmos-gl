@@ -3,7 +3,7 @@ import { keyFilename, showLegend, removeLegend } from './_legend.js';
 
 // Insert "_<species>_<mode>" before the extension: "data/greenhouse_gases.png" ->
 // "data/greenhouse_gases_co2_absolute.png". The backend always keeps all 4
-// species x mode combinations fresh on disk (GeosCfGhgCollector/
+// species x mode combinations fresh on disk (CamsGhgForecastCollector/
 // CamsEgg4BaselineCollector fetch unconditionally of species/mode; GhgUpdater renders
 // all 4 every cycle -- see tasks/greenhouse_gases.py), so switching species or mode in
 // the config UI applies on this layer's next poll tick with no render wait, same as

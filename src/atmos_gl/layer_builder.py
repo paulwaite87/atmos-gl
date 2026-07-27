@@ -118,7 +118,7 @@ def build_layer_channel_keys(field_collector_classes, cache_collector_classes) -
             # collector per layer_key, so this is a no-op behaviour change for them.
             # Where two collectors share one layer_key (greenhouse_gases' GEOS-CF +
             # EGG4 baseline pair), the FIRST one registered in cache_collector_classes
-            # wins -- deliberately GeosCfGhgCollector, since it's the layer's true
+            # wins -- deliberately CamsGhgForecastCollector, since it's the layer's true
             # hard dependency (both modes need it; EGG4 only gates Anomaly, which
             # already self-gates in GhgUpdater.run() independent of channel_enabled).
             mapping.setdefault(layer_key, getattr(CollectorCls, "channel_key", None))
