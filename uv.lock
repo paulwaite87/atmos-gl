@@ -169,6 +169,123 @@ wheels = [
 ]
 
 [[package]]
+name = "atmos-gl"
+version = "1.0.0"
+source = { editable = "." }
+dependencies = [
+    { name = "aiohttp" },
+    { name = "alembic" },
+    { name = "beautifulsoup4" },
+    { name = "cartopy" },
+    { name = "cdsapi" },
+    { name = "cfgrib" },
+    { name = "configparser" },
+    { name = "dask" },
+    { name = "datetime" },
+    { name = "eccodes" },
+    { name = "eccodes-python" },
+    { name = "fastapi" },
+    { name = "fsspec" },
+    { name = "geoalchemy2" },
+    { name = "h5netcdf" },
+    { name = "h5py" },
+    { name = "idna" },
+    { name = "jinja2" },
+    { name = "matplotlib" },
+    { name = "netcdf4" },
+    { name = "numpy" },
+    { name = "pandas" },
+    { name = "pillow" },
+    { name = "pip" },
+    { name = "psycopg2-binary" },
+    { name = "pydap" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "python-dateutil" },
+    { name = "pytz" },
+    { name = "requests" },
+    { name = "scipy" },
+    { name = "sgp4" },
+    { name = "six" },
+    { name = "skyfield" },
+    { name = "soupsieve" },
+    { name = "sqlalchemy" },
+    { name = "typing-extensions" },
+    { name = "urllib3" },
+    { name = "uvicorn" },
+    { name = "watchdog" },
+    { name = "websocket-client" },
+    { name = "websockets" },
+    { name = "xarray" },
+    { name = "zope-interface" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "black" },
+    { name = "httpx" },
+    { name = "ruff" },
+    { name = "testcontainers" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "aiohttp", specifier = ">=3.13.5" },
+    { name = "alembic", specifier = ">=1.18.5" },
+    { name = "beautifulsoup4", specifier = "==4.14.3" },
+    { name = "cartopy", specifier = "==0.25.0" },
+    { name = "cdsapi", specifier = ">=0.7.7" },
+    { name = "cfgrib", specifier = "==0.9.15.1" },
+    { name = "configparser", specifier = "==7.2.0" },
+    { name = "dask", specifier = "==2026.3.0" },
+    { name = "datetime", specifier = "==6.0" },
+    { name = "eccodes", specifier = "==2.46.0" },
+    { name = "eccodes-python", specifier = "==0.9.9" },
+    { name = "fastapi", specifier = ">=0.136.1" },
+    { name = "fsspec", specifier = ">=2026.3.0" },
+    { name = "geoalchemy2", specifier = ">=0.20.0" },
+    { name = "h5netcdf", specifier = ">=1.8.1" },
+    { name = "h5py", specifier = ">=3.16.0" },
+    { name = "idna", specifier = "==3.11" },
+    { name = "jinja2", specifier = ">=3.1.6" },
+    { name = "matplotlib", specifier = "==3.10.8" },
+    { name = "netcdf4", specifier = "==1.7.4" },
+    { name = "numpy", specifier = "==2.4.4" },
+    { name = "pandas", specifier = "==3.0.2" },
+    { name = "pillow", specifier = "==12.2.0" },
+    { name = "pip", specifier = ">=26.1.1" },
+    { name = "psycopg2-binary", specifier = ">=2.9.12" },
+    { name = "pydap", specifier = "==3.5.9" },
+    { name = "pytest", specifier = ">=9.0.3" },
+    { name = "pytest-asyncio", specifier = ">=1.3.0" },
+    { name = "python-dateutil", specifier = "==2.9.0.post0" },
+    { name = "pytz", specifier = "==2026.1.post1" },
+    { name = "requests", specifier = "==2.33.1" },
+    { name = "scipy", specifier = "==1.17.1" },
+    { name = "sgp4", specifier = ">=2.25" },
+    { name = "six", specifier = "==1.17.0" },
+    { name = "skyfield", specifier = ">=1.54" },
+    { name = "soupsieve", specifier = "==2.8.3" },
+    { name = "sqlalchemy", specifier = ">=2.0.51" },
+    { name = "typing-extensions", specifier = "==4.15.0" },
+    { name = "urllib3", specifier = "==2.6.3" },
+    { name = "uvicorn", specifier = ">=0.47.0" },
+    { name = "watchdog", specifier = ">=6.0.0" },
+    { name = "websocket-client", specifier = "==1.9.0" },
+    { name = "websockets", specifier = "==16.0" },
+    { name = "xarray", specifier = "==2026.4.0" },
+    { name = "zope-interface", specifier = "==8.3" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "black", specifier = ">=26.3.1" },
+    { name = "httpx", specifier = ">=0.28.1" },
+    { name = "ruff", specifier = ">=0.15.11" },
+    { name = "testcontainers", extras = ["postgres"], specifier = ">=4.14.2" },
+]
+
+[[package]]
 name = "attrs"
 version = "26.1.0"
 source = { registry = "https://pypi.org/simple" }
@@ -257,6 +374,20 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/a0/ec/ba18945e7d6e55a58364d9fb2e46049c1c2998b3d805f19b703f14e81057/cattrs-26.1.0.tar.gz", hash = "sha256:fa239e0f0ec0715ba34852ce813986dfed1e12117e209b816ab87401271cdd40", size = 495672, upload-time = "2026-02-18T22:15:19.406Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/80/56/60547f7801b97c67e97491dc3d9ade9fbccbd0325058fd3dfcb2f5d98d90/cattrs-26.1.0-py3-none-any.whl", hash = "sha256:d1e0804c42639494d469d08d4f26d6b9de9b8ab26b446db7b5f8c2e97f7c3096", size = 73054, upload-time = "2026-02-18T22:15:17.958Z" },
+]
+
+[[package]]
+name = "cdsapi"
+version = "0.7.7"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "ecmwf-datastores-client" },
+    { name = "requests" },
+    { name = "tqdm" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/55/f3/6cb5b4bf077c441978c5d5be3a568d37e1f07f3e7177a17fa66aec2594b6/cdsapi-0.7.7.tar.gz", hash = "sha256:bc0cf807c1b78aceba6a11c3a5180f885f47f71a4e58205e324cfedcee16f10b", size = 13322, upload-time = "2025-09-30T19:11:22.404Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/4f/f4/4a65460d5cb6784128019fd707a87993f378db25e796eba01400a0903f62/cdsapi-0.7.7-py2.py3-none-any.whl", hash = "sha256:384c1658572d6dc53f4111f6dd46fcdfe6fea54a688af9756d71f6fe9118b66d", size = 12293, upload-time = "2025-09-30T19:11:21.184Z" },
 ]
 
 [[package]]
@@ -639,6 +770,21 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/7a/5d/c2e7a9df93c46668f98eb28b137b82d1fa2620427a0e3e8e1e7f7002480b/eccodes-python-0.9.9.tar.gz", hash = "sha256:faeca4cc92e5c50b2b3bc65c4640cfb6b7c90f2bea7516649ac213ecb0fd9314", size = 53142, upload-time = "2020-08-03T14:25:51.295Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/13/58/a304ae6f224513b66a2c8f0ea2e45a70e841f43d1b866825e95f325c2d28/eccodes_python-0.9.9-py2.py3-none-any.whl", hash = "sha256:ebaffeb01f44c527123dc2e83c9b98a22900bcbeaf73595b4faf1c5f156cc872", size = 44555, upload-time = "2020-08-03T14:25:50.036Z" },
+]
+
+[[package]]
+name = "ecmwf-datastores-client"
+version = "0.5.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "attrs" },
+    { name = "multiurl" },
+    { name = "requests" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/42/5e/99ad10e2ea56b48a78f1755cb5af028721240d8cbf354d83d23410e3581f/ecmwf_datastores_client-0.5.1.tar.gz", hash = "sha256:0ebf6304dc267befa506ce805208d5c7a675e1b0dd76da1dad5dc8501d318cc4", size = 48879, upload-time = "2026-03-31T10:48:14.709Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/13/a6/27bc3c51cf862c8b70bc8fe21b812b9c1ca6f31ecee9def96c82d93f003b/ecmwf_datastores_client-0.5.1-py3-none-any.whl", hash = "sha256:3dce212f2da773e22f509c25c7c10144789658107e0a37d09e02cbeffc38ec57", size = 29196, upload-time = "2026-03-31T10:48:13.463Z" },
 ]
 
 [[package]]
@@ -1418,6 +1564,21 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/0c/f7/addf1087b860ac60e6f382240f64fb99f8bfb532bb06f7c542b83c29ca61/multidict-6.7.1-cp314-cp314t-win_amd64.whl", hash = "sha256:497bde6223c212ba11d462853cfa4f0ae6ef97465033e7dc9940cdb3ab5b48e5", size = 53542, upload-time = "2026-01-26T02:46:08.809Z" },
     { url = "https://files.pythonhosted.org/packages/4c/81/4629d0aa32302ef7b2ec65c75a728cc5ff4fa410c50096174c1632e70b3e/multidict-6.7.1-cp314-cp314t-win_arm64.whl", hash = "sha256:2bbd113e0d4af5db41d5ebfe9ccaff89de2120578164f86a5d17d5a576d1e5b2", size = 44719, upload-time = "2026-01-26T02:46:11.146Z" },
     { url = "https://files.pythonhosted.org/packages/81/08/7036c080d7117f28a4af526d794aab6a84463126db031b007717c1a6676e/multidict-6.7.1-py3-none-any.whl", hash = "sha256:55d97cc6dae627efa6a6e548885712d4864b81110ac76fa4e534c03819fa4a56", size = 12319, upload-time = "2026-01-26T02:46:44.004Z" },
+]
+
+[[package]]
+name = "multiurl"
+version = "0.3.9"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "python-dateutil" },
+    { name = "pytz" },
+    { name = "requests" },
+    { name = "tqdm" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/d3/35/a08c568e63fda8cb1b7f3168409c026d2b407ab6d82da09cea078b01c2d7/multiurl-0.3.9.tar.gz", hash = "sha256:799b7998bfabd4e15d51ba09d08eb5d0716762655bae6e09db00a14c3bfaeae6", size = 20044, upload-time = "2026-06-18T07:43:38.756Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/59/f1/2374970b2ad0ab20e28a0cd12eec1c234567fef31064f0903396d55ae3f1/multiurl-0.3.9-py3-none-any.whl", hash = "sha256:5acedb53343bb47ff6188405dc33e10c1f1713591de8929a69b966d4d395d88e", size = 22610, upload-time = "2026-06-18T07:43:37.727Z" },
 ]
 
 [[package]]
@@ -2490,6 +2651,18 @@ wheels = [
 ]
 
 [[package]]
+name = "tqdm"
+version = "4.69.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "colorama", marker = "sys_platform == 'win32'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/dd/84/da0e5038228fa34dfd77c5026b173ed035d2a3ba31f1077590c013de2bff/tqdm-4.69.1.tar.gz", hash = "sha256:2be21080a0ce17e902c2f1baeb6a74bf551b67bbdfa4bc0109fad471d0b4cb0d", size = 793046, upload-time = "2026-07-24T14:22:02.08Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/01/50/5817619a0fca56aff06383dbfde7ae017b3ca383915b3f1e4713164273cf/tqdm-4.69.1-py3-none-any.whl", hash = "sha256:0a654b96f7a2660cceb615b56f307ec2bef96c515409014a429a561981ab52b4", size = 675452, upload-time = "2026-07-24T14:22:00.048Z" },
+]
+
+[[package]]
 name = "typing-extensions"
 version = "4.15.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2641,121 +2814,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/c2/b6/b9afed2afadddaf5ebb2afa801abf4b0868f42f8539bfe4b071b5266c9fe/websockets-16.0-cp314-cp314t-win32.whl", hash = "sha256:5a4b4cc550cb665dd8a47f868c8d04c8230f857363ad3c9caf7a0c3bf8c61ca6", size = 178085, upload-time = "2026-01-10T09:23:33.816Z" },
     { url = "https://files.pythonhosted.org/packages/9f/3e/28135a24e384493fa804216b79a6a6759a38cc4ff59118787b9fb693df93/websockets-16.0-cp314-cp314t-win_amd64.whl", hash = "sha256:b14dc141ed6d2dde437cddb216004bcac6a1df0935d79656387bd41632ba0bbd", size = 178531, upload-time = "2026-01-10T09:23:35.016Z" },
     { url = "https://files.pythonhosted.org/packages/6f/28/258ebab549c2bf3e64d2b0217b973467394a9cea8c42f70418ca2c5d0d2e/websockets-16.0-py3-none-any.whl", hash = "sha256:1637db62fad1dc833276dded54215f2c7fa46912301a24bd94d45d46a011ceec", size = 171598, upload-time = "2026-01-10T09:23:45.395Z" },
-]
-
-[[package]]
-name = "atmos_gl"
-version = "1.0.0"
-source = { editable = "." }
-dependencies = [
-    { name = "aiohttp" },
-    { name = "alembic" },
-    { name = "beautifulsoup4" },
-    { name = "cartopy" },
-    { name = "cfgrib" },
-    { name = "configparser" },
-    { name = "dask" },
-    { name = "datetime" },
-    { name = "eccodes" },
-    { name = "eccodes-python" },
-    { name = "fastapi" },
-    { name = "fsspec" },
-    { name = "geoalchemy2" },
-    { name = "h5netcdf" },
-    { name = "h5py" },
-    { name = "idna" },
-    { name = "jinja2" },
-    { name = "matplotlib" },
-    { name = "netcdf4" },
-    { name = "numpy" },
-    { name = "pandas" },
-    { name = "pillow" },
-    { name = "pip" },
-    { name = "psycopg2-binary" },
-    { name = "pydap" },
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-    { name = "python-dateutil" },
-    { name = "pytz" },
-    { name = "requests" },
-    { name = "scipy" },
-    { name = "sgp4" },
-    { name = "six" },
-    { name = "skyfield" },
-    { name = "soupsieve" },
-    { name = "sqlalchemy" },
-    { name = "typing-extensions" },
-    { name = "urllib3" },
-    { name = "uvicorn" },
-    { name = "watchdog" },
-    { name = "websocket-client" },
-    { name = "websockets" },
-    { name = "xarray" },
-    { name = "zope-interface" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "black" },
-    { name = "httpx" },
-    { name = "ruff" },
-    { name = "testcontainers" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "aiohttp", specifier = ">=3.13.5" },
-    { name = "alembic", specifier = ">=1.18.5" },
-    { name = "beautifulsoup4", specifier = "==4.14.3" },
-    { name = "cartopy", specifier = "==0.25.0" },
-    { name = "cfgrib", specifier = "==0.9.15.1" },
-    { name = "configparser", specifier = "==7.2.0" },
-    { name = "dask", specifier = "==2026.3.0" },
-    { name = "datetime", specifier = "==6.0" },
-    { name = "eccodes", specifier = "==2.46.0" },
-    { name = "eccodes-python", specifier = "==0.9.9" },
-    { name = "fastapi", specifier = ">=0.136.1" },
-    { name = "fsspec", specifier = ">=2026.3.0" },
-    { name = "geoalchemy2", specifier = ">=0.20.0" },
-    { name = "h5netcdf", specifier = ">=1.8.1" },
-    { name = "h5py", specifier = ">=3.16.0" },
-    { name = "idna", specifier = "==3.11" },
-    { name = "jinja2", specifier = ">=3.1.6" },
-    { name = "matplotlib", specifier = "==3.10.8" },
-    { name = "netcdf4", specifier = "==1.7.4" },
-    { name = "numpy", specifier = "==2.4.4" },
-    { name = "pandas", specifier = "==3.0.2" },
-    { name = "pillow", specifier = "==12.2.0" },
-    { name = "pip", specifier = ">=26.1.1" },
-    { name = "psycopg2-binary", specifier = ">=2.9.12" },
-    { name = "pydap", specifier = "==3.5.9" },
-    { name = "pytest", specifier = ">=9.0.3" },
-    { name = "pytest-asyncio", specifier = ">=1.3.0" },
-    { name = "python-dateutil", specifier = "==2.9.0.post0" },
-    { name = "pytz", specifier = "==2026.1.post1" },
-    { name = "requests", specifier = "==2.33.1" },
-    { name = "scipy", specifier = "==1.17.1" },
-    { name = "sgp4", specifier = ">=2.25" },
-    { name = "six", specifier = "==1.17.0" },
-    { name = "skyfield", specifier = ">=1.54" },
-    { name = "soupsieve", specifier = "==2.8.3" },
-    { name = "sqlalchemy", specifier = ">=2.0.51" },
-    { name = "typing-extensions", specifier = "==4.15.0" },
-    { name = "urllib3", specifier = "==2.6.3" },
-    { name = "uvicorn", specifier = ">=0.47.0" },
-    { name = "watchdog", specifier = ">=6.0.0" },
-    { name = "websocket-client", specifier = "==1.9.0" },
-    { name = "websockets", specifier = "==16.0" },
-    { name = "xarray", specifier = "==2026.4.0" },
-    { name = "zope-interface", specifier = "==8.3" },
-]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "black", specifier = ">=26.3.1" },
-    { name = "httpx", specifier = ">=0.28.1" },
-    { name = "ruff", specifier = ">=0.15.11" },
-    { name = "testcontainers", extras = ["postgres"], specifier = ">=4.14.2" },
 ]
 
 [[package]]

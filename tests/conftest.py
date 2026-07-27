@@ -13,8 +13,10 @@ this engine (see test_ship_adapter_real_vs_fake.py) -- atmos_gl.db.engine.Sessio
 bound at import time to the real PGHOST/etc., and each adapter module imports that
 name directly, so patching atmos_gl.db.engine alone doesn't reach them.
 """
+import io
 import os
 import subprocess
+import zipfile
 
 import pytest
 from fastapi.testclient import TestClient
@@ -24,6 +26,22 @@ from testcontainers.postgres import PostgresContainer
 from atmos_gl.api import app
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+@pytest.fixture
+def make_netcdf_zip_bytes():
+    """Factory fixture: make_netcdf_zip_bytes(nc_filename, content) -> bytes, a
+    minimal data_format=netcdf_zip-shaped archive (one .nc member) for testing the
+    CDS-backed greenhouse-gas collectors' unzip step, without a real netCDF or
+    network call. Shared by the CAMS forecast and EGG4 baseline collector tests."""
+
+    def _make(nc_filename: str, content: bytes) -> bytes:
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as zf:
+            zf.writestr(nc_filename, content)
+        return buf.getvalue()
+
+    return _make
 
 
 @pytest.fixture

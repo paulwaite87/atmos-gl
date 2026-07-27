@@ -138,6 +138,20 @@
     "runs_per_day": 1,
     "cache_expiry_days": 3
   },
+  "greenhouse_gases": {
+    "enabled": false,
+    "species": "co2",
+    "mode": "absolute",
+    "baseline_year": 2003,
+    "opacity": 60,
+    "co2_min_ppm": 400,
+    "co2_max_ppm": 430,
+    "co2_palette": "thermal",
+    "ch4_min_ppb": 1800,
+    "ch4_max_ppb": 2000,
+    "ch4_palette": "vivid",
+    "runs_per_day": 24
+  },
   "storms": {
     "enabled": true,
     "jtwc_url": "https://www.ssd.noaa.gov/PS/TROP/DATA/ATCF/JTWC/",
@@ -223,6 +237,7 @@
       "currents": "https://nomads.ncep.noaa.gov/pub/data/nccf/com/rtofs/prod/",
       "sst": "https://downloads.psl.noaa.gov/Datasets/noaa.oisst.v2.highres",
       "clouds": "https://gibs.earthdata.nasa.gov/wms/epsg4326/best/wms.cgi",
+      "cams_ads": "https://ads.atmosphere.copernicus.eu/api",
       "quakes": "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.csv",
       "volcanoes": "https://www.ngdc.noaa.gov/hazel/hazard-service/api/v1/volcanoes",
       "fires": "https://firms.modaps.eosdis.nasa.gov/api/area/csv",
@@ -238,6 +253,8 @@
       "rtofs_currents": true,
       "sst": true,
       "clouds": true,
+      "ghg_forecast": true,
+      "ghg_egg4_baseline": true,
       "quakes": true,
       "volcanoes": true,
       "fires": true,

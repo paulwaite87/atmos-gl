@@ -197,6 +197,7 @@ def _build_config_data() -> dict:
     owm_key = os.getenv("OPENWEATHER_API_KEY", "").strip()
     maptiler_key = os.getenv("MAPTILER_API_KEY", "").strip()
     firms_key = os.getenv("FIRMS_API_KEY", "").strip()
+    cdsapi_key = os.getenv("CDSAPI_KEY", "").strip()
 
     if "shipping_collector" in data:
         if not ais_key:
@@ -216,6 +217,16 @@ def _build_config_data() -> dict:
         if not firms_key:
             data["fires"]["enabled"] = False
             data["fires"]["RULE__missing_firms_apikey"] = True
+
+    if "greenhouse_gases" in data:
+        # Both Absolute and Anomaly modes are sourced from CAMS via the CDS API, so
+        # (unlike the original design, where GEOS-CF supplied a keyless Absolute
+        # mode) a missing CDSAPI_KEY disables the whole layer -- same shape as every
+        # other RULE__missing_* case above. GEOS-CF was dropped after live testing
+        # found it doesn't serve CO2 at all; see the published spec's issue comments.
+        if not cdsapi_key:
+            data["greenhouse_gases"]["enabled"] = False
+            data["greenhouse_gases"]["RULE__missing_cdsapi_key"] = True
 
     # Not stored in config.json, not user-editable (see lib/output_files.py) -- injected
     # here so the frontend can still read cfg.outfile exactly as before, just sourced
@@ -254,6 +265,8 @@ async def update_config(payload: dict):
         payload["common"].pop("RULE__missing_maptiler", None)
     if "fires" in payload:
         payload["fires"].pop("RULE__missing_firms_apikey", None)
+    if "greenhouse_gases" in payload:
+        payload["greenhouse_gases"].pop("RULE__missing_cdsapi_key", None)
 
     # outfile is injected read-time-only by _build_config_data() (see OUTFILES/
     # lib/output_files.py) -- never a real stored setting. Strip it the same way the

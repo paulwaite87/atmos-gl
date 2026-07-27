@@ -135,6 +135,13 @@
                                 <div class="col-md-3"><div class="form-check"><input class="form-check-input" type="radio" name="exclusive_climate" id="radio__temperature"><label class="form-check-label fw-bold ms-1" for="radio__temperature">Air Temperature</label></div></div>
                                 <div class="col-md-3"><div class="form-check"><input class="form-check-input" type="radio" name="exclusive_climate" id="radio__ozone"><label class="form-check-label fw-bold ms-1" for="radio__ozone">Ozone</label></div></div>
                                 <div class="col-md-3"><div class="form-check"><input class="form-check-input" type="radio" name="exclusive_climate" id="radio__stormwatch"><label class="form-check-label fw-bold ms-1" for="radio__stormwatch">Storm Watch</label></div></div>
+                                <div class="col-md-3">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="radio" name="exclusive_climate" id="radio__greenhouse_gases">
+                                        <label class="form-check-label fw-bold ms-1" for="radio__greenhouse_gases">Greenhouse Gases</label>
+                                        <div id="key-warn-cdsapi" class="text-danger small mt-1 d-none">⚠️ Deactivated: Missing CDSAPI_KEY.</div>
+                                    </div>
+                                </div>
                                 <div class="col-12 mt-2"><button type="button" class="btn btn-sm btn-outline-danger" onclick="clearClimateRadio()">None / Disable Climate Base Layer</button></div>
                             </div>
                         </div>
@@ -168,7 +175,7 @@
                     </div>
 
                     <div class="tab-pane fade" id="atmospheric-pane"><div id="container-atmospheric">{{ field_macros.render_tab_group(["clouds", "isobars", "wind", "jetstream", "precipitation", "pwat", "lightning", "storms"], config_data) }}</div></div>
-                    <div class="tab-pane fade" id="climate-pane"><div id="container-climate">{{ field_macros.render_tab_group(["sst", "currents", "waves", "temperature", "ozone", "stormwatch"], config_data) }}</div></div>
+                    <div class="tab-pane fade" id="climate-pane"><div id="container-climate">{{ field_macros.render_tab_group(["sst", "currents", "waves", "temperature", "ozone", "stormwatch", "greenhouse_gases"], config_data) }}</div></div>
                     <div class="tab-pane fade" id="events-pane"><div id="container-events">{{ field_macros.render_tab_group(["quakes", "volcanoes", "fires"], config_data) }}</div></div>
                     <div class="tab-pane fade" id="misc-pane"><div id="container-misc">{{ field_macros.render_tab_group(["satellites", "terminator", "markers", "flightradar"], config_data) }}</div></div>
                     <div class="tab-pane fade" id="shipping-pane"><div id="container-shipping">{{ field_macros.render_tab_group(["shipping"], config_data) }}</div></div>
@@ -344,13 +351,19 @@
                 }
             });
 
-            ['sst', 'currents', 'waves', 'temperature', "ozone", "stormwatch"].forEach(layer => {
+            ['sst', 'currents', 'waves', 'temperature', "ozone", "stormwatch", "greenhouse_gases"].forEach(layer => {
                 const el = document.getElementById(`radio__${layer}`);
                 if (el) {
                     el.addEventListener('change', toggleSectionVisibility);
                     if (data[layer] && data[layer].enabled) el.checked = true;
                 }
             });
+
+            const ghgRadio = document.getElementById('radio__greenhouse_gases');
+            if (ghgRadio && data.greenhouse_gases && data.greenhouse_gases.RULE__missing_cdsapi_key) {
+                ghgRadio.disabled = true; ghgRadio.checked = false;
+                document.getElementById('key-warn-cdsapi').classList.remove('d-none');
+            }
 
             const aisEnabled = document.getElementById('shipping_collector__enabled');
             if (aisEnabled && data.shipping_collector) {
@@ -414,6 +427,7 @@
                 "temperature": document.getElementById('radio__temperature')?.checked,
                 "ozone": document.getElementById('radio__ozone')?.checked,
                 "stormwatch": document.getElementById('radio__stormwatch')?.checked,
+                "greenhouse_gases": document.getElementById('radio__greenhouse_gases')?.checked,
                 "shipping_collector": document.getElementById('shipping_collector__enabled')?.checked,
                 "lightning_collector": document.getElementById('lightning_collector__enabled')?.checked,
                 "satellites_collector": document.getElementById('satellites_collector__enabled')?.checked,
@@ -459,6 +473,7 @@
             if(payload.temperature) payload.temperature.enabled = document.getElementById('radio__temperature').checked;
             if(payload.ozone) payload.ozone.enabled = document.getElementById('radio__ozone').checked;
             if(payload.stormwatch) payload.stormwatch.enabled = document.getElementById('radio__stormwatch').checked;
+            if(payload.greenhouse_gases) payload.greenhouse_gases.enabled = document.getElementById('radio__greenhouse_gases').checked;
 
             document.querySelectorAll(".dynamic-input").forEach(input => {
                 const [section, option] = input.id.split('__');

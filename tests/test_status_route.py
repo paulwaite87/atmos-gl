@@ -651,6 +651,44 @@ def test_data_status_attaches_data_collectors_runs_per_day_only_to_gfs_atmos_row
     assert sections == {"gfs_atmos": "data_collector", "gfs_waves": None}
 
 
+def test_data_status_attaches_greenhouse_gases_runs_per_day_only_to_forecast_row(
+    client, tmp_path, monkeypatch
+):
+    """CamsGhgForecastCollector and CamsEgg4BaselineCollector share greenhouse_gases.
+    runs_per_day (via settings_section), but only the ghg_forecast row surfaces the
+    cadence widget -- same "one row per shared cadence" rule as gfs_atmos, and
+    mirrors build_layer_channel_keys()'s "first collector wins" choice."""
+    _override_all_empty()
+
+    class _FakeForecast(_StubCollector):
+        section = "ghg_forecast"
+
+        def data_status(self):
+            return {**super().data_status(), "name": "ghg_forecast"}
+
+    class _FakeEgg4(_StubCollector):
+        section = "ghg_egg4_baseline"
+
+        def data_status(self):
+            return {**super().data_status(), "name": "ghg_egg4_baseline"}
+
+    app.dependency_overrides[get_cache_collector_classes] = lambda: (
+        _FakeForecast, _FakeEgg4,
+    )
+    config_path = _write_runs_per_day_config(
+        tmp_path, greenhouse_gases={"runs_per_day": 24}
+    )
+    monkeypatch.setenv("CONFIG_PATH", str(config_path))
+
+    resp = client.get("/api/data_status")
+
+    assert resp.status_code == 200
+    collectors = {c["name"]: c["runs_per_day"] for c in resp.json()["data"]["collectors"]}
+    assert collectors == {"ghg_forecast": 24, "ghg_egg4_baseline": None}
+    sections = {c["name"]: c["runs_per_day_section"] for c in resp.json()["data"]["collectors"]}
+    assert sections == {"ghg_forecast": "greenhouse_gases", "ghg_egg4_baseline": None}
+
+
 def test_runs_per_day_sections_excludes_data_collector_itself():
     """data_collector isn't a section with its own row -- its value is attached to
     the gfs_atmos row specifically (see the field_collector_classes loop above)."""

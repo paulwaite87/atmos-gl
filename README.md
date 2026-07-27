@@ -54,9 +54,10 @@ updates to everything else).
 Edit `.env` and fill in your API keys — see [Map Tiles API Key](#map-tiles-api-key),
 [Shipping Data API Key](#shipping-data-api-key),
 [Lightning Strikes API Key](#lightning-strikes-api-key),
-[NASA FIRMS API Key](#nasa-firms-api-key)
+[NASA FIRMS API Key](#nasa-firms-api-key),
+[Copernicus CDS/ADS API Key](#copernicus-cdsads-api-key)
 
-The map tiles key is MANDATORY for the globe's basemap to render at all. Shipping and lightning 
+The map tiles key is MANDATORY for the globe's basemap to render at all. All others 
 are optional (you can enable them later once you have keys).
 
 Then start everything:
@@ -157,6 +158,35 @@ With climate change seemingly setting various regions of the planet on fire, thi
 is a really informative layer to have running. Once the key is in place, enable
 `Wildfires` in the Atmos GL Configurator's `Show` tab, under the `Events` group.
 
+#### Copernicus CDS/ADS API Key
+This is optional.
+It is for the `Greenhouse Gases` layer specifically — without it that layer stays disabled.
+
+Register for a free account at https://ads.atmosphere.copernicus.eu/ (click
+`Login/Register` — the same login also works for Copernicus's other data stores, so
+if you've registered for CDS before, that account works here too). Your API key/token
+is shown on your profile page once logged in. Put it in `.env` as `CDSAPI_KEY` — that
+exact name, no `AIS_`/`OPENWEATHER_`-style prefix, since it's the literal name the
+`cdsapi` Python library itself reads.
+
+One extra one-time step which registration alone doesn't cover: **accepting the CC-BY
+licence both datasets require**. The general Terms of Use / Privacy Statement
+you accept when registering do NOT cover this — it's a separate, per-dataset
+licence, not an account-level setting, so you won't find it under your profile.
+
+To accept it: open either dataset's page —
+[cams-global-greenhouse-gas-forecasts](https://ads.atmosphere.copernicus.eu/datasets/cams-global-greenhouse-gas-forecasts)
+or
+[cams-global-ghg-reanalysis-egg4](https://ads.atmosphere.copernicus.eu/datasets/cams-global-ghg-reanalysis-egg4)
+
+Click the `Download` tab, and scroll to the very bottom of the request-builder
+form. There's a licence checkbox/accept button down there, separate from the account
+terms you saw at sign-up. Both datasets require the *same* licence (`CC-BY-4.0`), so
+accepting it once, on either page, covers both — no need to repeat it on the second.
+
+Once both the key is set and the licence is accepted, select `Greenhouse Gases` in
+the Atmos GL Configurator's `Show` tab, under the `Climate` group.
+
 ### Forecasting
 The map has a time scrubber built right into it — play, step forward/back, or drag through
 the available forecast hours (configurable, default 24) for any layer that supports 
@@ -232,6 +262,7 @@ The full list is:
 * Air temperature
 * Ozone layer density
 * Storm watch
+* Greenhouse gases (CO2/CH4)
 * Lightning strikes
 * Active storms
 * Earthquakes
@@ -393,13 +424,14 @@ Sea Surface Temperature, Air Temperature, Wave Heights, Ocean Currents and
 the Ozone Layer data resolved to a 0.25 degree grid (with interpolation/smoothing
 as required).
 
-Each of Sea Surface Temperature, Ocean Currents, Wave Heights, Air Temperature, Ozone
-and Storm Watch is mutually exclusive as a "climate base layer" — the `Show` tab presents
-them as radio buttons rather than independent checkboxes, since they each colourise the
-entire planet and having more than one on at once would just be a useless mashup of
-overlapping colours. In fact use of these layers is best done with just about every other
-colourising layer disabled — that would include Precipitation and Precipitable Water —
-though for marker elements such as Earthquakes, Shipping etc it isn't so important.
+Each of Sea Surface Temperature, Ocean Currents, Wave Heights, Air Temperature, Ozone,
+Storm Watch and Greenhouse Gases is mutually exclusive as a "climate base layer" — the
+`Show` tab presents them as radio buttons rather than independent checkboxes, since they
+each colourise the entire planet and having more than one on at once would just be a
+useless mashup of overlapping colours. In fact use of these layers is best done with
+just about every other colourising layer disabled — that would include Precipitation
+and Precipitable Water — though for marker elements such as Earthquakes, Shipping etc
+it isn't so important.
 
 #### SST
 Sea Surface Temperature, sourced straight from NOAA's data. A fascinating visualisation
@@ -445,6 +477,24 @@ parcel must break through before it can tap into the CAPE (Convective Available
 Potential Energy) above it. Combining both gives us a reasonable idea of the
 actual potential for storm formation.
 ![Storm Watch](docs/atmos-gl-stormwatch.png)
+
+#### Greenhouse Gases (CO2/CH4)
+Needs a [Copernicus CDS/ADS API Key](#copernicus-cdsads-api-key). Shows global CO2 or
+CH4 (methane) levels — a species toggle switches between the two — in one of two modes:
+
+* `Absolute` shows today's levels, sourced from Copernicus CAMS's daily global
+  greenhouse gas forecast.
+* `Anomaly` shows how today's levels compare against a historical baseline year of
+  your choosing (`Baseline year`, 2003–2020), computed by comparing the current
+  reading against Copernicus's CAMS EGG4 reanalysis for that year — unlike Sea
+  Surface Temperature above, no one publishes a ready-made CO2/CH4 anomaly, so this
+  is worked out for you here.
+
+Both modes and both species render every cycle, so switching any of the settings
+applies instantly without waiting for a fresh calculation. `Absolute` mode's colour
+scale (min/max and palette) is independently configurable per species, since CO2 and
+CH4 sit on very different numeric ranges (parts-per-million vs. parts-per-billion);
+`Anomaly` mode's colour scale is worked out automatically from the data each cycle.
 
 ### Shipping
 Ships are shown as small icons pointing in their current heading, colour-coded
@@ -521,6 +571,7 @@ The data collector is a separate background process which collects data for:
 * Volcanoes
 * Satellites
 * SST
+* Greenhouse Gases (CO2/CH4)
 * GFS Atmos:
   * Isobars
   * Precipitation
