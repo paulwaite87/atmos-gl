@@ -10,7 +10,7 @@ with the SAME `alembic upgrade head` production uses, session-scoped so the cont
 only starts once. Matches docker-compose.yml's atmos_gl_db image+version exactly for
 fidelity. Adapters under test still need their own `Session` monkeypatched to point at
 this engine (see test_ship_adapter_real_vs_fake.py) -- atmos_gl.db.engine.Session is
-bound at import time to the real PGHOST/etc., and each adapter module imports that
+bound at import time to the real POSTGRES_HOST/etc., and each adapter module imports that
 name directly, so patching atmos_gl.db.engine alone doesn't reach them.
 """
 import io
@@ -61,11 +61,11 @@ def real_db():
     ) as pg:
         env = os.environ.copy()
         env.update(
-            PGHOST=pg.get_container_host_ip(),
-            PGPORT=str(pg.get_exposed_port(5432)),
-            PGUSER="agl_test",
-            PGPASSWORD="agl_test",
-            PGDATABASE="atmos_gl_test",
+            POSTGRES_HOST=pg.get_container_host_ip(),
+            POSTGRES_PORT=str(pg.get_exposed_port(5432)),
+            POSTGRES_USER="agl_test",
+            POSTGRES_PASSWORD="agl_test",
+            POSTGRES_DB="atmos_gl_test",
         )
         subprocess.run(
             ["alembic", "upgrade", "head"], env=env, cwd=REPO_ROOT, check=True

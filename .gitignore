@@ -48,6 +48,7 @@ Thumbs.db
 # Codegraph/MCP
 .codegraph/
 .mcp.json
+.continue/
 
 # --- Ship Data / XPlanet Artifacts ---
 # This catches any loose index or backup files in the root
