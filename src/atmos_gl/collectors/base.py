@@ -63,6 +63,15 @@ class CollectorBase:
     # non-clickable label.
     datasource_key: str = ""
 
+    # Config section to read settings from, if different from `section`. "" (default)
+    # means "use section" -- a no-op for every existing subclass. Set this when two
+    # collectors must share one settings section (e.g. the greenhouse_gases layer's
+    # GeosCfGhgCollector/CamsEgg4BaselineCollector both read species/mode/baseline_year
+    # from "greenhouse_gases") while keeping independent `section` identities for
+    # _drive()'s scheduling/status/channel_enabled bookkeeping -- the plain-CollectorBase
+    # counterpart to FieldCollectorBase's status_name/section split.
+    settings_section: str = ""
+
     # Process-level ETag/Last-Modified cache: url -> last-seen marker string.
     # Shared across all collector subclasses (keyed by URL, so no collision).
     _etag_cache: dict[str, str] = {}
@@ -72,7 +81,7 @@ class CollectorBase:
 
         self.config = config
         self.process_status_adapter = ProcessStatusAdapter()
-        self.settings = config.get_section(self.section) or {}
+        self.settings = config.get_section(self.settings_section or self.section) or {}
         # Mirrors AsyncCollectorBase.refresh_settings() -- a fresh instance is
         # constructed every _drive() cycle (collectors/__init__.py), so applying this
         # in __init__ has the same live-update effect as that class's periodic refresh.

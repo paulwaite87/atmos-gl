@@ -28,4 +28,5 @@ OUTFILES = {
     "sst": "data/sst.png",
     "clouds": "data/cloud_map.png",
     "fires": "data/fire_weather.png",
+    "greenhouse_gases": "data/greenhouse_gases.png",
 }

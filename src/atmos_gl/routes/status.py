@@ -275,6 +275,14 @@ def get_data_status(
         # always targets the same section the row is about.
         def _event_feed_cadence(cls):
             section = getattr(cls, "section", None)
+            # greenhouse_gases' two collectors (ghg_geoscf, ghg_egg4_baseline) share
+            # one settings section but independent `section` identities (see
+            # CollectorBase.settings_section) -- same "shared cadence, one row shows
+            # it" shape as gfs_atmos below, surfaced only on the always-required
+            # GEOS-CF row (matching build_layer_channel_keys()'s own "first collector
+            # wins" choice for this pair) rather than duplicating it on both.
+            if section == "ghg_geoscf":
+                return config.get_setting("greenhouse_gases", "runs_per_day", 1), "greenhouse_gases"
             if section not in RUNS_PER_DAY_SECTIONS:
                 return None, None
             return config.get_setting(section, "runs_per_day", 1), section

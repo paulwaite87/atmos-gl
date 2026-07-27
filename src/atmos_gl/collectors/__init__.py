@@ -19,6 +19,11 @@ Synchronous file caches  (CACHE_COLLECTORS)  — write an image/netCDF under {wo
 --------------------------------------------------------------------------
   sst        — OISST yearly netCDF (SstCollector, collectors/sst.py)
   clouds     — NASA GIBS global cloud image (CloudsCollector, collectors/clouds.py)
+  greenhouse_gases — GEOS-CF current CO2/CH4 + CAMS EGG4 historical baseline
+               (GeosCfGhgCollector, CamsEgg4BaselineCollector, collectors/
+               greenhouse_gases.py) -- two collectors sharing one settings section
+               (via settings_section) but independently scheduled/reported, since they
+               hit unrelated APIs with different fetch shapes.
 
   These are single fields (one daily netCDF / one global image), not per-forecast-hour
   products, so they live as file caches rather than fieldstore rows. The layer updaters
@@ -57,6 +62,10 @@ from .satellites import SatellitesCollector
 from .markers_sync import MarkersSyncCollector
 from atmos_gl.collectors.sst import SstCollector
 from atmos_gl.collectors.clouds import CloudsCollector
+from atmos_gl.collectors.greenhouse_gases import (
+    CamsEgg4BaselineCollector,
+    GeosCfGhgCollector,
+)
 from atmos_gl.collectors.gfs_atmos import GfsAtmosCollector
 from atmos_gl.collectors.gfs_waves import GfsWavesCollector
 from atmos_gl.collectors.rtofs_currents import RtofsCurrentsCollector
@@ -80,6 +89,8 @@ COLLECTORS = (
 CACHE_COLLECTORS = (
     SstCollector,
     CloudsCollector,
+    GeosCfGhgCollector,
+    CamsEgg4BaselineCollector,
 )
 
 # Field collectors (fieldstore-backed, FieldCollectorBase), driven per-cycle by

@@ -26,6 +26,8 @@ Validated with ast.parse.
 """
 from dataclasses import dataclass, field
 
+from atmos_gl.lib.greenhouse_gases import BASELINE_YEAR_MAX, BASELINE_YEAR_MIN
+
 
 @dataclass(frozen=True)
 class ToggleSpec:
@@ -177,6 +179,25 @@ _PERFORMANCE_TIER = SelectSpec([
 _MODE_OPTIONS = SelectSpec([
     ("absolute", "Absolute"),
     ("anomaly", "Anomaly"),
+])
+
+_GHG_SPECIES = SelectSpec([
+    ("co2", "CO2"),
+    ("ch4", "CH4 (Methane)"),
+])
+
+# CAMS EGG4 reanalysis (the anomaly baseline source) was never extended past 2020, so
+# the picker only offers years it actually has gridded data for -- see
+# lib/greenhouse_gases.BASELINE_YEAR_MIN/MAX and the GHG design grill.
+_GHG_BASELINE_YEAR = SelectSpec(
+    [(str(y), str(y)) for y in range(BASELINE_YEAR_MIN, BASELINE_YEAR_MAX + 1)]
+)
+
+_GHG_PALETTE = SelectSpec([
+    ("thermal", "Thermal"),
+    ("vivid", "Vivid"),
+    ("deep", "Deep"),
+    ("ocean", "Ocean"),
 ])
 
 _LOG_LEVEL = SelectSpec([
@@ -528,6 +549,20 @@ FIELD_SPECS = {
     ("stormwatch", "min_cape"): SliderSpec(min=0, max=5000, step=100, suffix="J/Kg"),
     ("stormwatch", "opacity"): _OPACITY,
     ("stormwatch", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
+    # --- Greenhouse gases (CO2/CH4 -- Absolute from GEOS-CF, Anomaly computed against
+    # a CAMS EGG4 baseline year). Per-species scale/palette settings are flat,
+    # species-prefixed keys (co2_min_ppm, ch4_palette, ...) rather than a nested dict --
+    # see tasks/greenhouse_gases.py's _SCALE_SETTING_KEYS for why. ---
+    ("greenhouse_gases", "species"): _GHG_SPECIES,
+    ("greenhouse_gases", "mode"): _MODE_OPTIONS,
+    ("greenhouse_gases", "baseline_year"): _GHG_BASELINE_YEAR,
+    ("greenhouse_gases", "opacity"): _OPACITY,
+    ("greenhouse_gases", "co2_min_ppm"): SliderSpec(min=380, max=450, step=1, suffix=" ppm"),
+    ("greenhouse_gases", "co2_max_ppm"): SliderSpec(min=380, max=450, step=1, suffix=" ppm"),
+    ("greenhouse_gases", "co2_palette"): _GHG_PALETTE,
+    ("greenhouse_gases", "ch4_min_ppb"): SliderSpec(min=1600, max=2100, step=10, suffix=" ppb"),
+    ("greenhouse_gases", "ch4_max_ppb"): SliderSpec(min=1600, max=2100, step=10, suffix=" ppb"),
+    ("greenhouse_gases", "ch4_palette"): _GHG_PALETTE,
     # --- Background (shipping_collector, lightning_collector, satellites_collector,
     # data_collector, housekeeper) ---
     ("shipping_collector", "listen_duration"): _LISTEN_DURATION_MINUTES,
@@ -613,6 +648,7 @@ SECTION_LABELS = {
     "lightning": "Lightning",
     "storms": "Storm Track",
     "sst": "Sea Surface Temp",
+    "greenhouse_gases": "Greenhouse Gases",
     "currents": "Ocean Currents",
     "jetstream": "Jet Stream",
     "waves": "Wave Heights",

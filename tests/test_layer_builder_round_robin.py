@@ -29,7 +29,7 @@ from atmos_gl.layer_builder import (
 def test_multi_hour_and_single_shot_sections_partition_task_classes():
     assert set(MULTI_HOUR_SECTIONS) | set(SINGLE_SHOT_SECTIONS) == set(TASK_CLASSES)
     assert set(MULTI_HOUR_SECTIONS).isdisjoint(SINGLE_SHOT_SECTIONS)
-    assert set(SINGLE_SHOT_SECTIONS) == {"sst", "clouds", "markers"}
+    assert set(SINGLE_SHOT_SECTIONS) == {"sst", "clouds", "markers", "greenhouse_gases"}
     assert set(MULTI_HOUR_SECTIONS) == {
         "isobars", "precipitation", "wind", "currents", "jetstream", "waves",
         "temperature", "ozone", "stormwatch", "pwat", "fires",
@@ -160,6 +160,42 @@ def testbuild_layer_channel_keys_maps_cache_collectors_by_section():
     mapping = build_layer_channel_keys((), (_FakeSst,))
 
     assert mapping == {"sst": "sst"}
+
+
+def testbuild_layer_channel_keys_maps_by_settings_section_when_set():
+    """The greenhouse_gases layer's two collectors (GeosCfGhgCollector,
+    CamsEgg4BaselineCollector) each have their OWN `section` (for independent
+    _drive() scheduling/status rows) but share one settings_section
+    ("greenhouse_gases", the actual TASK_CLASSES/layer key) -- the mapping must key
+    off settings_section when set, or channel-disabling either collector would never
+    gray out / block dispatch of the greenhouse_gases layer at all."""
+    class _FakeGeosCf:
+        channel_key = "ghg_geoscf"
+        section = "ghg_geoscf"
+        settings_section = "greenhouse_gases"
+
+    mapping = build_layer_channel_keys((), (_FakeGeosCf,))
+
+    assert mapping == {"greenhouse_gases": "ghg_geoscf"}
+
+
+def testbuild_layer_channel_keys_first_collector_wins_when_two_share_a_settings_section():
+    """greenhouse_gases has two collectors sharing one settings_section -- the FIRST
+    one registered (list order) wins the layer's channel mapping, deliberately the
+    always-required one (GeosCfGhgCollector), not whichever happens to be listed last."""
+    class _FakeGeosCf:
+        channel_key = "ghg_geoscf"
+        section = "ghg_geoscf"
+        settings_section = "greenhouse_gases"
+
+    class _FakeEgg4:
+        channel_key = "ghg_egg4_baseline"
+        section = "ghg_egg4_baseline"
+        settings_section = "greenhouse_gases"
+
+    mapping = build_layer_channel_keys((), (_FakeGeosCf, _FakeEgg4))
+
+    assert mapping == {"greenhouse_gases": "ghg_geoscf"}
 
 
 def testbuild_layer_channel_keys_skips_a_collector_with_no_channel_key():

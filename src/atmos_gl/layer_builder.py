@@ -24,6 +24,7 @@ from atmos_gl.tasks.isobars import IsobarUpdater
 from atmos_gl.tasks.wind import WindUpdater
 from atmos_gl.tasks.precipitation import PrecipitationUpdater
 from atmos_gl.tasks.sst import SSTUpdater
+from atmos_gl.tasks.greenhouse_gases import GhgUpdater
 from atmos_gl.tasks.currents import CurrentsUpdater
 from atmos_gl.tasks.jetstream import JetStreamUpdater
 from atmos_gl.tasks.waves import WavesUpdater
@@ -49,6 +50,7 @@ TASK_CLASSES = {
     "clouds": CloudUpdater,
     "wind": WindUpdater,
     "sst": SSTUpdater,
+    "greenhouse_gases": GhgUpdater,
     "currents": CurrentsUpdater,
     "jetstream": JetStreamUpdater,
     "waves": WavesUpdater,
@@ -106,7 +108,20 @@ def build_layer_channel_keys(field_collector_classes, cache_collector_classes) -
                 mapping[product_name] = getattr(CollectorCls, "channel_key", None)
     for CollectorCls in cache_collector_classes:
         if getattr(CollectorCls, "channel_key", None):
-            mapping[CollectorCls.section] = getattr(CollectorCls, "channel_key", None)
+            # settings_section (CollectorBase) is the real TASK_CLASSES/layer key when
+            # a collector's own `section` differs from it (e.g. the greenhouse_gases
+            # layer's two collectors, each independently scheduled/reported but
+            # sharing one settings section) -- falls back to `section` for every
+            # other collector, which doesn't set settings_section at all.
+            layer_key = getattr(CollectorCls, "settings_section", None) or CollectorCls.section
+            # setdefault, not assignment: every existing layer has exactly one
+            # collector per layer_key, so this is a no-op behaviour change for them.
+            # Where two collectors share one layer_key (greenhouse_gases' GEOS-CF +
+            # EGG4 baseline pair), the FIRST one registered in cache_collector_classes
+            # wins -- deliberately GeosCfGhgCollector, since it's the layer's true
+            # hard dependency (both modes need it; EGG4 only gates Anomaly, which
+            # already self-gates in GhgUpdater.run() independent of channel_enabled).
+            mapping.setdefault(layer_key, getattr(CollectorCls, "channel_key", None))
     return mapping
 
 
