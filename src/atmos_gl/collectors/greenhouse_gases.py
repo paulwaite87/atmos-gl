@@ -65,10 +65,21 @@ def _retrieve_with_timeout(client, dataset: str, request: dict, target: str, tim
     a worker thread, bounded by timeout_s. Raises concurrent.futures.TimeoutError if
     the job doesn't finish in time -- the calling thread stops waiting, but the
     worker thread (and the in-flight CDS job) is not cancelled; a future cycle's
-    collect() will find the cache still missing and request again."""
-    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-        future = pool.submit(client.retrieve, dataset, request, target)
+    collect() will find the cache still missing and request again.
+
+    Deliberately NOT `with ThreadPoolExecutor(...) as pool:` -- confirmed live (a real
+    request that should have timed out at 300s was still blocking the calling thread
+    12+ minutes later) that a context-managed pool's __exit__ always calls
+    shutdown(wait=True), which re-blocks until the still-running worker thread
+    finishes regardless of how the `with` block was exited (even via this function's
+    own TimeoutError) -- silently defeating the entire point of the bounded timeout.
+    shutdown(wait=False) here actually releases the calling thread at timeout_s."""
+    pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    future = pool.submit(client.retrieve, dataset, request, target)
+    try:
         future.result(timeout=timeout_s)
+    finally:
+        pool.shutdown(wait=False)
 
 
 def _retrieve_and_unzip(

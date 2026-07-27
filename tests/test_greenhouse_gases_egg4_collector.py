@@ -147,6 +147,39 @@ def test_retrieve_with_timeout_raises_timeout_error_for_a_slow_call():
         _retrieve_with_timeout(client, "dataset", {}, "target", timeout_s=0.02)
 
 
+def test_retrieve_with_timeout_actually_releases_the_calling_thread_at_timeout_s():
+    """Regression guard for a real bug found via live testing: a genuinely slow call
+    (here, much slower than timeout_s) must make the calling thread stop waiting at
+    timeout_s -- not "eventually" once the slow call itself finishes. The earlier
+    version used `with ThreadPoolExecutor(...) as pool:`, whose __exit__ always calls
+    shutdown(wait=True), re-blocking the caller until the still-running background
+    thread finishes regardless of the TimeoutError already raised -- silently
+    defeating the entire point of a bounded timeout. A real CDS request that should
+    have timed out at 300s was observed live still blocking the calling thread 12+
+    minutes later because of exactly this. The previous version of this test used a
+    slow call only slightly slower than its timeout (0.3s vs 0.02s), so the bug's
+    ~0.28s of extra blocking was too small to notice in a wall-clock assertion --
+    this test uses a much larger gap specifically so the regression would be
+    unmissable."""
+    import time
+
+    def very_slow_retrieve(dataset, request, target):
+        time.sleep(5)
+
+    client = MagicMock()
+    client.retrieve.side_effect = very_slow_retrieve
+
+    start = time.monotonic()
+    with pytest.raises(concurrent.futures.TimeoutError):
+        _retrieve_with_timeout(client, "dataset", {}, "target", timeout_s=0.1)
+    elapsed = time.monotonic() - start
+
+    assert elapsed < 1.0, (
+        f"took {elapsed:.2f}s to raise for a 0.1s timeout -- the calling thread is "
+        f"waiting for the slow background call instead of actually being bounded"
+    )
+
+
 def test_data_status_reports_coverage_not_time_decay(tmp_path, monkeypatch):
     year = 2003
     c = make_bare_egg4_collector(monkeypatch, settings={"baseline_year": year}, workdir=str(tmp_path))
