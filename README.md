@@ -169,15 +169,23 @@ is shown on your profile page once logged in. Put it in `.env` as `CDSAPI_KEY` �
 exact name, no `AIS_`/`OPENWEATHER_`-style prefix, since it's the literal name the
 `cdsapi` Python library itself reads.
 
-One extra one-time step this key alone doesn't cover: you also need to accept each
-dataset's license on the Copernicus website while logged in, or requests will fail
-with a "required licences not accepted" error even with a valid key. Visit:
-* https://ads.atmosphere.copernicus.eu/datasets/cams-global-greenhouse-gas-forecasts?tab=download#manage-licences
-* https://ads.atmosphere.copernicus.eu/datasets/cams-global-ghg-reanalysis-egg4?tab=download#manage-licences
+One extra one-time step registration alone doesn't cover: **accepting the CC-BY
+licence both datasets require**, or requests will fail with a "required licences not
+accepted" error even with a valid key. The general Terms of Use / Privacy Statement
+you accept when registering do NOT cover this — it's a separate, per-dataset
+licence, not an account-level setting, so you won't find it under your profile.
 
-and accept the license shown on each page. Once both the key is set and the licenses
-are accepted, enable `Greenhouse Gases` in the Atmos GL Configurator's `Show` tab,
-under the `Atmospheric` group.
+To accept it: open either dataset's page —
+[cams-global-greenhouse-gas-forecasts](https://ads.atmosphere.copernicus.eu/datasets/cams-global-greenhouse-gas-forecasts)
+or
+[cams-global-ghg-reanalysis-egg4](https://ads.atmosphere.copernicus.eu/datasets/cams-global-ghg-reanalysis-egg4)
+— click the `Download` tab, and scroll to the very bottom of the request-builder
+form. There's a licence checkbox/accept button down there, separate from the account
+terms you saw at sign-up. Both datasets require the *same* licence (`CC-BY-4.0`), so
+accepting it once, on either page, covers both — no need to repeat it on the second.
+
+Once both the key is set and the licence is accepted, enable `Greenhouse Gases` in
+the Atmos GL Configurator's `Show` tab, under the `Atmospheric` group.
 
 ### Forecasting
 The map has a time scrubber built right into it — play, step forward/back, or drag through

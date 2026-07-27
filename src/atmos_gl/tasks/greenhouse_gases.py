@@ -26,25 +26,27 @@ from .plotting import Plot
 
 logger = logging.getLogger(__name__)
 
-# CAMS's high-resolution forecast is ~9km (~0.1 deg) native -- no further LOD
-# coarsening needed on top of it, unlike SST's much coarser OISST source.
-_REGRID_STEP_DEG = 0.1
+# CAMS's high-resolution forecast is ~9km (~0.1 deg) native, but rendering AT that
+# resolution is far too slow to be practical: live timing found pcolormesh alone
+# taking >80s per render at the native 6.5M-point grid (regrid+coastline-mask
+# together are a comparatively cheap ~7s) -- with 4 species x mode combinations
+# rendered every cycle, that's minutes per cycle just for this one layer. 0.25 deg
+# (matching this codebase's "low" LOD tier default) cuts the point count by ~6x,
+# bringing pcolormesh back into the same ballpark as every other layer.
+_REGRID_STEP_DEG = 0.25
 
 _LAND_TINT_COLOR = "#5a5a5a"
 
-# Both CAMS datasets (the current forecast and the EGG4 baseline) use the same CDS
-# variable identifiers for these two species.
-#
-# NOTE: these are the request-time CDS variable identifiers, confirmed live against
-# the real API (see the published spec's issue comments) -- but the corresponding
-# in-file netCDF variable name (what xarray actually sees once a request is
-# downloaded) was NOT confirmed, since completing a download requires accepting the
-# dataset's CDS/ADS license first (a one-time step only the account owner can do).
-# Column-mean molar fraction is the standard XCO2/XCH4 convention, normally reported
-# directly in ppm/ppb (no unit-conversion factor assumed here, unlike GEOS-CF's raw
-# mixing ratio) -- confirm both the variable name and units against a real downloaded
-# file and correct here if either differs.
-_CAMS_VARS = {"co2": "co2_column_mean_molar_fraction", "ch4": "ch4_column_mean_molar_fraction"}
+# Both CAMS datasets (the current forecast and the EGG4 baseline) use the same
+# in-file netCDF variable names for these two species -- confirmed by downloading and
+# inspecting real files from both datasets (see the published spec's issue comments).
+# NOT the same as the request-time CDS variable identifiers
+# (co2_column_mean_molar_fraction/ch4_column_mean_molar_fraction, used in
+# collectors/greenhouse_gases.py's request builders) -- ECMWF's GRIB-to-netCDF
+# conversion exposes them under their short GRIB_cfVarName instead. Units are
+# confirmed directly from the files' own `units` attribute: ppm/ppb, exactly the
+# display units this layer wants, so no conversion factor is needed.
+_CAMS_VARS = {"co2": "tcco2", "ch4": "tcch4"}
 _DISPLAY_UNIT = {"co2": "ppm", "ch4": "ppb"}
 _PALETTES = {"thermal": "magma", "vivid": "turbo", "deep": "viridis", "ocean": "inferno"}
 # Flat, species-prefixed setting keys (co2_min_ppm, ch4_palette, ...) rather than a
@@ -59,19 +61,27 @@ def _load_field(nc_path: str, var: str, *, reduce: str = "first"):
     """(matrix, lats, lons) from a cached netCDF, lon-normalised to -180..180 and
     sorted, matching the convention SSTUpdater.plot() uses for OISST.
 
-    reduce controls how a time dimension (if present) collapses: "first" (the
+    reduce controls how any non-lat/lon dimension collapses: "first" (the
     current-conditions cache holds a single reading) or "mean" (the EGG4 baseline
     cache holds a full baseline year at 3-hourly cadence -- averaging across it gives
     a genuine annual-mean baseline rather than an arbitrarily-seasonally-biased single
     day, e.g. always comparing "today" against the baseline year's January 1st
-    regardless of the current date)."""
+    regardless of the current date).
+
+    Deliberately generic about WHICH dimension that is, rather than assuming it's
+    called "time": inspecting real downloaded files found the forecast dataset uses
+    forecast_reference_time/forecast_period (both size 1, harmless either way) while
+    the EGG4 baseline dataset uses valid_time (size 1 for a single day, but the real
+    N-timestep-per-year baseline fetch needs the "mean" branch to actually fire on
+    it) -- a hardcoded "time" name would silently no-op on both."""
     ds = xr.open_dataset(nc_path)
     da = ds[var]
-    if "time" in da.dims:
-        da = da.mean(dim="time") if reduce == "mean" else da.isel(time=0)
-    raw_matrix = da.values.squeeze()
     lat_name = "lat" if "lat" in ds.coords else "latitude"
     lon_name = "lon" if "lon" in ds.coords else "longitude"
+    extra_dims = [d for d in da.dims if d not in (lat_name, lon_name)]
+    if extra_dims:
+        da = da.mean(dim=extra_dims) if reduce == "mean" else da.isel({d: 0 for d in extra_dims})
+    raw_matrix = da.values.squeeze()
     lat_raw = ds[lat_name].values
     lon_raw = ds[lon_name].values
     ds.close()
