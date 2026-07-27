@@ -4,12 +4,14 @@
 # the service's process for Python to re-import it — NOT rebuild the image. `make build`
 # is now only for dependency or Dockerfile changes.
 # =============================================================================
-.PHONY: run stop build rebuild start-desktop-fg stop-desktop psql logs clean purge backup restore refresh-map test bash status help bootstrap-config
+.PHONY: run stop build rebuild start-desktop-fg stop-desktop psql logs clean purge backup restore refresh-map test bash status help bootstrap-config migrate
 
 # Variables
 DB_USER = agl
+DB_PASS = agl
 DB_NAME = atmos_gl
 DB_SERVICE = atmos_gl_db
+DB_PORT = 15432
 BUILDER_SERVICE = layer_builder
 DUMP_FILE = atmos_gl_dump.sql
 
@@ -150,6 +152,12 @@ psql:
 	@echo "Ensuring atmos_gl database is running"
 	@docker compose up $(DB_SERVICE) -d
 	@docker compose exec $(DB_SERVICE) psql -U $(DB_USER) $(DB_NAME)
+
+## migrate: Apply alembic migrations to the local dev database (via uv, outside Docker)
+migrate:
+	@echo "Ensuring atmos_gl database is running"
+	@docker compose up $(DB_SERVICE) -d
+	PGHOST=localhost PGPORT=$(DB_PORT) PGUSER=$(DB_USER) PGPASSWORD=$(DB_PASS) PGDATABASE=$(DB_NAME) uv run alembic upgrade head
 
 ## status: Database Status Report
 status:
