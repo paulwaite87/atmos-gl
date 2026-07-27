@@ -198,6 +198,24 @@ class SSTUpdater(Updater):
             shutil.copy2(src, tmp)
             os.replace(tmp, dst)
 
+    def _mode_settings_signature(self, mode: str) -> str:
+        """Render-relevant settings for `mode`, for _is_render_fresh -- opacity and
+        key_fontsize are baked into the rendered pixels for both modes (see plot()'s
+        alpha and save_key_image's key_fontsize); min_c/max_c/palette only apply to
+        absolute (anomaly is auto-scaled from the data, no user-facing scale/palette
+        settings)."""
+        values = {
+            "opacity": self.settings.get("opacity", 40),
+            "key_fontsize": self.common.get("key_fontsize", 10),
+        }
+        if mode == "absolute":
+            values.update({
+                "min_c": self.settings.get("min_c", 0),
+                "max_c": self.settings.get("max_c", 32),
+                "palette": self.settings.get("palette", "thermal"),
+            })
+        return self._settings_signature(values)
+
     def run(self, max_hours=None):
         # max_hours is a no-op here -- SST renders once per cycle, not per forecast
         # hour, so it has nothing to cap. Accepted only so layer_builder's dispatch can
@@ -219,10 +237,12 @@ class SSTUpdater(Updater):
                 continue
 
             out = self._output_path_for_mode(mode)
-            fresh = os.path.exists(out) and os.path.getmtime(out) >= os.path.getmtime(nc_path)
+            sig = self._mode_settings_signature(mode)
+            fresh = self._is_render_fresh(out, [nc_path], sig)
             if not fresh:
                 logger.info(f"Generating SST {mode} plot...")
                 self.plot(mode, nc_path, out)
+                self._write_render_signature(out, sig)
 
             if mode == self.mode:
                 self._publish_current_mode(out)

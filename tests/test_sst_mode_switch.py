@@ -120,6 +120,7 @@ def make_bare_sst_updater(mode, workdir, output_path):
     u.section = "sst"
     u.output_path = output_path
     u.settings = {}
+    u.common = {}
     u.plot = MagicMock()
     u._publish_current_mode = MagicMock()
     return u
@@ -160,11 +161,13 @@ def test_run_skips_a_mode_whose_output_is_already_fresh(tmp_path):
     anom_nc = tmp_path / "data" / "sst_cache_noaa_oisst_anomaly.nc"
     _touch(abs_nc)
     _touch(anom_nc)
-    # Absolute already has a fresh render; anomaly doesn't yet.
-    _touch(tmp_path / "data" / "sst_absolute.png", mtime_offset=10)
-    out_path = tmp_path / "data" / "sst.png"
+    # Absolute already has a fresh render (data AND settings unchanged since);
+    # anomaly doesn't have a render yet.
+    u = make_bare_sst_updater("absolute", str(tmp_path), str(tmp_path / "data" / "sst.png"))
+    abs_out = tmp_path / "data" / "sst_absolute.png"
+    _touch(abs_out, mtime_offset=10)
+    u._write_render_signature(str(abs_out), u._mode_settings_signature("absolute"))
 
-    u = make_bare_sst_updater("absolute", str(tmp_path), str(out_path))
     u.run()
 
     u.plot.assert_called_once()
@@ -173,17 +176,41 @@ def test_run_skips_a_mode_whose_output_is_already_fresh(tmp_path):
 
 def test_run_does_not_render_when_both_modes_already_fresh(tmp_path):
     (tmp_path / "data").mkdir()
+    u = make_bare_sst_updater("anomaly", str(tmp_path), str(tmp_path / "data" / "sst.png"))
     for mode, nc_name in [("absolute", "noaa_oisst_mean.nc"), ("anomaly", "noaa_oisst_anomaly.nc")]:
         _touch(tmp_path / "data" / f"sst_cache_{nc_name}")
-        _touch(tmp_path / "data" / f"sst_{mode}.png", mtime_offset=10)
-    out_path = tmp_path / "data" / "sst.png"
+        out = tmp_path / "data" / f"sst_{mode}.png"
+        _touch(out, mtime_offset=10)
+        u._write_render_signature(str(out), u._mode_settings_signature(mode))
 
-    u = make_bare_sst_updater("anomaly", str(tmp_path), str(out_path))
     u.run()
 
     u.plot.assert_not_called()
     # Publishing still happens every cycle regardless of whether a render occurred.
     u._publish_current_mode.assert_called_once_with(str(tmp_path / "data" / "sst_anomaly.png"))
+
+
+def test_run_re_renders_a_mode_whose_output_is_data_fresh_but_settings_changed(tmp_path):
+    """The bug this closes: a palette/scale-only config change (no new source data)
+    must still force a re-render, not sit stale until the source netCDF next
+    refreshes."""
+    (tmp_path / "data").mkdir()
+    abs_nc = tmp_path / "data" / "sst_cache_noaa_oisst_mean.nc"
+    anom_nc = tmp_path / "data" / "sst_cache_noaa_oisst_anomaly.nc"
+    _touch(abs_nc)
+    _touch(anom_nc)
+    u = make_bare_sst_updater("absolute", str(tmp_path), str(tmp_path / "data" / "sst.png"))
+    abs_out = tmp_path / "data" / "sst_absolute.png"
+    anom_out = tmp_path / "data" / "sst_anomaly.png"
+    _touch(abs_out, mtime_offset=10)
+    _touch(anom_out, mtime_offset=10)
+    u._write_render_signature(str(abs_out), "stale-signature-from-a-different-palette")
+    u._write_render_signature(str(anom_out), u._mode_settings_signature("anomaly"))
+
+    u.run()
+
+    u.plot.assert_called_once()
+    assert u.plot.call_args.args[0] == "absolute"
 
 
 def test_run_publishes_only_the_currently_configured_mode(tmp_path):

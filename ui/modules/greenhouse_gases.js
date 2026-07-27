@@ -50,11 +50,14 @@ export function loadLayer(map, config) {
         removeLegend(slotId);
     };
 
-    // Palette/scale-only changes never touch the raster image's own mtime the way a
-    // genuine species/mode switch does (both ARE part of urlFor, so that case is
-    // already covered by the default imageUrl regen chase) -- but a palette-only
-    // change re-renders just the legend key server-side, which keyUrl's independent
-    // chase catches. Same reasoning as sst.js's keyUrlFor.
+    // A species/mode switch changes urlFor itself (both ARE part of the filename), so
+    // that case is already covered by the default imageUrl regen chase. A
+    // palette/scale-only change doesn't change the filename, but it DOES force a full
+    // server-side re-render of both the image and its key together -- GhgUpdater.run()'s
+    // freshness check also compares a persisted settings signature, not just
+    // source-data mtime (see Updater._is_render_fresh / GhgUpdater._mode_settings_signature
+    // in tasks/greenhouse_gases.py) -- so keyUrl's independent chase is what actually
+    // catches that case landing. Same reasoning as sst.js's keyUrlFor.
     const keyUrlFor = (cfg) => keyFilename(speciesModeFilename(cfg.outfile, cfg.species, cfg.mode));
 
     return liveLayerSync(map, {
