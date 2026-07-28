@@ -14,8 +14,6 @@ def make_collector(url=None):
     c.section = "lightning_collector"
     c.config = MagicMock()
     c.config.get_section.return_value = {}
-    # Also backs the primary_region_label read (config.get_setting("common", "region"))
-    # -- unused/unasserted here, so a blanket return_value is fine for both calls.
     c.config.get_setting.return_value = {"lightning": url} if url else {}
     return c
 

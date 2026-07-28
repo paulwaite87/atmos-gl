@@ -203,8 +203,27 @@
                     oneTimeDone = true;
 
                     let isUserInteracting = false;
+                    let viewportReportTimer = null;
+                    // Best-effort, debounced (3s settle) report of "what the map is
+                    // currently centered on" to the backend -- LightningCollector (a
+                    // separate container, sharing only Postgres) uses this to weight its
+                    // scan queue toward wherever the map actually is right now. Continuous
+                    // moves (auto-rotate) keep resetting the timer and never fire, which is
+                    // correct: there's no single "current viewport" to report while rotating.
+                    const reportViewport = () => {
+                        const center = map.getCenter();
+                        fetch(`${window.WM_API}/viewport`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ lat: center.lat, lon: center.lng, zoom: map.getZoom() }),
+                        }).catch(() => { /* best-effort; collector just keeps its last-known viewport */ });
+                    };
                     map.on('movestart', () => { isUserInteracting = true; });
-                    map.on('moveend', () => { isUserInteracting = false; });
+                    map.on('moveend', () => {
+                        isUserInteracting = false;
+                        clearTimeout(viewportReportTimer);
+                        viewportReportTimer = setTimeout(reportViewport, 3000);
+                    });
 
                     if (configData.common && configData.common.auto_rotate === true) {
                         const rotationSpeed = configData.common.auto_rotate_speed || 0.1;
@@ -221,6 +240,7 @@
 
                     window.MAP_UI = "http://localhost:9000";
                     window.WM_API = "http://localhost:9000/api";
+                    reportViewport(); // initial signal, before any user pan/zoom
 
                     try {
                         const { initForecastTimeline } = await import(`/modules/timeline_boot.js`);

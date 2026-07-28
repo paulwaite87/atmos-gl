@@ -452,3 +452,21 @@ class FlightRoute(Base):
     stops: Mapped[list | None] = mapped_column(JSONB)
     plausible: Mapped[bool | None] = mapped_column(Boolean)
     checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class ViewportState(Base):
+    """Single-row table holding the most recently reported map viewport (see
+    ViewportAdapter) -- data_collector's LightningCollector runs in a separate
+    container from map_api, so this is the only channel between "what the frontend is
+    currently looking at" and the collector's scan prioritization; an in-memory flag
+    in map_api wouldn't be visible there. id is always "current"."""
+
+    __tablename__ = "viewport_state"
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    lat: Mapped[float] = mapped_column(REAL, nullable=False)
+    lon: Mapped[float] = mapped_column(REAL, nullable=False)
+    zoom: Mapped[float | None] = mapped_column(REAL)
+    updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
