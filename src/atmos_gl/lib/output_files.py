@@ -29,4 +29,5 @@ OUTFILES = {
     "clouds": "data/cloud_map.png",
     "fires": "data/fire_weather.png",
     "greenhouse_gases": "data/greenhouse_gases.png",
+    "air_quality": "data/air_quality.png",
 }

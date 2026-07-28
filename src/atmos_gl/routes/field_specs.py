@@ -200,6 +200,12 @@ _GHG_PALETTE = SelectSpec([
     ("ocean", "Ocean"),
 ])
 
+_AQ_VARIABLE = SelectSpec([
+    ("pm2_5", "PM2.5"),
+    ("pm10", "PM10"),
+    ("aod", "Smoke (AOD)"),
+])
+
 _LOG_LEVEL = SelectSpec([
     ("DEBUG", "DEBUG"),
     ("INFO", "INFO"),
@@ -563,6 +569,14 @@ FIELD_SPECS = {
     ("greenhouse_gases", "ch4_min_ppb"): SliderSpec(min=1600, max=2100, step=10, suffix=" ppb"),
     ("greenhouse_gases", "ch4_max_ppb"): SliderSpec(min=1600, max=2100, step=10, suffix=" ppb"),
     ("greenhouse_gases", "ch4_palette"): _GHG_PALETTE,
+    ("air_quality", "variable"): _AQ_VARIABLE,
+    ("air_quality", "opacity"): _OPACITY,
+    ("air_quality", "pm2_5_min"): SliderSpec(min=0, max=500, step=5, suffix=" µg/m³"),
+    ("air_quality", "pm2_5_max"): SliderSpec(min=0, max=500, step=5, suffix=" µg/m³"),
+    ("air_quality", "pm10_min"): SliderSpec(min=0, max=600, step=5, suffix=" µg/m³"),
+    ("air_quality", "pm10_max"): SliderSpec(min=0, max=600, step=5, suffix=" µg/m³"),
+    ("air_quality", "aod_min"): SliderSpec(min=0, max=5, step=0.1),
+    ("air_quality", "aod_max"): SliderSpec(min=0, max=5, step=0.1),
     # --- Background (shipping_collector, lightning_collector, satellites_collector,
     # data_collector, housekeeper) ---
     ("shipping_collector", "listen_duration"): _LISTEN_DURATION_MINUTES,
@@ -649,6 +663,7 @@ SECTION_LABELS = {
     "storms": "Storm Track",
     "sst": "Sea Surface Temp",
     "greenhouse_gases": "Greenhouse Gases",
+    "air_quality": "Air Quality",
     "currents": "Ocean Currents",
     "jetstream": "Jet Stream",
     "waves": "Wave Heights",

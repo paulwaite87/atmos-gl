@@ -152,6 +152,13 @@
                                 <div class="col-md-6"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="quakes__enabled"><label class="form-check-label fw-bold ms-2">Earthquakes</label></div></div>
                                 <div class="col-md-6"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="volcanoes__enabled"><label class="form-check-label fw-bold ms-2">Volcanoes</label></div></div>
                                 <div class="col-md-6"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="fires__enabled"><label class="form-check-label fw-bold ms-2">Wildfires</label></div></div>
+                                <div class="col-md-6">
+                                    <div class="form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" id="air_quality__enabled">
+                                        <label class="form-check-label fw-bold ms-2">Air Quality</label>
+                                        <div id="key-warn-cdsapi-aq" class="text-danger small mt-1 d-none">⚠️ Deactivated: Missing CDSAPI_KEY.</div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
@@ -176,7 +183,7 @@
 
                     <div class="tab-pane fade" id="atmospheric-pane"><div id="container-atmospheric">{{ field_macros.render_tab_group(["clouds", "isobars", "wind", "jetstream", "precipitation", "pwat", "lightning", "storms"], config_data) }}</div></div>
                     <div class="tab-pane fade" id="climate-pane"><div id="container-climate">{{ field_macros.render_tab_group(["sst", "currents", "waves", "temperature", "ozone", "stormwatch", "greenhouse_gases"], config_data) }}</div></div>
-                    <div class="tab-pane fade" id="events-pane"><div id="container-events">{{ field_macros.render_tab_group(["quakes", "volcanoes", "fires"], config_data) }}</div></div>
+                    <div class="tab-pane fade" id="events-pane"><div id="container-events">{{ field_macros.render_tab_group(["quakes", "volcanoes", "fires", "air_quality"], config_data) }}</div></div>
                     <div class="tab-pane fade" id="misc-pane"><div id="container-misc">{{ field_macros.render_tab_group(["satellites", "terminator", "markers", "flightradar"], config_data) }}</div></div>
                     <div class="tab-pane fade" id="shipping-pane"><div id="container-shipping">{{ field_macros.render_tab_group(["shipping"], config_data) }}</div></div>
                     <div class="tab-pane fade" id="background-pane">
@@ -343,7 +350,7 @@
         });
 
         function parseExplicitElements(data) {
-            ['clouds', 'isobars', 'wind', 'jetstream', 'precipitation', 'pwat', 'lightning', 'storms', 'quakes', 'volcanoes', 'fires', 'satellites', 'shipping', 'terminator', 'markers', 'flightradar'].forEach(layer => {
+            ['clouds', 'isobars', 'wind', 'jetstream', 'precipitation', 'pwat', 'lightning', 'storms', 'quakes', 'volcanoes', 'fires', 'air_quality', 'satellites', 'shipping', 'terminator', 'markers', 'flightradar'].forEach(layer => {
                 const el = document.getElementById(`${layer}__enabled`);
                 if (el && data[layer]) {
                     el.checked = !!data[layer].enabled;
@@ -363,6 +370,12 @@
             if (ghgRadio && data.greenhouse_gases && data.greenhouse_gases.RULE__missing_cdsapi_key) {
                 ghgRadio.disabled = true; ghgRadio.checked = false;
                 document.getElementById('key-warn-cdsapi').classList.remove('d-none');
+            }
+
+            const aqEnabled = document.getElementById('air_quality__enabled');
+            if (aqEnabled && data.air_quality && data.air_quality.RULE__missing_cdsapi_key) {
+                aqEnabled.disabled = true; aqEnabled.checked = false;
+                document.getElementById('key-warn-cdsapi-aq').classList.remove('d-none');
             }
 
             const aisEnabled = document.getElementById('shipping_collector__enabled');
@@ -416,6 +429,7 @@
                 "quakes": document.getElementById('quakes__enabled')?.checked,
                 "volcanoes": document.getElementById('volcanoes__enabled')?.checked,
                 "fires": document.getElementById('fires__enabled')?.checked,
+                "air_quality": document.getElementById('air_quality__enabled')?.checked,
                 "satellites": document.getElementById('satellites__enabled')?.checked,
                 "terminator": document.getElementById('terminator__enabled')?.checked,
                 "markers": document.getElementById('markers__enabled')?.checked,
@@ -463,7 +477,7 @@
 
             const payload = JSON.parse(JSON.stringify(masterConfigCache));
 
-            ['clouds', 'isobars', 'wind', 'jetstream', 'precipitation', 'pwat', 'lightning', 'storms', 'quakes', 'volcanoes', 'fires', 'satellites', 'terminator', 'markers', 'flightradar', 'shipping', 'shipping_collector', 'lightning_collector', 'satellites_collector', 'data_collector'].forEach(layer => {
+            ['clouds', 'isobars', 'wind', 'jetstream', 'precipitation', 'pwat', 'lightning', 'storms', 'quakes', 'volcanoes', 'fires', 'air_quality', 'satellites', 'terminator', 'markers', 'flightradar', 'shipping', 'shipping_collector', 'lightning_collector', 'satellites_collector', 'data_collector'].forEach(layer => {
                 if (payload[layer]) payload[layer].enabled = document.getElementById(`${layer}__enabled`)?.checked || false;
             });
 
