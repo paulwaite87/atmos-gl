@@ -138,18 +138,137 @@ class AircraftAdapter:
             return False
 
     def record_sightings(self, records: list[dict], *, now: datetime | None = None) -> int:
-        """record_sighting() for every record in one batch; returns the count actually
-        recorded (records with no usable hex are silently skipped, same as the single
-        call). now is resolved once up front so every row in the batch shares one
-        timestamp, rather than drifting across however long the loop takes."""
+        """Batch upsert -- ALL records in ONE session/transaction (one bulk multi-row
+        upsert into aircraft, one bulk multi-row insert into aircraft_track), not N
+        individual round-trips. Returns the count actually recorded (records with no
+        usable hex are silently skipped, same as record_sighting()). now is resolved
+        once up front so every row in the batch shares one timestamp.
+
+        This used to just call record_sighting() (its own separate Session + commit)
+        in a loop -- fine for a quiet region, but a single busy-airspace fetch (Paris/
+        CDG: 400+ aircraft in range) took over 30s to write that way, live-measured.
+        That's long enough to stall AircraftCollector's whole tick loop well past its
+        intended ~10s hot cadence (the position-write is awaited before the next
+        scheduler tick), degrading live position freshness worst exactly where
+        GlobalSampleScheduler's viewport-precedence fix (see lib/flight_radar.py) was
+        supposed to deliver it -- caught live as large, slow-but-still-visible
+        position "reversals" on final approach that no amount of frontend dead-
+        reckoning/smoothing tuning could actually fix, because the underlying data
+        really was tens of seconds stale. record_sighting() (singular) is left
+        unchanged for its own individual-record contract."""
         now = now or datetime.now(timezone.utc)
-        return sum(1 for record in records if self.record_sighting(record, now=now))
+        # Last-one-wins per hex if a fetch response ever repeats a hex (shouldn't
+        # happen, but a bulk ON CONFLICT DO UPDATE errors on a duplicate key within the
+        # same statement -- record_sighting()'s per-record loop tolerated this for
+        # free by construction, each one its own transaction).
+        rows_by_hex = {}
+        for record in records:
+            row = _normalize_sighting(record)
+            if row is not None:
+                rows_by_hex[row["hex"]] = row
+        rows = list(rows_by_hex.values())
+        if not rows:
+            return 0
+
+        aircraft_values = []
+        track_values = []
+        for row in rows:
+            point = None
+            if row["lat"] is not None and row["lon"] is not None:
+                point = func.ST_SetSRID(func.ST_MakePoint(row["lon"], row["lat"]), 4326)
+            aircraft_values.append({
+                "hex": row["hex"],
+                "registration": row["registration"],
+                "aircraft_type": row["aircraft_type"],
+                "category": row["category"],
+                "flight": row["flight"],
+                "lat": row["lat"],
+                "lon": row["lon"],
+                "geom": point,
+                "alt_baro_ft": row["alt_baro_ft"],
+                "on_ground": row["on_ground"],
+                "gs": row["gs"],
+                "track": row["track"],
+                "baro_rate": row["baro_rate"],
+                "nav_altitude_mcp": row["nav_altitude_mcp"],
+                "squawk": row["squawk"],
+                "last_seen": now,
+                "last_position_update": now,
+            })
+            track_values.append({
+                "hex": row["hex"],
+                "lat": row["lat"],
+                "lon": row["lon"],
+                "geom": point,
+                "alt_baro_ft": row["alt_baro_ft"],
+                "on_ground": row["on_ground"],
+                "gs": row["gs"],
+                "track": row["track"],
+                "baro_rate": row["baro_rate"],
+                "category": row["category"],
+                "squawk": row["squawk"],
+                "acquired_at": now,
+            })
+
+        aircraft_stmt = pg_insert(Aircraft).values(aircraft_values)
+        aircraft_stmt = aircraft_stmt.on_conflict_do_update(
+            index_elements=[Aircraft.hex],
+            set_={
+                "registration": func.coalesce(aircraft_stmt.excluded.registration, Aircraft.registration),
+                "aircraft_type": func.coalesce(aircraft_stmt.excluded.aircraft_type, Aircraft.aircraft_type),
+                "category": func.coalesce(aircraft_stmt.excluded.category, Aircraft.category),
+                "flight": func.coalesce(aircraft_stmt.excluded.flight, Aircraft.flight),
+                "lat": aircraft_stmt.excluded.lat,
+                "lon": aircraft_stmt.excluded.lon,
+                "geom": aircraft_stmt.excluded.geom,
+                "alt_baro_ft": aircraft_stmt.excluded.alt_baro_ft,
+                "on_ground": aircraft_stmt.excluded.on_ground,
+                "gs": aircraft_stmt.excluded.gs,
+                "track": aircraft_stmt.excluded.track,
+                "baro_rate": aircraft_stmt.excluded.baro_rate,
+                "nav_altitude_mcp": aircraft_stmt.excluded.nav_altitude_mcp,
+                "squawk": aircraft_stmt.excluded.squawk,
+                "last_seen": aircraft_stmt.excluded.last_seen,
+                "last_position_update": aircraft_stmt.excluded.last_position_update,
+            },
+        )
+        track_stmt = pg_insert(AircraftTrack).values(track_values)
+
+        try:
+            with Session() as session:
+                session.execute(aircraft_stmt)
+                session.execute(track_stmt)
+                session.commit()
+            return len(rows)
+        except Exception as e:
+            logger.error(f"Database error recording {len(rows)} sighting(s) in bulk: {e}")
+            return 0
 
     def get_current_aircraft_total(self) -> int:
         with Session() as session:
             return session.scalar(select(func.count()).select_from(Aircraft)) or 0
 
-    def get_fleet_as_geojson(self) -> str:
+    def get_fleet_as_geojson(
+        self, *, west: float | None = None, south: float | None = None,
+        east: float | None = None, north: float | None = None,
+    ) -> str:
+        """All (or, when a bbox is given, just the viewport's) aircraft as GeoJSON.
+
+        west/south/east/north are all-or-nothing (any missing -> unfiltered, the
+        original behaviour) -- optional so every pre-existing caller/test is
+        unaffected. In practice routes/flightradar.py always supplies the same bbox
+        it already reads for record_interest(), the caller's own current map bounds.
+
+        This used to be unconditionally unfiltered -- fine when the fleet was small,
+        but live-measured against the real deployment: 17,000+ aircraft, an 8.75MB
+        response, over 2s just to fetch. The frontend polls this every 3s
+        (POLL_INTERVAL_MS); since a plain setInterval doesn't wait for the previous
+        call's fetch to resolve, a response that slow risks two overlapping polls'
+        responses landing OUT OF ORDER, letting a late, stale one overwrite fresher
+        data already merged into the frontend's aircraftByHex -- a real, verifiable
+        position "reversal" independent of anything to do with dead-reckoning/
+        smoothing math. Scoping the query to the viewport (a few dozen-to-hundred
+        aircraft, typically) removes both the bandwidth waste and that race risk."""
         feature = func.jsonb_build_object(
             "type",
             "Feature",
@@ -202,6 +321,11 @@ class AircraftAdapter:
             .outerjoin(FlightRoute, FlightRoute.flight == Aircraft.flight)
             .where(Aircraft.geom.isnot(None))
         )
+        if None not in (west, south, east, north):
+            stmt = stmt.where(
+                Aircraft.lon >= west, Aircraft.lon <= east,
+                Aircraft.lat >= south, Aircraft.lat <= north,
+            )
         try:
             with Session() as session:
                 result = session.scalar(stmt)
@@ -420,14 +544,23 @@ class FakeAircraftAdapter:
     def get_current_aircraft_total(self) -> int:
         return len(self._aircraft)
 
-    def get_fleet_as_geojson(self) -> str:
+    def get_fleet_as_geojson(
+        self, *, west: float | None = None, south: float | None = None,
+        east: float | None = None, north: float | None = None,
+    ) -> str:
         import json
+
+        bbox = None if None in (west, south, east, north) else (west, south, east, north)
 
         features = []
         for hex_id, ac in self._aircraft.items():
             if ac.get("geom") is None:
                 continue
             lon, lat = ac["geom"]
+            if bbox is not None:
+                w, s, e, n = bbox
+                if not (w <= lon <= e and s <= lat <= n):
+                    continue
             last_seen = ac.get("last_seen")
             features.append(
                 {

@@ -3,7 +3,7 @@
 // for 1 hour = 60 nautical miles = exactly 1 degree of latitude), not recomputed the
 // way the code does, so a broken formula can actually disagree with the test.
 import { describe, test, expect } from 'vitest';
-import { interpolatedPosition, extrapolatedAltitude, boundedElapsedSeconds, isFrozen, flightStatus, targetAltitudeLabel, aircraftClass, aircraftGroup, aircraftGroupColor, airlineForFlight, stopCode, routePathHtml, plausibleWarningHtml, parseRouteStops, buildFeatureCollection } from './flightradar.js';
+import { interpolatedPosition, smoothedPosition, smoothedScalar, isBackwardCorrection, bearingDeg, recordFromFeature, extrapolatedAltitude, boundedElapsedSeconds, isFrozen, flightStatus, targetAltitudeLabel, aircraftClass, aircraftGroup, aircraftGroupColor, airlineForFlight, stopCode, routePathHtml, plausibleWarningHtml, parseRouteStops, buildFeatureCollection } from './flightradar.js';
 
 describe('interpolatedPosition', () => {
     test('due-north flight for 1 hour at 60kts moves exactly 1 degree of latitude', () => {
@@ -43,6 +43,257 @@ describe('interpolatedPosition', () => {
     test('missing track (no heading data) means no movement', () => {
         const pos = interpolatedPosition({ lat: 10, lon: 20, gs: 400, track: undefined }, 100);
         expect(pos).toEqual({ lat: 10, lon: 20 });
+    });
+});
+
+describe('smoothedPosition', () => {
+    test('zero elapsed time leaves the displayed position unchanged', () => {
+        const display = { lat: 5, lon: 5 };
+        expect(smoothedPosition(display, { lat: 10, lon: 10 }, 0, 0.6)).toEqual(display);
+    });
+
+    test('negative elapsed time (defensive; should not occur) leaves the position unchanged', () => {
+        const display = { lat: 5, lon: 5 };
+        expect(smoothedPosition(display, { lat: 10, lon: 10 }, -1, 0.6)).toEqual(display);
+    });
+
+    test('a small correction (well under the speed cap) eases by the exponential-smoothing fraction for the given dt/tau', () => {
+        // A tiny (~0.6m) target gap keeps the whole step far under MAX_CORRECTION_KTS's
+        // per-frame budget, exercising the plain exponential formula:
+        // alpha = 1 - exp(-dtS/tauS) = 1 - exp(-1) = 0.6321206.
+        const pos = smoothedPosition({ lat: 0, lon: 0 }, { lat: 0.00001, lon: 0 }, 0.6, 0.6);
+        expect(pos.lat).toBeCloseTo(0.00001 * 0.6321206, 9);
+        expect(pos.lon).toBeCloseTo(0.0, 9);
+    });
+
+    test('a much longer elapsed time than tau converges close to a small, uncapped target', () => {
+        const pos = smoothedPosition({ lat: 0, lon: 0 }, { lat: 0.00001, lon: 0 }, 6.0, 0.6);
+        expect(pos.lat).toBeCloseTo(0.00001, 8);
+    });
+
+    test('never overshoots past a small, uncapped target', () => {
+        const pos = smoothedPosition({ lat: 0, lon: 0 }, { lat: 0.00001, lon: 0 }, 100.0, 0.6);
+        expect(pos.lat).toBeLessThanOrEqual(0.00001);
+    });
+
+    // The actual bug this closes (caught live on final approach into a busy airport):
+    // a landing aircraft's real deceleration outruns constant-velocity dead reckoning
+    // between samples badly enough that the resulting position error can be
+    // kilometers, not meters. Plain exponential smoothing closes that just as fast in
+    // wall-clock time as a tiny error (same alpha), which reads as the icon sliding at
+    // an obviously-impossible speed. These prove the per-frame distance cap actually
+    // engages for a large error instead.
+    test('a large correction is capped to MAX_CORRECTION_KTS worth of distance for this frame, not snapped in one exponential step', () => {
+        // 10 degrees of latitude (~600nm) away -- pure exponential (alpha=0.6321206)
+        // would close ~379nm in this single 0.6s step. The 800kt cap instead limits
+        // real movement to 800kt * (0.6/3600)h = 0.13333nm = 0.0022222deg.
+        const pos = smoothedPosition({ lat: 0, lon: 0 }, { lat: 10, lon: 0 }, 0.6, 0.6);
+        expect(pos.lat).toBeCloseTo(0.0022222, 6);
+    });
+
+    test('a capped correction still moves toward the target, never past it', () => {
+        const pos = smoothedPosition({ lat: 0, lon: 0 }, { lat: 10, lon: 0 }, 0.6, 0.6);
+        expect(pos.lat).toBeGreaterThan(0);
+        expect(pos.lat).toBeLessThan(10);
+    });
+});
+
+describe('isBackwardCorrection', () => {
+    test('no track reference means never backward (nothing to project against)', () => {
+        expect(isBackwardCorrection({ lat: 0, lon: 0 }, { lat: -1, lon: 0 }, null)).toBe(false);
+        expect(isBackwardCorrection({ lat: 0, lon: 0 }, { lat: -1, lon: 0 }, undefined)).toBe(false);
+    });
+
+    test('a target ahead along a due-north track is not backward', () => {
+        expect(isBackwardCorrection({ lat: 0, lon: 0 }, { lat: 0.01, lon: 0 }, 0)).toBe(false);
+    });
+
+    // The actual bug this closes: a landing aircraft's real position, once a new real
+    // sample lands, is consistently BEHIND where constant-velocity extrapolation had
+    // already advanced the icon to (see interpolatedPosition's docstring) -- this must
+    // be detected so buildFeatureCollection can hold position instead of visibly
+    // sliding the icon backward.
+    test('a target behind along a due-north track is backward', () => {
+        expect(isBackwardCorrection({ lat: 0, lon: 0 }, { lat: -0.01, lon: 0 }, 0)).toBe(true);
+    });
+
+    test('a target directly to the side (perpendicular to track) is not backward', () => {
+        expect(isBackwardCorrection({ lat: 0, lon: 0 }, { lat: 0, lon: 0.01 }, 0)).toBe(false);
+    });
+
+    test('works for a non-north track too (due-east heading)', () => {
+        expect(isBackwardCorrection({ lat: 0, lon: 0 }, { lat: 0, lon: 0.01 }, 90)).toBe(false);
+        expect(isBackwardCorrection({ lat: 0, lon: 0 }, { lat: 0, lon: -0.01 }, 90)).toBe(true);
+    });
+
+    test('the exact same position as display is not backward (zero progress, boundary case)', () => {
+        expect(isBackwardCorrection({ lat: 0, lon: 0 }, { lat: 0, lon: 0 }, 0)).toBe(false);
+    });
+});
+
+describe('bearingDeg', () => {
+    test('due north is 0', () => {
+        expect(bearingDeg({ lat: 0, lon: 0 }, { lat: 1, lon: 0 })).toBeCloseTo(0, 6);
+    });
+
+    test('due east is 90', () => {
+        expect(bearingDeg({ lat: 0, lon: 0 }, { lat: 0, lon: 1 })).toBeCloseTo(90, 6);
+    });
+
+    test('due south is 180', () => {
+        expect(bearingDeg({ lat: 0, lon: 0 }, { lat: -1, lon: 0 })).toBeCloseTo(180, 6);
+    });
+
+    test('due west is 270, not negative (normalized to 0-360)', () => {
+        expect(bearingDeg({ lat: 0, lon: 0 }, { lat: 0, lon: -1 })).toBeCloseTo(270, 6);
+    });
+
+    test('a diagonal move applies the same longitude-convergence correction interpolatedPosition uses', () => {
+        // At 60deg latitude, 1deg of longitude covers half the ground distance 1deg of
+        // latitude does (cos(60)=0.5) -- dLat=1, dLon-corrected=1*cos(60)=0.5 ->
+        // atan2(0.5, 1) = 26.565 degrees, not the naive atan2(1,1)=45.
+        expect(bearingDeg({ lat: 60, lon: 0 }, { lat: 61, lon: 1 })).toBeCloseTo(26.565, 2);
+    });
+
+    test('coincident points (no movement) return null rather than an arbitrary angle', () => {
+        expect(bearingDeg({ lat: 10, lon: 20 }, { lat: 10, lon: 20 })).toBeNull();
+    });
+
+    test('is the inverse of interpolatedPosition -- round-trips a track through position and back', () => {
+        const from = { lat: 10, lon: 20 };
+        const to = interpolatedPosition({ lat: from.lat, lon: from.lon, gs: 300, track: 137 }, 600);
+        expect(bearingDeg(from, to)).toBeCloseTo(137, 6);
+    });
+});
+
+// The actual root cause diagnosed live: real ADS-B position (lat/lon + altitude) and
+// velocity (gs/track/baro_rate) are broadcast as INDEPENDENT message types. Close to
+// the ground -- final approach, rollout, taxi -- position updates can stall for
+// several consecutive real samples (identical lat/lon/alt_baro_ft across 3-5 samples,
+// 40+ seconds, confirmed against the real deployment's database) while velocity keeps
+// reporting normally throughout. Dead reckoning from a stale position anchor using a
+// genuinely-current speed/rate double-counts distance/altitude the aircraft already
+// covered during the stall -- this is why landing traffic overshot even though real
+// speed barely changes ("dead reckoning should be ~100% accurate here").
+describe('recordFromFeature', () => {
+    function featureFor({ lat = -41.3, lon = 174.8, ...propOverrides } = {}) {
+        return {
+            properties: {
+                hex: 'a1b2c3', flight: 'ANZ423', registration: 'ZK-TST', aircraft_type: 'B738',
+                category: 'A3', alt_baro_ft: 5000, on_ground: false, gs: 200, track: 90,
+                baro_rate: 0, nav_altitude_mcp: null,
+                last_seen: '2026-07-29T00:00:10.000000+00:00',
+                route_stops: null, route_plausible: null,
+                ...propOverrides,
+            },
+            geometry: { coordinates: [lon, lat] },
+        };
+    }
+
+    test('first sighting (no prior record) uses the raw gs/baro_rate directly -- nothing to compare against yet', () => {
+        const rec = recordFromFeature(featureFor(), 1000);
+        expect(rec.deadReckonGs).toBe(200);
+        expect(rec.deadReckonBaroRate).toBe(0);
+    });
+
+    test('the same real sample re-fetched (identical last_seen) is never treated as a stall, even with identical position', () => {
+        const feature = featureFor({ lat: 10, lon: 20 });
+        const prevRec = recordFromFeature(feature, 1000);
+        const rec = recordFromFeature(feature, 2000, prevRec);   // same last_seen -- just a faster poll
+        expect(rec.deadReckonGs).toBe(200);
+    });
+
+    test('a genuinely new real sample with an unchanged position suppresses dead-reckoning speed', () => {
+        const prevRec = recordFromFeature(
+            featureFor({ lat: 10, lon: 20, last_seen: '2026-07-29T00:00:10.000000+00:00' }), 1000,
+        );
+        const rec = recordFromFeature(
+            featureFor({ lat: 10, lon: 20, gs: 210, last_seen: '2026-07-29T00:00:22.000000+00:00' }),
+            2000, prevRec,
+        );
+        expect(rec.deadReckonGs).toBe(0);
+        // The real reported speed is still preserved for the popup/informational display.
+        expect(rec.gs).toBe(210);
+    });
+
+    test('a genuinely new real sample with a changed position resumes normal dead reckoning', () => {
+        const prevRec = recordFromFeature(
+            featureFor({ lat: 10, lon: 20, last_seen: '2026-07-29T00:00:10.000000+00:00' }), 1000,
+        );
+        const rec = recordFromFeature(
+            featureFor({ lat: 10.01, lon: 20, last_seen: '2026-07-29T00:00:22.000000+00:00' }),
+            2000, prevRec,
+        );
+        expect(rec.deadReckonGs).toBe(200);
+    });
+
+    test('a stalled altitude suppresses the baro_rate projection the same way', () => {
+        const prevRec = recordFromFeature(
+            featureFor({ alt_baro_ft: 1000, last_seen: '2026-07-29T00:00:10.000000+00:00' }), 1000,
+        );
+        const rec = recordFromFeature(
+            featureFor({ alt_baro_ft: 1000, baro_rate: -500, last_seen: '2026-07-29T00:00:22.000000+00:00' }),
+            2000, prevRec,
+        );
+        expect(rec.deadReckonBaroRate).toBe(0);
+        expect(rec.baro_rate).toBe(-500);   // real reported rate preserved for the popup
+    });
+
+    test('a changed altitude resumes normal baro_rate extrapolation', () => {
+        const prevRec = recordFromFeature(
+            featureFor({ alt_baro_ft: 1000, last_seen: '2026-07-29T00:00:10.000000+00:00' }), 1000,
+        );
+        const rec = recordFromFeature(
+            featureFor({ alt_baro_ft: 900, baro_rate: -500, last_seen: '2026-07-29T00:00:22.000000+00:00' }),
+            2000, prevRec,
+        );
+        expect(rec.deadReckonBaroRate).toBe(-500);
+    });
+
+    test('on-ground (non-numeric altitude) is never treated as an altitude stall', () => {
+        const prevRec = recordFromFeature(
+            featureFor({ on_ground: true, last_seen: '2026-07-29T00:00:10.000000+00:00' }), 1000,
+        );
+        const rec = recordFromFeature(
+            featureFor({ on_ground: true, baro_rate: 5, last_seen: '2026-07-29T00:00:22.000000+00:00' }),
+            2000, prevRec,
+        );
+        expect(rec.deadReckonBaroRate).toBe(5);
+        expect(rec.alt_baro).toBe('ground');
+    });
+});
+
+describe('smoothedScalar', () => {
+    test('zero elapsed time leaves the displayed value unchanged', () => {
+        expect(smoothedScalar(5, 10, 0, 0.6, 100)).toBe(5);
+    });
+
+    test('negative elapsed time (defensive; should not occur) leaves the value unchanged', () => {
+        expect(smoothedScalar(5, 10, -1, 0.6, 100)).toBe(5);
+    });
+
+    test('a small correction (well under the rate cap) eases by the exponential-smoothing fraction', () => {
+        // alpha = 1 - exp(-1) = 0.6321206; 10ft gap needs nowhere near a 100ft/s cap.
+        expect(smoothedScalar(10000, 10010, 0.6, 0.6, 100)).toBeCloseTo(10000 + 10 * 0.6321206, 4);
+    });
+
+    // Mirrors smoothedPosition's cap tests -- extrapolatedAltitude's linear baro_rate
+    // projection has the identical overshoot failure mode as interpolatedPosition's
+    // constant-velocity guess, for the same landing-approach reason.
+    test('a large correction is capped to maxRatePerSecond*dtS worth of change for this frame', () => {
+        // 5000ft away; uncapped alpha would close ~3160ft in one 0.6s step; a 100ft/s
+        // cap instead limits real movement to 100*0.6=60ft.
+        expect(smoothedScalar(10000, 15000, 0.6, 0.6, 100)).toBeCloseTo(10060, 6);
+    });
+
+    test('capping applies symmetrically to a decreasing (descending) correction', () => {
+        expect(smoothedScalar(15000, 10000, 0.6, 0.6, 100)).toBeCloseTo(14940, 6);
+    });
+
+    test('a capped correction still moves toward the target, never past it', () => {
+        const value = smoothedScalar(10000, 15000, 0.6, 0.6, 100);
+        expect(value).toBeGreaterThan(10000);
+        expect(value).toBeLessThan(15000);
     });
 });
 
@@ -258,6 +509,196 @@ describe('buildFeatureCollection route_stops shape', () => {
         const aircraftByHex = new Map([['a1b2c3', recFor({ route_stops: null, route_plausible: false })]]);
         const fc = buildFeatureCollection(aircraftByHex, 1000);
         expect(fc.features[0].properties.route_plausible).toBe(false);
+    });
+});
+
+// Correction smoothing (issue: aircraft icons visibly snapping backward when a new
+// real sample's position falls behind where constant-velocity dead reckoning had
+// already extrapolated to -- see interpolatedPosition/smoothedPosition). displayByHex
+// is optional and defaults to null so every pre-existing call site/test above (which
+// never passes it) keeps getting the exact raw dead-reckoned target, unsmoothed --
+// this is opt-in, not a behaviour change for callers that don't ask for it.
+describe('buildFeatureCollection position smoothing', () => {
+    // gs=3600kt is unrealistic but keeps the numbers clean the same way the existing
+    // interpolatedPosition tests do (60kt for 1hr = 1 degree) while staying under
+    // MAX_EXTRAPOLATION_S's 60s cap: 3600kt for 60s covers the same 60nm distance.
+    // alt_baro is 'ground' (non-numeric) by default so these position-focused cases
+    // don't also pull altitude into the smoothed state -- see the dedicated altitude
+    // smoothing tests below for that.
+    function movingRec(overrides = {}) {
+        return {
+            hex: 'a1b2c3', flight: 'ANZ423', category: '', receivedAt: 1000,
+            lat: 0, lon: 0, gs: 3600, track: 0, alt_baro: 'ground',
+            ...overrides,
+        };
+    }
+
+    // receivedAt=1000ms; now = 1000ms + 60s (in ms) -> elapsed = exactly 60s (right at,
+    // not past, the cap), so a 3600kt due-north flight moves exactly 1 degree of
+    // latitude.
+    const NOW_AFTER_60S = 1000 + 60 * 1000;
+
+    test('omitting displayByHex renders the raw dead-reckoned target, unsmoothed (backward compatible)', () => {
+        const aircraftByHex = new Map([['a1b2c3', movingRec()]]);
+        const fc = buildFeatureCollection(aircraftByHex, NOW_AFTER_60S);
+        expect(fc.features[0].geometry.coordinates).toEqual([0, 1]);
+    });
+
+    test('the first time an aircraft is seen, there is no prior display position to ease from -- renders the raw target directly', () => {
+        const aircraftByHex = new Map([['a1b2c3', movingRec()]]);
+        const displayByHex = new Map();
+        const fc = buildFeatureCollection(aircraftByHex, NOW_AFTER_60S, displayByHex, 1.0, 0.6);
+        expect(fc.features[0].geometry.coordinates).toEqual([0, 1]);
+        // No prior display to compute a rendered bearing from -- falls back to the
+        // raw reported track (movingRec's default, 0).
+        expect(displayByHex.get('a1b2c3')).toEqual({ lat: 1, lon: 0, track: 0 });
+    });
+
+    test('an existing display position eases toward the new target rather than snapping to it', () => {
+        const aircraftByHex = new Map([['a1b2c3', movingRec()]]);
+        const displayByHex = new Map([['a1b2c3', { lat: 0.2, lon: 0 }]]);
+        const dtS = 0.6, tauS = 0.6;
+        const target = interpolatedPosition({ lat: 0, lon: 0, gs: 3600, track: 0 }, 60);
+        const expected = smoothedPosition({ lat: 0.2, lon: 0 }, target, dtS, tauS);
+
+        const fc = buildFeatureCollection(aircraftByHex, NOW_AFTER_60S, displayByHex, dtS, tauS);
+
+        expect(fc.features[0].geometry.coordinates).toEqual([expected.lon, expected.lat]);
+        // The eased position must land strictly between the old display and the raw
+        // target -- neither still at the old spot nor snapped straight to the target.
+        expect(fc.features[0].geometry.coordinates[1]).toBeGreaterThan(0.2);
+        expect(fc.features[0].geometry.coordinates[1]).toBeLessThan(1.0);
+        // displayByHex is updated in place so the next frame eases from here, not from
+        // the stale 0.2 starting point.
+        // The rendered movement was due north the whole time (lon stays 0), so the
+        // derived icon_track/stored bearing is 0 -- matches raw track here since
+        // nothing diverged, but derived independently via bearingDeg, not copied.
+        expect(displayByHex.get('a1b2c3')).toEqual({ ...expected, track: 0 });
+    });
+
+    test('altitude eases toward its new target the same way position does, when a prior display altitude exists', () => {
+        // baro_rate=6000ft/min for 60s (elapsed, capped at MAX_EXTRAPOLATION_S) ->
+        // extrapolatedAltitude(10000, 6000, null, 60) = 10000 + 6000*(60/60) = 16000.
+        // Computed via smoothedScalar directly (rather than hand-derived alpha math)
+        // so this stays correct regardless of whether the 5000ft gap trips the rate
+        // cap -- 6000/60 (MAX_ALT_CORRECTION_FPM/60) matches the internal constant.
+        const aircraftByHex = new Map([['a1b2c3', movingRec({ gs: 0, alt_baro: 10000, baro_rate: 6000 })]]);
+        const displayByHex = new Map([['a1b2c3', { lat: 0, lon: 0, alt: 11000 }]]);
+        const dtS = 0.6, tauS = 0.6;
+        const expectedAlt = smoothedScalar(11000, 16000, dtS, tauS, 6000 / 60);
+
+        const fc = buildFeatureCollection(aircraftByHex, NOW_AFTER_60S, displayByHex, dtS, tauS);
+
+        expect(fc.features[0].properties.alt_baro_ft).toBeCloseTo(expectedAlt, 6);
+        expect(displayByHex.get('a1b2c3').alt).toBeCloseTo(expectedAlt, 6);
+        // The actual bug this closes: a 5000ft gap must NOT resolve in one 0.6s step
+        // (that's the "visible reversal" -- an implied ~500,000ft/min climb rate).
+        expect(fc.features[0].properties.alt_baro_ft).toBeLessThan(11100);
+    });
+
+    test('altitude newly becoming known this cycle (no prior display altitude) is not eased -- renders directly', () => {
+        const aircraftByHex = new Map([['a1b2c3', movingRec({ gs: 0, alt_baro: 10000, baro_rate: 6000 })]]);
+        // Prior display exists (position was already being tracked) but never had an
+        // altitude yet -- e.g. the aircraft was previously 'ground'/unknown.
+        const displayByHex = new Map([['a1b2c3', { lat: 0, lon: 0 }]]);
+
+        const fc = buildFeatureCollection(aircraftByHex, NOW_AFTER_60S, displayByHex, 0.6, 0.6);
+
+        expect(fc.features[0].properties.alt_baro_ft).toBeCloseTo(16000, 6);
+        expect(displayByHex.get('a1b2c3').alt).toBeCloseTo(16000, 6);
+    });
+
+    test('a non-numeric altitude (ground/unknown) is never smoothed and falls back to 0 in the built feature, same as unsmoothed', () => {
+        const aircraftByHex = new Map([['a1b2c3', movingRec({ gs: 0, alt_baro: 'ground' })]]);
+        const displayByHex = new Map([['a1b2c3', { lat: 0, lon: 0, alt: 500 }]]);
+
+        const fc = buildFeatureCollection(aircraftByHex, NOW_AFTER_60S, displayByHex, 0.6, 0.6);
+
+        expect(fc.features[0].properties.alt_baro_ft).toBe(0);
+        // The stale alt from a previous (now-ended) climb/descent must not linger.
+        expect(displayByHex.get('a1b2c3').alt).toBeUndefined();
+    });
+
+    // The actual bug this closes (caught live, repeatedly, on final approach): even
+    // with the speed cap, a target landing behind the display still visibly slides
+    // the icon backward for a moment -- real aircraft never do that, so it must be
+    // held instead. See isBackwardCorrection's own docstring.
+    test('a target landing behind the display (relative to current track) holds position instead of visibly moving backward', () => {
+        const aircraftByHex = new Map([['a1b2c3', movingRec({ lat: 0, lon: 0, gs: 3600, track: 0 })]]);
+        // target = interpolatedPosition({lat:0,lon:0,gs:3600,track:0}, 60) = {lat:1,lon:0}
+        const displayByHex = new Map([['a1b2c3', { lat: 2, lon: 0 }]]);  // already further along than the new target
+
+        const fc = buildFeatureCollection(aircraftByHex, NOW_AFTER_60S, displayByHex, 0.6, 0.6);
+
+        expect(fc.features[0].geometry.coordinates).toEqual([0, 2]);
+        // No movement this frame (held) -- no bearing to derive, so icon_track/the
+        // stored track falls back to the raw reported track (0) rather than snapping.
+        expect(displayByHex.get('a1b2c3')).toEqual({ lat: 2, lon: 0, track: 0 });
+        expect(fc.features[0].properties.icon_track).toBe(0);
+    });
+
+    test('a target landing ahead of the display (relative to current track) eases normally, not held', () => {
+        const aircraftByHex = new Map([['a1b2c3', movingRec({ lat: 0, lon: 0, gs: 3600, track: 0 })]]);
+        const displayByHex = new Map([['a1b2c3', { lat: 0.5, lon: 0 }]]);  // behind the new target (1)
+
+        const fc = buildFeatureCollection(aircraftByHex, NOW_AFTER_60S, displayByHex, 0.6, 0.6);
+
+        expect(fc.features[0].geometry.coordinates[1]).toBeGreaterThan(0.5);
+    });
+
+    // The actual feature this closes: the icon should point where it's actually
+    // moving on screen, not blindly follow the raw reported track -- which can
+    // diverge from the icon's real rendered path (a crosswind crab angle, or our own
+    // extrapolation/smoothing mid-correction).
+    test('icon_track is derived from the rendered movement direction, which can differ from the raw reported track', () => {
+        // Raw track says due east (90), but the prior display sits well south of the
+        // new target, so the icon's real eased movement has a genuine northward
+        // component too -- it should point somewhere between north and east, not
+        // snap to the raw 90.
+        const aircraftByHex = new Map([['a1b2c3', movingRec({ lat: 0, lon: 0, gs: 3600, track: 90 })]]);
+        const displayByHex = new Map([['a1b2c3', { lat: -0.5, lon: 0, track: 90 }]]);
+
+        const fc = buildFeatureCollection(aircraftByHex, NOW_AFTER_60S, displayByHex, 0.6, 0.6);
+
+        const iconTrack = fc.features[0].properties.icon_track;
+        expect(fc.features[0].properties.track).toBe(90);   // raw track is untouched
+        expect(iconTrack).toBeGreaterThan(0);
+        expect(iconTrack).toBeLessThan(90);
+    });
+
+    test('icon_track falls back to the raw track on first sighting (nothing to derive a bearing from yet)', () => {
+        const aircraftByHex = new Map([['a1b2c3', movingRec({ lat: 0, lon: 0, gs: 3600, track: 137 })]]);
+        const displayByHex = new Map();
+
+        const fc = buildFeatureCollection(aircraftByHex, NOW_AFTER_60S, displayByHex, 0.6, 0.6);
+
+        expect(fc.features[0].properties.icon_track).toBe(137);
+    });
+
+    test('icon_track holds its previous value when there is no movement this frame (e.g. a hold, or a stationary aircraft)', () => {
+        const aircraftByHex = new Map([['a1b2c3', movingRec({ lat: 0, lon: 0, gs: 0, track: 45 })]]);
+        // Already displayed exactly at the target (gs=0 means the target never
+        // advances) -- no movement this frame, so the previously-rendered track (200,
+        // deliberately different from the raw 45) must be kept, not recomputed.
+        const displayByHex = new Map([['a1b2c3', { lat: 0, lon: 0, track: 200 }]]);
+
+        const fc = buildFeatureCollection(aircraftByHex, NOW_AFTER_60S, displayByHex, 0.6, 0.6);
+
+        expect(fc.features[0].properties.icon_track).toBe(200);
+    });
+
+    // End-to-end wiring check for recordFromFeature's stalled-position fix (see that
+    // describe block) -- buildFeatureCollection must actually use deadReckonGs, not
+    // silently fall back to the real gs, once a record carries it.
+    test('a stalled record (deadReckonGs=0) does not dead-reckon forward, even though the real reported gs is nonzero', () => {
+        const aircraftByHex = new Map([
+            ['a1b2c3', movingRec({ lat: 5, lon: 5, gs: 200, deadReckonGs: 0, track: 90 })],
+        ]);
+
+        const fc = buildFeatureCollection(aircraftByHex, NOW_AFTER_60S);
+
+        expect(fc.features[0].geometry.coordinates).toEqual([5, 5]);   // unchanged from the raw reported position
+        expect(fc.features[0].properties.gs).toBe(200);   // popup still shows the real reported speed
     });
 });
 
