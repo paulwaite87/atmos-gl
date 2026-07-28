@@ -92,6 +92,52 @@ def test_get_fleet_as_geojson_empty_fleet():
     assert geojson == {"type": "FeatureCollection", "features": []}
 
 
+def test_get_fleet_as_geojson_filters_to_bbox_when_given():
+    """The actual live bug this closes: unfiltered, this endpoint returned the
+    ENTIRE global fleet (17,000+ aircraft, 8.75MB, 2+s) on every 3s frontend poll --
+    slow enough that overlapping polls' responses could land out of order and let a
+    stale one overwrite fresher data, a real position "reversal" with nothing to do
+    with dead-reckoning/smoothing math."""
+    adapter = FakeAircraftAdapter()
+    adapter.record_sighting(_record(hex="aa1111", lat=48.98, lon=2.55))    # inside bbox
+    adapter.record_sighting(_record(hex="bb2222", lat=-41.3, lon=174.8))  # outside bbox
+
+    import json
+
+    geojson = json.loads(
+        adapter.get_fleet_as_geojson(west=2.4, south=48.9, east=2.7, north=49.1)
+    )
+    hexes = {f["properties"]["hex"] for f in geojson["features"]}
+    assert hexes == {"aa1111"}
+
+
+def test_get_fleet_as_geojson_is_unfiltered_when_bbox_is_omitted():
+    adapter = FakeAircraftAdapter()
+    adapter.record_sighting(_record(hex="aa1111", lat=48.98, lon=2.55))
+    adapter.record_sighting(_record(hex="bb2222", lat=-41.3, lon=174.8))
+
+    import json
+
+    geojson = json.loads(adapter.get_fleet_as_geojson())
+    hexes = {f["properties"]["hex"] for f in geojson["features"]}
+    assert hexes == {"aa1111", "bb2222"}
+
+
+def test_get_fleet_as_geojson_is_unfiltered_when_bbox_is_partially_given():
+    """west/south/east/north are all-or-nothing -- a partial bbox (shouldn't happen
+    from the real route, which always supplies all four together) falls back to
+    unfiltered rather than silently misinterpreting a missing bound."""
+    adapter = FakeAircraftAdapter()
+    adapter.record_sighting(_record(hex="aa1111", lat=48.98, lon=2.55))
+    adapter.record_sighting(_record(hex="bb2222", lat=-41.3, lon=174.8))
+
+    import json
+
+    geojson = json.loads(adapter.get_fleet_as_geojson(west=2.4, south=48.9, east=2.7))
+    hexes = {f["properties"]["hex"] for f in geojson["features"]}
+    assert hexes == {"aa1111", "bb2222"}
+
+
 def test_get_aircraft_track_returns_empty_for_missing_hex():
     adapter = FakeAircraftAdapter()
     assert adapter.get_aircraft_track(None) == []

@@ -66,3 +66,21 @@ def test_geojson_route_fields_are_null_when_the_stored_route_is_a_confirmed_no_m
     props = collection["features"][0]["properties"]
     assert props["route_stops"] is None
     assert props["route_plausible"] is None
+
+
+def test_get_fleet_as_geojson_filters_to_bbox_against_a_real_query(aircraft_adapter):
+    """The actual live bug this closes: unfiltered, this query returned the ENTIRE
+    fleet (17,000+ aircraft against the real deployment, 8.75MB/2+s) on every 3s
+    frontend poll -- see AircraftAdapter.get_fleet_as_geojson's docstring."""
+    aircraft_adapter.record_sighting(
+        _sighting(hex="cdgtest1", flight="INBBOX1", lat=48.98, lon=2.55)
+    )
+    aircraft_adapter.record_sighting(
+        _sighting(hex="nzltest1", flight="OUTBBOX1", lat=-41.3, lon=174.8)
+    )
+
+    collection = json.loads(
+        aircraft_adapter.get_fleet_as_geojson(west=2.4, south=48.9, east=2.7, north=49.1)
+    )
+    hexes = {f["properties"]["hex"] for f in collection["features"]}
+    assert hexes == {"cdgtest1"}

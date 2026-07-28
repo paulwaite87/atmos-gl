@@ -30,7 +30,7 @@ async def get_aircraft_geojson(
     aircraft_adapter: AircraftAdapter = Depends(get_aircraft_adapter),
 ):
     aircraft_adapter.record_interest(viewer_id, west=west, south=south, east=east, north=north)
-    geojson_string = aircraft_adapter.get_fleet_as_geojson()
+    geojson_string = aircraft_adapter.get_fleet_as_geojson(west=west, south=south, east=east, north=north)
     return Response(content=geojson_string, media_type="application/json")
 
 
