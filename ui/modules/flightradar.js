@@ -78,6 +78,19 @@ export function targetAltitudeLabel(navAltitudeMcpFt, altBaroFt, altitudeAmbiguo
 // speed in knots (adsb.lol's `gs`). Longitude degrees shrink toward the poles
 // (1 / cos(lat)), same convergence correction as everywhere else in this codebase that
 // converts a distance to a longitude delta.
+//
+// Deliberately constant-velocity, not acceleration-aware: an earlier version of this
+// function projected a rate of change of gs (derived from just the two most recent
+// real samples) forward via distance = v0*t + 0.5*a*t^2. That made things WORSE, not
+// better -- a real aircraft's speed doesn't change at a constant rate for the full
+// 10-25s+ gap between hot-cell samples (it happens in bursts: flaps, gear, speed
+// brakes), so whatever rate happened to show up between two samples got projected
+// forward and reliably overshot, and because the error term is quadratic in elapsed
+// time, it compounded badly on final approach specifically -- visible live as smooth
+// but "obviously over-cooked" position swings on final approach into a busy airport,
+// even with smoothedPosition's correction-easing layered on top (smoothing chases the
+// target faithfully; the bug was the target itself). Reverted in favour of this
+// simpler, more modest constant-velocity guess plus smoothedPosition below.
 export function interpolatedPosition({ lat, lon, gs, track }, elapsedSeconds) {
     if (!gs || !elapsedSeconds || track == null) return { lat, lon };
     const distanceNm = gs * (elapsedSeconds / 3600.0);
@@ -86,6 +99,120 @@ export function interpolatedPosition({ lat, lon, gs, track }, elapsedSeconds) {
     const cosLat = Math.cos((lat * Math.PI) / 180.0);
     const deltaLon = cosLat !== 0 ? ((distanceNm / NM_PER_DEGREE_LAT) * Math.sin(trackRad)) / cosLat : 0;
     return { lat: lat + deltaLat, lon: lon + deltaLon };
+}
+
+// Compass bearing (degrees, clockwise from north) from `from` to `to` -- the inverse
+// of interpolatedPosition's deltaLat/deltaLon decomposition (same flat-earth
+// approximation and longitude-convergence correction, just run backward). Used to
+// derive the ICON'S rotation from its own rendered movement rather than the raw
+// reported track/heading -- adsb.lol's `track` is ground track, not heading, but a
+// real aircraft's track and heading still diverge in a crosswind (crab angle), and
+// separately, our own extrapolation/smoothing/backward-hold pipeline (see
+// isBackwardCorrection) means the icon's ACTUAL on-screen path doesn't always match
+// raw `track` moment-to-moment either. Deriving rotation from consecutive rendered
+// positions instead guarantees the icon always visibly points the way it's actually
+// moving, by construction. Returns null when the two points coincide (no movement
+// this frame -- e.g. held per isBackwardCorrection, or genuinely stationary) --
+// callers should hold the previous rotation rather than snapping to some arbitrary
+// angle for a zero-length vector.
+export function bearingDeg(from, to) {
+    const cosLat = Math.cos((from.lat * Math.PI) / 180.0);
+    const dLat = to.lat - from.lat;
+    const dLon = (to.lon - from.lon) * cosLat;
+    if (dLat === 0 && dLon === 0) return null;
+    const deg = (Math.atan2(dLon, dLat) * 180.0) / Math.PI;
+    return deg < 0 ? deg + 360 : deg;
+}
+
+// How fast the DISPLAYED state (position and/or altitude) catches up to its true
+// dead-reckoned target (smoothedPosition/smoothedScalar's default time constant).
+// Chosen so a correction settles in roughly 1-2s (tau=0.6s: ~63% closed after 0.6s,
+// ~95% after ~1.8s) without reading as laggy -- tunable like every other
+// empirically-picked constant in this codebase. Tradeoff: during SUSTAINED constant
+// motion (no correction needed) this exponential filter settles into a small constant
+// lag behind the target, roughly rate*tauS (at cruise speed ~450kt, ~0.6s of lag is on
+// the order of ~140m) -- accepted in exchange for eliminating the visible snap a hard
+// reset causes.
+const SMOOTH_TAU_S = 0.6;
+
+// Caps on how fast a correction is visually allowed to close (see smoothedPosition/
+// smoothedScalar) -- both set well above realistic sustained aircraft performance
+// (a strong-tailwind groundspeed outlier for the former; a steep-but-plausible
+// descent for the latter) so neither ever limits an ordinary correction, only an
+// extreme one caused by our own extrapolation error.
+const MAX_CORRECTION_KTS = 800;
+const MAX_ALT_CORRECTION_FPM = 6000;
+
+// Exponential smoothing of the DISPLAYED position toward a (possibly moving) target,
+// framerate-independent via the elapsed-time-based alpha below, with the per-frame
+// movement capped to MAX_CORRECTION_KTS worth of real distance (same flat-earth
+// approximation interpolatedPosition uses). Plain exponential smoothing alone closes
+// a LARGE error (kilometers -- e.g. a landing aircraft's real deceleration outrunning
+// constant-velocity dead reckoning between samples, see interpolatedPosition) just as
+// fast in wall-clock time as a small one, since tau alone doesn't know how far it has
+// to go -- that reads as the icon sliding at an obviously-impossible speed rather
+// than as a gentle correction (caught live: "smooth but totally weird to watch").
+// Capping the per-frame distance instead means small errors still resolve almost
+// immediately (well under the cap) while large ones take proportionally longer, at a
+// speed that looks like real aircraft motion. dtS<=0 (first frame, or a defensive
+// guard against clock weirdness) leaves the displayed position unchanged.
+export function smoothedPosition(display, target, dtS, tauS = SMOOTH_TAU_S) {
+    if (!dtS || dtS <= 0) return display;
+    const alpha = 1 - Math.exp(-dtS / tauS);
+    let deltaLat = (target.lat - display.lat) * alpha;
+    let deltaLon = (target.lon - display.lon) * alpha;
+
+    const cosLat = Math.cos((display.lat * Math.PI) / 180.0);
+    const distNm = Math.sqrt(
+        (deltaLat * NM_PER_DEGREE_LAT) ** 2 + (deltaLon * NM_PER_DEGREE_LAT * cosLat) ** 2,
+    );
+    const maxDistNm = MAX_CORRECTION_KTS * (dtS / 3600.0);
+    if (distNm > maxDistNm) {
+        const scale = maxDistNm / distNm;
+        deltaLat *= scale;
+        deltaLon *= scale;
+    }
+    return { lat: display.lat + deltaLat, lon: display.lon + deltaLon };
+}
+
+// True if moving from `display` toward `target` would be BACKWARD progress along
+// `trackDeg` (degrees true, clockwise from north -- the aircraft's own current
+// heading). A real aircraft never flies backward, so a target landing behind the
+// currently-displayed position relative to its own heading is always an artifact of
+// our extrapolation overshooting, never genuine aircraft motion -- caught live on
+// final approach: constant-velocity dead reckoning assumes the pre-touchdown speed
+// holds for the whole sample gap, but a landing aircraft decelerates hard within that
+// same gap, so the real position is consistently less advanced than the guess.
+//
+// A capped/eased correction (smoothedPosition alone) still visibly slides the icon
+// backward for a moment -- slower than a hard snap, but any backward motion at all
+// reads as obviously wrong, since it's something no real aircraft does. Detecting this
+// case and holding position instead (see buildFeatureCollection) avoids ever showing
+// it, at the cost of the icon briefly pausing until a later real sample shows genuine
+// progress past wherever it's held -- a much smaller, self-resolving artifact than a
+// visible reversal.
+export function isBackwardCorrection(display, target, trackDeg) {
+    if (trackDeg == null) return false;
+    const deltaLatNm = (target.lat - display.lat) * NM_PER_DEGREE_LAT;
+    const cosLat = Math.cos((display.lat * Math.PI) / 180.0);
+    const deltaLonNm = (target.lon - display.lon) * NM_PER_DEGREE_LAT * cosLat;
+    const trackRad = (trackDeg * Math.PI) / 180.0;
+    const progressNm = deltaLatNm * Math.cos(trackRad) + deltaLonNm * Math.sin(trackRad);
+    return progressNm < 0;
+}
+
+// 1D counterpart of smoothedPosition -- same exponential-smoothing-with-a-rate-cap
+// shape, for a plain scalar (altitude) rather than a geographic position, since
+// altitude's unit (feet) doesn't need or share smoothedPosition's distance math.
+// maxRatePerSecond is in the same units as display/target, per second (pass
+// MAX_ALT_CORRECTION_FPM / 60 for altitude in feet).
+export function smoothedScalar(display, target, dtS, tauS, maxRatePerSecond) {
+    if (!dtS || dtS <= 0) return display;
+    const alpha = 1 - Math.exp(-dtS / tauS);
+    let delta = (target - display) * alpha;
+    const maxDelta = maxRatePerSecond * dtS;
+    if (Math.abs(delta) > maxDelta) delta = Math.sign(delta) * maxDelta;
+    return display + delta;
 }
 
 // Vertical counterpart to interpolatedPosition -- projects baro_rate (ft/min) forward
@@ -323,15 +450,67 @@ const FLIGHTRADAR_ICONS = [
 // itself only needs the altitude density step. Position AND altitude are dead-reckoned
 // from each record's last known state -- see interpolatedPosition/extrapolatedAltitude/
 // boundedElapsedSeconds above.
-export function buildFeatureCollection(aircraftByHex, now) {
+//
+// displayByHex/dtS/tauS (all optional) opt into correction smoothing (smoothedPosition
+// above): when displayByHex is given, the rendered position AND (when numeric)
+// altitude ease from that hex's previous displayed state toward the freshly
+// dead-reckoned target rather than jumping straight to it, and displayByHex is
+// updated in place so the NEXT call eases from here. displayByHex=null (the default)
+// skips smoothing entirely -- every pre-existing caller/test gets the exact raw
+// target, unchanged.
+export function buildFeatureCollection(aircraftByHex, now, displayByHex = null, dtS = 0, tauS = SMOOTH_TAU_S) {
     const features = [];
     for (const rec of aircraftByHex.values()) {
         if (typeof rec.lat !== 'number' || typeof rec.lon !== 'number') continue;
         const category = (rec.category || '').toUpperCase();
         if (category.startsWith('C')) continue;
         const elapsed = boundedElapsedSeconds(rec.receivedAt, now);
-        const pos = interpolatedPosition({ lat: rec.lat, lon: rec.lon, gs: rec.gs, track: rec.track }, elapsed);
-        const altBaroFt = extrapolatedAltitude(rec.alt_baro, rec.baro_rate, rec.nav_altitude_mcp, elapsed);
+        // deadReckonGs/deadReckonBaroRate (recordFromFeature) fall back to the raw
+        // gs/baro_rate for any caller/test that doesn't set them -- only recordFromFeature
+        // actually forces them to 0 (see its docstring for the stalled-position case).
+        const target = interpolatedPosition(
+            { lat: rec.lat, lon: rec.lon, gs: rec.deadReckonGs ?? rec.gs, track: rec.track }, elapsed,
+        );
+        const rawAltBaroFt = extrapolatedAltitude(
+            rec.alt_baro, rec.deadReckonBaroRate ?? rec.baro_rate, rec.nav_altitude_mcp, elapsed,
+        );
+
+        let pos = target;
+        let altBaroFt = rawAltBaroFt;
+        let iconTrack = rec.track;
+        if (displayByHex) {
+            const prevDisplay = displayByHex.get(rec.hex);
+            if (prevDisplay && isBackwardCorrection(prevDisplay, target, rec.track)) {
+                pos = prevDisplay;   // hold -- never visibly fly backward (see isBackwardCorrection)
+            } else {
+                pos = prevDisplay ? smoothedPosition(prevDisplay, target, dtS, tauS) : target;
+            }
+
+            if (prevDisplay) {
+                const bearing = bearingDeg({ lat: prevDisplay.lat, lon: prevDisplay.lon }, pos);
+                // No movement this frame (held, or genuinely stationary) -- keep
+                // pointing the way it was already pointing rather than snapping to
+                // an arbitrary angle for a zero-length vector.
+                iconTrack = bearing != null ? bearing : (prevDisplay.track ?? rec.track);
+            }
+
+            let smoothedAlt;
+            // Altitude only participates when it's a genuine number -- 'ground'/unknown
+            // has nothing meaningful to ease toward or from, and popupHtml's
+            // on_ground/alt_baro_known already read the raw rec directly.
+            if (typeof rawAltBaroFt === 'number') {
+                const prevAlt = prevDisplay && typeof prevDisplay.alt === 'number'
+                    ? prevDisplay.alt : rawAltBaroFt;   // no lag if altitude just became known
+                smoothedAlt = smoothedScalar(prevAlt, rawAltBaroFt, dtS, tauS, MAX_ALT_CORRECTION_FPM / 60);
+                altBaroFt = smoothedAlt;
+            }
+
+            displayByHex.set(rec.hex, {
+                ...pos,
+                ...(smoothedAlt !== undefined ? { alt: smoothedAlt } : {}),
+                track: iconTrack,
+            });
+        }
         features.push({
             type: 'Feature',
             geometry: { type: 'Point', coordinates: [pos.lon, pos.lat] },
@@ -357,7 +536,14 @@ export function buildFeatureCollection(aircraftByHex, now) {
                 baro_rate_fpm: typeof rec.baro_rate === 'number' ? rec.baro_rate : null,
                 nav_altitude_mcp_ft: typeof rec.nav_altitude_mcp === 'number' ? rec.nav_altitude_mcp : null,
                 gs: rec.gs ?? 0,
+                // track is the raw reported ground track (popupHtml's "Heading" line
+                // and flightStatus/etc. want the real value); icon_track is what the
+                // layer's icon-rotate paint property actually uses -- derived from
+                // the icon's own rendered movement (see bearingDeg), which can
+                // legitimately differ from raw track during a crosswind crab angle or
+                // while our own extrapolation/smoothing is mid-correction.
                 track: rec.track ?? 0,
+                icon_track: iconTrack ?? 0,
                 icon: category.startsWith('B') ? 'flightradar-glider' : 'flightradar-aircraft',
                 color: aircraftGroupColor(rec.t),
                 frozen: isFrozen(rec.receivedAt, now),
@@ -479,23 +665,57 @@ const viewerId = (typeof crypto !== 'undefined' && crypto.randomUUID)
 // buildFeatureCollection/pruneStale already expect (adsb.lol's own field names),
 // so those two pure functions need no changes for the WS->poll transport swap.
 // receivedAt is the SERVER's last_seen timestamp, not "when this poll happened to
-// include the row" -- the endpoint returns the full unfiltered fleet every call (same
-// shape as ships/geojson), so mere presence in a response is no longer evidence of a
-// fresh sighting the way a WS push used to be.
-function recordFromFeature(feature, fallbackNowMs) {
+// include the row" -- the endpoint returns just the current viewport's aircraft (see
+// AircraftAdapter.get_fleet_as_geojson's bbox filter), so mere presence in a response
+// is no longer evidence of a fresh sighting the way a WS push used to be.
+// Real ADS-B position (lat/lon + barometric altitude) and velocity (gs/track/
+// baro_rate) are broadcast as INDEPENDENT message types on their own schedules, not
+// bundled together. Close to the ground -- final approach, rollout, taxi -- position
+// updates can stall for several consecutive real samples (caught live: identical lat/
+// lon and alt_baro_ft across 3-5 samples spanning 40+ seconds) while velocity keeps
+// reporting normally throughout. Left alone, dead reckoning (interpolatedPosition/
+// extrapolatedAltitude) then extrapolates FURTHER forward every frame using a
+// genuinely-current speed/rate from a position anchor that hasn't actually moved --
+// this is the real root cause of "dead reckoning should be ~100% accurate at
+// near-constant landing speed, but it's moving faster than it should be": we're not
+// modelling deceleration wrong, we're extrapolating from a stale anchor with a fresh
+// velocity, which double-counts distance/altitude change the aircraft already covered
+// during the stall.
+//
+// isNewSample gates this to genuinely DISTINCT upstream reports (by receivedAt) --
+// the 3s frontend poll runs faster than the backend's own ~11-13s real refresh, so
+// most polls simply re-fetch the same sample, which must not be misread as a stall.
+export function recordFromFeature(feature, fallbackNowMs, prevRec) {
     const p = feature.properties;
     const [lon, lat] = feature.geometry.coordinates;
     const receivedAt = Date.parse(p.last_seen);
+    const alt_baro = p.on_ground ? 'ground' : p.alt_baro_ft;
+
+    const isNewSample = !!prevRec && prevRec.receivedAt !== receivedAt;
+    const positionStalled = isNewSample && prevRec.lat === lat && prevRec.lon === lon;
+    const altitudeStalled = isNewSample && typeof alt_baro === 'number' && prevRec.alt_baro === alt_baro;
+
     return {
         hex: p.hex,
         flight: p.flight,
         r: p.registration,
         t: p.aircraft_type,
         category: p.category,
-        alt_baro: p.on_ground ? 'ground' : p.alt_baro_ft,
+        alt_baro,
         gs: p.gs,
+        // Real reported speed (gs, above) stays intact for the popup; deadReckonGs is
+        // what interpolatedPosition actually extrapolates with -- forced to 0 (no
+        // movement) when the raw position itself hasn't changed since the last
+        // distinct real sample. See the module-level comment on positionStalled's
+        // reasoning above.
+        deadReckonGs: positionStalled ? 0 : p.gs,
         track: p.track,
         baro_rate: p.baro_rate,
+        // Same idea vertically: extrapolatedAltitude's baro_rate projection is
+        // suppressed when the raw altitude itself hasn't moved since the last
+        // distinct real sample (only meaningful once alt_baro is a genuine number --
+        // 'ground' has no altitude to compare).
+        deadReckonBaroRate: altitudeStalled ? 0 : p.baro_rate,
         nav_altitude_mcp: p.nav_altitude_mcp,
         lat, lon,
         receivedAt: Number.isNaN(receivedAt) ? fallbackNowMs : receivedAt,
@@ -513,9 +733,15 @@ export function loadLayer(map, config) {
     const trackLayerId = 'flightradar-track-layer';
 
     const aircraftByHex = new Map();   // hex -> {...adsb.lol-shaped record fields, receivedAt}
+    // hex -> the last-rendered {lat, lon} -- correction-smoothing state (see
+    // smoothedPosition/buildFeatureCollection), separate from aircraftByHex's raw
+    // server-reported state so a new real sample's target can be eased into rather
+    // than snapped to.
+    const displayByHex = new Map();
     let currentCfg = config;
     let pollTimer = null;
     let rafId = null;
+    let lastFrameMs = null;
     let stopPopup = null;
     let hoveredHex = null;
 
@@ -541,7 +767,8 @@ export function loadLayer(map, config) {
         }
         const now = Date.now();
         for (const feature of geojson.features || []) {
-            const rec = recordFromFeature(feature, now);
+            const prevRec = feature.properties?.hex ? aircraftByHex.get(feature.properties.hex) : undefined;
+            const rec = recordFromFeature(feature, now, prevRec);
             if (!rec.hex) continue;
             // Mirrors shipping.js's own age-filter-on-fetch (max_age_days) -- a row
             // the collector hasn't refreshed recently enough is left out of this
@@ -553,8 +780,18 @@ export function loadLayer(map, config) {
 
     const renderFrame = () => {
         const now = Date.now();
+        const dtS = lastFrameMs != null ? Math.max(0, (now - lastFrameMs) / 1000) : 0;
+        lastFrameMs = now;
         pruneStale(aircraftByHex, now);
-        map.getSource(sourceId)?.setData(buildFeatureCollection(aircraftByHex, now));
+        // displayByHex must never carry a smoothing anchor for an aircraft that's no
+        // longer tracked -- otherwise a hex pruned and later re-added would ease in
+        // from a stale, unrelated position instead of appearing directly at its
+        // fresh one (buildFeatureCollection already handles that "first sighting"
+        // case correctly, but only if there's truly no leftover entry here).
+        for (const hex of displayByHex.keys()) {
+            if (!aircraftByHex.has(hex)) displayByHex.delete(hex);
+        }
+        map.getSource(sourceId)?.setData(buildFeatureCollection(aircraftByHex, now, displayByHex, dtS));
         rafId = requestAnimationFrame(renderFrame);
     };
 
@@ -615,7 +852,7 @@ export function loadLayer(map, config) {
             layout: {
                 'icon-image': ['get', 'icon'],
                 'icon-size': 0.5 * (cfg.icon_zoom ?? 1.0),
-                'icon-rotate': ['get', 'track'],
+                'icon-rotate': ['get', 'icon_track'],
                 'icon-rotation-alignment': 'map',
                 // true/true: every aircraft always renders regardless of visual
                 // overlap. MapLibre's collision-based decluttering (false/false) was
@@ -670,11 +907,13 @@ export function loadLayer(map, config) {
         pollTimer = null;
         if (rafId != null) cancelAnimationFrame(rafId);
         rafId = null;
+        lastFrameMs = null;
         stopPopup?.();
         map.off('mouseenter', layerId, onTrackEnter);
         map.off('mouseleave', layerId, onTrackLeave);
         hoveredHex = null;
         aircraftByHex.clear();
+        displayByHex.clear();
         if (map.getLayer(trackLayerId))   map.removeLayer(trackLayerId);
         if (map.getSource(trackSourceId)) map.removeSource(trackSourceId);
         if (map.getLayer(layerId)) map.removeLayer(layerId);
