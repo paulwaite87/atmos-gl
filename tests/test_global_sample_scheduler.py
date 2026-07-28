@@ -272,6 +272,27 @@ def test_next_cell_resumes_background_cache_warming_once_no_viewport_is_active()
     assert sched.next_cell(now=16.0) == c2
 
 
+def test_next_cell_ignores_a_floored_background_cell_while_a_viewport_is_active():
+    """Caught live: suspending background sampling while a viewport is active is
+    exactly what drives background cells past the starvation floor (they go
+    completely untouched for as long as the viewport stays open) -- an unscoped floor
+    check would then perpetually re-admit those floored cells and starve the hot cell
+    all over again once a viewing session ran past starvation_floor_s, silently
+    undoing viewport suspension after ~30 minutes of continuous viewing."""
+    sched = _make_scheduler(starvation_floor_s=100.0)
+    c1, c2 = sched._all_coarse_cells()
+    sched.record_result(c1, [{"hex": "bg"}], now=0.0)
+    sched.record_result(c2, [{"hex": "bg"}], now=0.0)
+    sched.set_interest([(0.0, 0.0, 1.0, 1.0)])
+    hot = (5.0, 0, 0)
+    sched.record_result(hot, [{"hex": "h1"}], now=90.0)  # sampled well after the background cells
+
+    # now=101: both background cells breached the 100s floor (101s overdue) -- under
+    # the old unscoped check they'd win outright. The active viewport's hot cell
+    # (only 11s overdue, due at its own 10s cadence) must win instead.
+    assert sched.next_cell(now=101.0) == hot
+
+
 def test_next_cell_is_none_when_nothing_is_due():
     sched = _make_scheduler(background_cadence_s=100.0, starvation_floor_s=1000.0)
     _prime_coarse_cells(sched, now=0.0)
