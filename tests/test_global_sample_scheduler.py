@@ -219,6 +219,59 @@ def test_starvation_floor_overrides_a_heavily_stretched_background_cell():
     assert sched.next_cell(now=62.0) == c1
 
 
+def test_next_cell_prioritizes_a_due_hot_cell_over_a_more_overdue_background_cell():
+    """The actual reported bug: once background cells are ALSO due, oldest-timestamp
+    -first alone lets a long-overdue background cell win over an active viewer's own
+    hot cell, degrading the promised hot_cadence_s into a round-robin across the whole
+    (hot + background) pool -- at default budget/grid sizes that's ~7 minutes per hot
+    cell instead of the intended ~10-60s. A due hot cell must always win over a due
+    background cell, regardless of which has waited longer."""
+    sched = _make_scheduler(background_cadence_s=5.0)
+    c1, c2 = sched._all_coarse_cells()
+    sched.record_result(c1, [{"hex": "bg"}], now=0.0)  # far more overdue than the hot cell
+    sched.record_result(c2, [{"hex": "bg"}], now=8.0)
+    sched.set_interest([(0.0, 0.0, 1.0, 1.0)])
+    hot = (5.0, 0, 0)
+    sched.record_result(hot, [{"hex": "h1"}], now=9.0)  # sampled more recently than either
+
+    # now=20: c1 waited 20s (>>5s cadence, most overdue of all); hot waited 11s
+    # (>=10s cadence, also due). Oldest-first alone would return c1.
+    assert sched.next_cell(now=20.0) == hot
+
+
+def test_next_cell_suspends_background_entirely_while_any_viewport_is_active():
+    """Background cache-warming is suspended completely whenever at least one
+    viewport is active (hot_cells non-empty) -- FlightRadar viewers get 100% of the
+    request budget for as long as they're watching, not a share split with the rest
+    of the globe. A gap between a hot cell's own samples is NOT an invitation to spend
+    budget elsewhere -- the tick simply goes idle until the hot cell is due again."""
+    sched = _make_scheduler(background_cadence_s=5.0)
+    c1, c2 = sched._all_coarse_cells()
+    sched.record_result(c1, [{"hex": "bg"}], now=10.0)
+    sched.record_result(c2, [{"hex": "bg"}], now=0.0)
+    sched.set_interest([(0.0, 0.0, 1.0, 1.0)])
+    hot = (5.0, 0, 0)
+    sched.record_result(hot, [{"hex": "h1"}], now=15.0)  # just sampled, not due yet
+
+    # now=16: hot waited 1s (< 10s cadence, not due); c2 waited 16s and would win
+    # under the old "fill background gaps" behaviour -- but must not be touched at
+    # all while a viewport is active.
+    assert sched.next_cell(now=16.0) is None
+
+
+def test_next_cell_resumes_background_cache_warming_once_no_viewport_is_active():
+    """Once nobody is watching FlightRadar (no active interest -> no hot cells), the
+    coarse background sweep resumes normally -- this is what keeps the globe warm for
+    the next time someone opens the layer."""
+    sched = _make_scheduler(background_cadence_s=5.0)
+    c1, c2 = sched._all_coarse_cells()
+    sched.record_result(c1, [{"hex": "bg"}], now=10.0)
+    sched.record_result(c2, [{"hex": "bg"}], now=0.0)
+    # no set_interest() call -- no active viewport
+
+    assert sched.next_cell(now=16.0) == c2
+
+
 def test_next_cell_is_none_when_nothing_is_due():
     sched = _make_scheduler(background_cadence_s=100.0, starvation_floor_s=1000.0)
     _prime_coarse_cells(sched, now=0.0)
