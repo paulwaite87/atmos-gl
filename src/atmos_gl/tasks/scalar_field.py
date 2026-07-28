@@ -30,7 +30,7 @@ import cartopy.crs as ccrs
 from atmos_gl.lib.config import AtmosGLConfig
 from atmos_gl.lib.texture import encode_frames
 from .common import Updater, MapData, MultiHourRenderMixin, ForecastState
-from .plotting import Plot
+from .plotting import Plot, clamp_lats_to_mercator_limit
 
 logging.getLogger("cfgrib").setLevel(logging.ERROR)
 
@@ -272,7 +272,7 @@ class ScalarFieldUpdater(Updater, MultiHourRenderMixin):
 
         plot.ax.contourf(
             new_lons,
-            new_lats,
+            clamp_lats_to_mercator_limit(new_lats),
             values_smooth,
             levels=20,
             cmap=cmap,

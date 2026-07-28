@@ -22,7 +22,7 @@ from atmos_gl.lib.greenhouse_gases import (
     resolve_baseline_year,
 )
 from .common import Updater, MapData
-from .plotting import Plot
+from .plotting import Plot, clamp_lats_to_mercator_limit
 
 logger = logging.getLogger(__name__)
 
@@ -175,7 +175,7 @@ class GhgUpdater(Updater):
         )
         plot.ax.pcolormesh(
             new_lons,
-            new_lats,
+            clamp_lats_to_mercator_limit(new_lats),
             display_data,
             transform=ccrs.PlateCarree(),
             cmap=cmap,
