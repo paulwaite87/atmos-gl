@@ -223,6 +223,14 @@ class GlobalSampleScheduler:
     for cells that keep coming back empty. A hard STARVATION_FLOOR_S ceiling overrides
     both, so no part of the globe goes unsampled indefinitely.
 
+    FlightRadar is a layer someone opens for a while, not something continuously
+    watched -- so whenever at least one viewport is active (self._hot_cells non-empty),
+    the background sweep is suspended entirely (starvation floor aside) and every tick's
+    request budget goes to hot cells, not split with the rest of the globe. Background
+    sampling only runs during idle stretches with no active viewer at all, functioning
+    as cache-warming for whenever a viewport next opens (see next_cell()) rather than a
+    continuous parallel sweep.
+
     Not asyncio-aware itself: owns no tasks, does no I/O, and doesn't read viewer
     interest from the database itself -- the caller (AircraftCollector) reads
     AircraftAdapter.get_active_interest() and hands the result to set_interest() each
@@ -356,9 +364,25 @@ class GlobalSampleScheduler:
 
     def next_cell(self, *, now: float) -> tuple | None:
         """The next cell to sample this tick: any cell that has breached the
-        starvation floor wins outright (oldest-first, never-sampled first); otherwise
-        the most-overdue cell against its own effective cadence -- never-sampled cells
-        sort first, longest-waiting-first among the rest. None if nothing is due at all."""
+        starvation floor wins outright (oldest-first, never-sampled first), hot or
+        background -- this is the one exception to viewport suspension below, keeping
+        "no part of the globe goes unsampled indefinitely" true even across a long
+        viewing session. Otherwise: whenever at least one viewport is active
+        (self._hot_cells non-empty), background cells are excluded from consideration
+        entirely -- the tick either serves a due hot cell or, if none is due yet
+        (mid-cadence), goes idle and returns None rather than spending that budget on
+        the background sweep. Only once no viewport is active at all does the coarse
+        background grid become eligible again, by its own effective cadence.
+
+        Before this split, a flat oldest-first tie-break across hot+background
+        together degraded into a round-robin across the WHOLE combined pool once both
+        tiers were simultaneously oversubscribed (the common case) -- an active
+        viewport's own cell then only got served once per full cycle (minutes), not
+        at hot_cadence_s. Full suspension (rather than merely de-prioritizing
+        background) goes further: FlightRadar is watched in bursts, not continuously,
+        so a live viewer should get the whole request budget for as long as they're
+        looking, and background cache-warming only needs to run in between viewing
+        sessions to keep the globe reasonably warm for next time."""
         candidates = set(self._hot_cells) | set(self._all_coarse_cells())
         if not candidates:
             return None
@@ -367,7 +391,8 @@ class GlobalSampleScheduler:
         if floored:
             return min(floored, key=lambda c: self._last_sampled_at.get(c, float("-inf")))
 
-        due = [c for c in candidates if self._elapsed(c, now=now) >= self._effective_cadence(c)]
+        pool = self._hot_cells if self._hot_cells else candidates
+        due = [c for c in pool if self._elapsed(c, now=now) >= self._effective_cadence(c)]
         if not due:
             return None
         return min(due, key=lambda c: self._last_sampled_at.get(c, float("-inf")))
