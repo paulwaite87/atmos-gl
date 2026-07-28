@@ -11,7 +11,7 @@ import cartopy.crs as ccrs
 from atmos_gl.lib.config import AtmosGLConfig
 from atmos_gl.lib.texture import encode_frames
 from .common import Updater, MapData, MultiHourRenderMixin, ForecastState
-from .plotting import Plot
+from .plotting import Plot, clamp_lats_to_mercator_limit
 
 logging.getLogger("gribapi.bindings").setLevel(logging.ERROR)
 
@@ -37,7 +37,7 @@ class IsobarUpdater(Updater, MultiHourRenderMixin):
         """
         logger.debug("Plotting isobars to per-hour output path")
 
-        lats = field0["lat"]
+        lats = clamp_lats_to_mercator_limit(field0["lat"])
         lons = field0["lon"]
         p = field0["values"]  # already smoothed from unpacker
 

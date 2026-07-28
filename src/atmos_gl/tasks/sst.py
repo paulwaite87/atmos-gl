@@ -15,7 +15,7 @@ from scipy.ndimage import distance_transform_edt
 from atmos_gl.lib.config import AtmosGLConfig
 from atmos_gl.lib.coastline import coastline_land_mask
 from .common import Updater, MapData
-from .plotting import Plot
+from .plotting import Plot, clamp_lats_to_mercator_limit
 
 logger = logging.getLogger(__name__)
 
@@ -149,7 +149,7 @@ class SSTUpdater(Updater):
         # Render complete mapped geographic array using exact pixel cell boundaries
         plot.ax.pcolormesh(
             new_lons,
-            new_lats,
+            clamp_lats_to_mercator_limit(new_lats),
             display_data,
             transform=ccrs.PlateCarree(),
             cmap=cmap,

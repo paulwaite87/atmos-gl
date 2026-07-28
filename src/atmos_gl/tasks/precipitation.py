@@ -13,7 +13,7 @@ from scipy.interpolate import RegularGridInterpolator
 from atmos_gl.lib.config import AtmosGLConfig
 from atmos_gl.lib.texture import encode_frames
 from .common import Updater, MapData, MultiHourRenderMixin, ForecastState
-from .plotting import Plot
+from .plotting import Plot, clamp_lats_to_mercator_limit
 
 # Silence warnings
 warnings.filterwarnings("ignore", message=".*missingValue.*")
@@ -140,7 +140,7 @@ class PrecipitationUpdater(Updater, MultiHourRenderMixin):
         prate_smooth = gaussian_filter(prate_smooth, sigma=filter_sigma)
         plot.ax.contourf(
             new_lons,
-            new_lats,
+            clamp_lats_to_mercator_limit(new_lats),
             prate_smooth,
             levels=levels,
             cmap=cmap,

@@ -27,6 +27,23 @@ WEB_MERCATOR = ccrs.Mercator.GOOGLE  # EPSG:3857
 MERCATOR_LAT_LIMIT = 85.0511  # NOTE: just *inside* GOOGLE's 85.0511288 max
 
 
+def clamp_lats_to_mercator_limit(lats):
+    """Clamps a lat array/scalar to just inside Mercator's +-85.0511 deg limit
+    (MERCATOR_LAT_LIMIT above). Global GFS/RTOFS grids include the exact +-90 pole
+    rows by design (see e.g. lib/unpack.py's CURRENTS_LAT_MIN/MAX comment) -- at
+    exactly +-90, Mercator's y = R*ln(tan(pi/4 + lat/2)) is a true mathematical
+    singularity (y -> infinity), which PROJ logs as "Invalid latitude" once per point,
+    for every contourf/pcolormesh call on every render. Plot.get_figure() already
+    clips the visible AXES EXTENT to this same limit, so any row beyond it is already
+    invisible off-plot regardless of its exact value -- clamping the DATA array here
+    (not masking/dropping rows, which would break contourf/pcolormesh's requirement
+    that lats/lons/values stay same-shaped) removes the singularity with no visible
+    effect on the render."""
+    import numpy as np
+
+    return np.clip(lats, -MERCATOR_LAT_LIMIT, MERCATOR_LAT_LIMIT)
+
+
 def opaque_cmap(cmap, n=256):
     """Return an opaque copy of a colormap (alpha forced to 1.0)."""
     import numpy as np
