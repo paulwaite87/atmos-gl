@@ -4,7 +4,6 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException, Request, Depends
 from fastapi.templating import Jinja2Templates
 from atmos_gl.db.field_catalog_adapter import FieldCatalogAdapter
-from atmos_gl.db.region_adapter import RegionAdapter
 from atmos_gl.lib.config import AtmosGLConfig
 from atmos_gl.lib.data_status import resolve_run_epoch_utc
 from atmos_gl.lib.output_files import OUTFILES
@@ -85,10 +84,6 @@ def get_field_catalog_adapter() -> FieldCatalogAdapter:
     return FieldCatalogAdapter()
 
 
-def get_region_adapter() -> RegionAdapter:
-    return RegionAdapter()
-
-
 @router.get("/forecast_state")
 def get_forecast_state(
     field_catalog_adapter: FieldCatalogAdapter = Depends(get_field_catalog_adapter),
@@ -166,18 +161,6 @@ def get_forecast_state(
                 "primary": primary_name,
             },
         }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/regions")
-def get_regions(region_adapter: RegionAdapter = Depends(get_region_adapter)):
-    try:
-        config = load_config()
-        current_region = config.get_setting("common", "region", "Whole World")
-
-        regions = region_adapter.get_priority_region_list(current_region)
-        return {"status": "success", "data": regions}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

@@ -9,13 +9,20 @@ MapLibre globe frontend has no concept of a bounded viewport render, only tiles/
 covering the whole world, panned and zoomed client-side.
 
 `MapRegion` (the rendering-side dataclass in `tasks/common.py`, not `db/models.py`'s
-SQLAlchemy model of the same name) and the `common.region` config setting still exist,
-and still matter — but only for **reporting** (e.g. counting ships within a named
-region's bbox), never for deciding what to render or how to clip it. Any bbox-based
-*clipping* found in render code is dead: nothing renders to a sub-global bbox anymore,
-so clipping to one only ever discarded data the viewer could otherwise pan/zoom to see,
-and — in SST's case — actively caused visible pixelation by working from a needlessly
-small, low-resolution slice.
+SQLAlchemy model of the same name) still exists, and still matters — but only for
+**reporting** (e.g. counting ships within a named region's bbox), never for deciding
+what to render or how to clip it. Any bbox-based *clipping* found in render code is
+dead: nothing renders to a sub-global bbox anymore, so clipping to one only ever
+discarded data the viewer could otherwise pan/zoom to see, and — in SST's case —
+actively caused visible pixelation by working from a needlessly small, low-resolution
+slice.
+
+(The `common.region` config setting mentioned in an earlier version of this ADR has
+since been removed entirely — it never actually fed `tasks/common.py`'s `MapRegion`
+reporting path this ADR describes; its only two real readers were
+`LightningCollector`'s now-superseded static "primary region" concept and the
+since-removed `GET /api/regions` route, both dropped when the lightning collector
+moved to live-viewport-weighted scan prioritization instead.)
 
 ## Considered Options
 

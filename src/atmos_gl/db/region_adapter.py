@@ -1,6 +1,6 @@
 import logging
 
-from sqlalchemy import case, func, select
+from sqlalchemy import func, select
 
 from atmos_gl.db.engine import Session
 from atmos_gl.db.models import MapRegion
@@ -30,22 +30,17 @@ class RegionAdapter:
                 "lat_max": row.lat_max,
             }
 
-    def get_priority_region_list(self, primary_region_label):
-        """Returns all regions from the database, ordered so the primary_region_label
-        is first. Includes bounding box coordinates."""
-        stmt = (
-            select(
-                MapRegion.label,
-                func.ST_XMin(MapRegion.boundary).label("lon_min"),
-                func.ST_YMin(MapRegion.boundary).label("lat_min"),
-                func.ST_XMax(MapRegion.boundary).label("lon_max"),
-                func.ST_YMax(MapRegion.boundary).label("lat_max"),
-            )
-            .order_by(
-                case((MapRegion.label == primary_region_label, 0), else_=1),
-                MapRegion.label.asc(),
-            )
-        )
+    def get_all_regions(self):
+        """Returns all regions from the database, alphabetical by label, with bounding
+        box coordinates. Used by LightningCollector's grid-point queue, which
+        prioritizes by live viewport proximity rather than a static "primary region"."""
+        stmt = select(
+            MapRegion.label,
+            func.ST_XMin(MapRegion.boundary).label("lon_min"),
+            func.ST_YMin(MapRegion.boundary).label("lat_min"),
+            func.ST_XMax(MapRegion.boundary).label("lon_max"),
+            func.ST_YMax(MapRegion.boundary).label("lat_max"),
+        ).order_by(MapRegion.label.asc())
         try:
             with Session() as session:
                 rows = session.execute(stmt).all()
@@ -60,7 +55,7 @@ class RegionAdapter:
                     for r in rows
                 ]
         except Exception as e:
-            logger.error(f"Error fetching priority region list: {e}")
+            logger.error(f"Error fetching region list: {e}")
             return []
 
 
@@ -74,9 +69,6 @@ class FakeRegionAdapter:
         region = self._regions.get(label)
         return dict(region) if region else None
 
-    def get_priority_region_list(self, primary_region_label):
+    def get_all_regions(self):
         labels = sorted(self._regions.keys())
-        if primary_region_label in labels:
-            labels.remove(primary_region_label)
-            labels.insert(0, primary_region_label)
         return [{"label": label, **self._regions[label]} for label in labels]
