@@ -211,6 +211,12 @@ def _build_config_data() -> dict:
             data["greenhouse_gases"]["enabled"] = False
             data["greenhouse_gases"]["RULE__missing_cdsapi_key"] = True
 
+    if "air_quality" in data:
+        # Same CDS/ADS source family as greenhouse_gases -- see that block's comment.
+        if not cdsapi_key:
+            data["air_quality"]["enabled"] = False
+            data["air_quality"]["RULE__missing_cdsapi_key"] = True
+
     # Not stored in config.json, not user-editable (see lib/output_files.py) -- injected
     # here so the frontend can still read cfg.outfile exactly as before, just sourced
     # from the same hardcoded value the render task itself uses.
@@ -250,6 +256,8 @@ async def update_config(payload: dict):
         payload["fires"].pop("RULE__missing_firms_apikey", None)
     if "greenhouse_gases" in payload:
         payload["greenhouse_gases"].pop("RULE__missing_cdsapi_key", None)
+    if "air_quality" in payload:
+        payload["air_quality"].pop("RULE__missing_cdsapi_key", None)
 
     # outfile is injected read-time-only by _build_config_data() (see OUTFILES/
     # lib/output_files.py) -- never a real stored setting. Strip it the same way the

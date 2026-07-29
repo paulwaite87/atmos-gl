@@ -14,8 +14,8 @@ import pytest
 from atmos_gl.collectors.greenhouse_gases import (
     CamsEgg4BaselineCollector,
     build_egg4_request,
-    _retrieve_with_timeout,
 )
+from atmos_gl.lib.cds_client import retrieve_with_timeout
 from atmos_gl.lib.greenhouse_gases import egg4_baseline_cache_path
 
 
@@ -119,7 +119,7 @@ def test_collect_returns_gracefully_without_raising_on_timeout(tmp_path, monkeyp
     c = make_bare_egg4_collector(monkeypatch, settings={"baseline_year": year}, workdir=str(tmp_path))
 
     with patch("atmos_gl.collectors.greenhouse_gases.cdsapi.Client"), patch(
-        "atmos_gl.collectors.greenhouse_gases._retrieve_with_timeout",
+        "atmos_gl.lib.cds_client.retrieve_with_timeout",
         side_effect=concurrent.futures.TimeoutError,
     ):
         c.collect()  # must not raise
@@ -148,7 +148,7 @@ def test_retrieve_with_timeout_raises_timeout_error_for_a_slow_call():
     client.retrieve.side_effect = slow_retrieve
 
     with pytest.raises(concurrent.futures.TimeoutError):
-        _retrieve_with_timeout(client, "dataset", {}, "target", timeout_s=0.02)
+        retrieve_with_timeout(client, "dataset", {}, "target", timeout_s=0.02)
 
 
 def test_retrieve_with_timeout_actually_releases_the_calling_thread_at_timeout_s():
@@ -175,7 +175,7 @@ def test_retrieve_with_timeout_actually_releases_the_calling_thread_at_timeout_s
 
     start = time.monotonic()
     with pytest.raises(concurrent.futures.TimeoutError):
-        _retrieve_with_timeout(client, "dataset", {}, "target", timeout_s=0.1)
+        retrieve_with_timeout(client, "dataset", {}, "target", timeout_s=0.1)
     elapsed = time.monotonic() - start
 
     assert elapsed < 1.0, (

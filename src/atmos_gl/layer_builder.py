@@ -25,6 +25,7 @@ from atmos_gl.tasks.wind import WindUpdater
 from atmos_gl.tasks.precipitation import PrecipitationUpdater
 from atmos_gl.tasks.sst import SSTUpdater
 from atmos_gl.tasks.greenhouse_gases import GhgUpdater
+from atmos_gl.tasks.air_quality import AirQualityUpdater
 from atmos_gl.tasks.currents import CurrentsUpdater
 from atmos_gl.tasks.jetstream import JetStreamUpdater
 from atmos_gl.tasks.waves import WavesUpdater
@@ -51,6 +52,7 @@ TASK_CLASSES = {
     "wind": WindUpdater,
     "sst": SSTUpdater,
     "greenhouse_gases": GhgUpdater,
+    "air_quality": AirQualityUpdater,
     "currents": CurrentsUpdater,
     "jetstream": JetStreamUpdater,
     "waves": WavesUpdater,

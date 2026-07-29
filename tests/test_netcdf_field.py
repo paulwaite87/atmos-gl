@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""_load_field: reads a species field out of a cached CAMS netCDF, collapsing
-whatever non-lat/lon dimension is present.
+"""load_field: reads a variable out of a cached CAMS netCDF, collapsing whatever
+non-lat/lon dimension is present. Shared by tasks/greenhouse_gases.py and
+tasks/air_quality.py.
 
 Regression coverage for a real bug found via live testing (downloading and
 inspecting actual CAMS files): the forecast dataset's non-lat/lon dimensions are
@@ -15,7 +16,7 @@ reduce="mean" would never have fired on the actual valid_time dimension.
 import numpy as np
 import xarray as xr
 
-from atmos_gl.tasks.greenhouse_gases import _load_field
+from atmos_gl.lib.netcdf_field import load_field
 
 
 def _write_netcdf(path, *, time_dim, time_values, data_2d_per_step, lat, lon, var="tcco2"):
@@ -40,7 +41,7 @@ def test_load_field_collapses_a_non_time_named_dimension_with_reduce_first(tmp_p
         lon=np.array([0.0, 10.0]),
     )
 
-    matrix, lats, lons = _load_field(path, "tcco2", reduce="first")
+    matrix, lats, lons = load_field(path, "tcco2", reduce="first")
 
     assert matrix.shape == (2, 2)
     assert np.all(matrix == 42.0)
@@ -61,7 +62,7 @@ def test_load_field_averages_a_multi_step_valid_time_dimension_with_reduce_mean(
         lon=np.array([0.0, 10.0]),
     )
 
-    matrix, lats, lons = _load_field(path, "tcco2", reduce="mean")
+    matrix, lats, lons = load_field(path, "tcco2", reduce="mean")
 
     assert matrix.shape == (2, 2)
     assert np.allclose(matrix, 20.0)
@@ -78,6 +79,6 @@ def test_load_field_reduce_first_takes_only_the_first_step_not_an_average(tmp_pa
         lon=np.array([0.0, 10.0]),
     )
 
-    matrix, lats, lons = _load_field(path, "tcco2", reduce="first")
+    matrix, lats, lons = load_field(path, "tcco2", reduce="first")
 
     assert np.allclose(matrix, 10.0)

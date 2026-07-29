@@ -25,6 +25,9 @@ Synchronous file caches  (CACHE_COLLECTORS)  — write an image/netCDF under {wo
                (via settings_section) but independently scheduled/reported, since one
                runs a normal periodic cadence and the other fetches once per baseline
                year then is done.
+  air_quality — CAMS current PM2.5/PM10/smoke-AOD forecast (AirQualityCollector,
+               collectors/air_quality.py) -- Absolute-only, single collector, no
+               settings_section sharing.
 
   These are single fields (one daily netCDF / one global image), not per-forecast-hour
   products, so they live as file caches rather than fieldstore rows. The layer updaters
@@ -67,6 +70,7 @@ from atmos_gl.collectors.greenhouse_gases import (
     CamsEgg4BaselineCollector,
     CamsGhgForecastCollector,
 )
+from atmos_gl.collectors.air_quality import AirQualityCollector
 from atmos_gl.collectors.gfs_atmos import GfsAtmosCollector
 from atmos_gl.collectors.gfs_waves import GfsWavesCollector
 from atmos_gl.collectors.rtofs_currents import RtofsCurrentsCollector
@@ -92,6 +96,7 @@ CACHE_COLLECTORS = (
     CloudsCollector,
     CamsGhgForecastCollector,
     CamsEgg4BaselineCollector,
+    AirQualityCollector,
 )
 
 # Field collectors (fieldstore-backed, FieldCollectorBase), driven per-cycle by

@@ -27,14 +27,15 @@ collectors' cached fields via lib/greenhouse_gases.compute_anomaly().
 import concurrent.futures
 import logging
 import os
-import shutil
-import tempfile
-import zipfile
-from datetime import datetime, timedelta, timezone
 
 import cdsapi
 
 from atmos_gl.collectors.base import CollectorBase
+from atmos_gl.lib.cds_client import (
+    resolve_cds_credentials,
+    retrieve_and_unzip,
+    retrieve_with_day_fallback,
+)
 from atmos_gl.lib.data_status import build_status, read_process_status
 from atmos_gl.lib.greenhouse_gases import (
     camsforecast_cache_path,
@@ -43,66 +44,6 @@ from atmos_gl.lib.greenhouse_gases import (
 )
 
 logger = logging.getLogger(__name__)
-
-
-def _resolve_cds_credentials(datasource_url_fn, label: str):
-    """(base_url, api_key) for a CDS API request, or None (having logged why) if
-    either CDSAPI_KEY or the cams_ads datasource isn't configured. Shared by both
-    CDS-backed collectors so neither duplicates this check."""
-    api_key = os.environ.get("CDSAPI_KEY", "").strip()
-    if not api_key:
-        logger.warning(f"{label}: no CDSAPI_KEY configured; skipping.")
-        return None
-    base_url = datasource_url_fn("cams_ads")
-    if not base_url:
-        logger.warning(f"{label}: no 'cams_ads' datasource configured; skipping.")
-        return None
-    return base_url, api_key
-
-
-def _retrieve_with_timeout(client, dataset: str, request: dict, target: str, timeout_s: float):
-    """Run client.retrieve() (cdsapi's own blocking submit-then-poll-then-download) in
-    a worker thread, bounded by timeout_s. Raises concurrent.futures.TimeoutError if
-    the job doesn't finish in time -- the calling thread stops waiting, but the
-    worker thread (and the in-flight CDS job) is not cancelled; a future cycle's
-    collect() will find the cache still missing and request again.
-
-    Deliberately NOT `with ThreadPoolExecutor(...) as pool:` -- confirmed live (a real
-    request that should have timed out at 300s was still blocking the calling thread
-    12+ minutes later) that a context-managed pool's __exit__ always calls
-    shutdown(wait=True), which re-blocks until the still-running worker thread
-    finishes regardless of how the `with` block was exited (even via this function's
-    own TimeoutError) -- silently defeating the entire point of the bounded timeout.
-    shutdown(wait=False) here actually releases the calling thread at timeout_s."""
-    pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-    future = pool.submit(client.retrieve, dataset, request, target)
-    try:
-        future.result(timeout=timeout_s)
-    finally:
-        pool.shutdown(wait=False)
-
-
-def _retrieve_and_unzip(
-    client, dataset: str, request: dict, cache_dest: str, timeout_s: float, label: str
-):
-    """Submit `request` (bounded by timeout_s), then unzip the delivered
-    data_format=netcdf_zip archive and move its single .nc member to cache_dest.
-    Raises concurrent.futures.TimeoutError (bounded-timeout) or RuntimeError (archive
-    had no .nc member) -- callers decide how to log/handle each."""
-    with tempfile.TemporaryDirectory() as tmp_dir:
-        zip_path = os.path.join(tmp_dir, "download.zip")
-        _retrieve_with_timeout(client, dataset, request, zip_path, timeout_s)
-
-        with zipfile.ZipFile(zip_path) as zf:
-            nc_names = [n for n in zf.namelist() if n.endswith(".nc")]
-            if not nc_names:
-                raise RuntimeError(f"{label}: no .nc file in downloaded archive")
-            extracted_path = zf.extract(nc_names[0], tmp_dir)
-
-        os.makedirs(os.path.dirname(cache_dest), exist_ok=True)
-        tmp_dest = f"{cache_dest}.tmp"
-        shutil.move(extracted_path, tmp_dest)
-        os.replace(tmp_dest, cache_dest)
 
 
 # Absolute mode's current-conditions source. Confirmed live against the real CDS API
@@ -144,7 +85,7 @@ class CamsGhgForecastCollector(CollectorBase):
     display_label = "CAMS Greenhouse Gas Forecast"
 
     def collect(self) -> None:
-        creds = _resolve_cds_credentials(self.datasource_url, "CAMS GHG forecast")
+        creds = resolve_cds_credentials(self.datasource_url, "CAMS GHG forecast")
         if creds is None:
             return
         base_url, api_key = creds
@@ -152,38 +93,9 @@ class CamsGhgForecastCollector(CollectorBase):
         dest = camsforecast_cache_path(self.workdir)
         client = cdsapi.Client(url=base_url, key=api_key)
 
-        last_error = None
-        for day_offset in range(_CAMS_FORECAST_SEARCH_DAYS):
-            date_str = (
-                datetime.now(timezone.utc) - timedelta(days=day_offset)
-            ).strftime("%Y-%m-%d")
-            request = build_cams_forecast_request(date_str)
-
-            try:
-                _retrieve_and_unzip(
-                    client, _CAMS_FORECAST_DATASET, request, dest,
-                    _CAMS_FORECAST_TIMEOUT_S, "CAMS GHG forecast",
-                )
-                logger.info(f"CAMS GHG forecast: cached {date_str} -> {os.path.basename(dest)}")
-                return
-            except concurrent.futures.TimeoutError:
-                # A queued (not immediately rejected) job -- today's run does exist,
-                # it's just slow. Don't also hammer earlier dates while it's pending.
-                logger.warning(
-                    f"CAMS GHG forecast: request for {date_str} timed out after "
-                    f"{_CAMS_FORECAST_TIMEOUT_S}s; will retry next cycle."
-                )
-                return
-            except Exception as e:
-                last_error = e
-                logger.debug(
-                    f"CAMS GHG forecast: {date_str} not available yet ({e}); "
-                    f"trying an earlier date."
-                )
-
-        logger.error(
-            f"CAMS GHG forecast: no run available in the last "
-            f"{_CAMS_FORECAST_SEARCH_DAYS} day(s): {last_error}"
+        retrieve_with_day_fallback(
+            client, _CAMS_FORECAST_DATASET, build_cams_forecast_request, dest,
+            _CAMS_FORECAST_TIMEOUT_S, _CAMS_FORECAST_SEARCH_DAYS, "CAMS GHG forecast",
         )
 
 
@@ -234,7 +146,7 @@ class CamsEgg4BaselineCollector(CollectorBase):
             logger.debug(f"CAMS EGG4 baseline: {year} already cached; skipping.")
             return
 
-        creds = _resolve_cds_credentials(self.datasource_url, "CAMS EGG4 baseline")
+        creds = resolve_cds_credentials(self.datasource_url, "CAMS EGG4 baseline")
         if creds is None:
             return
         base_url, api_key = creds
@@ -243,7 +155,7 @@ class CamsEgg4BaselineCollector(CollectorBase):
         request = build_egg4_request(year)
 
         try:
-            _retrieve_and_unzip(
+            retrieve_and_unzip(
                 client, _EGG4_DATASET, request, dest, _EGG4_TIMEOUT_S,
                 "CAMS EGG4 baseline",
             )
