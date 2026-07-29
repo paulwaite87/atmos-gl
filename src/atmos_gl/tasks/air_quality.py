@@ -11,16 +11,23 @@ import gc
 import logging
 import os
 
-import cartopy.crs as ccrs
 import matplotlib.colors as mcolors
 import numpy as np
 from scipy.ndimage import gaussian_filter
+from scipy.interpolate import RegularGridInterpolator
 
 from atmos_gl.lib.air_quality import VARIABLES, camsforecast_cache_path
 from atmos_gl.lib.config import AtmosGLConfig
 from atmos_gl.lib.netcdf_field import load_field
 from .common import Updater, MapData
-from .plotting import Plot, clamp_lats_to_mercator_limit
+from .plotting import Plot, MERCATOR_LAT_LIMIT
+
+# Earth radius (metres) used by cartopy's WEB_MERCATOR (ccrs.Mercator.GOOGLE,
+# EPSG:3857) -- confirmed live to match it exactly (ccrs.Mercator.GOOGLE's own proj
+# string is "+a=6378137.0 +b=6378137.0", a sphere, not an ellipsoid). Used to pre-warp
+# this layer's data to Mercator's own Y spacing in closed form -- see plot()'s comment
+# for why.
+_MERCATOR_R = 6378137.0
 
 logger = logging.getLogger(__name__)
 
@@ -149,19 +156,11 @@ class AirQualityUpdater(Updater):
         # which made no physical sense for an atmospheric variable).
         #
         # Below-threshold areas are transparent, but via a smooth per-pixel ALPHA FADE
-        # rather than a hard NaN/pcolormesh cutoff -- a binary on/off mask still showed
-        # a visible staircase at the grid resolution once zoomed in (user-reported;
-        # see _ALPHA_FEATHER_FRACTION above), since the transparency boundary itself
-        # was a hard step with nothing to interpolate across. Built as an explicit
-        # (Ny, Nx, 4) RGBA array, fed to pcolormesh's C parameter directly (bypassing
-        # cmap/norm) with shading="gouraud" -- gouraud interpolates colour AND alpha
-        # smoothly between grid points instead of "nearest"'s flat, un-interpolated
-        # quads, on top of the Gaussian pre-blur above. (imshow was tried first here:
-        # it also gets per-pixel RGBA and bilinear interpolation, but cartopy's
-        # PlateCarree->Mercator image warp only filled the centre HALF of the global
-        # extent -- a real regression live-caught before shipping. pcolormesh's own
-        # reprojection path, already used and correct on every other raster layer in
-        # this app, doesn't have that bug.)
+        # rather than a hard NaN cutoff -- a binary on/off mask still showed a visible
+        # staircase at the grid resolution once zoomed in (user-reported; see
+        # _ALPHA_FEATHER_FRACTION above), since the transparency boundary itself was a
+        # hard step with nothing to interpolate across. Built as an explicit
+        # (Ny, Nx, 4) RGBA array.
         #
         # The fade is only applied when vmin is ABOVE the variable's natural floor
         # (_NATURAL_FLOOR, always 0 -- concentrations/AOD can't go negative). At
@@ -184,17 +183,71 @@ class AirQualityUpdater(Updater):
         unit = _DISPLAY_UNIT[variable]
         title_text = f"{_DISPLAY_LABEL[variable]} ({unit})" if unit else _DISPLAY_LABEL[variable]
 
+        # Rendered via a hand-rolled Web Mercator pre-warp + a plain, NON-cartopy
+        # imshow() rather than pcolormesh/imshow's usual transform=ccrs.PlateCarree()
+        # path -- three approaches were tried live and rejected before this one:
+        #   1. pcolormesh(shading="nearest") -- blocky, un-interpolated grid cells,
+        #      the original user-reported pixelation.
+        #   2. pcolormesh(shading="gouraud") -- smoothly interpolates colour AND alpha,
+        #      fixing (1)'s blockiness, but produces a visible fine dither/grain
+        #      texture (an Agg-backend gouraud-rendering artifact, confirmed absent
+        #      from "nearest" renders) that's still clearly visible at a normal,
+        #      commonly-used browser zoom level, not just extreme close-up (user
+        #      confirmed live).
+        #   3. imshow(transform=ccrs.PlateCarree(), interpolation="bilinear") -- zero
+        #      dithering, but only filled the centre HALF of the canvas -- confirmed
+        #      via pixel bounding-box inspection, reproducible even with an explicit
+        #      regrid_shape and completely independent of alpha/real data (a plain
+        #      two-colour test image showed the same crop). This turned out NOT to be
+        #      a cartopy/warp-specific bug -- see the set_aspect() comment below the
+        #      final imshow() call -- so it isn't actually why (3) was dropped; it's
+        #      dropped because going through cartopy's transform/PROJ warp machinery
+        #      for a plain equirectangular->Mercator reprojection is unnecessary
+        #      complexity and overhead once a closed-form pre-warp is available (below).
+        # Since Plot's axes are already in Web Mercator (WEB_MERCATOR), and Mercator's
+        # X is just linearly-scaled longitude while its Y is a closed-form function of
+        # latitude (y = R*ln(tan(pi/4 + lat/2)), verified live to match
+        # ccrs.Mercator.GOOGLE's own projection to 6 decimal places), the data can be
+        # pre-warped to the axes' native (projected) coordinates directly in numpy --
+        # no PROJ/cartopy transform involved at all -- then handed to a plain
+        # (non-transform) imshow(), which is a simple, fast, reliable 2D array resize
+        # with no warping bugs and no gouraud dithering. Rows within
+        # +-MERCATOR_LAT_LIMIT keep is a hard requirement here (not just an
+        # optimisation): the poles are a genuine singularity in the Mercator Y
+        # formula, and included poles would also collide after clamping, breaking
+        # RegularGridInterpolator's strictly-ascending-axis requirement.
+        merc_x = _MERCATOR_R * np.radians(new_lons)
+        valid_lat_rows = np.abs(new_lats) <= MERCATOR_LAT_LIMIT
+        lats_valid = new_lats[valid_lat_rows]
+        merc_y = _MERCATOR_R * np.log(np.tan(np.pi / 4 + np.radians(lats_valid) / 2))
+
+        interp = RegularGridInterpolator(
+            (merc_y, merc_x), rgba[valid_lat_rows], bounds_error=False, fill_value=0.0
+        )
+        uniform_merc_y = np.linspace(merc_y.min(), merc_y.max(), len(lats_valid))
+        mesh_merc_y, mesh_merc_x = np.meshgrid(uniform_merc_y, merc_x, indexing="ij")
+        rgba_merc = interp((mesh_merc_y, mesh_merc_x))
+
         plot = Plot(self.map_data.region)
         plot.get_figure()
-        plot.ax.pcolormesh(
-            new_lons,
-            clamp_lats_to_mercator_limit(new_lats),
-            rgba,
-            transform=ccrs.PlateCarree(),
-            shading="gouraud",
-            rasterized=True,
+        plot.ax.imshow(
+            rgba_merc,
+            extent=[merc_x.min(), merc_x.max(), uniform_merc_y.min(), uniform_merc_y.max()],
+            origin="lower",  # regrid_for_lod always returns new_lats ascending (south-first)
+            interpolation="bilinear",
             zorder=2,
         )
+        # imshow() resets the axes' aspect to 1.0 ("equal") as a side effect, silently
+        # overriding get_figure()'s set_aspect("auto") -- with adjustable="box" still
+        # in effect from get_figure(), that shrinks the actual drawn viewport to fit a
+        # 1:1 data-unit box inside the figure's 2:1 (width:height) canvas, letterboxing
+        # the render into roughly the centre HALF of the image. Confirmed live: this
+        # reproduces even calling the plain (non-cartopy) matplotlib Axes.imshow
+        # directly, with fully-opaque OR sparse/transparent data, and with or without a
+        # transform= -- it's a plain imshow/aspect interaction, not anything specific
+        # to cartopy, Mercator, or this layer's RGBA/alpha approach. Re-asserting
+        # "auto" immediately after imshow() restores the full-canvas viewport.
+        plot.ax.set_aspect("auto", adjustable="box")
         plot.save_figure(output_path)
         calculated_ticks = np.linspace(vmin, vmax, 5)
         self.save_key_image(
