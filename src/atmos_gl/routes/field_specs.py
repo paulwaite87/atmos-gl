@@ -200,9 +200,14 @@ _GHG_PALETTE = SelectSpec([
     ("ocean", "Ocean"),
 ])
 
+# Thresholds are the US EPA AQI "Unhealthy for Sensitive Groups" 24-hr breakpoints
+# (PM2.5 35.5 ug/m3, PM10 155 ug/m3; both rounded here) -- the same AQI framing
+# tasks/air_quality.py's AOD-default comment already leans on, and consistent with
+# this layer's AQI-style green->purple colour gradient (_AQI_COLORS). AOD has no
+# equivalent official breakpoint (see that comment), so its label is left as-is.
 _AQ_VARIABLE = SelectSpec([
-    ("pm2_5", "PM2.5"),
-    ("pm10", "PM10"),
+    ("pm2_5", "PM2.5 (Unhealthy above 35 µg/m³)"),
+    ("pm10", "PM10 (Unhealthy above 150 µg/m³)"),
     ("aod", "Smoke (AOD)"),
 ])
 
