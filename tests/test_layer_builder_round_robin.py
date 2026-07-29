@@ -368,11 +368,13 @@ def test_handle_results_still_detects_a_broken_pool():
 
 
 @pytest.mark.asyncio
-async def test_run_dispatch_cycle_drops_sections_once_they_stop_reporting_progress():
-    """Round 1 dispatches every section (single-shot + all multi-hour). Round 2 only
-    re-dispatches multi-hour sections that still had a backlog last round -- single-shot
-    sections never get a second round, and a multi-hour section with nothing left to
-    render drops out just as quickly as one that never had anything pending."""
+async def test_run_dispatch_cycle_redispatches_single_shot_sections_every_round():
+    """Round 1 dispatches every section (single-shot + all multi-hour). Round 2 still
+    includes every single-shot section -- they ride along on every round rather than
+    being starved behind however long the multi-hour backlog takes to drain (issue
+    #240) -- plus only the multi-hour sections that still had a backlog last round; a
+    multi-hour section with nothing left to render drops out just as quickly as one
+    that never had anything pending."""
     lb = make_bare_layer_builder()
     round_1 = {s: 1 for s in ("isobars", "precipitation", "wind", "currents", "waves",
                                "temperature", "ozone", "stormwatch")}
@@ -386,7 +388,35 @@ async def test_run_dispatch_cycle_drops_sections_once_they_stop_reporting_progre
     round_1_sections = set(lb._dispatch_round.call_args_list[0].args[1])
     round_2_sections = set(lb._dispatch_round.call_args_list[1].args[1])
     assert round_1_sections == set(SINGLE_SHOT_SECTIONS) | set(MULTI_HOUR_SECTIONS)
-    assert round_2_sections == set(round_1) - {"pwat"}  # dropped: no backlog, single-shot
+    assert round_2_sections == set(SINGLE_SHOT_SECTIONS) | (set(round_1) - {"pwat"})
+
+
+@pytest.mark.asyncio
+async def test_run_dispatch_cycle_never_starves_single_shot_sections_behind_a_long_backlog():
+    """Regression guard for issue #240, found live: a large multi-hour backlog (many
+    rounds, each advancing only 1 hour per section) used to starve single-shot
+    sections -- greenhouse_gases/air_quality picked up a config change 30+ minutes
+    late because they were dropped from `pending` after round 1 and _run_dispatch_cycle
+    doesn't return (letting the outer scheduler loop re-dispatch them) until the ENTIRE
+    multi-hour backlog drains. Every single-shot section must appear in every round,
+    however many rounds a slow backlog takes to clear."""
+    lb = make_bare_layer_builder()
+    # isobars alone takes 5 rounds to drain; every OTHER multi-hour section already has
+    # nothing pending from round 1 onward (drops out immediately, as normal).
+    rounds = [{"isobars": 1} for _ in range(4)] + [{"isobars": 0}]
+    for r in rounds[:-1]:
+        for s in MULTI_HOUR_SECTIONS:
+            r.setdefault(s, 0)
+    lb._dispatch_round = AsyncMock(side_effect=rounds)
+
+    await lb._run_dispatch_cycle(loop=MagicMock(), baseline={})
+
+    assert lb._dispatch_round.call_count == 5
+    for call in lb._dispatch_round.call_args_list:
+        dispatched = set(call.args[1])
+        assert set(SINGLE_SHOT_SECTIONS) <= dispatched, (
+            "single-shot sections must be present in every round, not just the first"
+        )
 
 
 @pytest.mark.asyncio
