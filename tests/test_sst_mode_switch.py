@@ -122,7 +122,7 @@ def make_bare_sst_updater(mode, workdir, output_path):
     u.settings = {}
     u.common = {}
     u.plot = MagicMock()
-    u._publish_current_mode = MagicMock()
+    u._publish_variant = MagicMock()
     return u
 
 
@@ -187,7 +187,7 @@ def test_run_does_not_render_when_both_modes_already_fresh(tmp_path):
 
     u.plot.assert_not_called()
     # Publishing still happens every cycle regardless of whether a render occurred.
-    u._publish_current_mode.assert_called_once_with(str(tmp_path / "data" / "sst_anomaly.png"))
+    u._publish_variant.assert_called_once_with(str(tmp_path / "data" / "sst_anomaly.png"))
 
 
 def test_run_re_renders_a_mode_whose_output_is_data_fresh_but_settings_changed(tmp_path):
@@ -222,7 +222,7 @@ def test_run_publishes_only_the_currently_configured_mode(tmp_path):
     u = make_bare_sst_updater("anomaly", str(tmp_path), str(out_path))
     u.run()
 
-    u._publish_current_mode.assert_called_once_with(str(tmp_path / "data" / "sst_anomaly.png"))
+    u._publish_variant.assert_called_once_with(str(tmp_path / "data" / "sst_anomaly.png"))
 
 
 def test_run_skips_a_mode_whose_source_cache_is_missing_without_blocking_the_other(tmp_path):
@@ -236,7 +236,7 @@ def test_run_skips_a_mode_whose_source_cache_is_missing_without_blocking_the_oth
 
     u.plot.assert_called_once()
     assert u.plot.call_args.args[0] == "absolute"
-    u._publish_current_mode.assert_called_once()
+    u._publish_variant.assert_called_once()
 
 
 def test_run_publishes_nothing_when_configured_modes_source_is_missing(tmp_path):
@@ -250,4 +250,4 @@ def test_run_publishes_nothing_when_configured_modes_source_is_missing(tmp_path)
     u = make_bare_sst_updater("anomaly", str(tmp_path), str(out_path))
     u.run()
 
-    u._publish_current_mode.assert_not_called()
+    u._publish_variant.assert_not_called()

@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 import os
-import shutil
 import logging
 import gc
 import numpy as np
@@ -180,24 +179,6 @@ class SSTUpdater(Updater):
 
         logger.debug(f"Successfully rendered raw NOAA OISST map in {mode} mode.")
 
-    def _publish_current_mode(self, mode_output_path: str):
-        """Copy the currently-configured mode's per-mode render to the stable,
-        run-agnostic base filename (sst.png/sst_key.png) for anything still reading
-        that name directly. Always refreshed each cycle (a cheap file copy),
-        independent of whether that mode's plot needed re-rendering this cycle."""
-        base, ext = os.path.splitext(self.output_path)
-        mode_base, mode_ext = os.path.splitext(mode_output_path)
-        pairs = [
-            (mode_output_path, self.output_path),
-            (f"{mode_base}_key{mode_ext}", f"{base}_key{ext}"),
-        ]
-        for src, dst in pairs:
-            if not os.path.exists(src):
-                continue
-            tmp = f"{dst}.tmp"
-            shutil.copy2(src, tmp)
-            os.replace(tmp, dst)
-
     def _mode_settings_signature(self, mode: str) -> str:
         """Render-relevant settings for `mode`, for _is_render_fresh -- opacity and
         key_fontsize are baked into the rendered pixels for both modes (see plot()'s
@@ -245,4 +226,4 @@ class SSTUpdater(Updater):
                 self._write_render_signature(out, sig)
 
             if mode == self.mode:
-                self._publish_current_mode(out)
+                self._publish_variant(out)

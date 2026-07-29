@@ -27,7 +27,6 @@ collectors' cached fields via lib/greenhouse_gases.compute_anomaly().
 import concurrent.futures
 import logging
 import os
-from datetime import datetime, timedelta, timezone
 
 import cdsapi
 
@@ -35,6 +34,7 @@ from atmos_gl.collectors.base import CollectorBase
 from atmos_gl.lib.cds_client import (
     resolve_cds_credentials,
     retrieve_and_unzip,
+    retrieve_with_day_fallback,
 )
 from atmos_gl.lib.data_status import build_status, read_process_status
 from atmos_gl.lib.greenhouse_gases import (
@@ -93,38 +93,9 @@ class CamsGhgForecastCollector(CollectorBase):
         dest = camsforecast_cache_path(self.workdir)
         client = cdsapi.Client(url=base_url, key=api_key)
 
-        last_error = None
-        for day_offset in range(_CAMS_FORECAST_SEARCH_DAYS):
-            date_str = (
-                datetime.now(timezone.utc) - timedelta(days=day_offset)
-            ).strftime("%Y-%m-%d")
-            request = build_cams_forecast_request(date_str)
-
-            try:
-                retrieve_and_unzip(
-                    client, _CAMS_FORECAST_DATASET, request, dest,
-                    _CAMS_FORECAST_TIMEOUT_S, "CAMS GHG forecast",
-                )
-                logger.info(f"CAMS GHG forecast: cached {date_str} -> {os.path.basename(dest)}")
-                return
-            except concurrent.futures.TimeoutError:
-                # A queued (not immediately rejected) job -- today's run does exist,
-                # it's just slow. Don't also hammer earlier dates while it's pending.
-                logger.warning(
-                    f"CAMS GHG forecast: request for {date_str} timed out after "
-                    f"{_CAMS_FORECAST_TIMEOUT_S}s; will retry next cycle."
-                )
-                return
-            except Exception as e:
-                last_error = e
-                logger.debug(
-                    f"CAMS GHG forecast: {date_str} not available yet ({e}); "
-                    f"trying an earlier date."
-                )
-
-        logger.error(
-            f"CAMS GHG forecast: no run available in the last "
-            f"{_CAMS_FORECAST_SEARCH_DAYS} day(s): {last_error}"
+        retrieve_with_day_fallback(
+            client, _CAMS_FORECAST_DATASET, build_cams_forecast_request, dest,
+            _CAMS_FORECAST_TIMEOUT_S, _CAMS_FORECAST_SEARCH_DAYS, "CAMS GHG forecast",
         )
 
 

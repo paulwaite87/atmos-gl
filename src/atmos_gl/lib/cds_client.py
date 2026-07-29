@@ -12,6 +12,7 @@ import os
 import shutil
 import tempfile
 import zipfile
+from datetime import datetime, timedelta, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -74,3 +75,47 @@ def retrieve_and_unzip(
         tmp_dest = f"{cache_dest}.tmp"
         shutil.move(extracted_path, tmp_dest)
         os.replace(tmp_dest, cache_dest)
+
+
+def retrieve_with_day_fallback(
+    client, dataset: str, build_request, dest: str, timeout_s: float,
+    search_days: int, label: str,
+) -> bool:
+    """Search backward from today for the newest published forecast run, retrying
+    retrieve_and_unzip() once per day back to `search_days` days ago. `build_request`
+    is a (date_str) -> request dict callable (e.g. build_cams_forecast_request).
+    Returns True once a fetch succeeds (already cached at `dest`), False if every date
+    in the window failed or a queued job timed out (both cases already logged; the
+    caller has nothing further to do either way).
+
+    Shared by every CDS-backed forecast collector that needs this "today's run isn't
+    always published yet" fallback (CamsGhgForecastCollector, AirQualityCollector) --
+    same day-search fallback shape resolve_gfs_baseline() (lib/gfs.py) uses for GFS's
+    own publish lag."""
+    last_error = None
+    for day_offset in range(search_days):
+        date_str = (
+            datetime.now(timezone.utc) - timedelta(days=day_offset)
+        ).strftime("%Y-%m-%d")
+        request = build_request(date_str)
+
+        try:
+            retrieve_and_unzip(client, dataset, request, dest, timeout_s, label)
+            logger.info(f"{label}: cached {date_str} -> {os.path.basename(dest)}")
+            return True
+        except concurrent.futures.TimeoutError:
+            # A queued (not immediately rejected) job -- today's run does exist, it's
+            # just slow. Don't also hammer earlier dates while it's pending.
+            logger.warning(
+                f"{label}: request for {date_str} timed out after {timeout_s}s; "
+                f"will retry next cycle."
+            )
+            return False
+        except Exception as e:
+            last_error = e
+            logger.debug(
+                f"{label}: {date_str} not available yet ({e}); trying an earlier date."
+            )
+
+    logger.error(f"{label}: no run available in the last {search_days} day(s): {last_error}")
+    return False

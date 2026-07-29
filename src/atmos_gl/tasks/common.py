@@ -2,6 +2,7 @@
 import os
 import json
 import logging
+import shutil
 import numpy as np
 from scipy.interpolate import RegularGridInterpolator
 from dataclasses import dataclass
@@ -313,6 +314,31 @@ class Updater(PlottingMixin):
     def _write_render_signature(self, out: str, sig: str):
         with open(out + ".sig", "w") as f:
             f.write(sig)
+
+    def _publish_variant(self, variant_output_path: str):
+        """Copy a per-variant render (e.g. 'data/sst_anomaly.png', 'data/
+        greenhouse_gases_co2_absolute.png', 'data/air_quality_pm2_5.png') to the
+        stable, run-agnostic base filename (self.output_path) for anything still
+        reading that name directly -- along with its '_key' companion image, if one
+        exists. Always refreshed each cycle (a cheap file copy), independent of
+        whether that variant's plot needed re-rendering this cycle.
+
+        Shared by every layer that renders several variants per cycle and publishes
+        only the currently-configured one (SSTUpdater's mode, GhgUpdater's
+        species+mode, AirQualityUpdater's variable) -- lifted here after the third
+        near-identical copy appeared, rather than adding a fourth."""
+        base, ext = os.path.splitext(self.output_path)
+        variant_base, variant_ext = os.path.splitext(variant_output_path)
+        pairs = [
+            (variant_output_path, self.output_path),
+            (f"{variant_base}_key{variant_ext}", f"{base}_key{ext}"),
+        ]
+        for src, dst in pairs:
+            if not os.path.exists(src):
+                continue
+            tmp = f"{dst}.tmp"
+            shutil.copy2(src, tmp)
+            os.replace(tmp, dst)
 
     def get_db_field_at_hour(self, state: "ForecastState", product_name: str) -> dict | None:
         """Fetch a pre-processed field from the fieldstore for a specific forecast run

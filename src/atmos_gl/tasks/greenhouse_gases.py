@@ -2,7 +2,6 @@
 import gc
 import logging
 import os
-import shutil
 
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
@@ -163,22 +162,6 @@ class GhgUpdater(Updater):
 
         logger.debug(f"Successfully rendered {species} {mode} greenhouse gas map.")
 
-    def _publish_current(self, mode_output_path: str):
-        """Copy the currently-configured (species, mode) render to the stable,
-        run-agnostic base filename, mirroring SSTUpdater._publish_current_mode()."""
-        base, ext = os.path.splitext(self.output_path)
-        mode_base, mode_ext = os.path.splitext(mode_output_path)
-        pairs = [
-            (mode_output_path, self.output_path),
-            (f"{mode_base}_key{mode_ext}", f"{base}_key{ext}"),
-        ]
-        for src, dst in pairs:
-            if not os.path.exists(src):
-                continue
-            tmp = f"{dst}.tmp"
-            shutil.copy2(src, tmp)
-            os.replace(tmp, dst)
-
     def _mode_settings_signature(self, species: str, mode: str) -> str:
         """Render-relevant settings for (species, mode), for _is_render_fresh --
         opacity and key_fontsize are baked into the rendered pixels for both modes
@@ -245,4 +228,4 @@ class GhgUpdater(Updater):
         if self.mode == "anomaly" and not egg4_available:
             return
 
-        self._publish_current(self._output_path_for(self.species, self.mode))
+        self._publish_variant(self._output_path_for(self.species, self.mode))

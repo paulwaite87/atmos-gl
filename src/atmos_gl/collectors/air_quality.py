@@ -13,16 +13,13 @@ cams-global-atmospheric-composition-forecasts, a single combined request for all
 variables, data_format=netcdf_zip, no per-dataset licence-acceptance friction (unlike
 greenhouse_gases' CAMS/EGG4 datasets).
 """
-import concurrent.futures
 import logging
-import os
-from datetime import datetime, timedelta, timezone
 
 import cdsapi
 
 from atmos_gl.collectors.base import CollectorBase
 from atmos_gl.lib.air_quality import camsforecast_cache_path
-from atmos_gl.lib.cds_client import resolve_cds_credentials, retrieve_and_unzip
+from atmos_gl.lib.cds_client import resolve_cds_credentials, retrieve_with_day_fallback
 
 logger = logging.getLogger(__name__)
 
@@ -73,38 +70,7 @@ class AirQualityCollector(CollectorBase):
         dest = camsforecast_cache_path(self.workdir)
         client = cdsapi.Client(url=base_url, key=api_key)
 
-        last_error = None
-        for day_offset in range(_CAMS_FORECAST_SEARCH_DAYS):
-            date_str = (
-                datetime.now(timezone.utc) - timedelta(days=day_offset)
-            ).strftime("%Y-%m-%d")
-            request = build_air_quality_request(date_str)
-
-            try:
-                retrieve_and_unzip(
-                    client, _CAMS_FORECAST_DATASET, request, dest,
-                    _CAMS_FORECAST_TIMEOUT_S, "CAMS air quality forecast",
-                )
-                logger.info(
-                    f"CAMS air quality forecast: cached {date_str} -> {os.path.basename(dest)}"
-                )
-                return
-            except concurrent.futures.TimeoutError:
-                # A queued (not immediately rejected) job -- today's run does exist,
-                # it's just slow. Don't also hammer earlier dates while it's pending.
-                logger.warning(
-                    f"CAMS air quality forecast: request for {date_str} timed out "
-                    f"after {_CAMS_FORECAST_TIMEOUT_S}s; will retry next cycle."
-                )
-                return
-            except Exception as e:
-                last_error = e
-                logger.debug(
-                    f"CAMS air quality forecast: {date_str} not available yet ({e}); "
-                    f"trying an earlier date."
-                )
-
-        logger.error(
-            f"CAMS air quality forecast: no run available in the last "
-            f"{_CAMS_FORECAST_SEARCH_DAYS} day(s): {last_error}"
+        retrieve_with_day_fallback(
+            client, _CAMS_FORECAST_DATASET, build_air_quality_request, dest,
+            _CAMS_FORECAST_TIMEOUT_S, _CAMS_FORECAST_SEARCH_DAYS, "CAMS air quality forecast",
         )

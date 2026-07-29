@@ -10,7 +10,6 @@ AQI-style colour gradient instead of a user-selectable palette.
 import gc
 import logging
 import os
-import shutil
 
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
@@ -146,22 +145,6 @@ class AirQualityUpdater(Updater):
 
         logger.debug(f"Successfully rendered {variable} air quality map.")
 
-    def _publish_current(self, variable_output_path: str):
-        """Copy the currently-configured variable's render to the stable,
-        run-agnostic base filename, mirroring GhgUpdater._publish_current()."""
-        base, ext = os.path.splitext(self.output_path)
-        var_base, var_ext = os.path.splitext(variable_output_path)
-        pairs = [
-            (variable_output_path, self.output_path),
-            (f"{var_base}_key{var_ext}", f"{base}_key{ext}"),
-        ]
-        for src, dst in pairs:
-            if not os.path.exists(src):
-                continue
-            tmp = f"{dst}.tmp"
-            shutil.copy2(src, tmp)
-            os.replace(tmp, dst)
-
     def _variable_settings_signature(self, variable: str) -> str:
         """Render-relevant settings for `variable`, for _is_render_fresh -- opacity and
         key_fontsize are baked into the rendered pixels (see plot()'s alpha and
@@ -200,4 +183,4 @@ class AirQualityUpdater(Updater):
 
         # Publish whichever variable is currently configured -- unconditionally of
         # whether it needed re-rendering above, same as GhgUpdater.run().
-        self._publish_current(self._output_path_for(self.variable))
+        self._publish_variant(self._output_path_for(self.variable))

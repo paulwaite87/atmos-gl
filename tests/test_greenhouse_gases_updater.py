@@ -23,7 +23,7 @@ def make_bare_ghg_updater(species, mode, workdir, output_path, baseline_year=200
     u.settings = {"baseline_year": baseline_year}
     u.common = {}
     u.plot = MagicMock()
-    u._publish_current = MagicMock()
+    u._publish_variant = MagicMock()
     return u
 
 
@@ -66,7 +66,7 @@ def test_run_skips_when_current_cache_missing(tmp_path):
     u.run()
 
     u.plot.assert_not_called()
-    u._publish_current.assert_not_called()
+    u._publish_variant.assert_not_called()
 
 
 def test_run_skips_anomaly_combinations_when_baseline_not_yet_cached(tmp_path):
@@ -125,7 +125,7 @@ def test_run_publishes_only_the_currently_configured_species_and_mode(tmp_path):
     u = make_bare_ghg_updater("ch4", "anomaly", str(tmp_path), str(out_path))
     u.run()
 
-    u._publish_current.assert_called_once_with(
+    u._publish_variant.assert_called_once_with(
         str(tmp_path / "data" / "greenhouse_gases_ch4_anomaly.png")
     )
 
@@ -139,4 +139,4 @@ def test_run_publishes_nothing_when_configured_mode_is_anomaly_but_baseline_miss
     u = make_bare_ghg_updater("co2", "anomaly", str(tmp_path), str(out_path))
     u.run()
 
-    u._publish_current.assert_not_called()
+    u._publish_variant.assert_not_called()

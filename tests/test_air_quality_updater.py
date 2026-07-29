@@ -22,7 +22,7 @@ def make_bare_aq_updater(variable, workdir, output_path):
     u.settings = {}
     u.common = {}
     u.plot = MagicMock()
-    u._publish_current = MagicMock()
+    u._publish_variant = MagicMock()
     return u
 
 
@@ -57,7 +57,7 @@ def test_run_skips_when_current_cache_missing(tmp_path):
     u.run()
 
     u.plot.assert_not_called()
-    u._publish_current.assert_not_called()
+    u._publish_variant.assert_not_called()
 
 
 def test_run_skips_a_variable_whose_output_is_already_fresh(tmp_path):
@@ -101,6 +101,6 @@ def test_run_publishes_only_the_currently_configured_variable(tmp_path):
     u = make_bare_aq_updater("aod", str(tmp_path), str(out_path))
     u.run()
 
-    u._publish_current.assert_called_once_with(
+    u._publish_variant.assert_called_once_with(
         str(tmp_path / "data" / "air_quality_aod.png")
     )
