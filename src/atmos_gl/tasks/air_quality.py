@@ -14,6 +14,7 @@ import os
 import cartopy.crs as ccrs
 import matplotlib.colors as mcolors
 import numpy as np
+from scipy.ndimage import gaussian_filter
 
 from atmos_gl.lib.air_quality import VARIABLES, camsforecast_cache_path
 from atmos_gl.lib.config import AtmosGLConfig
@@ -28,6 +29,14 @@ logger = logging.getLogger(__name__)
 # rendered every cycle still benefits from capping at the same LOD tier this app's
 # other raster layers use.
 _REGRID_STEP_DEG = 0.25
+
+# Gaussian-blur sigma (in regrid cells) applied to the field before plotting --
+# CAMS's native ~0.4 deg grid is coarser than the 0.25 deg regrid target, so a raw
+# pcolormesh render shows visibly blocky grid-cell edges (user-reported). Matches
+# PrecipitationUpdater's "medium" LOD tier sigma (tasks/precipitation.py) -- this
+# layer has no level_of_detail setting of its own, so one fixed value is used
+# throughout rather than adding a tier concept purely for this.
+_SMOOTH_SIGMA = 1.2
 
 # In-file netCDF variable names -- confirmed by downloading and inspecting a real CAMS
 # atmospheric-composition-forecasts file (see the published spec's issue comments).
@@ -94,6 +103,12 @@ class AirQualityUpdater(Updater):
         new_lats, new_lons, display_data = self.regrid_for_lod(
             display_data, lat_raw, lon_norm, fill_value=np.nan, step_override=_REGRID_STEP_DEG,
         )
+
+        # gaussian_filter doesn't handle NaN (it spreads/poisons neighbouring cells),
+        # so fill the regrid's small overshoot-edge NaN sliver before blurring, not
+        # after -- this is purely a rendering-smoothness step, run BEFORE the real
+        # below-threshold transparency masking below (which relies on genuine NaN).
+        display_data = gaussian_filter(np.nan_to_num(display_data, nan=0.0), sigma=_SMOOTH_SIGMA)
 
         min_key = _MIN_SETTING_KEY[variable]
         vmin = self.settings.get(min_key, _DEFAULT_MIN[variable])
