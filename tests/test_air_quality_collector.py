@@ -37,9 +37,11 @@ def make_bare_air_quality_collector(settings=None, workdir=".", api_key="secret-
 
 
 def test_build_air_quality_request_targets_leadtime_zero_and_all_three_variables():
-    request = build_air_quality_request("2026-07-27")
+    request = build_air_quality_request("2026-07-27", "12:00")
     assert request["leadtime_hour"] == ["0"]
     assert request["date"] == "2026-07-27/2026-07-27"
+    assert request["time"] == ["12:00"]
+    assert request["type"] == ["forecast"]
     assert set(request["variable"]) == {
         "particulate_matter_2.5um", "particulate_matter_10um",
         "total_aerosol_optical_depth_550nm",
@@ -120,18 +122,20 @@ def test_collect_refetches_every_call(tmp_path, monkeypatch, make_netcdf_zip_byt
     assert open(dest, "rb").read() == b"second-fetch"
 
 
-def test_collect_falls_back_to_an_earlier_date_when_todays_run_is_not_yet_published(
+def test_collect_falls_back_to_the_next_run_when_the_first_is_not_yet_published(
     tmp_path, monkeypatch, make_netcdf_zip_bytes
 ):
+    """CAMS issues two runs/day (00Z/12Z, unlike greenhouse_gases' one/day) -- the
+    candidate search must fall back across BOTH the time-of-day and day axes, newest
+    first, not just across days."""
     c = make_bare_air_quality_collector(workdir=str(tmp_path), monkeypatch=monkeypatch)
-    zip_bytes = make_netcdf_zip_bytes("data.nc", b"yesterdays-run")
-    seen_dates = []
+    zip_bytes = make_netcdf_zip_bytes("data.nc", b"second-candidate-run")
+    seen = []
 
     def fake_retrieve(dataset, request, target):
-        date_str = request["date"].split("/")[0]
-        seen_dates.append(date_str)
-        if len(seen_dates) == 1:
-            raise RuntimeError("400 Client Error: today's run not published yet")
+        seen.append((request["date"].split("/")[0], request["time"][0]))
+        if len(seen) == 1:
+            raise RuntimeError("400 Client Error: run not published yet")
         with open(target, "wb") as f:
             f.write(zip_bytes)
 
@@ -143,10 +147,11 @@ def test_collect_falls_back_to_an_earlier_date_when_todays_run_is_not_yet_publis
     ):
         c.collect()
 
-    assert len(seen_dates) == 2
-    assert seen_dates[1] < seen_dates[0]  # tried an earlier date second
+    assert len(seen) == 2
+    assert seen[0][1] == "12:00" and seen[1][1] == "00:00"  # same day, earlier run
+    assert seen[0][0] == seen[1][0]
     dest = camsforecast_cache_path(str(tmp_path))
-    assert open(dest, "rb").read() == b"yesterdays-run"
+    assert open(dest, "rb").read() == b"second-candidate-run"
 
 
 def test_collect_gives_up_gracefully_when_no_recent_run_is_available(tmp_path, monkeypatch):
@@ -159,5 +164,6 @@ def test_collect_gives_up_gracefully_when_no_recent_run_is_available(tmp_path, m
     ):
         c.collect()  # must not raise
 
-    assert mock_client.retrieve.call_count == 3  # _CAMS_FORECAST_SEARCH_DAYS
+    # _CAMS_FORECAST_SEARCH_DAYS (3) x len(_CAMS_RUN_TIMES) (2)
+    assert mock_client.retrieve.call_count == 6
     assert not os.path.exists(camsforecast_cache_path(str(tmp_path)))

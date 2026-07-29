@@ -12,7 +12,6 @@ import os
 import shutil
 import tempfile
 import zipfile
-from datetime import datetime, timedelta, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -77,45 +76,40 @@ def retrieve_and_unzip(
         os.replace(tmp_dest, cache_dest)
 
 
-def retrieve_with_day_fallback(
-    client, dataset: str, build_request, dest: str, timeout_s: float,
-    search_days: int, label: str,
+def retrieve_with_fallback(
+    client, dataset: str, requests: list, dest: str, timeout_s: float, label: str,
 ) -> bool:
-    """Search backward from today for the newest published forecast run, retrying
-    retrieve_and_unzip() once per day back to `search_days` days ago. `build_request`
-    is a (date_str) -> request dict callable (e.g. build_cams_forecast_request).
-    Returns True once a fetch succeeds (already cached at `dest`), False if every date
-    in the window failed or a queued job timed out (both cases already logged; the
-    caller has nothing further to do either way).
+    """Try each request in `requests` (an ordered, freshest-first list of full CDS
+    request dicts) via retrieve_and_unzip(), stopping at the first that succeeds.
+    Returns True once a fetch succeeds (already cached at `dest`), False if every
+    candidate failed or a queued job timed out (both cases already logged; the caller
+    has nothing further to do either way).
 
-    Shared by every CDS-backed forecast collector that needs this "today's run isn't
-    always published yet" fallback (CamsGhgForecastCollector, AirQualityCollector) --
-    same day-search fallback shape resolve_gfs_baseline() (lib/gfs.py) uses for GFS's
-    own publish lag."""
+    Takes a pre-built list rather than a single (date_str) -> request builder callback
+    because not every CDS-backed forecast dataset's "which run is newest" search is a
+    plain calendar-date search: CamsGhgForecastCollector's dataset only needs a date
+    axis, but AirQualityCollector's dataset ALSO needs a time-of-day axis (CAMS issues
+    atmospheric-composition runs at 00Z/12Z, confirmed live against the real ADS API --
+    see the published spec's issue comments) -- so each caller builds its own
+    freshest-first candidate list and this function only owns the shared "try each,
+    stop at the first success" mechanics, same day-search-fallback spirit
+    resolve_gfs_baseline() (lib/gfs.py) uses for GFS's own publish lag."""
     last_error = None
-    for day_offset in range(search_days):
-        date_str = (
-            datetime.now(timezone.utc) - timedelta(days=day_offset)
-        ).strftime("%Y-%m-%d")
-        request = build_request(date_str)
-
+    for request in requests:
         try:
             retrieve_and_unzip(client, dataset, request, dest, timeout_s, label)
-            logger.info(f"{label}: cached {date_str} -> {os.path.basename(dest)}")
+            logger.info(f"{label}: cached -> {os.path.basename(dest)}")
             return True
         except concurrent.futures.TimeoutError:
-            # A queued (not immediately rejected) job -- today's run does exist, it's
-            # just slow. Don't also hammer earlier dates while it's pending.
+            # A queued (not immediately rejected) job -- this run does exist, it's
+            # just slow. Don't also hammer earlier candidates while it's pending.
             logger.warning(
-                f"{label}: request for {date_str} timed out after {timeout_s}s; "
-                f"will retry next cycle."
+                f"{label}: request timed out after {timeout_s}s; will retry next cycle."
             )
             return False
         except Exception as e:
             last_error = e
-            logger.debug(
-                f"{label}: {date_str} not available yet ({e}); trying an earlier date."
-            )
+            logger.debug(f"{label}: candidate not available yet ({e}); trying the next.")
 
-    logger.error(f"{label}: no run available in the last {search_days} day(s): {last_error}")
+    logger.error(f"{label}: no run available among {len(requests)} candidate(s): {last_error}")
     return False

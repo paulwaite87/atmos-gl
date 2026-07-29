@@ -27,6 +27,7 @@ collectors' cached fields via lib/greenhouse_gases.compute_anomaly().
 import concurrent.futures
 import logging
 import os
+from datetime import datetime, timedelta, timezone
 
 import cdsapi
 
@@ -34,7 +35,7 @@ from atmos_gl.collectors.base import CollectorBase
 from atmos_gl.lib.cds_client import (
     resolve_cds_credentials,
     retrieve_and_unzip,
-    retrieve_with_day_fallback,
+    retrieve_with_fallback,
 )
 from atmos_gl.lib.data_status import build_status, read_process_status
 from atmos_gl.lib.greenhouse_gases import (
@@ -93,9 +94,15 @@ class CamsGhgForecastCollector(CollectorBase):
         dest = camsforecast_cache_path(self.workdir)
         client = cdsapi.Client(url=base_url, key=api_key)
 
-        retrieve_with_day_fallback(
-            client, _CAMS_FORECAST_DATASET, build_cams_forecast_request, dest,
-            _CAMS_FORECAST_TIMEOUT_S, _CAMS_FORECAST_SEARCH_DAYS, "CAMS GHG forecast",
+        requests = [
+            build_cams_forecast_request(
+                (datetime.now(timezone.utc) - timedelta(days=day_offset)).strftime("%Y-%m-%d")
+            )
+            for day_offset in range(_CAMS_FORECAST_SEARCH_DAYS)
+        ]
+        retrieve_with_fallback(
+            client, _CAMS_FORECAST_DATASET, requests, dest,
+            _CAMS_FORECAST_TIMEOUT_S, "CAMS GHG forecast",
         )
 
 
