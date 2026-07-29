@@ -38,6 +38,15 @@ _REGRID_STEP_DEG = 0.25
 # throughout rather than adding a tier concept purely for this.
 _SMOOTH_SIGMA = 1.2
 
+# Width (as a fraction of the visible vmin..vmax range) of the soft alpha ramp above
+# the threshold -- see plot()'s RGBA construction. User-reported: even after the
+# Gaussian blur above, a HARD on/off transparency cutoff at the threshold still shows
+# a visible staircase at the 0.25 deg grid resolution once zoomed in in the browser,
+# because every "on" vs "off" cell renders as a flat, fully-opaque-or-fully-transparent
+# square with nothing in between for either matplotlib or the browser to interpolate
+# across. Fading smoothly over this band removes the hard edge entirely.
+_ALPHA_FEATHER_FRACTION = 0.15
+
 # In-file netCDF variable names -- confirmed by downloading and inspecting a real CAMS
 # atmospheric-composition-forecasts file (see the published spec's issue comments).
 # NOT the same as the request-time CDS variable identifiers (particulate_matter_2.5um/
@@ -105,25 +114,50 @@ class AirQualityUpdater(Updater):
         )
 
         # gaussian_filter doesn't handle NaN (it spreads/poisons neighbouring cells),
-        # so fill the regrid's small overshoot-edge NaN sliver before blurring, not
-        # after -- this is purely a rendering-smoothness step, run BEFORE the real
-        # below-threshold transparency masking below (which relies on genuine NaN).
+        # so fill the regrid's small overshoot-edge NaN sliver with 0 before blurring.
         display_data = gaussian_filter(np.nan_to_num(display_data, nan=0.0), sigma=_SMOOTH_SIGMA)
 
         min_key = _MIN_SETTING_KEY[variable]
-        vmin = self.settings.get(min_key, _DEFAULT_MIN[variable])
+        default_min = _DEFAULT_MIN[variable]
+        vmin = self.settings.get(min_key, default_min)
         vmax = _FIXED_CEILING[variable]
+        norm = mcolors.Normalize(vmin=vmin, vmax=vmax)
 
         # No land mask -- air quality genuinely applies over land too (a user-reported
         # regression: this used to gray out every landmass with a SST/GHG-style tint,
-        # which made no physical sense for an atmospheric variable). Instead, values
-        # BELOW the configured minimum become NaN, which pcolormesh simply doesn't
-        # draw (transparent, showing the base map through) -- so only areas actually
-        # above the threshold are highlighted, rather than clipping everything below
-        # it to the gradient's solid bottom colour (indistinguishable from "broken").
-        display_data = np.where(display_data < vmin, np.nan, display_data)
+        # which made no physical sense for an atmospheric variable).
+        #
+        # Below-threshold areas are transparent, but via a smooth per-pixel ALPHA FADE
+        # rather than a hard NaN/pcolormesh cutoff -- a binary on/off mask still showed
+        # a visible staircase at the grid resolution once zoomed in (user-reported;
+        # see _ALPHA_FEATHER_FRACTION above), since the transparency boundary itself
+        # was a hard step with nothing to interpolate across. Built as an explicit
+        # (Ny, Nx, 4) RGBA array, fed to pcolormesh's C parameter directly (bypassing
+        # cmap/norm) with shading="gouraud" -- gouraud interpolates colour AND alpha
+        # smoothly between grid points instead of "nearest"'s flat, un-interpolated
+        # quads, on top of the Gaussian pre-blur above. (imshow was tried first here:
+        # it also gets per-pixel RGBA and bilinear interpolation, but cartopy's
+        # PlateCarree->Mercator image warp only filled the centre HALF of the global
+        # extent -- a real regression live-caught before shipping. pcolormesh's own
+        # reprojection path, already used and correct on every other raster layer in
+        # this app, doesn't have that bug.)
+        #
+        # The fade is only applied when vmin is ABOVE the variable's natural floor
+        # (0 -- concentrations/AOD can't go negative): at vmin == default_min the user
+        # has asked for "no threshold, show me everything", and fading out genuinely
+        # -present-but-low readings (e.g. ~0.3 ug/m3 over clean remote regions, real
+        # CAMS output, not noise) would carve visible transparent holes out of what's
+        # supposed to be full coverage -- confirmed live. Only a real, user-raised
+        # threshold gets a feathered edge; the floor itself needs none, since nothing
+        # in the data can be below it in the first place.
+        rgba = _AQI_CMAP(norm(display_data))
+        if vmin > default_min:
+            feather = max(vmax - vmin, 1e-9) * _ALPHA_FEATHER_FRACTION
+            fade = np.clip((display_data - vmin) / feather, 0.0, 1.0)
+        else:
+            fade = np.ones_like(display_data)
+        rgba[..., 3] = fade * alpha
 
-        norm = mcolors.Normalize(vmin=vmin, vmax=vmax)
         unit = _DISPLAY_UNIT[variable]
         title_text = f"{_DISPLAY_LABEL[variable]} ({unit})" if unit else _DISPLAY_LABEL[variable]
 
@@ -132,12 +166,9 @@ class AirQualityUpdater(Updater):
         plot.ax.pcolormesh(
             new_lons,
             clamp_lats_to_mercator_limit(new_lats),
-            display_data,
+            rgba,
             transform=ccrs.PlateCarree(),
-            cmap=_AQI_CMAP,
-            norm=norm,
-            alpha=alpha,
-            shading="nearest",
+            shading="gouraud",
             rasterized=True,
             zorder=2,
         )
