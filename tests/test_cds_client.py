@@ -5,14 +5,17 @@ AirQualityCollector) -- every CDS dataset in this app delivers data_format=netcd
 (a zip archive), not a raw netCDF, so the fetch isn't complete until the archive's .nc
 member is extracted to the real cache path.
 
-retrieve_with_day_fallback: shared "today's run isn't always published yet" search
-behind every CDS-backed FORECAST collector (CamsGhgForecastCollector,
+retrieve_with_fallback: shared "try each candidate request, stop at the first
+success" search behind every CDS-backed FORECAST collector (CamsGhgForecastCollector,
 AirQualityCollector -- not CamsEgg4BaselineCollector, which fetches a fixed historical
-year with no publish-lag concept). Extracted out of collectors/greenhouse_gases.py's
-CamsGhgForecastCollector.collect(), which duplicated this loop verbatim before
-AirQualityCollector copy-pasted it a second time -- covered indirectly by both
-collectors' own test suites (test_greenhouse_gases_forecast_collector.py,
-test_air_quality_collector.py), plus directly here.
+year with no publish-lag concept). Takes a pre-built, freshest-first list of request
+dicts rather than a (date_str) -> request builder callback, since not every dataset's
+"which run is newest" search is a plain calendar-date search -- AirQualityCollector's
+dataset ALSO needs a time-of-day axis (00Z/12Z), confirmed live against the real ADS
+API (a plain date-only request, mirroring greenhouse_gases' shape, 400'd). Covered
+indirectly by both collectors' own test suites
+(test_greenhouse_gases_forecast_collector.py, test_air_quality_collector.py), plus
+directly here.
 """
 import concurrent.futures
 import os
@@ -20,7 +23,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from atmos_gl.lib.cds_client import retrieve_and_unzip, retrieve_with_day_fallback
+from atmos_gl.lib.cds_client import retrieve_and_unzip, retrieve_with_fallback
 
 
 def test_retrieve_and_unzip_extracts_the_nc_member_to_cache_dest(tmp_path, make_netcdf_zip_bytes):
@@ -62,11 +65,11 @@ def test_retrieve_and_unzip_raises_when_archive_has_no_nc_member(tmp_path):
     assert not os.path.exists(dest)
 
 
-def _build_request(date_str):
-    return {"date": f"{date_str}/{date_str}"}
+def _requests(*dates):
+    return [{"date": f"{d}/{d}"} for d in dates]
 
 
-def test_retrieve_with_day_fallback_succeeds_on_the_first_day(tmp_path, make_netcdf_zip_bytes):
+def test_retrieve_with_fallback_succeeds_on_the_first_candidate(tmp_path, make_netcdf_zip_bytes):
     zip_bytes = make_netcdf_zip_bytes("data.nc", b"todays-run")
 
     def fake_retrieve(dataset, request, target):
@@ -77,8 +80,9 @@ def test_retrieve_with_day_fallback_succeeds_on_the_first_day(tmp_path, make_net
     client.retrieve.side_effect = fake_retrieve
     dest = str(tmp_path / "data" / "cached.nc")
 
-    ok = retrieve_with_day_fallback(
-        client, "some-dataset", _build_request, dest, timeout_s=5, search_days=3, label="test"
+    ok = retrieve_with_fallback(
+        client, "some-dataset", _requests("2026-07-29", "2026-07-28"), dest,
+        timeout_s=5, label="test",
     )
 
     assert ok is True
@@ -86,7 +90,7 @@ def test_retrieve_with_day_fallback_succeeds_on_the_first_day(tmp_path, make_net
     assert open(dest, "rb").read() == b"todays-run"
 
 
-def test_retrieve_with_day_fallback_tries_an_earlier_date_when_the_first_fails(
+def test_retrieve_with_fallback_tries_the_next_candidate_when_the_first_fails(
     tmp_path, make_netcdf_zip_bytes
 ):
     zip_bytes = make_netcdf_zip_bytes("data.nc", b"yesterdays-run")
@@ -104,17 +108,17 @@ def test_retrieve_with_day_fallback_tries_an_earlier_date_when_the_first_fails(
     client.retrieve.side_effect = fake_retrieve
     dest = str(tmp_path / "data" / "cached.nc")
 
-    ok = retrieve_with_day_fallback(
-        client, "some-dataset", _build_request, dest, timeout_s=5, search_days=3, label="test"
+    ok = retrieve_with_fallback(
+        client, "some-dataset", _requests("2026-07-29", "2026-07-28"), dest,
+        timeout_s=5, label="test",
     )
 
     assert ok is True
-    assert len(seen_dates) == 2
-    assert seen_dates[1] < seen_dates[0]  # tried an earlier date second
+    assert seen_dates == ["2026-07-29", "2026-07-28"]
     assert open(dest, "rb").read() == b"yesterdays-run"
 
 
-def test_retrieve_with_day_fallback_stops_at_a_timeout_without_trying_earlier_dates(tmp_path):
+def test_retrieve_with_fallback_stops_at_a_timeout_without_trying_later_candidates(tmp_path):
     client = MagicMock()
     client.retrieve.side_effect = RuntimeError("unused")
     dest = str(tmp_path / "data" / "cached.nc")
@@ -123,21 +127,23 @@ def test_retrieve_with_day_fallback_stops_at_a_timeout_without_trying_earlier_da
         "atmos_gl.lib.cds_client.retrieve_with_timeout",
         side_effect=concurrent.futures.TimeoutError,
     ):
-        ok = retrieve_with_day_fallback(
-            client, "some-dataset", _build_request, dest, timeout_s=5, search_days=3, label="test"
+        ok = retrieve_with_fallback(
+            client, "some-dataset", _requests("2026-07-29", "2026-07-28", "2026-07-27"), dest,
+            timeout_s=5, label="test",
         )
 
     assert ok is False
     assert not os.path.exists(dest)
 
 
-def test_retrieve_with_day_fallback_gives_up_after_search_days_exhausted(tmp_path):
+def test_retrieve_with_fallback_gives_up_after_every_candidate_fails(tmp_path):
     client = MagicMock()
     client.retrieve.side_effect = RuntimeError("400 Client Error")
     dest = str(tmp_path / "data" / "cached.nc")
 
-    ok = retrieve_with_day_fallback(
-        client, "some-dataset", _build_request, dest, timeout_s=5, search_days=3, label="test"
+    ok = retrieve_with_fallback(
+        client, "some-dataset", _requests("2026-07-29", "2026-07-28", "2026-07-27"), dest,
+        timeout_s=5, label="test",
     )
 
     assert ok is False
