@@ -69,7 +69,28 @@ _TICK_FORMAT = {"pm2_5": "%d", "pm10": "%d", "aod": "%.2f"}
 # (routes/field_specs.py) only understands flat (section, option) keys. Only a MINIMUM
 # is user-configurable, not a max -- see _FIXED_CEILING below.
 _MIN_SETTING_KEY = {"pm2_5": "pm2_5_min", "pm10": "pm10_min", "aod": "aod_min"}
-_DEFAULT_MIN = {"pm2_5": 0, "pm10": 0, "aod": 0}
+
+# Config fallback when the setting is unset -- a UX/policy default (what a fresh
+# install shows), NOT the same thing as the variable's natural floor (see
+# _NATURAL_FLOOR below, used by plot()'s fade-gating). AOD's default of 0.5 is where
+# NOAA/NASA smoke-monitoring research commonly places "smoke starting to matter for
+# health" (surface PM2.5 crossing into Unhealthy-for-Sensitive-Groups territory during
+# wildfire events) -- not an official regulatory breakpoint (AOD, a column-integrated
+# quantity, doesn't have one the way surface PM2.5 does), but a reasonable single
+# number if forced to pick one. PM2.5/PM10 stay at 0 (show everything) -- no equally
+# well-established "start filtering here" number was found for those in this session.
+_DEFAULT_MIN = {"pm2_5": 0, "pm10": 0, "aod": 0.5}
+
+# The true physical minimum for each variable -- concentrations/AOD can't go negative,
+# so this is always 0 for all three, REGARDLESS of what _DEFAULT_MIN ships as. Used
+# only to decide whether plot()'s alpha fade should apply at all: at vmin == the
+# natural floor there is no real threshold to feather (nothing in the data can be
+# below it), so fading unconditionally would carve holes out of genuinely-present-but
+# -low readings instead (see plot()'s comment). Comparing against _DEFAULT_MIN instead
+# of this would break the moment _DEFAULT_MIN stops being 0 for some variable (as AOD
+# no longer is) -- the two are deliberately kept as separate constants so that never
+# happens silently again.
+_NATURAL_FLOOR = {"pm2_5": 0, "pm10": 0, "aod": 0}
 
 # Fixed, non-configurable top of the colour gradient -- confirmed live against real
 # CAMS data (see the published spec's issue comments): AOD rarely exceeds ~2.5 even
@@ -143,15 +164,17 @@ class AirQualityUpdater(Updater):
         # this app, doesn't have that bug.)
         #
         # The fade is only applied when vmin is ABOVE the variable's natural floor
-        # (0 -- concentrations/AOD can't go negative): at vmin == default_min the user
-        # has asked for "no threshold, show me everything", and fading out genuinely
-        # -present-but-low readings (e.g. ~0.3 ug/m3 over clean remote regions, real
-        # CAMS output, not noise) would carve visible transparent holes out of what's
-        # supposed to be full coverage -- confirmed live. Only a real, user-raised
-        # threshold gets a feathered edge; the floor itself needs none, since nothing
-        # in the data can be below it in the first place.
+        # (_NATURAL_FLOOR, always 0 -- concentrations/AOD can't go negative). At
+        # vmin == 0 the user has asked for "no threshold, show me everything", and
+        # fading out genuinely-present-but-low readings (e.g. ~0.3 ug/m3 over clean
+        # remote regions, real CAMS output, not noise) would carve visible transparent
+        # holes out of what's supposed to be full coverage -- confirmed live.
+        # Deliberately compared against _NATURAL_FLOOR, not _DEFAULT_MIN (which is a
+        # different thing -- a UX default, currently 0.5 for AOD) -- a threshold the
+        # user genuinely wants (the shipped AOD default included) must still get its
+        # feathered edge; only the true, un-thresholdable floor needs none.
         rgba = _AQI_CMAP(norm(display_data))
-        if vmin > default_min:
+        if vmin > _NATURAL_FLOOR[variable]:
             feather = max(vmax - vmin, 1e-9) * _ALPHA_FEATHER_FRACTION
             fade = np.clip((display_data - vmin) / feather, 0.0, 1.0)
         else:
