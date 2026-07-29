@@ -374,13 +374,27 @@ class LayerBuilder:
     async def _run_dispatch_cycle(self, loop, baseline):
         """One cycle's worth of rendering, given an already-resolved baseline.
 
-        Single-shot layers (sst/clouds/markers) dispatch once, same as before.
+        Single-shot layers (sst/clouds/markers/greenhouse_gases/air_quality) ride
+        along on EVERY round, not just the first. Each one's own freshness check
+        (Updater._is_render_fresh) short-circuits to a cheap no-op when nothing's
+        actually stale, so this costs little -- but it matters because a large
+        multi-hour backlog can otherwise take many rounds (tens of minutes) to fully
+        drain, and this whole method isn't called again (config re-read, single-shot
+        layers re-dispatched) until it does. Previously single-shot layers dropped
+        out after round 1, so a config/data change to one of them sat unpicked-up for
+        however long the multi-hour backlog behind it happened to take to clear (see
+        issue #240 -- found live: an air_quality settings change went unreflected for
+        30+ minutes behind an in-progress isobars/waves/etc. backfill).
+
         Multi-hour layers dispatch in ROUNDS -- one hour per section per round -- so a
         section with a large backlog can't monopolise the render pool's workers for its
         whole catch-up; every section advances roughly evenly instead of depth-first
         through whichever ones happened to dispatch first (architecture review
         candidate "interleave per-hour rendering across layers"). A round drops a
-        multi-hour section once it stops reporting progress.
+        multi-hour section once it stops reporting progress; the cycle itself ends
+        once every multi-hour section has stopped -- single-shot layers place no
+        bound on this, they simply ride along for free on however many rounds the
+        multi-hour sections need.
         """
         # A section whose backing channel is manually disabled never gets its worker
         # process spawned at all -- not even once to discover there's nothing to
@@ -392,18 +406,24 @@ class LayerBuilder:
             channel_enabled, self._layer_channel_keys,
             SINGLE_SHOT_SECTIONS + MULTI_HOUR_SECTIONS,
         )
-        pending = {s: None for s in SINGLE_SHOT_SECTIONS if s in all_sections}
-        pending.update({s: 1 for s in MULTI_HOUR_SECTIONS if s in all_sections})
+        single_shot = [s for s in SINGLE_SHOT_SECTIONS if s in all_sections]
+        multi_hour_pending = {s: 1 for s in MULTI_HOUR_SECTIONS if s in all_sections}
+        if not single_shot and not multi_hour_pending:
+            return
 
-        while pending:
-            sections = list(pending)
+        while True:
+            max_hours_by_section = {s: None for s in single_shot}
+            max_hours_by_section.update(multi_hour_pending)
+            sections = list(max_hours_by_section)
             plotted_by_section = await self._dispatch_round(
-                loop, sections, baseline, pending
+                loop, sections, baseline, max_hours_by_section
             )
-            pending = {
-                s: 1 for s in MULTI_HOUR_SECTIONS
-                if s in pending and plotted_by_section.get(s, 0) > 0
+            multi_hour_pending = {
+                s: 1 for s in multi_hour_pending
+                if plotted_by_section.get(s, 0) > 0
             }
+            if not multi_hour_pending:
+                break
 
     async def start_scheduler(self):
         # Initial refresh so the region/config are current before the primer is built.
