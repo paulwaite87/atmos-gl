@@ -79,14 +79,15 @@ _MIN_SETTING_KEY = {"pm2_5": "pm2_5_min", "pm10": "pm10_min", "aod": "aod_min"}
 
 # Config fallback when the setting is unset -- a UX/policy default (what a fresh
 # install shows), NOT the same thing as the variable's natural floor (see
-# _NATURAL_FLOOR below, used by plot()'s fade-gating). AOD's default of 0.5 is where
-# NOAA/NASA smoke-monitoring research commonly places "smoke starting to matter for
-# health" (surface PM2.5 crossing into Unhealthy-for-Sensitive-Groups territory during
-# wildfire events) -- not an official regulatory breakpoint (AOD, a column-integrated
-# quantity, doesn't have one the way surface PM2.5 does), but a reasonable single
-# number if forced to pick one. PM2.5/PM10 stay at 0 (show everything) -- no equally
-# well-established "start filtering here" number was found for those in this session.
-_DEFAULT_MIN = {"pm2_5": 0, "pm10": 0, "aod": 0.5}
+# _NATURAL_FLOOR below, used by plot()'s fade-gating). PM2.5/PM10 default to the US
+# EPA AQI "Unhealthy for Sensitive Groups" 24-hr breakpoints (35.5/155 ug/m3, rounded
+# here), matching the labels routes/field_specs.py's _AQ_VARIABLE now shows in the
+# variable picker. AOD's default of 0.5 is where NOAA/NASA smoke-monitoring research
+# commonly places "smoke starting to matter for health" (surface PM2.5 crossing into
+# that same Unhealthy-for-Sensitive-Groups territory during wildfire events) -- not an
+# official regulatory breakpoint (AOD, a column-integrated quantity, doesn't have one
+# the way surface PM2.5/PM10 do), but a reasonable single number if forced to pick one.
+_DEFAULT_MIN = {"pm2_5": 35, "pm10": 150, "aod": 0.5}
 
 # The true physical minimum for each variable -- concentrations/AOD can't go negative,
 # so this is always 0 for all three, REGARDLESS of what _DEFAULT_MIN ships as. Used
