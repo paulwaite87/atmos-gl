@@ -12,13 +12,11 @@ import logging
 import os
 
 import cartopy.crs as ccrs
-import cartopy.feature as cfeature
 import matplotlib.colors as mcolors
 import numpy as np
 
 from atmos_gl.lib.air_quality import VARIABLES, camsforecast_cache_path
 from atmos_gl.lib.config import AtmosGLConfig
-from atmos_gl.lib.coastline import coastline_land_mask
 from atmos_gl.lib.netcdf_field import load_field
 from .common import Updater, MapData
 from .plotting import Plot, clamp_lats_to_mercator_limit
@@ -30,8 +28,6 @@ logger = logging.getLogger(__name__)
 # rendered every cycle still benefits from capping at the same LOD tier this app's
 # other raster layers use.
 _REGRID_STEP_DEG = 0.25
-
-_LAND_TINT_COLOR = "#5a5a5a"
 
 # In-file netCDF variable names -- confirmed by downloading and inspecting a real CAMS
 # atmospheric-composition-forecasts file (see the published spec's issue comments).
@@ -50,15 +46,22 @@ _DISPLAY_UNIT = {"pm2_5": "µg/m³", "pm10": "µg/m³", "aod": ""}
 _DISPLAY_LABEL = {"pm2_5": "PM2.5", "pm10": "PM10", "aod": "Smoke (AOD)"}
 _TICK_FORMAT = {"pm2_5": "%d", "pm10": "%d", "aod": "%.2f"}
 
-# Flat, variable-prefixed setting keys (pm2_5_min, aod_max, ...) -- same convention
+# Flat, variable-prefixed setting key (pm2_5_min, aod_min, ...) -- same convention
 # greenhouse_gases.py's _SCALE_SETTING_KEYS uses, since FIELD_SPECS/validate_against_specs
-# (routes/field_specs.py) only understands flat (section, option) keys.
-_SCALE_SETTING_KEYS = {
-    "pm2_5": ("pm2_5_min", "pm2_5_max"),
-    "pm10": ("pm10_min", "pm10_max"),
-    "aod": ("aod_min", "aod_max"),
-}
-_DEFAULT_MIN_MAX = {"pm2_5": (0, 250), "pm10": (0, 400), "aod": (0, 2)}
+# (routes/field_specs.py) only understands flat (section, option) keys. Only a MINIMUM
+# is user-configurable, not a max -- see _FIXED_CEILING below.
+_MIN_SETTING_KEY = {"pm2_5": "pm2_5_min", "pm10": "pm10_min", "aod": "aod_min"}
+_DEFAULT_MIN = {"pm2_5": 0, "pm10": 0, "aod": 0}
+
+# Fixed, non-configurable top of the colour gradient -- confirmed live against real
+# CAMS data (see the published spec's issue comments): AOD rarely exceeds ~2.5 even
+# during extreme Saharan dust events, PM2.5/PM10 defaults chosen to match. Originally
+# a second user-adjustable slider (aod_max/pm2_5_max/pm10_max), but live testing found
+# an independent min+max pair invites a scale (e.g. min=1, max=5) that clips nearly
+# the entire globe to the gradient's bottom colour -- indistinguishable from "the
+# layer is broken" even though the render was correct. A single min threshold against
+# a realistic fixed ceiling is a much harder scale to misconfigure.
+_FIXED_CEILING = {"pm2_5": 250, "pm10": 400, "aod": 3}
 
 # Fixed AQI-recognisable gradient (green -> yellow -> orange -> red -> purple),
 # matching the colour convention of every mainstream phone weather app's air-quality
@@ -91,27 +94,26 @@ class AirQualityUpdater(Updater):
         new_lats, new_lons, display_data = self.regrid_for_lod(
             display_data, lat_raw, lon_norm, fill_value=np.nan, step_override=_REGRID_STEP_DEG,
         )
-        mesh_lon, mesh_lat = np.meshgrid(new_lons, new_lats)
-        land = coastline_land_mask(mesh_lon, mesh_lat, -180.0, -90.0, 180.0, 90.0, res="50m")
-        if land is not None and land.shape == display_data.shape:
-            display_data[land] = np.nan
 
-        min_key, max_key = _SCALE_SETTING_KEYS[variable]
-        default_min, default_max = _DEFAULT_MIN_MAX[variable]
-        vmin = self.settings.get(min_key, default_min)
-        vmax = self.settings.get(max_key, default_max)
+        min_key = _MIN_SETTING_KEY[variable]
+        vmin = self.settings.get(min_key, _DEFAULT_MIN[variable])
+        vmax = _FIXED_CEILING[variable]
+
+        # No land mask -- air quality genuinely applies over land too (a user-reported
+        # regression: this used to gray out every landmass with a SST/GHG-style tint,
+        # which made no physical sense for an atmospheric variable). Instead, values
+        # BELOW the configured minimum become NaN, which pcolormesh simply doesn't
+        # draw (transparent, showing the base map through) -- so only areas actually
+        # above the threshold are highlighted, rather than clipping everything below
+        # it to the gradient's solid bottom colour (indistinguishable from "broken").
+        display_data = np.where(display_data < vmin, np.nan, display_data)
+
         norm = mcolors.Normalize(vmin=vmin, vmax=vmax)
         unit = _DISPLAY_UNIT[variable]
         title_text = f"{_DISPLAY_LABEL[variable]} ({unit})" if unit else _DISPLAY_LABEL[variable]
 
         plot = Plot(self.map_data.region)
         plot.get_figure()
-        plot.ax.add_feature(
-            cfeature.NaturalEarthFeature("physical", "land", "50m"),
-            facecolor=_LAND_TINT_COLOR,
-            edgecolor="none",
-            zorder=1,
-        )
         plot.ax.pcolormesh(
             new_lons,
             clamp_lats_to_mercator_limit(new_lats),
@@ -148,15 +150,14 @@ class AirQualityUpdater(Updater):
     def _variable_settings_signature(self, variable: str) -> str:
         """Render-relevant settings for `variable`, for _is_render_fresh -- opacity and
         key_fontsize are baked into the rendered pixels (see plot()'s alpha and
-        save_key_image's key_fontsize); min/max select the fixed colour gradient's
-        scale (no palette setting exists for this layer)."""
-        min_key, max_key = _SCALE_SETTING_KEYS[variable]
-        default_min, default_max = _DEFAULT_MIN_MAX[variable]
+        save_key_image's key_fontsize); min selects both the fixed colour gradient's
+        bottom AND the below-threshold transparency cutoff (no palette or max setting
+        exists for this layer -- see _FIXED_CEILING)."""
+        min_key = _MIN_SETTING_KEY[variable]
         values = {
             "opacity": self.settings.get("opacity", 60),
             "key_fontsize": self.common.get("key_fontsize", 10),
-            "min": self.settings.get(min_key, default_min),
-            "max": self.settings.get(max_key, default_max),
+            "min": self.settings.get(min_key, _DEFAULT_MIN[variable]),
         }
         return self._settings_signature(values)
 
