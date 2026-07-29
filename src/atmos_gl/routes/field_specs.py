@@ -575,8 +575,13 @@ FIELD_SPECS = {
     ("air_quality", "pm2_5_max"): SliderSpec(min=0, max=500, step=5, suffix=" µg/m³"),
     ("air_quality", "pm10_min"): SliderSpec(min=0, max=600, step=5, suffix=" µg/m³"),
     ("air_quality", "pm10_max"): SliderSpec(min=0, max=600, step=5, suffix=" µg/m³"),
-    ("air_quality", "aod_min"): SliderSpec(min=0, max=5, step=0.1),
-    ("air_quality", "aod_max"): SliderSpec(min=0, max=5, step=0.1),
+    # Capped at 3, not a round 5 -- real CAMS AOD data confirmed live rarely exceeds
+    # ~2.5 even during extreme dust events (Saharan plumes) and sits below 0.3 over
+    # most of the globe on a normal day; a max much above that just invites a scale
+    # (e.g. min=1) that clips nearly the entire globe to the gradient's bottom colour,
+    # making the layer look uniformly flat rather than actually broken.
+    ("air_quality", "aod_min"): SliderSpec(min=0, max=3, step=0.1),
+    ("air_quality", "aod_max"): SliderSpec(min=0, max=3, step=0.1),
     # --- Background (shipping_collector, lightning_collector, satellites_collector,
     # data_collector, housekeeper) ---
     ("shipping_collector", "listen_duration"): _LISTEN_DURATION_MINUTES,
