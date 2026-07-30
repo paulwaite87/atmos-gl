@@ -628,7 +628,8 @@ _LABEL_OVERRIDES = {
     ("fires", "opacity"): "Heatmap opacity",
     ("fires", "min_risk_display"): "Heatmap minimum fire risk",
     ("fires", "min_risk_filter"): "Fire risk display threshold",
-    ("volcanoes", "so2_min"): "SO2 Threshold (Dobson Units)",
+    ("volcanoes", "smoke_opacity"): "Smoke Plume Opacity",
+    ("volcanoes", "so2_min"): "Smoke Plume Threshold",
 }
 
 
