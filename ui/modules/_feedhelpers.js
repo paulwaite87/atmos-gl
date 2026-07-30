@@ -69,7 +69,18 @@ export function popupCard({ title, titleColor = '#333', titleSize = 13, padding 
     // inside the shared template means no caller (present or future) can forget.
     const rowsHtml = rows
         .map(({ label, value, width = 45 }) =>
-            `<div><span style="color:#666;width:${width}px;display:inline-block;">${escapeHtml(label)}:</span> <strong>${escapeHtml(value)}</strong></div>`)
+            // Label bold+black, value standard-weight+light-grey -- reads better than
+            // the reverse (a subdued label next to a bold value drew the eye to the
+            // value first, before its label gave it context). Both routed through
+            // escapeHtml() -- see this function's top-level comment and escapeHtml's
+            // own docstring.
+            // min-width, not width: an inline-block box doesn't clip overflowing
+            // content, so a bold label wider than `width` (e.g. "Storm category")
+            // was painting straight past the box edge -- burying margin-right's gap
+            // under the overflow instead of creating one. min-width still aligns
+            // short labels at `width`px but lets long ones expand instead of
+            // overlapping the value that follows.
+            `<div><strong style="min-width:${width}px;display:inline-block;margin-right:6px;">${escapeHtml(label)}:</strong><span style="color:#666;">${escapeHtml(value)}</span></div>`)
         .join('');
     return `<div style="font-family:sans-serif;font-size:${fontSize}px;color:#000;padding:${padding}px;">
             <strong style="font-size:${titleSize}px;color:${titleColor};">${escapeHtml(title)}</strong>

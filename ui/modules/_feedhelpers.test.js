@@ -109,16 +109,15 @@ describe('popupCard', () => {
     });
 
 
-    test('renders the title, hr, and each row with default width', () => {
+    test('renders the title, hr, and each row (bold label, grey value) with default width', () => {
         const html = popupCard({
             title: 'Test Volcano',
             rows: [{ label: 'VEI', value: 4 }],
         });
         expect(html).toContain('Test Volcano');
         expect(html).toContain('<hr');
-        expect(html).toContain('VEI:');
-        expect(html).toContain('<strong>4</strong>');
-        expect(html).toContain('width:45px');
+        expect(html).toContain('<strong style="min-width:45px;display:inline-block;margin-right:6px;">VEI:</strong>');
+        expect(html).toContain('<span style="color:#666;">4</span>');
     });
 
     test('applies per-row width and card-level title/padding overrides', () => {
