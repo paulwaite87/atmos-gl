@@ -61,6 +61,21 @@ def _parse_gvp_title(title: str | None) -> dict | None:
     return {"name": name, "country": country, "activity_type": activity_type}
 
 
+def _strip_html(text: str | None) -> str | None:
+    """Plain-text collapse of a GVP <description>'s raw HTML -- confirmed live: the
+    feed delivers report text wrapped in <p> tags (via CDATA, so ElementTree hands it
+    back as literal "<p>...</p>" text, not child elements). report_description is
+    rendered by inserting straight into the frontend popup's setHTML() call, so a
+    <p> tag in there becomes a REAL block element -- always starting its own line,
+    which broke the "Report: <text>" row's single-line layout regardless of the
+    label styling. Stripped and whitespace-collapsed here, once, at collection time,
+    rather than papering over it in every render/frontend consumer."""
+    if not text:
+        return text
+    collapsed = " ".join(re.sub(r"<[^>]+>", " ", text).split())
+    return collapsed or None
+
+
 def _parse_georss_point(text: str | None) -> tuple[float, float] | tuple[None, None]:
     """"<lat> <lon>" (georss:point's space-separated form) -> (lat, lon) floats, or
     (None, None) if absent/malformed."""
@@ -120,7 +135,7 @@ class VolcanicActivityCollector(CollectorBase):
             lat, lon = _parse_georss_point(point_el.text if point_el is not None else None)
 
             description_el = item.find("description")
-            report_description = description_el.text if description_el is not None else None
+            report_description = _strip_html(description_el.text if description_el is not None else None)
 
             items.append(
                 {
