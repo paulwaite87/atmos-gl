@@ -161,6 +161,8 @@ is a really informative layer to have running. Once the key is in place, enable
 #### Copernicus CDS/ADS API Key
 This is optional.
 It is for the `Greenhouse Gases` and `Air Quality` layers — without it both stay disabled.
+Volcanoes' [Smoke Plume](#smoke-plume) overlay needs it too, since it reuses Air
+Quality's own CAMS SO2 fetch rather than a separate one.
 
 Register for a free account at https://ads.atmosphere.copernicus.eu/ (click
 `Login/Register` — the same login also works for Copernicus's other data stores, so
