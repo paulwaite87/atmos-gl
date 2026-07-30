@@ -74,7 +74,13 @@ export function popupCard({ title, titleColor = '#333', titleSize = 13, padding 
             // reverse). Revert this row template to the pre-swap version if the
             // experiment isn't kept. Still routed through escapeHtml() either way --
             // see this function's top-level comment and escapeHtml's own docstring.
-            `<div><strong style="width:${width}px;display:inline-block;margin-right:6px;">${escapeHtml(label)}:</strong><span style="color:#666;">${escapeHtml(value)}</span></div>`)
+            // min-width, not width: an inline-block box doesn't clip overflowing
+            // content, so a bold label wider than `width` (e.g. "Storm category")
+            // was painting straight past the box edge -- burying margin-right's gap
+            // under the overflow instead of creating one. min-width still aligns
+            // short labels at `width`px but lets long ones expand instead of
+            // overlapping the value that follows.
+            `<div><strong style="min-width:${width}px;display:inline-block;margin-right:6px;">${escapeHtml(label)}:</strong><span style="color:#666;">${escapeHtml(value)}</span></div>`)
         .join('');
     return `<div style="font-family:sans-serif;font-size:${fontSize}px;color:#000;padding:${padding}px;">
             <strong style="font-size:${titleSize}px;color:${titleColor};">${escapeHtml(title)}</strong>
