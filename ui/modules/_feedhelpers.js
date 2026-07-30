@@ -74,7 +74,7 @@ export function popupCard({ title, titleColor = '#333', titleSize = 13, padding 
             // reverse). Revert this row template to the pre-swap version if the
             // experiment isn't kept. Still routed through escapeHtml() either way --
             // see this function's top-level comment and escapeHtml's own docstring.
-            `<div><strong style="width:${width}px;display:inline-block;">${escapeHtml(label)}:</strong> <span style="color:#666;">${escapeHtml(value)}</span></div>`)
+            `<div><strong style="width:${width}px;display:inline-block;margin-right:6px;">${escapeHtml(label)}:</strong><span style="color:#666;">${escapeHtml(value)}</span></div>`)
         .join('');
     return `<div style="font-family:sans-serif;font-size:${fontSize}px;color:#000;padding:${padding}px;">
             <strong style="font-size:${titleSize}px;color:${titleColor};">${escapeHtml(title)}</strong>
