@@ -22,7 +22,7 @@ export function loadLayer(map, config, fullConfig = {}) {
     const slotId = 'ozone-legend-slot';
 
     const addLegend = (cfg) => {
-        showLegend(slotId, `${window.MAP_UI}/${keyFilename(cfg.outfile)}?t=${Date.now()}`);
+        showLegend(slotId, `${window.MAP_UI}/${keyFilename(cfg.outfile)}?t=${Date.now()}`, opacityUniform(cfg, 0.85));
     };
 
     createFillLayer(map, {

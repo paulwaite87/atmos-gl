@@ -1,5 +1,6 @@
 import { liveLayerSync } from './_refresh.js';
 import { keyFilename, showLegend, removeLegend } from './_legend.js';
+import { opacityUniform } from './_opacity.js';
 
 // Insert "_<mode>" before the extension: "data/sst.png" -> "data/sst_anomaly.png".
 // The backend always keeps BOTH modes' renders fresh on disk (SstCollector fetches
@@ -24,7 +25,11 @@ export function loadLayer(map, config) {
     const urlFor = (cfg) => `${window.MAP_UI}/${modeFilename(cfg.outfile, cfg.mode)}`;
 
     const addLegend = (cfg) => {
-        showLegend(slotId, `${window.MAP_UI}/${keyFilename(modeFilename(cfg.outfile, cfg.mode))}?t=${Date.now()}`);
+        showLegend(
+            slotId,
+            `${window.MAP_UI}/${keyFilename(modeFilename(cfg.outfile, cfg.mode))}?t=${Date.now()}`,
+            opacityUniform(cfg, 1),
+        );
     };
 
     const mount = (cfg) => {
