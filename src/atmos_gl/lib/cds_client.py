@@ -66,8 +66,11 @@ def retrieve_and_unzip(
 
         with zipfile.ZipFile(zip_path) as zf:
             nc_names = [n for n in zf.namelist() if n.endswith(".nc")]
+            logger.info(f"{label}: zip contains {len(nc_names)} .nc member(s): {nc_names}")
             if not nc_names:
                 raise RuntimeError(f"{label}: no .nc file in downloaded archive")
+            if len(nc_names) > 1:
+                logger.warning(f"{label}: multiple .nc members in zip, using {nc_names[0]!r} only")
             extracted_path = zf.extract(nc_names[0], tmp_dir)
 
         os.makedirs(os.path.dirname(cache_dest), exist_ok=True)
