@@ -10,8 +10,8 @@ tropical storms, lightning strikes, shipping traffic, satellites and more.
 
 A Python/FastAPI backend continuously pulls forecast data from NOAA/NCEP (GFS atmospheric and
 wave models, RTOFS ocean currents) and live event feeds (USGS earthquakes, NOAA/NHC/JTWC storm
-tracks, Smithsonian volcano data, AIS shipping, lightning strikes, satellite orbits), storing
-everything in PostGIS and rendering it onto the globe as you watch.
+tracks, Smithsonian/USGS volcanic activity data, AIS shipping, lightning strikes, satellite
+orbits), storing everything in PostGIS and rendering it onto the globe as you watch.
 
 ### Our Blue Marble
 ![Atmos GL Example](docs/atmos-gl-blue-marble.png)
@@ -269,8 +269,8 @@ The full list is:
 * Lightning strikes
 * Active storms
 * Earthquakes
-* Volcanoes
-* Air Quality (PM2.5/PM10/Smoke)
+* Volcanoes (with a Smoke Plume/SO2 overlay)
+* Air Quality (PM2.5/PM10/Smoke/SO2)
 * Shipping
 * Flight Radar
 * Satellites
@@ -395,14 +395,32 @@ the configuration UI. The expiry hours can also be set there. Symbols:
 ![Earthquakes](docs/atmos-gl-quakes.png)
 
 #### Volcanoes
-Volcanoes are pretty much static, historical artifacts and can end up just cluttering
-up the map, so I generally don't display them. There are also a lot of them, depending 
-on which options you set in the configuration. Each volcano will appear on the map
-as this symbol ![Volcano](ui/images/volcano_symbol.png)
+Rather than a static historical catalog, this is an event-driven feed of currently
+active volcanoes, refreshed regularly like Storms and Earthquakes. Two sources are
+combined:
 
-Useful if you want to research volcano activity in past times using the filtering
-options. Obviously if one erupts in the present you can also view it, but the way
-these things are catalogued isn't like Earthquakes and the filtering is crude.
+* The Smithsonian/USGS Global Volcanism Program's **Weekly Volcanic Activity Report** —
+  a global, curated feed of volcanoes with genuinely new or ongoing activity this week.
+* **USGS HANS**, which adds richer real-time alert-level detail for the ~60 US volcanoes
+  USGS actively monitors.
+
+Markers are colour-coded straight from the report itself:
+* ![Volcano new](ui/images/volcano_new.png) New activity this week
+* ![Volcano continuing](ui/images/volcano_continuing.png) Continuing activity
+
+Hover a marker for its country, activity type and report description, plus — for US
+volcanoes HANS is watching — its USGS alert level and colour code. A volcano drops off
+the map automatically once it's no longer reported as active in either source (after 14
+days of inactivity), so there's nothing to filter or configure beyond `Icon zoom`.
+
+##### Smoke Plume
+Also in Volcano Properties, `Show Smoke Plume` overlays a global SO2 (sulphur dioxide)
+total-column heatmap, in Dobson Units — the closest real, near-real-time proxy Copernicus
+CAMS offers for volcanic smoke, though it's worth knowing SO2 isn't volcano-exclusive
+(industrial sources show up too). It reuses the same underlying CAMS data as the
+[Air Quality](#air-quality) layer's own `SO2` variable option, but keeps its own opacity
+and threshold controls right here so you don't need to visit Air Quality at all to use
+it. Like Air Quality, it needs a [Copernicus CDS/ADS API Key](#copernicus-cdsads-api-key).
 
 #### Wildfires
 If you have a [NASA FIRMS API Key](#nasa-firms-api-key) then you can enable the
@@ -430,12 +448,15 @@ global atmospheric composition forecast. A `Variable` selector switches between:
 * `Smoke (AOD)` — Aerosol Optical Depth, a column-wide measure most useful for tracking
   wildfire smoke plumes as they spread. Being dimensionless, it has no official
   health-based threshold the way surface PM2.5/PM10 do.
+* `SO2` — Sulphur Dioxide (total column, in Dobson Units) — the same underlying data the
+  [Volcanoes](#volcanoes) layer's `Show Smoke Plume` overlay uses, though its opacity and
+  threshold are configured over there in Volcano Properties, not here.
 
 The `PM2.5`/`PM10` dropdown entries show the concentration widely considered "Unhealthy
 for Sensitive Groups" by the US EPA's Air Quality Index, and that same value is the
 default for the `Critical threshold` slider — readings below it fade out via a smooth
 transparency ramp, so the map highlights genuinely elevated readings rather than
-colourising the whole globe. All three variables render every cycle, so switching
+colourising the whole globe. All four variables render every cycle, so switching
 between them in the config UI applies instantly, no render wait. Colours follow the
 familiar green → yellow → orange → red → purple AQI convention used by most phone
 weather apps' air-quality widgets.
@@ -596,7 +617,7 @@ The data collector is a separate background process which collects data for:
 * Satellites
 * SST
 * Greenhouse Gases (CO2/CH4)
-* Air Quality (PM2.5/PM10/Smoke AOD)
+* Air Quality (PM2.5/PM10/Smoke AOD/SO2)
 * GFS Atmos:
   * Isobars
   * Precipitation
