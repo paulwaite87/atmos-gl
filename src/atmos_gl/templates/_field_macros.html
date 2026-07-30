@@ -174,34 +174,48 @@
   </div>
 {% endmacro %}
 
+{% macro render_field_group(section, section_data) %}
+  <div class="row g-3">
+    {% for option, value in section_data.items() %}
+      {# channel_enabled is a dict with no FIELD_SPECS entry, same as
+         datasources -- but unlike datasources it has no dedicated accordion
+         here, so it must be excluded outright rather than falling through to
+         render_field's generic text-input fallback (which stringifies a dict,
+         and saving that string back clobbers the real channel_enabled dict).
+         It's edited exclusively on the Data Status tab's toggle switches.
+         runs_per_day is excluded the same way -- edited exclusively via the
+         Data Status tab's per-row cadence widget (routes/status.py's
+         set_runs_per_day), not this Settings tab, for every section that
+         still carries the key in config. #}
+      {% if not ((option == "enabled" and section != "housekeeper") or option.startswith("RULE__") or option == "outfile" or option == "runs_per_day" or (section == "data_collector" and option == "channel_enabled")) %}
+        {% if section == "data_collector" and option == "datasources" %}
+          {{ render_datasources_accordion(section, value) }}
+        {% else %}
+          {{ render_field(section, option, value, field_specs.get((section, option)), field_label(section, option)) }}
+        {% endif %}
+      {% endif %}
+    {% endfor %}
+  </div>
+{% endmacro %}
+
 {% macro render_tab_group(sections, config_data) %}
   {% for section in sections %}
     {% set section_data = config_data.get(section) %}
     {% if section_data is not none %}
+      {% set section_title = "Global Settings" if section == "common" else section_label(section) ~ " Properties" %}
       <div class="section-block" id="wrapper-section-{{ section }}">
+        <div class="d-flex justify-content-between align-items-center border-bottom border-secondary pb-2 mb-3">
+          <h5 class="text-info mb-0">{{ section_title }}</h5>
+          {# Reads config/atmos-gl.json.tmpl's values for this section (routes/config.py's
+             /config/section_defaults/{section}) and re-renders the fields below from
+             them -- the confirm() guard lives in resetSectionToDefaults() (config.html)
+             since Jinja has no client-side dialog to hook into. Only replaces this
+             section's own FORM fields; the user still needs the page's own Save button
+             to persist the change, same as any other edit here. #}
+          <button type="button" class="btn btn-sm btn-outline-warning" onclick="resetSectionToDefaults('{{ section }}', '{{ section_title }}')">↺ Set to Defaults</button>
+        </div>
         <div id="fields-section-{{ section }}">
-          <h5 class="text-info border-bottom border-secondary pb-2 mb-3">{{ "Global Settings" if section == "common" else section_label(section) ~ " Properties" }}</h5>
-          <div class="row g-3">
-            {% for option, value in section_data.items() %}
-              {# channel_enabled is a dict with no FIELD_SPECS entry, same as
-                 datasources -- but unlike datasources it has no dedicated accordion
-                 here, so it must be excluded outright rather than falling through to
-                 render_field's generic text-input fallback (which stringifies a dict,
-                 and saving that string back clobbers the real channel_enabled dict).
-                 It's edited exclusively on the Data Status tab's toggle switches.
-                 runs_per_day is excluded the same way -- edited exclusively via the
-                 Data Status tab's per-row cadence widget (routes/status.py's
-                 set_runs_per_day), not this Settings tab, for every section that
-                 still carries the key in config. #}
-              {% if not ((option == "enabled" and section != "housekeeper") or option.startswith("RULE__") or option == "outfile" or option == "runs_per_day" or (section == "data_collector" and option == "channel_enabled")) %}
-                {% if section == "data_collector" and option == "datasources" %}
-                  {{ render_datasources_accordion(section, value) }}
-                {% else %}
-                  {{ render_field(section, option, value, field_specs.get((section, option)), field_label(section, option)) }}
-                {% endif %}
-              {% endif %}
-            {% endfor %}
-          </div>
+          {{ render_field_group(section, section_data) }}
         </div>
         {% if section not in ["common", "composite", "map_builder", "radio", "housekeeper"] %}
           {# toggleSectionVisibility() (config.html) hides fields-section-X and shows this

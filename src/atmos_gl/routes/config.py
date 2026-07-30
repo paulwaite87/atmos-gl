@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import json
 import os
 from pathlib import Path
 from fastapi import APIRouter, HTTPException, Request, Depends
@@ -78,6 +79,19 @@ def load_config():
     config = AtmosGLConfig(config_path)
     config.load()
     return config
+
+
+def _load_defaults_config() -> dict:
+    """Parses config/atmos-gl.json.tmpl -- the tracked template's default values --
+    independent of the live config. Backs GET /config/section_defaults/{section} (the
+    "Set to Defaults" button); the template path is derived from CONFIG_PATH the same
+    way load_config() resolves the live one, since the two always live side by side
+    (see CLAUDE.md's Settings changes workflow)."""
+    tmpl_path = os.getenv("CONFIG_PATH", "./config/atmos-gl.json") + ".tmpl"
+    if not os.path.exists(tmpl_path):
+        raise HTTPException(status_code=404, detail="Default configuration template unavailable.")
+    with open(tmpl_path) as f:
+        return json.load(f)
 
 
 def get_field_catalog_adapter() -> FieldCatalogAdapter:
@@ -235,6 +249,24 @@ def get_config():
 def config_page(request: Request):
     return templates.TemplateResponse(
         request, "config.html", {"config_data": _build_config_data()}
+    )
+
+
+@ui_router.get("/config/section_defaults/{section}")
+def section_defaults(section: str, request: Request):
+    """Renders one section's field grid sourced from config/atmos-gl.json.tmpl's
+    values instead of the live config -- backs the config page's "Set to Defaults"
+    button. Returns just the fragment (field_macros.render_field_group's output);
+    config.html swaps it into #fields-section-{section}'s innerHTML on confirm.
+    Reuses render_field_group -- the exact same widget-rendering path config_page's
+    own render_tab_group already goes through -- so every field kind (slider/select/
+    color/multiselect/grouped_transfer/toggle) gets identical treatment with no
+    separate client-side reset logic to keep in sync."""
+    section_data = _load_defaults_config().get(section)
+    if section_data is None:
+        raise HTTPException(status_code=404, detail=f"No defaults found for section '{section}'.")
+    return templates.TemplateResponse(
+        request, "_section_fields.html", {"section": section, "section_data": section_data}
     )
 
 

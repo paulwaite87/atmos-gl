@@ -246,6 +246,8 @@
     <script>
         const API_URL = "http://localhost:9000/api";
         const CONFIG_API_URL = API_URL + "/config";
+        // ui_router routes (config.py) return HTML, not JSON, so they live outside /api.
+        const CONFIG_PAGE_BASE = API_URL.replace(/\/api$/, "");
         const REGIONS_API_URL = API_URL + "/regions";
         const VESSEL_CLASSES_API_URL = API_URL + "/vessel_classes";
         let masterConfigCache = {};
@@ -527,6 +529,28 @@
                 alert("Error writing configuration to file system matrix.");
             }
         }
+
+        // "Set to Defaults" (field_macros.html's render_tab_group button, opposite every
+        // section title) -- fetches that section's field grid pre-rendered from
+        // config/atmos-gl.json.tmpl (routes/config.py's /config/section_defaults/{section})
+        // and swaps it into the form in place of the live values. Only replaces the FORM
+        // fields here -- like any other edit on this page, it still needs the page's own
+        // Save button below to actually persist, so a misclick is cheap to back out of
+        // (reload the page, or just don't save).
+        async function resetSectionToDefaults(section, title) {
+            if (!confirm(`This will reset "${title}" to its default values. You'll still need to click "Save & Overwrite System Configuration" below afterward for the change to take effect. Continue?`)) {
+                return;
+            }
+            try {
+                const response = await fetch(`${CONFIG_PAGE_BASE}/config/section_defaults/${section}`);
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                document.getElementById(`fields-section-${section}`).innerHTML = await response.text();
+            } catch (err) {
+                console.error(`Failed to load defaults for section "${section}":`, err);
+                alert("Could not load default values. Check console for details.");
+            }
+        }
+
         function addDatasource(section) {
             const name = prompt('Enter data source name (e.g., "gfs", "sst", "currents"):');
             if (!name || name.trim() === '') return;
