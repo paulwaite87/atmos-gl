@@ -78,7 +78,7 @@ export function loadLayer(map, config, fullConfig = {}) {
     const slotId = 'waves-legend-slot';
 
     const setLegend = (cfg) => {
-        showLegend(slotId, `${window.MAP_UI}/${keyFilename(cfg.outfile)}?t=${Date.now()}`);
+        showLegend(slotId, `${window.MAP_UI}/${keyFilename(cfg.outfile)}?t=${Date.now()}`, opacityUniform(cfg, 0.7));
     };
 
     // Heat fill: decode swell magnitude from the per-hour swell texture (already

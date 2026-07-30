@@ -1,5 +1,6 @@
 import { liveLayerSync } from './_refresh.js';
 import { keyFilename, showLegend, removeLegend } from './_legend.js';
+import { opacityUniform } from './_opacity.js';
 
 // Insert "_<species>_<mode>" before the extension: "data/greenhouse_gases.png" ->
 // "data/greenhouse_gases_co2_absolute.png". The backend always keeps all 4
@@ -26,7 +27,11 @@ export function loadLayer(map, config) {
     const urlFor = (cfg) => `${window.MAP_UI}/${speciesModeFilename(cfg.outfile, cfg.species, cfg.mode)}`;
 
     const addLegend = (cfg) => {
-        showLegend(slotId, `${window.MAP_UI}/${keyFilename(speciesModeFilename(cfg.outfile, cfg.species, cfg.mode))}?t=${Date.now()}`);
+        showLegend(
+            slotId,
+            `${window.MAP_UI}/${keyFilename(speciesModeFilename(cfg.outfile, cfg.species, cfg.mode))}?t=${Date.now()}`,
+            opacityUniform(cfg, 1),
+        );
     };
 
     const mount = (cfg) => {

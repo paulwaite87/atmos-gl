@@ -128,7 +128,7 @@ export function loadLayer(map, config, fullConfig = {}) {
     const slotId = 'precipitation-legend-slot';
 
     const addLegend = (cfg) => {
-        showLegend(slotId, `${window.MAP_UI}/${keyFilename(cfg.outfile)}?t=${Date.now()}`);
+        showLegend(slotId, `${window.MAP_UI}/${keyFilename(cfg.outfile)}?t=${Date.now()}`, opacityUniform(cfg, 0.9));
     };
 
     const palette = (config.palette || 'standard');

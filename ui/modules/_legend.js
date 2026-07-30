@@ -29,7 +29,16 @@ export function replaceSlot(slotId, populate) {
     stack.appendChild(slot);
 }
 
-export function showLegend(slotId, url) {
+// `opacity` (0-1, matching _opacity.js's opacityUniform convention) is the SAME value
+// driving the layer's own on-map visibility. A zeroed-out layer's key is pointless
+// clutter -- especially with two heatmaps active and one silenced via its opacity
+// slider (the motivating case: Fire Risk + Air Quality both in the legend stack) --
+// so an explicit 0 hides the slot instead of drawing an orphaned key for nothing.
+// Defaults to always-shown for callers that don't have a single opacity value
+// governing the whole layer's visibility (e.g. currents/jetstream, where particles
+// driven by the same colour scale can stay visible independent of a fill's opacity).
+export function showLegend(slotId, url, opacity = 1) {
+    if (opacity <= 0) { removeLegend(slotId); return; }
     replaceSlot(slotId, (slot) => {
         const img = document.createElement('img');
         img.src = url;

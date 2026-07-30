@@ -1,5 +1,6 @@
 import { createFillLayer } from './_webglfill.js';
 import { CMAP_YLORRD, rgbToRgba } from './_colormaps.js';
+import { keyFilename, showLegend, removeLegend } from './_legend.js';
 import { opacityUniform } from './_opacity.js';
 
 // GPU scrubber layer (CAPE). Linear YlOrRd ramp over [0, 5000] J/kg, matching the
@@ -11,24 +12,9 @@ const VMAX = 5000.0;
 export function loadLayer(map, config, fullConfig = {}) {
     const slotId = 'stormwatch-legend-slot';
 
-    const keyUrlFor = (cfg) => {
-        const o = cfg.outfile, i = o.lastIndexOf('.');
-        const base = i !== -1 ? o.slice(0, i) : o;
-        const ext = i !== -1 ? o.slice(i) : '';
-        return `${window.MAP_UI}/${base}_key${ext}`;
-    };
     const addLegend = (cfg) => {
-        const stack = document.getElementById('legend-stack');
-        if (!stack) return;
-        document.getElementById(slotId)?.remove();
-        const slot = document.createElement('div');
-        slot.id = slotId; slot.className = 'legend-slot';
-        const img = document.createElement('img');
-        img.src = `${keyUrlFor(cfg)}?t=${Date.now()}`;
-        img.style.display = 'block'; img.style.width = '100%';
-        slot.appendChild(img); stack.appendChild(slot);
+        showLegend(slotId, `${window.MAP_UI}/${keyFilename(cfg.outfile)}?t=${Date.now()}`, opacityUniform(cfg, 0.85));
     };
-    const removeLegend = () => document.getElementById(slotId)?.remove();
 
     createFillLayer(map, {
         sectionKey: 'stormwatch',
@@ -58,10 +44,10 @@ export function loadLayer(map, config, fullConfig = {}) {
         colormap: () => rgbToRgba(CMAP_YLORRD),
         onMount: addLegend,
         onRefresh: addLegend,
-        onUnmount: removeLegend,
+        onUnmount: () => removeLegend(slotId),
         // key_fontsize changes never touch the fill's data texture, so the default
         // imageUrl regen chase can't detect that the legend needs re-fetching --
         // keyUrl gives it its own independent chase.
-        keyUrl: keyUrlFor,
+        keyUrl: (cfg) => `${window.MAP_UI}/${keyFilename(cfg.outfile)}`,
     });
 }
