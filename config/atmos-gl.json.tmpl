@@ -177,12 +177,10 @@
   "volcanoes": {
     "enabled": false,
     "icon_zoom": 1.0,
-    "significant_only": true,
-    "vei_min": 4,
-    "erupt_date_codes": [
-      "D1"
-    ],
-    "runs_per_day": 1
+    "runs_per_day": 24,
+    "show_smoke_plume": false,
+    "smoke_opacity": 60,
+    "so2_min": 1.0
   },
   "fires": {
     "enabled": false,
@@ -248,7 +246,8 @@
       "jtwc": "https://www.ssd.noaa.gov/PS/TROP/DATA/ATCF/JTWC/",
       "nhc": "https://ftp.nhc.noaa.gov/atcf/fst/",
       "quakes": "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.csv",
-      "volcanoes": "https://www.ngdc.noaa.gov/hazel/hazard-service/api/v1/volcanoes",
+      "gvp": "https://volcano.si.edu/news/WeeklyVolcanoRSS.xml",
+      "hans": "https://volcanoes.usgs.gov/hans-public/api/volcano/getElevatedVolcanoes",
       "fires": "https://firms.modaps.eosdis.nasa.gov/api/area/csv",
       "satellites": "https://celestrak.org/NORAD/elements",
       "shipping": "wss://stream.aisstream.io/v0/stream",
@@ -314,6 +313,7 @@
     "enabled": true,
     "days_between_runs": 1,
     "field_expiry_hours": 24,
+    "volcanic_activity_expiry_days": 14,
     "dry_run": false,
     "log_level": "INFO"
   }

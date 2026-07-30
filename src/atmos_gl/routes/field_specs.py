@@ -209,6 +209,7 @@ _AQ_VARIABLE = SelectSpec([
     ("pm2_5", "PM2.5 (Unhealthy above 35 µg/m³)"),
     ("pm10", "PM10 (Unhealthy above 150 µg/m³)"),
     ("aod", "Smoke (AOD)"),
+    ("so2", "SO2 (Sulphur Dioxide)"),
 ])
 
 _LOG_LEVEL = SelectSpec([
@@ -217,18 +218,6 @@ _LOG_LEVEL = SelectSpec([
     ("WARNING", "WARNING"),
     ("ERROR", "ERROR"),
     ("CRITICAL", "CRITICAL"),
-])
-
-_VEI_OPTIONS = SelectSpec([
-    ("0", "0 - Non-explosive"),
-    ("1", "1 - Small"),
-    ("2", "2 - Moderate"),
-    ("3", "3 - Moderate-Large"),
-    ("4", "4 - Large"),
-    ("5", "5 - Very Large"),
-    ("6", "6 - Paroxysmal"),
-    ("7", "7 - Colossal"),
-    ("8", "8 - Super colossal"),
 ])
 
 _FIRE_CONFIDENCE = SelectSpec([
@@ -241,19 +230,6 @@ _FIRE_CONFIDENCE = SelectSpec([
 # MW per pixel -- readings far above that are far more likely a gas flare/industrial
 # source than an actual fire (see FireAdapter.get_fires_as_geojson's docstring).
 _FIRE_MAX_FRP = SliderSpec(min=500, max=20000, step=100, suffix=" MW")
-
-_ERUPT_DATE_CODES = MultiSelectSpec([
-    ("D1", "D1 - 1964 or later"),
-    ("D2", "D2 - 1900 to 1963"),
-    ("D3", "D3 - 1800 to 1899"),
-    ("D4", "D4 - 1700 to 1799"),
-    ("D5", "D5 - 1500 to 1699"),
-    ("D6", "D6 - A.D.1 to 1499"),
-    ("D7", "D7 - B.C. (Holocene)"),
-    ("U", "U  - Undated, prob. Holocene"),
-    ("Q", "Q  - Quaternary (very old!)"),
-    ("?", "?  - Uncertain Holocene"),
-])
 
 _SAT_NAMES = MultiSelectSpec([
     ("ISS (ZARYA)", "ISS (ZARYA) - International Space Station"),
@@ -387,9 +363,15 @@ FIELD_SPECS = {
     ("quakes", "label_fontsize"): _FONTSIZE,
     ("quakes", "min_mag"): SliderSpec(min=0, max=10, step=0.1, decimals=1, prefix="M "),
     ("volcanoes", "icon_zoom"): _ICON_ZOOM,
-    ("volcanoes", "significant_only"): ToggleSpec(),
-    ("volcanoes", "vei_min"): _VEI_OPTIONS,
-    ("volcanoes", "erupt_date_codes"): _ERUPT_DATE_CODES,
+    # "Show Smoke Plume" (issue #254) -- Volcano Properties is the SOLE owner of
+    # SO2's opacity/threshold settings, not air_quality's own section (which also
+    # offers SO2 as a selectable Variable, reading these same settings -- see
+    # tasks/air_quality.py's _SETTINGS_SECTION_OVERRIDE). smoke_opacity/so2_min are
+    # deliberately separate keys from any other opacity/threshold concept, since
+    # volcanoes has no other opacity setting today.
+    ("volcanoes", "show_smoke_plume"): ToggleSpec(),
+    ("volcanoes", "smoke_opacity"): _OPACITY,
+    ("volcanoes", "so2_min"): SliderSpec(min=0, max=20, step=0.5, decimals=1, suffix=" DU"),
     ("fires", "expiry_hours"): _HOURS,
     ("fires", "min_confidence"): _FIRE_CONFIDENCE,
     ("fires", "max_frp"): _FIRE_MAX_FRP,
@@ -646,6 +628,7 @@ _LABEL_OVERRIDES = {
     ("fires", "opacity"): "Heatmap opacity",
     ("fires", "min_risk_display"): "Heatmap minimum fire risk",
     ("fires", "min_risk_filter"): "Fire risk display threshold",
+    ("volcanoes", "so2_min"): "SO2 Threshold (Dobson Units)",
 }
 
 
@@ -789,8 +772,8 @@ def validate_against_specs(payload: dict) -> list[str]:
             if not (spec.min <= v <= hi):
                 errors.append(f"{section}.{option}: {v} outside [{spec.min}, {hi}]")
         elif spec.kind == "select":
-            # Some stored values are ints (e.g. volcanoes.vei_min) even though option
-            # values are declared as strings -- compare as strings, like the rendering
+            # Some stored values are ints even though option values are declared as
+            # strings -- compare as strings, like the rendering
             # macro's "selected" check, so a legitimate value isn't rejected.
             valid = {str(opt_value) for opt_value, _ in spec.options}
             if str(value) not in valid:

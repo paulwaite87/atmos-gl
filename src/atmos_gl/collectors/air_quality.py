@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Copernicus CAMS PM2.5/PM10/smoke-AOD source for the air_quality layer, via the CDS
-API (CDSAPI_KEY) -- same submit-then-poll mechanics, credential resolution, and
+"""Copernicus CAMS PM2.5/PM10/smoke-AOD/SO2 source for the air_quality layer, via the
+CDS API (CDSAPI_KEY) -- same submit-then-poll mechanics, credential resolution, and
 bounded timeout as CamsGhgForecastCollector (collectors/greenhouse_gases.py), shared
 via lib/cds_client.py rather than re-implemented here.
 
@@ -9,7 +9,7 @@ layer, unlike greenhouse_gases' CamsGhgForecastCollector/CamsEgg4BaselineCollect
 split, so this is a single collector with no settings_section sharing.
 
 Confirmed live against the real Copernicus ADS API this session: dataset
-cams-global-atmospheric-composition-forecasts, a single combined request for all three
+cams-global-atmospheric-composition-forecasts, a single combined request for all
 variables, data_format=netcdf_zip, no per-dataset licence-acceptance friction (unlike
 greenhouse_gases' CAMS/EGG4 datasets). Unlike greenhouse_gases' dataset (one run/day,
 date-only search), this dataset's request schema REQUIRES `type: ["forecast"]` and a
@@ -20,6 +20,14 @@ values". `pressure_level`/`model_level` appear in the dataset's input schema as
 declared fields but must be OMITTED entirely for these single-level variables (passing
 them, even as empty lists, was not needed -- the live-confirmed working request has
 neither key at all).
+
+SO2 (issue #254, the Volcano Properties "Smoke Plume" overlay) added as a 4th
+variable in the same combined request -- `total_column_sulphur_dioxide`, the
+vertically-integrated column quantity (confirmed live against the dataset's own
+form schema), not `sulphur_dioxide` (the 3D near-surface mixing ratio). Fetched
+unconditionally alongside PM2.5/PM10/AOD regardless of whether Air Quality or
+Volcanoes is the layer currently enabled -- this collector has no knowledge of
+either layer's settings, same as before.
 """
 import logging
 from datetime import datetime, timedelta, timezone
@@ -40,6 +48,7 @@ _CAMS_FORECAST_VARS = (
     "particulate_matter_2.5um",
     "particulate_matter_10um",
     "total_aerosol_optical_depth_550nm",
+    "total_column_sulphur_dioxide",
 )
 # CAMS issues two atmospheric-composition forecast runs per day (00Z/12Z), unlike
 # greenhouse_gases' one-run/day dataset -- the newest run isn't always published yet

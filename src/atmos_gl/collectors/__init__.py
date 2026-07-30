@@ -10,7 +10,8 @@ Synchronous event feeds  (COLLECTORS)        — write straight to the DB
 --------------------------------------------------------------------------
   quakes     — USGS earthquake CSV, runs_per_day=24 (every ~hour)
   storms     — NHC/JTWC ATCF b/a-deck files, runs_per_day=6
-  volcanoes  — NOAA HazEL REST API, runs_per_day=1
+  volcanoes  — GVP Weekly Volcanic Activity Report (global) + USGS HANS (US enrichment),
+               runs_per_day=24
   fires      — NASA FIRMS VIIRS_NOAA20_NRT active-fire CSV, runs_per_day=24 (every ~hour)
   satellites — CelesTrak OMM JSON, runs_per_day=6
   markers    — LOCAL markers.geojson -> DB 'markers' table (mtime-gated, not remote)
@@ -60,7 +61,7 @@ import logging
 
 from .quakes import QuakeCollector
 from .storms import StormsCollector
-from .volcanoes import VolcanoesCollector
+from .volcanoes import VolcanicActivityCollector
 from .fires import FiresCollector
 from .satellites import SatellitesCollector
 from .markers_sync import MarkersSyncCollector
@@ -82,7 +83,7 @@ logger = logging.getLogger(__name__)
 COLLECTORS = (
     QuakeCollector,
     StormsCollector,
-    VolcanoesCollector,
+    VolcanicActivityCollector,
     FiresCollector,
     SatellitesCollector,
     MarkersSyncCollector,

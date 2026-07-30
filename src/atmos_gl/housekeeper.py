@@ -23,6 +23,7 @@ from atmos_gl.lib import fieldstore
 from atmos_gl.lib.scheduling import interval_elapsed
 from atmos_gl.db.ship_adapter import ShipAdapter
 from atmos_gl.db.aircraft_adapter import AircraftAdapter
+from atmos_gl.db.volcanic_activity_adapter import VolcanicActivityAdapter
 
 logger = logging.getLogger("atmos_gl.housekeeper")
 
@@ -188,6 +189,24 @@ class Housekeeper:
         except Exception as e:
             logger.warning(f"Housekeeper: aircraft track prune failed: {e}")
 
+    def prune_expired_activity(self, expiry_days: float):
+        """Prune volcanic_activity rows not seen (in either the GVP or HANS source)
+        within expiry_days (0/missing -> keep forever) -- the volcanic-activity
+        equivalent of prune_expired_storms/prune_aircraft_tracks (issue #253).
+        VolcanicActivityCollector only ever upserts last_seen_at; this is the only
+        place rows are ever deleted."""
+        if not expiry_days or expiry_days <= 0:
+            return
+        try:
+            deleted = VolcanicActivityAdapter().prune_expired_activity(expiry_days)
+            if deleted:
+                logger.info(
+                    f"Housekeeper pruned {deleted} expired volcanic activity record(s) "
+                    f"older than {expiry_days:g}d."
+                )
+        except Exception as e:
+            logger.warning(f"Housekeeper: volcanic activity prune failed: {e}")
+
     def prune_orphaned_hour_outputs(self):
         """Delete per-hour render outputs whose (layer, hour) no longer has any
         backing field in the catalog.
@@ -346,6 +365,10 @@ class Housekeeper:
                         )
                     )
                     self.prune_aircraft_tracks(aircraft_expiry_h)
+                    volcanic_activity_expiry_d = float(
+                        self.settings.get("volcanic_activity_expiry_days", 14)
+                    )
+                    self.prune_expired_activity(volcanic_activity_expiry_d)
                     last_run = now
             else:
                 logger.debug("Housekeeper disabled; skipping.")
