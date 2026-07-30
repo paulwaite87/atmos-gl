@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 
 from atmos_gl.collectors.volcanoes import (
     VolcanicActivityCollector,
-    _fix_mangled_apostrophes,
+    _fix_mangled_punctuation,
     _parse_georss_point,
     _parse_guid_vnum,
     _parse_gvp_title,
@@ -101,24 +101,40 @@ def test_parse_georss_point_returns_none_none_for_malformed_or_missing():
     assert _parse_georss_point("not-a-point") == (None, None)
 
 
-def test_fix_mangled_apostrophes_repairs_the_possessive_pattern():
-    assert _fix_mangled_apostrophes("Etna?s summit craters") == "Etna's summit craters"
-    assert _fix_mangled_apostrophes(
+def test_fix_mangled_punctuation_repairs_the_possessive_pattern():
+    assert _fix_mangled_punctuation("Etna?s summit craters") == "Etna’s summit craters"
+    assert _fix_mangled_punctuation(
         "Instituto Geofísico del Perú?s (IGP) Centro"
-    ) == "Instituto Geofísico del Perú's (IGP) Centro"
+    ) == "Instituto Geofísico del Perú’s (IGP) Centro"
 
 
-def test_fix_mangled_apostrophes_leaves_a_genuine_question_mark_alone():
-    # A real question mark is always followed by a space or end-of-string, never
-    # directly by a lowercase "s" with no gap -- so this pattern shouldn't misfire.
-    assert _fix_mangled_apostrophes("Is it erupting? Seismicity remains elevated.") == (
+def test_fix_mangled_punctuation_repairs_the_hawaiian_okina_pattern():
+    # Halema?uma?u -> Halema'uma'u (properly Halemaʻumaʻu, Kilauea's summit caldera):
+    # the Hawaiian ʻokina glottal stop has no ISO-8859-1 representation either, same
+    # root cause as the possessive apostrophe case, and gets caught by the same
+    # letter-?-letter pattern, not a second special case.
+    assert _fix_mangled_punctuation("the Halema?uma?u Crater floor") == (
+        "the Halema’uma’u Crater floor"
+    )
+
+
+def test_fix_mangled_punctuation_leaves_a_genuine_question_mark_alone():
+    # A real question mark always has a space or the string boundary on at least one
+    # side, never a letter directly on both sides -- so this pattern shouldn't misfire.
+    assert _fix_mangled_punctuation("Is it erupting? Seismicity remains elevated.") == (
         "Is it erupting? Seismicity remains elevated."
     )
 
 
-def test_fix_mangled_apostrophes_passes_through_none_and_empty_string():
-    assert _fix_mangled_apostrophes(None) is None
-    assert _fix_mangled_apostrophes("") == ""
+def test_fix_mangled_punctuation_leaves_a_digit_range_alone():
+    # A "?" between two DIGITS (e.g. a genuine range/placeholder) is left alone --
+    # only letter-?-letter is treated as this encoding artifact.
+    assert _fix_mangled_punctuation("a magnitude 5?7 range") == "a magnitude 5?7 range"
+
+
+def test_fix_mangled_punctuation_passes_through_none_and_empty_string():
+    assert _fix_mangled_punctuation(None) is None
+    assert _fix_mangled_punctuation("") == ""
 
 
 def test_source_url_tries_gvp_then_hans():

@@ -62,23 +62,36 @@ def _parse_gvp_title(title: str | None) -> dict | None:
     return {"name": name, "country": country, "activity_type": activity_type}
 
 
-_MANGLED_APOSTROPHE_RE = re.compile(r"(?<=\w)\?s\b", re.UNICODE)
+# [^\W\d_] is the standard stdlib-re idiom for "Unicode letter" (there's no \p{L}
+# without the third-party `regex` package) -- \w minus digits/underscore. Deliberately
+# letters-only on both sides, not the wider \w: a "?" between two DIGITS (e.g. a
+# genuine "5?7" range/placeholder) is far more likely to be an actual "?" than this
+# encoding artifact, unlike a "?" wedged directly between two letters with no space,
+# which is never valid English (or transliterated Hawaiian) punctuation.
+_MANGLED_CHAR_RE = re.compile(r"(?<=[^\W\d_])\?(?=[^\W\d_])")
 
 
-def _fix_mangled_apostrophes(text: str | None) -> str | None:
+def _fix_mangled_punctuation(text: str | None) -> str | None:
     """GVP's own feed (confirmed live: <?xml ... encoding="ISO-8859-1"?>) already
-    serves a literal "?" byte where a possessive apostrophe should be -- their CMS
-    evidently authors report text with a typographic right single quote (U+2019),
-    which has no ISO-8859-1 representation, so it's replaced with "?" somewhere in
-    THEIR export pipeline before the bytes ever reach us (confirmed by inspecting the
-    raw wire bytes directly: the "?" is already there, not a decode artifact on our
-    side). Unrecoverable in general, but every observed case is the exact same
-    "<word>?s" possessive pattern ("Etna?s", "Korovin?s", "Kilauea?s", ...) -- a real
-    question mark never attaches to the next word with no space, so this is a safe,
-    narrow cosmetic fix, not a guess at arbitrary corrupted punctuation."""
+    serves a literal "?" byte where a real typographic character should be -- their
+    CMS evidently authors report text with characters ISO-8859-1 can't represent
+    (a right single quotation mark U+2019 for possessives -- "Etna?s", "Kilauea?s" --
+    and the Hawaiian ʻokina glottal stop for place names -- "Halema?uma?u", properly
+    "Halemaʻumaʻu"), so they get replaced with "?" somewhere in THEIR export pipeline
+    before the bytes ever reach us (confirmed by inspecting the raw wire bytes
+    directly: the "?" is already there, not a decode artifact on our side).
+
+    The original character is unrecoverable in general (a "?" carries no signal about
+    which one it replaced), but a "?" wedged directly between two letters with no
+    space is never valid English or transliterated-Hawaiian punctuation -- a real
+    question mark always has a space or the string boundary on at least one side. So
+    every such occurrence is safely this encoding artifact, and a single quote/
+    apostrophe (U+2019) is a reasonable stand-in for either source character: the
+    conventional ASCII/typographic substitute when the proper ʻokina glyph isn't
+    available, same as for a possessive."""
     if not text:
         return text
-    return _MANGLED_APOSTROPHE_RE.sub("'s", text)
+    return _MANGLED_CHAR_RE.sub("’", text)
 
 
 def _parse_georss_point(text: str | None) -> tuple[float, float] | tuple[None, None]:
@@ -148,7 +161,7 @@ class VolcanicActivityCollector(CollectorBase):
             # (lib/text_sanitize.py) collapses it to plain text once, here, at
             # collection time.
             description_el = item.find("description")
-            report_description = _fix_mangled_apostrophes(
+            report_description = _fix_mangled_punctuation(
                 strip_html(description_el.text if description_el is not None else None)
             )
 
