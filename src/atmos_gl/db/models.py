@@ -131,25 +131,37 @@ class Earthquake(Base):
     geom: Mapped[str | None] = mapped_column(Geometry("POINT", srid=4326, spatial_index=False))
 
 
-class Volcano(Base):
-    """No tracked CREATE TABLE existed anywhere in the repo before this model;
-    schema below was reconstructed via live introspection (\\d volcanoes) — see
-    the "Migrate VolcanoRepo to SQLAlchemy" ticket."""
+class VolcanicActivity(Base):
+    """Current-state volcanic activity, one row per volcano, upserted from two live
+    sources joined on the shared Smithsonian VNUM (confirmed identical scheme in both):
+    the GVP Weekly Volcanic Activity Report (GeoRSS, global base -- name/country/lat/
+    lon/activity_type/report_description) and USGS HANS getElevatedVolcanoes (US-only
+    enrichment -- hans_*). Replaces the old static NOAA HazEL historical-catalog
+    `Volcano` model entirely (see issue #253) -- no history table, no VEI/significant/
+    date-code filtering; liveness is last_seen_at-driven (Housekeeper prunes stale
+    rows), not a fixed catalog.
 
-    __tablename__ = "volcanoes"
-    __table_args__ = (
-        Index("idx_volcano_filters", "vei", "significant", "erupt_date_code"),
-        Index("idx_volcano_geom", "geom", postgresql_using="gist"),
-    )
+    lat/lon/geom/name/country persist across polls even when a poll's upsert carries
+    no fresh GVP sighting (a HANS-elevated volcano absent from this week's GVP report)
+    -- see VolcanicActivityAdapter.upsert_activity's ON CONFLICT semantics."""
 
-    id: Mapped[str] = mapped_column(String(100), primary_key=True)
+    __tablename__ = "volcanic_activity"
+    __table_args__ = (Index("idx_volcanic_activity_geom", "geom", postgresql_using="gist"),)
+
+    vnum: Mapped[str] = mapped_column(String(20), primary_key=True)
     name: Mapped[str | None] = mapped_column(Text)
+    country: Mapped[str | None] = mapped_column(Text)
     lat: Mapped[float | None] = mapped_column()
     lon: Mapped[float | None] = mapped_column()
-    vei: Mapped[int | None] = mapped_column(Integer)
-    significant: Mapped[bool | None] = mapped_column(Boolean)
-    erupt_date_code: Mapped[str | None] = mapped_column(String(10))
     geom: Mapped[str | None] = mapped_column(Geometry("POINT", srid=4326, spatial_index=False))
+    activity_type: Mapped[str | None] = mapped_column(Text)
+    report_description: Mapped[str | None] = mapped_column(Text)
+    hans_color_code: Mapped[str | None] = mapped_column(String(10))
+    hans_alert_level: Mapped[str | None] = mapped_column(String(20))
+    hans_notice_url: Mapped[str | None] = mapped_column(Text)
+    last_seen_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
 
 
 class Fire(Base):

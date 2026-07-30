@@ -94,9 +94,10 @@ def test_validate_against_specs_rejects_unknown_select_option():
 
 
 def test_validate_against_specs_accepts_int_value_against_string_select_options():
-    """vei_min is stored/posted as an int (4) but SelectSpec options are declared as
-    strings ("4") -- regression guard: a legitimate value must not be rejected."""
-    assert validate_against_specs({"volcanoes": {"vei_min": 4}}) == []
+    """level_of_detail is stored/posted as an int (1) but SelectSpec options are
+    declared as strings ("1") -- regression guard: a legitimate value must not be
+    rejected."""
+    assert validate_against_specs({"precipitation": {"level_of_detail": 1}}) == []
 
 
 def test_validate_against_specs_ignores_fields_without_a_spec():
@@ -165,16 +166,16 @@ def test_is_api_key_field_matches_injected_secret_fields():
 
 
 def test_validate_against_specs_accepts_valid_multiselect_subset():
-    assert validate_against_specs({"volcanoes": {"erupt_date_codes": ["D1", "D2"]}}) == []
+    assert validate_against_specs({"satellites": {"sat_names": ["ISS (ZARYA)", "HST"]}}) == []
 
 
 def test_validate_against_specs_rejects_multiselect_with_unknown_option():
-    errors = validate_against_specs({"volcanoes": {"erupt_date_codes": ["D1", "nope"]}})
+    errors = validate_against_specs({"satellites": {"sat_names": ["ISS (ZARYA)", "nope"]}})
     assert len(errors) == 1
 
 
 def test_validate_against_specs_rejects_non_list_multiselect_value():
-    errors = validate_against_specs({"volcanoes": {"erupt_date_codes": "D1"}})
+    errors = validate_against_specs({"satellites": {"sat_names": "ISS (ZARYA)"}})
     assert len(errors) == 1
 
 
@@ -220,41 +221,42 @@ def _write_temp_config(tmp_path, **sections):
 
 
 def test_config_page_selects_correct_option_despite_stored_int_vs_string_options(tmp_path, monkeypatch):
-    """vei_min is stored as an int (4) in config.json but SelectSpec options are
-    strings ("4") -- regression guard for the type-mismatch bug this exposed."""
+    """precipitation.level_of_detail is stored as an int (1) here but SelectSpec
+    options are strings ("1") -- regression guard for the type-mismatch bug this
+    exposed."""
     config_path = _write_temp_config(
         tmp_path,
-        volcanoes={
-            "enabled": False, "icon_zoom": 1.0, "significant_only": True,
-            "vei_min": 4, "erupt_date_codes": [], "runs_per_day": 1,
+        precipitation={
+            "enabled": False, "level_of_detail": 1, "min_mm_hr": 0.2,
+            "opacity": 75, "palette": "standard", "cache_expiry_days": 3,
         },
     )
     monkeypatch.setenv("CONFIG_PATH", str(config_path))
 
     resp = client.get("/config")
     html = resp.text
-    idx = html.index('id="volcanoes__vei_min"')
+    idx = html.index('id="precipitation__level_of_detail"')
     select_html = html[idx : idx + 800]
-    assert '<option value="4" selected>' in select_html
+    assert '<option value="1" selected>' in select_html
 
 
 def test_config_page_renders_multiselect_with_correct_options_checked(tmp_path, monkeypatch):
     config_path = _write_temp_config(
         tmp_path,
-        volcanoes={
-            "enabled": False, "icon_zoom": 1.0, "significant_only": True,
-            "vei_min": 0, "erupt_date_codes": ["D1"], "runs_per_day": 1,
+        satellites={
+            "enabled": False, "sat_names": ["ISS (ZARYA)"], "extra_satellite_names": "",
+            "past_minutes": 3, "future_minutes": 45, "step_seconds": 30, "color": "White",
         },
     )
     monkeypatch.setenv("CONFIG_PATH", str(config_path))
 
     resp = client.get("/config")
     html = resp.text
-    assert 'id="volcanoes__erupt_date_codes"' in html
+    assert 'id="satellites__sat_names"' in html
     assert 'array-select' in html
-    idx = html.index('id="volcanoes__erupt_date_codes"')
+    idx = html.index('id="satellites__sat_names"')
     select_html = html[idx : idx + 1500]
-    assert '<option value="D1" selected>' in select_html
+    assert '<option value="ISS (ZARYA)" selected>' in select_html
 
 
 def test_config_page_renders_grouped_transfer_with_active_options_on_the_right(tmp_path, monkeypatch):
