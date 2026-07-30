@@ -59,17 +59,21 @@ def test_run_renders_all_five_variables_to_separate_paths(tmp_path):
 
 
 def test_run_skips_a_variable_whose_plot_raises_but_still_renders_the_rest(tmp_path):
-    """so2_volcanic isn't present in every CDS forecast run's response (confirmed
-    live) -- a KeyError from load_field() for one variable must not abort the whole
-    cycle and must not prevent the others (already rendered earlier in the same loop
-    when so2_volcanic is the one missing, since it's last in VARIABLES) from getting
+    """so2_volcanic's own "absent from this cycle's CAMS forecast" case is now
+    handled INSIDE plot() itself (rendered as a genuine empty layer, not an
+    exception -- see plot()'s own try/except around load_field(), validated live
+    rather than unit-tested here, same as the rest of plot()'s rendering internals --
+    see test_air_quality_mercator_prewarp.py's docstring for why). This test covers
+    the remaining, more general case: plot() raising for ANY variable, for some
+    other, genuinely unexpected reason, must not abort the whole cycle and must not
+    prevent the others (already rendered earlier in the same loop) from getting
     their signatures written."""
     _touch(_current_nc(tmp_path))
     out_path = tmp_path / "data" / "air_quality.png"
 
     u = make_bare_aq_updater("pm2_5", str(tmp_path), str(out_path))
     u.plot = MagicMock(side_effect=lambda variable, *a: (_ for _ in ()).throw(
-        KeyError("tc_VSO2")) if variable == "so2_volcanic" else None)
+        RuntimeError("unexpected rendering failure")) if variable == "so2_volcanic" else None)
 
     u.run()
 
