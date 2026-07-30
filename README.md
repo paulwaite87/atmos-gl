@@ -161,8 +161,8 @@ is a really informative layer to have running. Once the key is in place, enable
 #### Copernicus CDS/ADS API Key
 This is optional.
 It is for the `Greenhouse Gases` and `Air Quality` layers — without it both stay disabled.
-Volcanoes' [Smoke Plume](#smoke-plume) overlay needs it too, since it reuses Air
-Quality's own CAMS SO2 fetch rather than a separate one.
+Volcanoes' [Smoke Plume](#smoke-plume) overlay needs it too, since it's fetched
+alongside Air Quality's own CAMS variables in the same request.
 
 Register for a free account at https://ads.atmosphere.copernicus.eu/ (click
 `Login/Register` — the same login also works for Copernicus's other data stores, so
@@ -416,13 +416,18 @@ the map automatically once it's no longer reported as active in either source (a
 days of inactivity), so there's nothing to filter or configure beyond `Icon zoom`.
 
 ##### Smoke Plume
-Also in Volcano Properties, `Show Smoke Plume` overlays a global SO2 (sulphur dioxide)
-total-column heatmap, in Dobson Units — the closest real, near-real-time proxy Copernicus
-CAMS offers for volcanic smoke, though it's worth knowing SO2 isn't volcano-exclusive
-(industrial sources show up too). It reuses the same underlying CAMS data as the
-[Air Quality](#air-quality) layer's own `SO2` variable option, but keeps its own opacity
-and threshold controls right here so you don't need to visit Air Quality at all to use
-it. Like Air Quality, it needs a [Copernicus CDS/ADS API Key](#copernicus-cdsads-api-key).
+Also in Volcano Properties, `Show Smoke Plume` overlays a global, volcano-specific SO2
+(sulphur dioxide) total-column heatmap, in Dobson Units, rendered in its own bright
+cyan-to-magenta palette — deliberately not the [Air Quality](#air-quality) layer's
+green-to-purple gradient, so the two never look ambiguous if you have both showing at
+once. Copernicus CAMS models this as a genuinely separate variable from Air Quality's
+own general `SO2` option (which includes industrial and other non-volcanic sources
+too), each with its own opacity/threshold controls, so you don't need to visit Air
+Quality at all to use Smoke Plume. It's normal for the overlay to show nothing at
+all some of the time — CAMS only populates this variable when its model detects
+volcanic SO2 somewhere on the planet, so an empty overlay is telling you exactly
+that, not a stale or broken layer. Like Air Quality, it needs a
+[Copernicus CDS/ADS API Key](#copernicus-cdsads-api-key).
 
 #### Wildfires
 If you have a [NASA FIRMS API Key](#nasa-firms-api-key) then you can enable the
@@ -450,9 +455,12 @@ global atmospheric composition forecast. A `Variable` selector switches between:
 * `Smoke (AOD)` — Aerosol Optical Depth, a column-wide measure most useful for tracking
   wildfire smoke plumes as they spread. Being dimensionless, it has no official
   health-based threshold the way surface PM2.5/PM10 do.
-* `SO2` — Sulphur Dioxide (total column, in Dobson Units) — the same underlying data the
-  [Volcanoes](#volcanoes) layer's `Show Smoke Plume` overlay uses, though its opacity and
-  threshold are configured over there in Volcano Properties, not here.
+* `SO2` — Sulphur Dioxide (total column, in Dobson Units), from all sources (industrial,
+  general atmospheric, etc.) — a genuinely different CAMS variable from the
+  [Volcanoes](#volcanoes) layer's `Show Smoke Plume` overlay, which tracks a
+  volcano-specific SO2 field instead. Rendered in the same green-to-purple gradient as
+  `PM2.5`/`PM10`/`Smoke (AOD)` above, deliberately distinct from Smoke Plume's own
+  cyan-to-magenta palette.
 
 The `PM2.5`/`PM10` dropdown entries show the concentration widely considered "Unhealthy
 for Sensitive Groups" by the US EPA's Air Quality Index, and that same value is the
