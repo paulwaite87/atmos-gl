@@ -306,12 +306,12 @@ def test_config_page_renders_unstructured_color_for_terminator():
     assert "structured-color-name-picker" not in input_html
 
 
-def test_config_page_full_widths_a_url_field():
-    resp = client.get("/config")
-    html = resp.text
-    idx = html.index('id="storms__jtwc_url"')
-    preceding = html[max(0, idx - 400) : idx]
-    assert "col-12" in preceding
+# is_long_or_url_field's full-width-by-name behaviour used to have a live example here
+# (storms.jtwc_url) -- removed once storms' ATCF mirror URLs moved into
+# data_collector.datasources (rendered via the dedicated accordion, not this generic
+# fallback path), leaving no bare url-named field on the page anymore. The pure logic
+# stays covered by test_is_long_or_url_field_flags_url_named_options and its siblings
+# above.
 
 
 # --- GET /config: renders the schema-driven Global tab ---
@@ -341,10 +341,11 @@ def test_config_page_renders_toggle_as_checkbox():
 
 
 def test_config_page_falls_back_to_text_input_for_unspecced_field():
-    """storms.jtwc_url has no FIELD_SPECS entry -- must still render via the generic fallback."""
+    """satellites.extra_satellite_names has no FIELD_SPECS entry -- must still render
+    via the generic fallback."""
     resp = client.get("/config")
     html = resp.text
-    assert 'id="storms__jtwc_url"' in html
+    assert 'id="satellites__extra_satellite_names"' in html
 
 
 # --- POST /api/config: spec-based validation ---

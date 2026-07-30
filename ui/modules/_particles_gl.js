@@ -527,9 +527,9 @@ export function defaultSpeed(cfg) {
     return (isFinite(p) ? Math.min(100, Math.max(0, p)) : 50) / 1000;
 }
 
-// particle_alpha: 0-100 opacity.
+// particle_opacity: 0-100 -> 0-1 alpha, this engine's internal unit.
 export function defaultAlpha(cfg) {
-    const v = Number(cfg.particle_alpha);
+    const v = Number(cfg.particle_opacity);
     const c = isFinite(v) ? Math.min(100, Math.max(0, v)) : 90;
     return c / 100;
 }

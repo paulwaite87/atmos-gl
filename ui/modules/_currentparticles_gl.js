@@ -550,7 +550,7 @@ export function createCurrentParticleGLLayer(map, opts) {
     const applyParams = (cfg) => {
         curSpeed = speedFromConfig(cfg);
         curThick = thicknessFromConfig(cfg);
-        curAlpha = Number(cfg.particle_alpha) > 0 ? Number(cfg.particle_alpha) / 100 : 0.9;
+        curAlpha = Number(cfg.particle_opacity) > 0 ? Number(cfg.particle_opacity) / 100 : 0.9;
         curMaxSpeed = maxSpeedColor(cfg) || vmax;
         curLandReset = landReset(cfg) > 0.5 ? 1.0 : 0.0;
         curH = hFromConfig(cfg);
