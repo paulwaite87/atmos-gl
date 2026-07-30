@@ -54,28 +54,41 @@ _SMOOTH_SIGMA = 1.2
 # across. Fading smoothly over this band removes the hard edge entirely.
 _ALPHA_FEATHER_FRACTION = 0.15
 
-# In-file netCDF variable names -- confirmed by downloading and inspecting a real CAMS
-# atmospheric-composition-forecasts file (see the published spec's issue comments).
-# NOT the same as the request-time CDS variable identifiers (particulate_matter_2.5um/
-# particulate_matter_10um/total_aerosol_optical_depth_550nm, used in
-# collectors/air_quality.py's request builder) -- ECMWF's GRIB-to-netCDF conversion
-# exposes them under their short GRIB_cfVarName instead.
-_CAMS_VARS = {"pm2_5": "pm2p5", "pm10": "pm10", "aod": "aod550"}
+# In-file netCDF variable names -- pm2p5/pm10/aod550 confirmed by downloading and
+# inspecting a real CAMS atmospheric-composition-forecasts file (see the published
+# spec's issue comments). NOT the same as the request-time CDS variable identifiers
+# (particulate_matter_2.5um/particulate_matter_10um/total_aerosol_optical_depth_550nm/
+# total_column_sulphur_dioxide, used in collectors/air_quality.py's request builder) --
+# ECMWF's GRIB-to-netCDF conversion exposes them under their short GRIB_cfVarName
+# instead. so2's "tcso2" is the standard ECMWF short name for this parameter (matching
+# the tc*-prefix convention of other total-column fields, e.g. tcwv/tco3) but, unlike
+# the other three, has NOT been confirmed against a real downloaded file yet (issue
+# #254) -- verify against a real render before relying on it in production.
+_CAMS_VARS = {"pm2_5": "pm2p5", "pm10": "pm10", "aod": "aod550", "so2": "tcso2"}
 
 # PM2.5/PM10 are delivered in kg/m^3 (confirmed from the file's own `units`
 # attribute); the display convention (and the spec's default scale ranges) is
 # µg/m^3, matching how every phone weather app and AQI monitor reports particulates.
-# AOD is dimensionless -- no conversion.
-_UNIT_SCALE = {"pm2_5": 1e9, "pm10": 1e9, "aod": 1.0}
-_DISPLAY_UNIT = {"pm2_5": "µg/m³", "pm10": "µg/m³", "aod": ""}
-_DISPLAY_LABEL = {"pm2_5": "PM2.5", "pm10": "PM10", "aod": "Smoke (AOD)"}
-_TICK_FORMAT = {"pm2_5": "%d", "pm10": "%d", "aod": "%.2f"}
+# AOD is dimensionless -- no conversion. SO2 is delivered as a total column mass
+# (kg/m^2); converted to Dobson Units (DU), the standard unit for atmospheric column
+# SO2 used by real volcanic-plume tracking products (NASA/OMPS, Copernicus's own SO2
+# index) -- derived from the DU definition (1 DU = 2.6867e20 molecules/m^2) and SO2's
+# molar mass, not an arbitrary scale factor.
+_SO2_MOLAR_MASS_G_PER_MOL = 64.066  # S (32.06) + 2*O (16.00)
+_AVOGADRO_PER_MOL = 6.02214076e23
+_DU_MOLECULES_PER_M2 = 2.6867e20  # 1 Dobson Unit, standard definition
+_SO2_KG_M2_TO_DU = (1000.0 / _SO2_MOLAR_MASS_G_PER_MOL) * _AVOGADRO_PER_MOL / _DU_MOLECULES_PER_M2
+_UNIT_SCALE = {"pm2_5": 1e9, "pm10": 1e9, "aod": 1.0, "so2": _SO2_KG_M2_TO_DU}
+_DISPLAY_UNIT = {"pm2_5": "µg/m³", "pm10": "µg/m³", "aod": "", "so2": "DU"}
+_DISPLAY_LABEL = {"pm2_5": "PM2.5", "pm10": "PM10", "aod": "Smoke (AOD)", "so2": "SO2 (Sulphur Dioxide)"}
+_TICK_FORMAT = {"pm2_5": "%d", "pm10": "%d", "aod": "%.2f", "so2": "%.1f"}
 
 # Flat, variable-prefixed setting key (pm2_5_min, aod_min, ...) -- same convention
 # greenhouse_gases.py's _SCALE_SETTING_KEYS uses, since FIELD_SPECS/validate_against_specs
 # (routes/field_specs.py) only understands flat (section, option) keys. Only a MINIMUM
-# is user-configurable, not a max -- see _FIXED_CEILING below.
-_MIN_SETTING_KEY = {"pm2_5": "pm2_5_min", "pm10": "pm10_min", "aod": "aod_min"}
+# is user-configurable, not a max -- see _FIXED_CEILING below. so2_min is read from a
+# DIFFERENT settings section than the other three -- see _SETTINGS_SECTION_OVERRIDE.
+_MIN_SETTING_KEY = {"pm2_5": "pm2_5_min", "pm10": "pm10_min", "aod": "aod_min", "so2": "so2_min"}
 
 # Config fallback when the setting is unset -- a UX/policy default (what a fresh
 # install shows), NOT the same thing as the variable's natural floor (see
@@ -87,18 +100,21 @@ _MIN_SETTING_KEY = {"pm2_5": "pm2_5_min", "pm10": "pm10_min", "aod": "aod_min"}
 # that same Unhealthy-for-Sensitive-Groups territory during wildfire events) -- not an
 # official regulatory breakpoint (AOD, a column-integrated quantity, doesn't have one
 # the way surface PM2.5/PM10 do), but a reasonable single number if forced to pick one.
-_DEFAULT_MIN = {"pm2_5": 35, "pm10": 150, "aod": 0.5}
+# SO2's default of 1.0 DU is likewise a judgment call, not an official breakpoint --
+# clearly above typical background/industrial SO2 (usually well under 1 DU) so it
+# highlights genuine plumes without being tuned to any specific eruption.
+_DEFAULT_MIN = {"pm2_5": 35, "pm10": 150, "aod": 0.5, "so2": 1.0}
 
-# The true physical minimum for each variable -- concentrations/AOD can't go negative,
-# so this is always 0 for all three, REGARDLESS of what _DEFAULT_MIN ships as. Used
-# only to decide whether plot()'s alpha fade should apply at all: at vmin == the
-# natural floor there is no real threshold to feather (nothing in the data can be
+# The true physical minimum for each variable -- concentrations/AOD/SO2 can't go
+# negative, so this is always 0 for all four, REGARDLESS of what _DEFAULT_MIN ships
+# as. Used only to decide whether plot()'s alpha fade should apply at all: at vmin ==
+# the natural floor there is no real threshold to feather (nothing in the data can be
 # below it), so fading unconditionally would carve holes out of genuinely-present-but
 # -low readings instead (see plot()'s comment). Comparing against _DEFAULT_MIN instead
 # of this would break the moment _DEFAULT_MIN stops being 0 for some variable (as AOD
-# no longer is) -- the two are deliberately kept as separate constants so that never
-# happens silently again.
-_NATURAL_FLOOR = {"pm2_5": 0, "pm10": 0, "aod": 0}
+# and now SO2 are not) -- the two are deliberately kept as separate constants so that
+# never happens silently again.
+_NATURAL_FLOOR = {"pm2_5": 0, "pm10": 0, "aod": 0, "so2": 0}
 
 # Fixed, non-configurable top of the colour gradient -- confirmed live against real
 # CAMS data (see the published spec's issue comments): AOD rarely exceeds ~2.5 even
@@ -107,8 +123,20 @@ _NATURAL_FLOOR = {"pm2_5": 0, "pm10": 0, "aod": 0}
 # an independent min+max pair invites a scale (e.g. min=1, max=5) that clips nearly
 # the entire globe to the gradient's bottom colour -- indistinguishable from "the
 # layer is broken" even though the render was correct. A single min threshold against
-# a realistic fixed ceiling is a much harder scale to misconfigure.
-_FIXED_CEILING = {"pm2_5": 250, "pm10": 400, "aod": 3}
+# a realistic fixed ceiling is a much harder scale to misconfigure. SO2's ceiling of
+# 20 DU is a judgment call (issue #254) covering most tracked volcanic events without
+# needing extreme-event-specific scaling -- not confirmed against real eruption data
+# the way PM2.5/PM10/AOD's ceilings were.
+_FIXED_CEILING = {"pm2_5": 250, "pm10": 400, "aod": 3, "so2": 20}
+
+# so2's opacity/threshold settings are owned by Volcano Properties ("volcanoes"
+# config section, issue #254's "Show Smoke Plume" toggle), not air_quality's own --
+# every other variable's settings section is this task's own (self.section ==
+# "air_quality"), the unmodified default via .get(variable, self.section).
+# Similarly, so2's opacity setting key is "smoke_opacity" (a Volcano Properties
+# concept), not the plain "opacity" key the other three read from their own section.
+_SETTINGS_SECTION_OVERRIDE = {"so2": "volcanoes"}
+_OPACITY_SETTING_KEY = {"so2": "smoke_opacity"}
 
 # Fixed AQI-recognisable gradient (green -> yellow -> orange -> red -> purple),
 # matching the colour convention of every mainstream phone weather app's air-quality
@@ -132,8 +160,20 @@ class AirQualityUpdater(Updater):
         base, ext = os.path.splitext(self.output_path)
         return f"{base}_{variable}{ext}"
 
+    def _settings_for(self, variable: str) -> dict:
+        """The settings dict `variable`'s opacity/threshold are read from -- every
+        variable's own section (self.settings, "air_quality") by default, except so2
+        (issue #254), whose Volcano Properties owner section is read fresh from config
+        rather than reused from self.settings (which is always "air_quality")."""
+        section = _SETTINGS_SECTION_OVERRIDE.get(variable)
+        if section is None:
+            return self.settings
+        return self.config.get_section(section) or {}
+
     def plot(self, variable: str, current_nc: str, output_path: str):
-        alpha = float(self.settings.get("opacity", 60) / 100)
+        settings = self._settings_for(variable)
+        opacity_key = _OPACITY_SETTING_KEY.get(variable, "opacity")
+        alpha = float(settings.get(opacity_key, 60) / 100)
 
         display_data, lat_raw, lon_norm = load_field(current_nc, _CAMS_VARS[variable])
         display_data = display_data * _UNIT_SCALE[variable]
@@ -148,7 +188,7 @@ class AirQualityUpdater(Updater):
 
         min_key = _MIN_SETTING_KEY[variable]
         default_min = _DEFAULT_MIN[variable]
-        vmin = self.settings.get(min_key, default_min)
+        vmin = settings.get(min_key, default_min)
         vmax = _FIXED_CEILING[variable]
         norm = mcolors.Normalize(vmin=vmin, vmax=vmax)
 
@@ -275,12 +315,16 @@ class AirQualityUpdater(Updater):
         key_fontsize are baked into the rendered pixels (see plot()'s alpha and
         save_key_image's key_fontsize); min selects both the fixed colour gradient's
         bottom AND the below-threshold transparency cutoff (no palette or max setting
-        exists for this layer -- see _FIXED_CEILING)."""
+        exists for this layer -- see _FIXED_CEILING). so2's opacity/min come from
+        Volcano Properties, not this section -- see _settings_for/_SETTINGS_SECTION_OVERRIDE
+        -- so a change made there (not here) still forces so2's re-render."""
+        settings = self._settings_for(variable)
+        opacity_key = _OPACITY_SETTING_KEY.get(variable, "opacity")
         min_key = _MIN_SETTING_KEY[variable]
         values = {
-            "opacity": self.settings.get("opacity", 60),
+            "opacity": settings.get(opacity_key, 60),
             "key_fontsize": self.common.get("key_fontsize", 10),
-            "min": self.settings.get(min_key, _DEFAULT_MIN[variable]),
+            "min": settings.get(min_key, _DEFAULT_MIN[variable]),
         }
         return self._settings_signature(values)
 

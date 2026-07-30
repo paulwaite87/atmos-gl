@@ -209,6 +209,7 @@ _AQ_VARIABLE = SelectSpec([
     ("pm2_5", "PM2.5 (Unhealthy above 35 µg/m³)"),
     ("pm10", "PM10 (Unhealthy above 150 µg/m³)"),
     ("aod", "Smoke (AOD)"),
+    ("so2", "SO2 (Sulphur Dioxide)"),
 ])
 
 _LOG_LEVEL = SelectSpec([
@@ -362,6 +363,15 @@ FIELD_SPECS = {
     ("quakes", "label_fontsize"): _FONTSIZE,
     ("quakes", "min_mag"): SliderSpec(min=0, max=10, step=0.1, decimals=1, prefix="M "),
     ("volcanoes", "icon_zoom"): _ICON_ZOOM,
+    # "Show Smoke Plume" (issue #254) -- Volcano Properties is the SOLE owner of
+    # SO2's opacity/threshold settings, not air_quality's own section (which also
+    # offers SO2 as a selectable Variable, reading these same settings -- see
+    # tasks/air_quality.py's _SETTINGS_SECTION_OVERRIDE). smoke_opacity/so2_min are
+    # deliberately separate keys from any other opacity/threshold concept, since
+    # volcanoes has no other opacity setting today.
+    ("volcanoes", "show_smoke_plume"): ToggleSpec(),
+    ("volcanoes", "smoke_opacity"): _OPACITY,
+    ("volcanoes", "so2_min"): SliderSpec(min=0, max=20, step=0.5, decimals=1, suffix=" DU"),
     ("fires", "expiry_hours"): _HOURS,
     ("fires", "min_confidence"): _FIRE_CONFIDENCE,
     ("fires", "max_frp"): _FIRE_MAX_FRP,
@@ -618,6 +628,7 @@ _LABEL_OVERRIDES = {
     ("fires", "opacity"): "Heatmap opacity",
     ("fires", "min_risk_display"): "Heatmap minimum fire risk",
     ("fires", "min_risk_filter"): "Fire risk display threshold",
+    ("volcanoes", "so2_min"): "SO2 Threshold (Dobson Units)",
 }
 
 

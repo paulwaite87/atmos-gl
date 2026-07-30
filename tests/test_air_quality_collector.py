@@ -36,7 +36,7 @@ def make_bare_air_quality_collector(settings=None, workdir=".", api_key="secret-
     return c
 
 
-def test_build_air_quality_request_targets_leadtime_zero_and_all_three_variables():
+def test_build_air_quality_request_targets_leadtime_zero_and_all_four_variables():
     request = build_air_quality_request("2026-07-27", "12:00")
     assert request["leadtime_hour"] == ["0"]
     assert request["date"] == "2026-07-27/2026-07-27"
@@ -44,7 +44,7 @@ def test_build_air_quality_request_targets_leadtime_zero_and_all_three_variables
     assert request["type"] == ["forecast"]
     assert set(request["variable"]) == {
         "particulate_matter_2.5um", "particulate_matter_10um",
-        "total_aerosol_optical_depth_550nm",
+        "total_aerosol_optical_depth_550nm", "total_column_sulphur_dioxide",
     }
     assert request["data_format"] == "netcdf_zip"
 
