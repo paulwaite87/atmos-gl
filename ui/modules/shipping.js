@@ -1,6 +1,6 @@
 import { liveDataSync } from './_datasync.js';
 import { hoverPopup } from './_hoverpopup.js';
-import { fetchOrThrow, preloadIcons } from './_feedhelpers.js';
+import { fetchOrThrow, preloadIcons, escapeHtml } from './_feedhelpers.js';
 
 // Helper function: Parses time difference into '3d 13h 20 mins ago' formats
 function formatLastUpdate(lastUpdateStr) {
@@ -71,14 +71,17 @@ export function loadLayer(map, config) {
     const popupHtml = (f) => {
         const s = f.properties;
         const lastSeenText = formatLastUpdate(s.last_position_update);
+        // name/vessel_class/destination/callsign are AIS ShipStaticData fields --
+        // self-reported by the vessel's own transponder with no validation, so fully
+        // attacker-controlled free text (see escapeHtml's comment in _feedhelpers.js).
         return `<div style="font-family:sans-serif;font-size:12px;color:#000;padding:5px;">
-                <strong style="color:#007bff;font-size:14px;">${s.name}</strong><br>
-                <span style="color:#666;">Class:</span> ${s.vessel_class}<br>
-                <span style="color:#666;">Dest:</span> ${s.destination}<br>
+                <strong style="color:#007bff;font-size:14px;">${escapeHtml(s.name)}</strong><br>
+                <span style="color:#666;">Class:</span> ${escapeHtml(s.vessel_class)}<br>
+                <span style="color:#666;">Dest:</span> ${escapeHtml(s.destination)}<br>
                 <hr style="margin:5px 0;">
                 <span style="color:#666;">MMSI:</span> ${s.mmsi} |
                 <span style="color:#666;">IMO:</span> ${s.imo}<br>
-                <span style="color:#666;">Callsign:</span> ${s.callsign}<br>
+                <span style="color:#666;">Callsign:</span> ${escapeHtml(s.callsign)}<br>
                 <span style="color:#666;">Draught:</span> ${s.draught}m |
                 <span style="color:#666;">Heading:</span> ${s.heading}°<br>
                 <span style="color:#666;">Length:</span> ${s.length}m |

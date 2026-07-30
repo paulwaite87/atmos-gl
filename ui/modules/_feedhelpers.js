@@ -8,6 +8,22 @@
  * shared shape); this owns only the pieces that were actually duplicated byte-for-byte.
  */
 
+// HTML-entity-escape untrusted text before it's interpolated into a popup template
+// string handed to maplibregl.Popup.setHTML() -- which parses that string as real
+// HTML/DOM, same trust level as innerHTML. Every popup-bearing layer's data ultimately
+// comes from an external feed/API (GVP, USGS, NHC/JTWC, Celestrak, and -- critically --
+// AIS ShipStaticData and ADS-B, both of which are self-reported by the vessel/aircraft
+// transponder with NO validation, so a ship or aircraft's reported name/callsign/
+// destination is fully attacker-controlled free text). This is the actual XSS-blocking
+// control: correct regardless of what any given collector does or doesn't strip at
+// ingest, and unlike tag-stripping it can't be bypassed by a payload that isn't
+// tag-shaped (e.g. one relying on & already being unencoded in the stored value).
+export function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, (c) => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+    }[c]));
+}
+
 export async function fetchOrThrow(url) {
     const r = await fetch(url);
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -48,12 +64,15 @@ export async function preloadIcons(map, icons) {
 // just re-add the per-caller params ADR-0002 already rejected for markers.js -- left
 // bespoke.
 export function popupCard({ title, titleColor = '#333', titleSize = 13, padding = 4, rows = [], fontSize = 12 }) {
+    // Escaped here, not left to each caller: title/label/value all ultimately trace
+    // back to an external feed (see escapeHtml's comment) -- escaping unconditionally
+    // inside the shared template means no caller (present or future) can forget.
     const rowsHtml = rows
         .map(({ label, value, width = 45 }) =>
-            `<div><span style="color:#666;width:${width}px;display:inline-block;">${label}:</span> <strong>${value}</strong></div>`)
+            `<div><span style="color:#666;width:${width}px;display:inline-block;">${escapeHtml(label)}:</span> <strong>${escapeHtml(value)}</strong></div>`)
         .join('');
     return `<div style="font-family:sans-serif;font-size:${fontSize}px;color:#000;padding:${padding}px;">
-            <strong style="font-size:${titleSize}px;color:${titleColor};">${title}</strong>
+            <strong style="font-size:${titleSize}px;color:${titleColor};">${escapeHtml(title)}</strong>
             <hr style="border:0;border-top:1px solid #ccc;margin:4px 0;">
             ${rowsHtml}
         </div>`;
