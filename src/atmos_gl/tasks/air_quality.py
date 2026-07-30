@@ -174,6 +174,20 @@ _OPACITY_SETTING_KEY = {"so2_volcanic": "smoke_opacity"}
 _AQI_COLORS = ["#00e400", "#ffff00", "#ff7e00", "#ff0000", "#8f3f97"]
 _AQI_CMAP = mcolors.LinearSegmentedColormap.from_list("aqi", _AQI_COLORS)
 
+# so2_volcanic gets its OWN palette, deliberately non-overlapping with _AQI_COLORS
+# above (no green/yellow/orange/red/purple anywhere in it) -- both SO2 variables can
+# be shown on the map at once (Air Quality's own SO2 picker option AND Volcano
+# Properties' Smoke Plume are independent toggles), so a shared colour scale would
+# make it impossible to tell which patch of colour is which data source. Electric
+# cyan -> blue -> magenta stays entirely in a different hue family from the AQI
+# ramp's warm/purple range, and is deliberately saturated/neon throughout (not
+# fading toward a duller tone at either end, unlike _AQI_COLORS) -- a genuine
+# volcanic SO2 detection is a rare, high-value event that should read as an alarm,
+# not blend into an ambient background layer.
+_VOLCANIC_SO2_COLORS = ["#00f3ff", "#2979ff", "#c400ff", "#ff00c8"]
+_VOLCANIC_SO2_CMAP = mcolors.LinearSegmentedColormap.from_list("volcanic_so2", _VOLCANIC_SO2_COLORS)
+_CMAP = {"so2_volcanic": _VOLCANIC_SO2_CMAP}
+
 
 class AirQualityUpdater(Updater):
     def __init__(self, config: AtmosGLConfig, map_data: MapData):
@@ -203,7 +217,28 @@ class AirQualityUpdater(Updater):
         opacity_key = _OPACITY_SETTING_KEY.get(variable, "opacity")
         alpha = float(settings.get(opacity_key, 60) / 100)
 
-        display_data, lat_raw, lon_norm = load_field(current_nc, _CAMS_VARS[variable])
+        try:
+            display_data, lat_raw, lon_norm = load_field(current_nc, _CAMS_VARS[variable])
+        except KeyError:
+            # so2_volcanic only, not any other variable: CDS's dataset omits this
+            # variable from a forecast run's response entirely when its model has
+            # detected no volcanic SO2 anywhere globally (confirmed live -- unlike
+            # pm2_5/pm10/aod/so2, which have been present in every fetch so far, so a
+            # missing one of THOSE still means a real problem, not "genuinely zero").
+            # That's real information, not a fetch failure -- render it as an empty
+            # (all below-threshold, fully transparent) layer rather than either
+            # crashing or silently leaving a stale plume from the last time it WAS
+            # detected on screen. Reuses pm2_5's lat/lon grid (always present, same
+            # native grid every variable in this file shares) with an all-zero field.
+            if variable != "so2_volcanic":
+                raise
+            logger.info(
+                "Air quality so2_volcanic: absent from this cycle's CAMS forecast -- "
+                "treating as zero (no volcanic SO2 detected anywhere right now), not "
+                "a fetch failure."
+            )
+            display_data, lat_raw, lon_norm = load_field(current_nc, _CAMS_VARS["pm2_5"])
+            display_data = np.zeros_like(display_data)
         display_data = display_data * _UNIT_SCALE[variable]
 
         new_lats, new_lons, display_data = self.regrid_for_lod(
@@ -241,7 +276,8 @@ class AirQualityUpdater(Updater):
         # different thing -- a UX default, currently 0.5 for AOD) -- a threshold the
         # user genuinely wants (the shipped AOD default included) must still get its
         # feathered edge; only the true, un-thresholdable floor needs none.
-        rgba = _AQI_CMAP(norm(display_data))
+        cmap = _CMAP.get(variable, _AQI_CMAP)
+        rgba = cmap(norm(display_data))
         if vmin > _NATURAL_FLOOR[variable]:
             feather = max(vmax - vmin, 1e-9) * _ALPHA_FEATHER_FRACTION
             fade = np.clip((display_data - vmin) / feather, 0.0, 1.0)
@@ -321,7 +357,7 @@ class AirQualityUpdater(Updater):
         calculated_ticks = np.linspace(vmin, vmax, 5)
         self.save_key_image(
             output_path,
-            _AQI_CMAP,
+            cmap,
             norm,
             calculated_ticks,
             title_text,
@@ -377,15 +413,17 @@ class AirQualityUpdater(Updater):
                 try:
                     self.plot(variable, current_nc, out)
                 except Exception as e:
-                    # so2_volcanic in particular isn't present in every CDS forecast
-                    # run's response (confirmed live -- unlike the other four
-                    # variables, which have been present in every fetch so far),
-                    # unlike a genuine bug this is an expected, recurring upstream
-                    # condition. One variable's cache miss must not abort the whole
+                    # so2_volcanic's own "absent this cycle" case is handled INSIDE
+                    # plot() (rendered as a genuine empty layer, not an exception --
+                    # see its try/except around load_field()); reaching here for
+                    # so2_volcanic, or at all for any other variable (all of which
+                    # have been present in every fetch so far), means something
+                    # actually unexpected happened. Still caught rather than left to
+                    # propagate: one variable's failure must not abort the whole
                     # cycle -- pm2_5/pm10/aod/so2 (already rendered above in this same
-                    # loop when so2_volcanic is the one missing) must still get their
-                    # signatures written, and Smoke Plume simply keeps showing its
-                    # last successfully-rendered PNG until the field reappears.
+                    # loop) must still get their signatures written, and whichever
+                    # variable failed simply keeps showing its last successfully-
+                    # rendered PNG until the next cycle retries it.
                     logger.warning(f"Air quality {variable} plot failed, skipping: {e}")
                     continue
                 self._write_render_signature(out, sig)
