@@ -69,11 +69,11 @@ export function popupCard({ title, titleColor = '#333', titleSize = 13, padding 
     // inside the shared template means no caller (present or future) can forget.
     const rowsHtml = rows
         .map(({ label, value, width = 45 }) =>
-            // EXPERIMENTAL: label/value weight swapped for a visual comparison --
-            // label now bold+black, value now standard-weight+light-grey (was the
-            // reverse). Revert this row template to the pre-swap version if the
-            // experiment isn't kept. Still routed through escapeHtml() either way --
-            // see this function's top-level comment and escapeHtml's own docstring.
+            // Label bold+black, value standard-weight+light-grey -- reads better than
+            // the reverse (a subdued label next to a bold value drew the eye to the
+            // value first, before its label gave it context). Both routed through
+            // escapeHtml() -- see this function's top-level comment and escapeHtml's
+            // own docstring.
             // min-width, not width: an inline-block box doesn't clip overflowing
             // content, so a bold label wider than `width` (e.g. "Storm category")
             // was painting straight past the box edge -- burying margin-right's gap
