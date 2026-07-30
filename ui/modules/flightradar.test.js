@@ -261,6 +261,53 @@ describe('recordFromFeature', () => {
         expect(rec.deadReckonBaroRate).toBe(5);
         expect(rec.alt_baro).toBe('ground');
     });
+
+    // flightStatus's fallback vertical rate: adsb.lol's baro_rate can drop out for a
+    // poll or two (observed live, especially on approach/climb-out); derivedBaroRateFpm
+    // is the change in alt_baro across the last two DISTINCT real samples, divided by
+    // the real elapsed time between them.
+    test('derives a fallback vertical rate from consecutive real altitude samples', () => {
+        const prevRec = recordFromFeature(
+            featureFor({ alt_baro_ft: 5000, last_seen: '2026-07-29T00:00:10.000000+00:00' }), 1000,
+        );
+        const rec = recordFromFeature(
+            featureFor({ alt_baro_ft: 4700, baro_rate: null, last_seen: '2026-07-29T00:00:22.000000+00:00' }),
+            2000, prevRec,
+        );
+        // 300ft dropped over 12s (0.2min) = -1500ft/min.
+        expect(rec.derivedBaroRateFpm).toBeCloseTo(-1500, 6);
+    });
+
+    test('first sighting has no prior sample to derive a rate from', () => {
+        const rec = recordFromFeature(featureFor(), 1000);
+        expect(rec.derivedBaroRateFpm).toBeNull();
+    });
+
+    test('a repeated poll of the same real sample carries the last derived rate forward rather than resetting to null', () => {
+        const prevRec = recordFromFeature(
+            featureFor({ alt_baro_ft: 5000, last_seen: '2026-07-29T00:00:10.000000+00:00' }), 1000,
+        );
+        const rec = recordFromFeature(
+            featureFor({ alt_baro_ft: 4700, last_seen: '2026-07-29T00:00:22.000000+00:00' }),
+            2000, prevRec,
+        );
+        const recAgain = recordFromFeature(
+            featureFor({ alt_baro_ft: 4700, last_seen: '2026-07-29T00:00:22.000000+00:00' }),   // same sample, re-fetched
+            3000, rec,
+        );
+        expect(recAgain.derivedBaroRateFpm).toBe(rec.derivedBaroRateFpm);
+    });
+
+    test('on-ground (non-numeric altitude) never derives a vertical rate', () => {
+        const prevRec = recordFromFeature(
+            featureFor({ on_ground: true, last_seen: '2026-07-29T00:00:10.000000+00:00' }), 1000,
+        );
+        const rec = recordFromFeature(
+            featureFor({ on_ground: true, last_seen: '2026-07-29T00:00:22.000000+00:00' }),
+            2000, prevRec,
+        );
+        expect(rec.derivedBaroRateFpm).toBeNull();
+    });
 });
 
 describe('smoothedScalar', () => {
@@ -509,6 +556,34 @@ describe('buildFeatureCollection route_stops shape', () => {
         const aircraftByHex = new Map([['a1b2c3', recFor({ route_stops: null, route_plausible: false })]]);
         const fc = buildFeatureCollection(aircraftByHex, 1000);
         expect(fc.features[0].properties.route_plausible).toBe(false);
+    });
+});
+
+describe('buildFeatureCollection baro_rate_fpm fallback', () => {
+    function recFor(overrides = {}) {
+        return {
+            hex: 'a1b2c3', flight: 'ANZ423', category: '', receivedAt: 1000,
+            lat: -41.3, lon: 174.8, gs: 200, track: 0, alt_baro: 5000,
+            ...overrides,
+        };
+    }
+
+    test('the real reported baro_rate wins when present, even with a derived fallback available', () => {
+        const aircraftByHex = new Map([['a1b2c3', recFor({ baro_rate: -800, derivedBaroRateFpm: -1500 })]]);
+        const fc = buildFeatureCollection(aircraftByHex, 1000);
+        expect(fc.features[0].properties.baro_rate_fpm).toBe(-800);
+    });
+
+    test('falls back to the derived rate when baro_rate is missing', () => {
+        const aircraftByHex = new Map([['a1b2c3', recFor({ baro_rate: null, derivedBaroRateFpm: -1500 })]]);
+        const fc = buildFeatureCollection(aircraftByHex, 1000);
+        expect(fc.features[0].properties.baro_rate_fpm).toBe(-1500);
+    });
+
+    test('null when neither the real nor the derived rate is available', () => {
+        const aircraftByHex = new Map([['a1b2c3', recFor({ baro_rate: null, derivedBaroRateFpm: null })]]);
+        const fc = buildFeatureCollection(aircraftByHex, 1000);
+        expect(fc.features[0].properties.baro_rate_fpm).toBeNull();
     });
 });
 

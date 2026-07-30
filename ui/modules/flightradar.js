@@ -533,7 +533,12 @@ export function buildFeatureCollection(aircraftByHex, now, displayByHex = null, 
                 alt_baro_ft: typeof altBaroFt === 'number' ? altBaroFt : 0,
                 alt_baro_known: typeof rec.alt_baro === 'number',
                 on_ground: rec.alt_baro === 'ground',
-                baro_rate_fpm: typeof rec.baro_rate === 'number' ? rec.baro_rate : null,
+                // adsb.lol's real reported rate wins when present (more instantaneous
+                // than a 2-sample derivative); derivedBaroRateFpm (recordFromFeature)
+                // fills in only when it's missing -- see that field's own comment.
+                baro_rate_fpm: typeof rec.baro_rate === 'number' ? rec.baro_rate
+                    : typeof rec.derivedBaroRateFpm === 'number' ? rec.derivedBaroRateFpm
+                    : null,
                 nav_altitude_mcp_ft: typeof rec.nav_altitude_mcp === 'number' ? rec.nav_altitude_mcp : null,
                 gs: rec.gs ?? 0,
                 // track is the raw reported ground track (popupHtml's "Heading" line
@@ -695,6 +700,23 @@ export function recordFromFeature(feature, fallbackNowMs, prevRec) {
     const positionStalled = isNewSample && prevRec.lat === lat && prevRec.lon === lon;
     const altitudeStalled = isNewSample && typeof alt_baro === 'number' && prevRec.alt_baro === alt_baro;
 
+    // Fallback vertical rate for flightStatus(): adsb.lol's own baro_rate can drop out
+    // for a poll or two -- observed live on final approach and climb-out, exactly when
+    // a vertical-rate reading matters most -- leaving flightStatus with nothing to
+    // reason about and stuck showing "Level flight" even while alt_baro is visibly
+    // moving between real samples. Derived the same way positionStalled/altitudeStalled
+    // detect a stall: the change in alt_baro across the last two DISTINCT real samples,
+    // over the real elapsed time between them (not the dead-reckoned/display elapsed).
+    // Only meaningful when both samples are genuine numeric altitudes (airborne on
+    // both) -- matches baro_rate's own "n/a on the ground" contract. Carried forward
+    // unchanged across repeated polls of the same backend sample (isNewSample false),
+    // so the status doesn't flicker back to "Level flight" between real refreshes.
+    let derivedBaroRateFpm = prevRec ? prevRec.derivedBaroRateFpm ?? null : null;
+    if (isNewSample && typeof alt_baro === 'number' && typeof prevRec.alt_baro === 'number') {
+        const elapsedMin = (receivedAt - prevRec.receivedAt) / 60000;
+        derivedBaroRateFpm = elapsedMin > 0 ? (alt_baro - prevRec.alt_baro) / elapsedMin : null;
+    }
+
     return {
         hex: p.hex,
         flight: p.flight,
@@ -716,6 +738,7 @@ export function recordFromFeature(feature, fallbackNowMs, prevRec) {
         // distinct real sample (only meaningful once alt_baro is a genuine number --
         // 'ground' has no altitude to compare).
         deadReckonBaroRate: altitudeStalled ? 0 : p.baro_rate,
+        derivedBaroRateFpm,
         nav_altitude_mcp: p.nav_altitude_mcp,
         lat, lon,
         receivedAt: Number.isNaN(receivedAt) ? fallbackNowMs : receivedAt,
