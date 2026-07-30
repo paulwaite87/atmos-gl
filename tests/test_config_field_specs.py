@@ -600,6 +600,37 @@ def test_config_page_renders_pwat_fields_section_and_gated_fallback():
     assert 'id="pwat__palette"' in html
 
 
+# --- "Set to Defaults" button + GET /config/section_defaults/{section} ---
+
+
+def test_config_page_renders_set_to_defaults_button_opposite_every_section_title():
+    resp = client.get("/config")
+    html = resp.text
+    assert "resetSectionToDefaults('precipitation', 'Precipitation Properties')" in html
+    assert "resetSectionToDefaults('common', 'Global Settings')" in html
+
+
+def test_section_defaults_route_renders_values_from_the_template_not_the_live_config():
+    """config/atmos-gl.json.tmpl's air_quality.pm2_5_min (35) must come through
+    regardless of whatever the live config.json currently holds for that field."""
+    resp = client.get("/config/section_defaults/air_quality")
+    assert resp.status_code == 200
+    html = resp.text
+    assert 'id="air_quality__pm2_5_min"' in html
+    idx = html.index('id="air_quality__pm2_5_min"')
+    assert 'value="35"' in html[idx : idx + 300]
+
+
+def test_section_defaults_route_omits_the_enabled_field_same_as_the_live_page():
+    resp = client.get("/config/section_defaults/precipitation")
+    assert 'id="precipitation__enabled"' not in resp.text
+
+
+def test_section_defaults_route_404s_for_an_unknown_section():
+    resp = client.get("/config/section_defaults/not_a_real_section")
+    assert resp.status_code == 404
+
+
 def test_config_page_has_no_remaining_legacy_dispatch_code():
     """TAB_GROUPS/renderTabContainers became fully dead once every tab migrated --
     this guards against either being silently reintroduced."""

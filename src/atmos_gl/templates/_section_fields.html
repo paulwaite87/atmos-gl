@@ -1,0 +1,8 @@
+{#- Renders one section's field grid (field_macros.render_field_group), sourced from
+    whatever `section_data` the caller passes in -- routes/config.py's
+    /config/section_defaults/{section} passes config/atmos-gl.json.tmpl's values
+    instead of the live config, backing the "Set to Defaults" button. Returns just the
+    fragment (no <html>/<body>), swapped into #fields-section-{section}'s innerHTML by
+    resetSectionToDefaults() in config.html. -#}
+{%- import "_field_macros.html" as field_macros -%}
+{{ field_macros.render_field_group(section, section_data) }}
