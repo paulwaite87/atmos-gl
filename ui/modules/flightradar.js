@@ -408,7 +408,7 @@ export function airlineForFlight(flightCallsign) {
 // ---------------------------------------------------------------------------------
 import { liveDataSync } from './_datasync.js';
 import { hoverPopup } from './_hoverpopup.js';
-import { fetchOrThrow, preloadIcons } from './_feedhelpers.js';
+import { fetchOrThrow, preloadIcons, escapeHtml } from './_feedhelpers.js';
 
 // Deliberately tightened below flightradar_collector.starvation_floor_minutes
 // (default 30 min, AircraftCollector's cache-warming sweep's worst-case gap for a
@@ -574,8 +574,14 @@ function pruneStale(aircraftByHex, now) {
     }
 }
 
+// Delegates to the shared escapeHtml (safe in an attribute context too -- it escapes
+// a strict superset of what an attribute value needs). Was previously '"'-only,
+// missing '&'/'<'/'>'/"'" -- see escapeHtml's comment in _feedhelpers.js for why
+// route/airport names (this app's most attacker-reachable route metadata besides the
+// flight/callsign fields below) need full entity escaping, not just the one character
+// that happened to break out of the surrounding double-quoted attribute.
 function _escapeAttr(s) {
-    return String(s).replace(/"/g, '&quot;');
+    return escapeHtml(s);
 }
 
 // IATA preferred over ICAO (this feature's own worked examples throughout --
@@ -594,7 +600,7 @@ export function stopCode(stop) {
 export function routePathHtml(stops) {
     if (!stops || !stops.length) return '';
     return stops
-        .map((s) => `<span title="${_escapeAttr(s.name || '')}">${stopCode(s)}</span>`)
+        .map((s) => `<span title="${_escapeAttr(s.name || '')}">${escapeHtml(stopCode(s))}</span>`)
         .join(' &rarr; ');
 }
 
@@ -643,19 +649,23 @@ function popupHtml(f) {
         ? `<div style="font-weight:bold;color:#000;font-size:20px;margin-top:2px;">${routePath}${plausibleWarningHtml(p.route_plausible)}</div>
             <hr style="border:0;border-top:1px solid #ccc;margin:4px 0;">`
         : '';
+    // flight/aircraft_type/registration are raw ADS-B transponder fields (self-reported,
+    // no validation, same attacker-controlled-free-text class as AIS -- see escapeHtml's
+    // comment in _feedhelpers.js). airline/cls/hex are derived/lookup values, but escaped
+    // too rather than trusting their fallback paths never echo the raw input back out.
     return `<div style="font-family:sans-serif;font-size:12px;color:#000;padding:5px;">
-            <strong style="color:#007bff;font-size:16px;">${p.flight}</strong><br>
+            <strong style="color:#007bff;font-size:16px;">${escapeHtml(p.flight)}</strong><br>
             ${routeBlock}
-            ${p.aircraft_type ? `<span style="color:#666;">Type:</span> ${p.aircraft_type}<br>` : ''}
-            <span style="color:#666;">Class:</span> ${cls}<br>
-            ${p.airline ? `<span style="color:#666;">Airline:</span> ${p.airline}<br>` : ''}
-            ${p.registration ? `<span style="color:#666;">Registration:</span> ${p.registration}<br>` : ''}
+            ${p.aircraft_type ? `<span style="color:#666;">Type:</span> ${escapeHtml(p.aircraft_type)}<br>` : ''}
+            <span style="color:#666;">Class:</span> ${escapeHtml(cls)}<br>
+            ${p.airline ? `<span style="color:#666;">Airline:</span> ${escapeHtml(p.airline)}<br>` : ''}
+            ${p.registration ? `<span style="color:#666;">Registration:</span> ${escapeHtml(p.registration)}<br>` : ''}
             ${status ? `<span style="color:#666;">Status:</span> ${status}<br>` : ''}
             <span style="color:#666;">Altitude:</span> ${alt}<br>
             ${target ? `<span style="color:#666;">Target altitude:</span> ${target}<br>` : ''}
             <span style="color:#666;">Speed:</span> ${Math.round(p.gs)} kts<br>
             <span style="color:#666;">Heading:</span> ${Math.round(p.track)}&deg;<br>
-            <span style="color:#666;">ICAO:</span> ${p.hex}${staleNote}
+            <span style="color:#666;">ICAO:</span> ${escapeHtml(p.hex)}${staleNote}
         </div>`;
 }
 

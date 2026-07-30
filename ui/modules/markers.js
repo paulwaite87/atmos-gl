@@ -1,4 +1,5 @@
 import { liveDataSync } from './_datasync.js';
+import { escapeHtml } from './_feedhelpers.js';
 
 // Static place-marker layer: a small dot + label per place, loaded from the
 // hard-coded markers/markers.geojson. Labels are collision-managed and revealed
@@ -38,8 +39,11 @@ export function loadLayer(map, config) {
         `<span style="color:#666;">${label}</span><strong>${value}</strong></div>`;
     const popupHtml = (props, w) => {
         const pop = numberWithCommas(props.pop)
+        // name/country come from the repo-committed markers/markers.geojson, not an
+        // external feed -- escaped anyway for consistency with every other popup
+        // template, not because this specific source is considered attacker-reachable.
         const country = props.country
-            ? `<div style="color:#888;font-size:11px;margin-top:-2px;">${props.country}<br/>Pop: ${pop}</div>` : '';
+            ? `<div style="color:#888;font-size:11px;margin-top:-2px;">${escapeHtml(props.country)}<br/>Pop: ${pop}</div>` : '';
         let body;
         if (w) {
             const parts = [];
@@ -55,7 +59,7 @@ export function loadLayer(map, config) {
             body = '<div style="color:#888;font-size:12px;">Weather data unavailable</div>';
         }
         return `<div style="font-family:sans-serif;font-size:12.5px;color:#111;padding:2px 4px;min-width:150px;">` +
-            `<div style="font-size:14px;font-weight:700;">${props.name || 'Unknown'}</div>${country}` +
+            `<div style="font-size:14px;font-weight:700;">${escapeHtml(props.name) || 'Unknown'}</div>${country}` +
             `<hr style="border:0;border-top:1px solid #ddd;margin:6px 0;">${body}</div>`;
     };
 

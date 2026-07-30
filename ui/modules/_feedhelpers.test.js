@@ -3,7 +3,7 @@
 // the same load scaffold"). fetch/window/createImageBitmap are faked minimally, same
 // approach _reconcile.test.js/_legend.test.js take for browser globals.
 import { describe, test, expect, vi, beforeEach } from 'vitest';
-import { fetchOrThrow, preloadIcons, popupCard } from './_feedhelpers.js';
+import { fetchOrThrow, preloadIcons, popupCard, escapeHtml } from './_feedhelpers.js';
 
 function fakeMap(existingIds = []) {
     const images = new Set(existingIds);
@@ -76,7 +76,39 @@ describe('preloadIcons', () => {
     });
 });
 
+describe('escapeHtml', () => {
+    test('escapes &, <, >, ", and \'', () => {
+        expect(escapeHtml(`<img src=x onerror=alert(1)> & "quotes" 'n stuff`))
+            .toBe('&lt;img src=x onerror=alert(1)&gt; &amp; &quot;quotes&quot; &#39;n stuff');
+    });
+
+    test('a plain string round-trips unchanged', () => {
+        expect(escapeHtml('Colombia')).toBe('Colombia');
+    });
+
+    test('null/undefined become an empty string, not the literal word', () => {
+        expect(escapeHtml(null)).toBe('');
+        expect(escapeHtml(undefined)).toBe('');
+    });
+
+    test('non-string values are stringified first', () => {
+        expect(escapeHtml(4)).toBe('4');
+    });
+});
+
 describe('popupCard', () => {
+    test('escapes an XSS payload in the title and in a row value, so it renders inert', () => {
+        const html = popupCard({
+            title: '<script>alert(1)</script>',
+            rows: [{ label: 'Name', value: '<img src=x onerror=alert(1)>' }],
+        });
+        expect(html).not.toContain('<script>');
+        expect(html).not.toContain('<img src=x onerror=alert(1)>');
+        expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
+        expect(html).toContain('&lt;img src=x onerror=alert(1)&gt;');
+    });
+
+
     test('renders the title, hr, and each row with default width', () => {
         const html = popupCard({
             title: 'Test Volcano',

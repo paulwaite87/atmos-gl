@@ -8,6 +8,7 @@ from sqlalchemy.types import Text as SqlText
 from atmos_gl.db.engine import Session
 from atmos_gl.db.geojson import as_feature_collection, EMPTY_FEATURE_COLLECTION
 from atmos_gl.db.models import Aircraft, AircraftInterest, AircraftTrack, FlightRoute
+from atmos_gl.lib.text_sanitize import strip_html
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +24,14 @@ def _normalize_sighting(record: dict) -> dict | None:
     """A raw adsb.lol 'ac' list entry -> our column shape, or None if it carries no
     usable hex. Unlike AIS (Ship's ShipStaticData/PositionReport split), adsb.lol hands
     back every field in one shot, so there's no separate static/position merge to do --
-    just one normalization per sighting."""
+    just one normalization per sighting.
+
+    registration/aircraft_type/flight are self-reported by the aircraft's own ADS-B
+    transponder with no validation -- fully attacker-controlled free text, same class
+    as AIS's name/destination/callsign (see ShipAdapter.update_ship_static_data's
+    docstring). strip_html() is defense in depth; the real XSS control is escaping at
+    the frontend render sink (ui/modules/flightradar.js's popupHtml(), via
+    _feedhelpers.js's escapeHtml())."""
     hex_id = str(record.get("hex") or "").strip().lower()
     if not hex_id:
         return None
@@ -32,12 +40,12 @@ def _normalize_sighting(record: dict) -> dict | None:
     on_ground = raw_alt == "ground"
     alt_baro_ft = float(raw_alt) if isinstance(raw_alt, (int, float)) else None
 
-    flight = (record.get("flight") or "").strip() or None
+    flight = strip_html((record.get("flight") or "").strip()) or None
 
     return {
         "hex": hex_id,
-        "registration": record.get("r"),
-        "aircraft_type": record.get("t"),
+        "registration": strip_html(record.get("r")),
+        "aircraft_type": strip_html(record.get("t")),
         "category": record.get("category"),
         "flight": flight,
         "lat": record.get("lat"),

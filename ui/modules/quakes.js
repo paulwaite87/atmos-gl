@@ -1,6 +1,6 @@
 import { liveDataSync } from './_datasync.js';
 import { hoverPopup } from './_hoverpopup.js';
-import { fetchOrThrow, preloadIcons } from './_feedhelpers.js';
+import { fetchOrThrow, preloadIcons, escapeHtml } from './_feedhelpers.js';
 
 export function loadLayer(map, config) {
     const sourceId = 'quakes-source';
@@ -23,7 +23,7 @@ export function loadLayer(map, config) {
         const mins = Math.floor(d.age_minutes);
         const age = mins < 60 ? `${mins} mins ago` : `${Math.floor(mins/60)} hours ago`;
         return `<div style="font-family:sans-serif;font-size:12px;color:#000;padding:5px;">
-               <strong style="color:#ff4a4a;">M ${Number(d.mag).toFixed(1)}</strong> — ${d.place}
+               <strong style="color:#ff4a4a;">M ${Number(d.mag).toFixed(1)}</strong> — ${escapeHtml(d.place)}
                <hr style="margin:6px 0;"><div>Depth: <strong>${d.depth} km</strong></div>
                <div>Age: <strong>${age}</strong></div></div>`;
     };
