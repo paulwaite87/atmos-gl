@@ -69,7 +69,12 @@ export function popupCard({ title, titleColor = '#333', titleSize = 13, padding 
     // inside the shared template means no caller (present or future) can forget.
     const rowsHtml = rows
         .map(({ label, value, width = 45 }) =>
-            `<div><span style="color:#666;width:${width}px;display:inline-block;">${escapeHtml(label)}:</span> <strong>${escapeHtml(value)}</strong></div>`)
+            // EXPERIMENTAL: label/value weight swapped for a visual comparison --
+            // label now bold+black, value now standard-weight+light-grey (was the
+            // reverse). Revert this row template to the pre-swap version if the
+            // experiment isn't kept. Still routed through escapeHtml() either way --
+            // see this function's top-level comment and escapeHtml's own docstring.
+            `<div><strong style="width:${width}px;display:inline-block;">${escapeHtml(label)}:</strong> <span style="color:#666;">${escapeHtml(value)}</span></div>`)
         .join('');
     return `<div style="font-family:sans-serif;font-size:${fontSize}px;color:#000;padding:${padding}px;">
             <strong style="font-size:${titleSize}px;color:${titleColor};">${escapeHtml(title)}</strong>
