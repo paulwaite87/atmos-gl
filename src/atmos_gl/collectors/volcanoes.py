@@ -62,6 +62,25 @@ def _parse_gvp_title(title: str | None) -> dict | None:
     return {"name": name, "country": country, "activity_type": activity_type}
 
 
+_MANGLED_APOSTROPHE_RE = re.compile(r"(?<=\w)\?s\b", re.UNICODE)
+
+
+def _fix_mangled_apostrophes(text: str | None) -> str | None:
+    """GVP's own feed (confirmed live: <?xml ... encoding="ISO-8859-1"?>) already
+    serves a literal "?" byte where a possessive apostrophe should be -- their CMS
+    evidently authors report text with a typographic right single quote (U+2019),
+    which has no ISO-8859-1 representation, so it's replaced with "?" somewhere in
+    THEIR export pipeline before the bytes ever reach us (confirmed by inspecting the
+    raw wire bytes directly: the "?" is already there, not a decode artifact on our
+    side). Unrecoverable in general, but every observed case is the exact same
+    "<word>?s" possessive pattern ("Etna?s", "Korovin?s", "Kilauea?s", ...) -- a real
+    question mark never attaches to the next word with no space, so this is a safe,
+    narrow cosmetic fix, not a guess at arbitrary corrupted punctuation."""
+    if not text:
+        return text
+    return _MANGLED_APOSTROPHE_RE.sub("'s", text)
+
+
 def _parse_georss_point(text: str | None) -> tuple[float, float] | tuple[None, None]:
     """"<lat> <lon>" (georss:point's space-separated form) -> (lat, lon) floats, or
     (None, None) if absent/malformed."""
@@ -129,7 +148,9 @@ class VolcanicActivityCollector(CollectorBase):
             # (lib/text_sanitize.py) collapses it to plain text once, here, at
             # collection time.
             description_el = item.find("description")
-            report_description = strip_html(description_el.text if description_el is not None else None)
+            report_description = _fix_mangled_apostrophes(
+                strip_html(description_el.text if description_el is not None else None)
+            )
 
             items.append(
                 {
