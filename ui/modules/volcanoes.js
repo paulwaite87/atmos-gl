@@ -45,6 +45,10 @@ export function loadLayer(map, config) {
         }
         return popupCard({
             title: p.name || 'Unknown Volcano',
+            // Matches flightradar.js's callsign title styling (color:#007bff,
+            // font-size:16px), rather than popupCard's own #333/13px defaults.
+            titleColor: '#007bff',
+            titleSize: 16,
             padding: 3,
             rows,
         });
