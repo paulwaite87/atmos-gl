@@ -9,6 +9,7 @@ from atmos_gl.db.engine import Session
 from atmos_gl.db.geojson import as_feature_collection, EMPTY_FEATURE_COLLECTION
 from atmos_gl.db.models import Ship, ShipPosition
 from atmos_gl.lib.shipping import get_vessel_class_from_type
+from atmos_gl.lib.text_sanitize import strip_html
 
 logger = logging.getLogger(__name__)
 
@@ -26,14 +27,22 @@ class ShipAdapter:
     """Real adapter for ships/ship_position, backed by SQLAlchemy."""
 
     def update_ship_static_data(self, mmsi, metadata, body, ais_tier="A"):
-        """Processes ShipStaticData and UPSERTs into the ships table."""
+        """Processes ShipStaticData and UPSERTs into the ships table.
+
+        name/destination/callsign are self-reported by the vessel's own AIS
+        transponder with no validation -- fully attacker-controlled free text
+        (unlike vessel_class, derived from a bounded lookup table). strip_html()
+        (lib/text_sanitize.py) is defense in depth here, not the real XSS control --
+        that's escaping at the frontend render sink (ui/modules/_feedhelpers.js's
+        escapeHtml(), used by shipping.js's popup) -- but it keeps stored data clean
+        even if some future consumer ever renders it a different way."""
         mmsi = str(mmsi)
-        name = metadata.get("ShipName", "Unknown").strip()
-        destination = body.get("Destination", "").strip()
+        name = strip_html(metadata.get("ShipName", "Unknown").strip())
+        destination = strip_html(body.get("Destination", "").strip())
         v_type = body.get("Type", 0)
         v_class = get_vessel_class_from_type(v_type)
         imo = body.get("ImoNumber", 0)
-        callsign = body.get("CallSign", "").strip()
+        callsign = strip_html(body.get("CallSign", "").strip())
         draught = float(body.get("MaximumStaticDraught", 0.0))
 
         dim = body.get("Dimension", {})
@@ -88,7 +97,7 @@ class ShipAdapter:
         nav_status = body.get("NavigationalStatus", 0)
         cog = body.get("Cog", 0.0)
         sog = body.get("Sog", 0.0)
-        name = metadata.get("ShipName", "Unknown").strip()
+        name = strip_html(metadata.get("ShipName", "Unknown").strip())
         msg_datetime = _parse_ais_timestamp(metadata.get("time_utc", ""))
 
         point = func.ST_SetSRID(func.ST_MakePoint(lon, lat), 4326)
@@ -274,12 +283,12 @@ class FakeShipAdapter:
 
     def update_ship_static_data(self, mmsi, metadata, body, ais_tier="A"):
         mmsi = str(mmsi)
-        name = metadata.get("ShipName", "Unknown").strip()
-        destination = body.get("Destination", "").strip()
+        name = strip_html(metadata.get("ShipName", "Unknown").strip())
+        destination = strip_html(body.get("Destination", "").strip())
         v_type = body.get("Type", 0)
         v_class = get_vessel_class_from_type(v_type)
         imo = body.get("ImoNumber", 0)
-        callsign = body.get("CallSign", "").strip()
+        callsign = strip_html(body.get("CallSign", "").strip())
         draught = float(body.get("MaximumStaticDraught", 0.0))
         dim = body.get("Dimension", {})
         length = int(dim.get("A", 0)) + int(dim.get("B", 0))
@@ -321,7 +330,7 @@ class FakeShipAdapter:
         nav_status = body.get("NavigationalStatus", 0)
         cog = body.get("Cog", 0.0)
         sog = body.get("Sog", 0.0)
-        name = metadata.get("ShipName", "Unknown").strip()
+        name = strip_html(metadata.get("ShipName", "Unknown").strip())
         msg_datetime = _parse_ais_timestamp(metadata.get("time_utc", ""))
 
         row = dict(self._ships.get(mmsi) or self._blank_ship(mmsi))

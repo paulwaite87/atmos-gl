@@ -163,3 +163,30 @@ def test_prune_vessel_tracks_removes_old_rows_only():
     removed = adapter.prune_vessel_tracks(expiry_days=5)
     assert removed == 1
     assert len(adapter._positions) == 1
+
+
+def test_update_ship_static_data_strips_html_from_self_reported_ais_fields():
+    # name/destination/callsign are self-reported by the vessel's own AIS
+    # transponder with no validation -- a malicious/misconfigured transponder could
+    # report a name containing markup (issue: escape-at-render is the real XSS
+    # control, this is defense in depth so stored data stays clean too).
+    adapter = FakeShipAdapter()
+    adapter.update_ship_static_data(
+        1,
+        _meta(name="<img src=x onerror=alert(1)>Evil Ship"),
+        _body(Destination="<script>alert(2)</script>Auckland", CallSign="<b>ZZ</b>"),
+    )
+    ship = adapter._ships["1"]
+    assert ship["name"] == "Evil Ship"
+    # strip_html() replaces each tag with a space (not deletes it outright) before
+    # collapsing whitespace, so text either side of a stripped tag stays word-separated.
+    assert ship["destination"] == "alert(2) Auckland"
+    assert ship["callsign"] == "ZZ"
+
+
+def test_update_ship_position_data_strips_html_from_name():
+    adapter = FakeShipAdapter()
+    adapter.update_ship_position_data(
+        1, _meta(name="<b>Real</b> Name"), _body(Latitude=1.0, Longitude=2.0)
+    )
+    assert adapter._ships["1"]["name"] == "Real Name"

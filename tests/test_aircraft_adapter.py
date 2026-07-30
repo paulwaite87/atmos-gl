@@ -298,3 +298,19 @@ def test_get_active_flight_positions_returns_lat_lng_shape():
     adapter.record_sighting(_record(hex="aa1111", flight="ANZ423", lat=-41.3, lon=174.8))
     positions = adapter.get_active_flight_positions(interest_max_age_s=30.0, limit=10)
     assert positions == [{"callsign": "ANZ423", "lat": -41.3, "lng": 174.8}]
+
+
+def test_record_sighting_strips_html_from_self_reported_adsb_fields():
+    # flight/registration/aircraft_type are self-reported by the aircraft's own
+    # ADS-B transponder with no validation (see _normalize_sighting's docstring) --
+    # defense in depth alongside escaping at the frontend render sink.
+    adapter = FakeAircraftAdapter()
+    adapter.record_sighting(_record(
+        flight="<script>alert(1)</script>ANZ1",
+        r="<b>ZK</b>-TST",
+        t="<i>B738</i>",
+    ))
+    row = adapter._aircraft["a1b2c3"]
+    assert row["flight"] == "alert(1) ANZ1"
+    assert row["registration"] == "ZK -TST"
+    assert row["aircraft_type"] == "B738"

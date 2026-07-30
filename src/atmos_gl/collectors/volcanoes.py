@@ -21,6 +21,7 @@ import xml.etree.ElementTree as ET
 
 from atmos_gl.collectors.base import CollectorBase
 from atmos_gl.db.volcanic_activity_adapter import VolcanicActivityAdapter
+from atmos_gl.lib.text_sanitize import strip_html
 
 logger = logging.getLogger(__name__)
 
@@ -59,21 +60,6 @@ def _parse_gvp_title(title: str | None) -> dict | None:
     else:
         name, country = name_country, None
     return {"name": name, "country": country, "activity_type": activity_type}
-
-
-def _strip_html(text: str | None) -> str | None:
-    """Plain-text collapse of a GVP <description>'s raw HTML -- confirmed live: the
-    feed delivers report text wrapped in <p> tags (via CDATA, so ElementTree hands it
-    back as literal "<p>...</p>" text, not child elements). report_description is
-    rendered by inserting straight into the frontend popup's setHTML() call, so a
-    <p> tag in there becomes a REAL block element -- always starting its own line,
-    which broke the "Report: <text>" row's single-line layout regardless of the
-    label styling. Stripped and whitespace-collapsed here, once, at collection time,
-    rather than papering over it in every render/frontend consumer."""
-    if not text:
-        return text
-    collapsed = " ".join(re.sub(r"<[^>]+>", " ", text).split())
-    return collapsed or None
 
 
 def _parse_georss_point(text: str | None) -> tuple[float, float] | tuple[None, None]:
@@ -134,8 +120,16 @@ class VolcanicActivityCollector(CollectorBase):
             point_el = item.find("georss:point", _GEORSS_NS)
             lat, lon = _parse_georss_point(point_el.text if point_el is not None else None)
 
+            # GVP delivers report text wrapped in real <p> tags (via CDATA, so
+            # ElementTree hands it back as literal "<p>...</p>" text, not child
+            # elements). report_description is inserted straight into the frontend
+            # popup's setHTML() call, so a <p> in there becomes a REAL block element --
+            # always starting its own line, which broke the "Report: <text>" row's
+            # single-line layout regardless of the label styling. strip_html()
+            # (lib/text_sanitize.py) collapses it to plain text once, here, at
+            # collection time.
             description_el = item.find("description")
-            report_description = _strip_html(description_el.text if description_el is not None else None)
+            report_description = strip_html(description_el.text if description_el is not None else None)
 
             items.append(
                 {
