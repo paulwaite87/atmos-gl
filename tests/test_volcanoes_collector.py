@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 
 from atmos_gl.collectors.volcanoes import (
     VolcanicActivityCollector,
+    _fix_mangled_apostrophes,
     _parse_georss_point,
     _parse_guid_vnum,
     _parse_gvp_title,
@@ -98,6 +99,26 @@ def test_parse_georss_point_splits_lat_lon():
 def test_parse_georss_point_returns_none_none_for_malformed_or_missing():
     assert _parse_georss_point(None) == (None, None)
     assert _parse_georss_point("not-a-point") == (None, None)
+
+
+def test_fix_mangled_apostrophes_repairs_the_possessive_pattern():
+    assert _fix_mangled_apostrophes("Etna?s summit craters") == "Etna's summit craters"
+    assert _fix_mangled_apostrophes(
+        "Instituto Geofísico del Perú?s (IGP) Centro"
+    ) == "Instituto Geofísico del Perú's (IGP) Centro"
+
+
+def test_fix_mangled_apostrophes_leaves_a_genuine_question_mark_alone():
+    # A real question mark is always followed by a space or end-of-string, never
+    # directly by a lowercase "s" with no gap -- so this pattern shouldn't misfire.
+    assert _fix_mangled_apostrophes("Is it erupting? Seismicity remains elevated.") == (
+        "Is it erupting? Seismicity remains elevated."
+    )
+
+
+def test_fix_mangled_apostrophes_passes_through_none_and_empty_string():
+    assert _fix_mangled_apostrophes(None) is None
+    assert _fix_mangled_apostrophes("") == ""
 
 
 def test_source_url_tries_gvp_then_hans():
