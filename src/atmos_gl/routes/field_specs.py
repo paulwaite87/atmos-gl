@@ -363,12 +363,17 @@ FIELD_SPECS = {
     ("quakes", "label_fontsize"): _FONTSIZE,
     ("quakes", "min_mag"): SliderSpec(min=0, max=10, step=0.1, decimals=1, prefix="M "),
     ("volcanoes", "icon_zoom"): _ICON_ZOOM,
-    # "Show Smoke Plume" (issue #254) -- Volcano Properties is the SOLE owner of
-    # SO2's opacity/threshold settings, not air_quality's own section (which also
-    # offers SO2 as a selectable Variable, reading these same settings -- see
-    # tasks/air_quality.py's _SETTINGS_SECTION_OVERRIDE). smoke_opacity/so2_min are
-    # deliberately separate keys from any other opacity/threshold concept, since
-    # volcanoes has no other opacity setting today.
+    # "Show Smoke Plume" (issue #254) -- Volcano Properties is the SOLE owner of the
+    # volcanic-specific SO2 variable's opacity/threshold settings (so2_volcanic, NOT
+    # the general SO2 air_quality's own picker offers -- the two are genuinely
+    # different CDS variables, see tasks/air_quality.py's _CAMS_VARS and
+    # lib/air_quality.py's module docstring) -- see tasks/air_quality.py's
+    # _SETTINGS_SECTION_OVERRIDE. smoke_opacity/so2_min are deliberately separate keys
+    # from any other opacity/threshold concept, since volcanoes has no other opacity
+    # setting today. so2_min's range matches ("air_quality", "so2_min") below -- same
+    # magnitude confirmed live (tasks/air_quality.py's _DEFAULT_MIN comment) despite
+    # being a different physical quantity -- but kept as a genuinely separate slider,
+    # not the same one, since the two variables can still legitimately diverge.
     ("volcanoes", "show_smoke_plume"): ToggleSpec(),
     ("volcanoes", "smoke_opacity"): _OPACITY,
     ("volcanoes", "so2_min"): SliderSpec(min=0, max=20, step=0.5, decimals=1, suffix=" DU"),
@@ -567,6 +572,10 @@ FIELD_SPECS = {
     ("air_quality", "pm2_5_min"): SliderSpec(min=0, max=250, step=5, suffix=" µg/m³"),
     ("air_quality", "pm10_min"): SliderSpec(min=0, max=400, step=5, suffix=" µg/m³"),
     ("air_quality", "aod_min"): SliderSpec(min=0, max=3, step=0.1),
+    # General (all-sources) SO2 -- its own threshold, independent of
+    # ("volcanoes", "so2_min") above, which now belongs to the separate
+    # volcanic-specific SO2 variable Smoke Plume renders instead.
+    ("air_quality", "so2_min"): SliderSpec(min=0, max=20, step=0.5, decimals=1, suffix=" DU"),
     # --- Background (shipping_collector, lightning_collector, satellites_collector,
     # data_collector, housekeeper) ---
     ("shipping_collector", "listen_duration"): _LISTEN_DURATION_MINUTES,

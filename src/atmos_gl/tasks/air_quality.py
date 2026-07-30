@@ -54,41 +54,58 @@ _SMOOTH_SIGMA = 1.2
 # across. Fading smoothly over this band removes the hard edge entirely.
 _ALPHA_FEATHER_FRACTION = 0.15
 
-# In-file netCDF variable names -- pm2p5/pm10/aod550 confirmed by downloading and
-# inspecting a real CAMS atmospheric-composition-forecasts file (see the published
+# In-file netCDF variable names -- pm2p5/pm10/aod550/tcso2 confirmed by downloading
+# and inspecting a real CAMS atmospheric-composition-forecasts file (see the published
 # spec's issue comments). NOT the same as the request-time CDS variable identifiers
 # (particulate_matter_2.5um/particulate_matter_10um/total_aerosol_optical_depth_550nm/
-# total_column_sulphur_dioxide, used in collectors/air_quality.py's request builder) --
-# ECMWF's GRIB-to-netCDF conversion exposes them under their short GRIB_cfVarName
-# instead. so2's "tcso2" is the standard ECMWF short name for this parameter (matching
-# the tc*-prefix convention of other total-column fields, e.g. tcwv/tco3) but, unlike
-# the other three, has NOT been confirmed against a real downloaded file yet (issue
-# #254) -- verify against a real render before relying on it in production.
-_CAMS_VARS = {"pm2_5": "pm2p5", "pm10": "pm10", "aod": "aod550", "so2": "tcso2"}
+# total_column_sulphur_dioxide/..., used in collectors/air_quality.py's request
+# builder) -- ECMWF's GRIB-to-netCDF conversion exposes them under their short
+# GRIB_shortName instead.
+#
+# so2_volcanic is a genuinely different variable from so2, not an alternate name for
+# the same data (see lib/air_quality.py's module docstring) -- its in-file short name
+# "tc_VSO2" also follows a different naming convention (underscore + mixed case, not
+# the tc*-prefix pattern tcso2/tcwv/tco3 share), confirmed live same as so2's tcso2.
+_CAMS_VARS = {
+    "pm2_5": "pm2p5", "pm10": "pm10", "aod": "aod550",
+    "so2": "tcso2", "so2_volcanic": "tc_VSO2",
+}
 
 # PM2.5/PM10 are delivered in kg/m^3 (confirmed from the file's own `units`
 # attribute); the display convention (and the spec's default scale ranges) is
 # µg/m^3, matching how every phone weather app and AQI monitor reports particulates.
-# AOD is dimensionless -- no conversion. SO2 is delivered as a total column mass
-# (kg/m^2); converted to Dobson Units (DU), the standard unit for atmospheric column
-# SO2 used by real volcanic-plume tracking products (NASA/OMPS, Copernicus's own SO2
-# index) -- derived from the DU definition (1 DU = 2.6867e20 molecules/m^2) and SO2's
-# molar mass, not an arbitrary scale factor.
+# AOD is dimensionless -- no conversion. Both SO2 variables are delivered as a total
+# column mass (kg/m^2); converted to Dobson Units (DU), the standard unit for
+# atmospheric column SO2 used by real volcanic-plume tracking products (NASA/OMPS,
+# Copernicus's own SO2 index) -- derived from the DU definition (1 DU = 2.6867e20
+# molecules/m^2) and SO2's molar mass, not an arbitrary scale factor. Both variables
+# share the same molar mass (same molecule, SO2) so one conversion factor covers both.
 _SO2_MOLAR_MASS_G_PER_MOL = 64.066  # S (32.06) + 2*O (16.00)
 _AVOGADRO_PER_MOL = 6.02214076e23
 _DU_MOLECULES_PER_M2 = 2.6867e20  # 1 Dobson Unit, standard definition
 _SO2_KG_M2_TO_DU = (1000.0 / _SO2_MOLAR_MASS_G_PER_MOL) * _AVOGADRO_PER_MOL / _DU_MOLECULES_PER_M2
-_UNIT_SCALE = {"pm2_5": 1e9, "pm10": 1e9, "aod": 1.0, "so2": _SO2_KG_M2_TO_DU}
-_DISPLAY_UNIT = {"pm2_5": "µg/m³", "pm10": "µg/m³", "aod": "", "so2": "DU"}
-_DISPLAY_LABEL = {"pm2_5": "PM2.5", "pm10": "PM10", "aod": "Smoke (AOD)", "so2": "SO2 (Sulphur Dioxide)"}
-_TICK_FORMAT = {"pm2_5": "%d", "pm10": "%d", "aod": "%.2f", "so2": "%.1f"}
+_UNIT_SCALE = {
+    "pm2_5": 1e9, "pm10": 1e9, "aod": 1.0, "so2": _SO2_KG_M2_TO_DU, "so2_volcanic": _SO2_KG_M2_TO_DU,
+}
+_DISPLAY_UNIT = {"pm2_5": "µg/m³", "pm10": "µg/m³", "aod": "", "so2": "DU", "so2_volcanic": "DU"}
+_DISPLAY_LABEL = {
+    "pm2_5": "PM2.5", "pm10": "PM10", "aod": "Smoke (AOD)",
+    "so2": "SO2 (Sulphur Dioxide)", "so2_volcanic": "SO2 (Volcanic)",
+}
+_TICK_FORMAT = {"pm2_5": "%d", "pm10": "%d", "aod": "%.2f", "so2": "%.1f", "so2_volcanic": "%.1f"}
 
 # Flat, variable-prefixed setting key (pm2_5_min, aod_min, ...) -- same convention
 # greenhouse_gases.py's _SCALE_SETTING_KEYS uses, since FIELD_SPECS/validate_against_specs
 # (routes/field_specs.py) only understands flat (section, option) keys. Only a MINIMUM
-# is user-configurable, not a max -- see _FIXED_CEILING below. so2_min is read from a
-# DIFFERENT settings section than the other three -- see _SETTINGS_SECTION_OVERRIDE.
-_MIN_SETTING_KEY = {"pm2_5": "pm2_5_min", "pm10": "pm10_min", "aod": "aod_min", "so2": "so2_min"}
+# is user-configurable, not a max -- see _FIXED_CEILING below. Both variables reuse the
+# same "so2_min" key name, but read from DIFFERENT settings sections -- see
+# _SETTINGS_SECTION_OVERRIDE -- so there's no actual collision: FIELD_SPECS declares
+# ("air_quality", "so2_min") for the general field and ("volcanoes", "so2_min") for
+# the volcanic one as two independent options that happen to share a leaf name.
+_MIN_SETTING_KEY = {
+    "pm2_5": "pm2_5_min", "pm10": "pm10_min", "aod": "aod_min",
+    "so2": "so2_min", "so2_volcanic": "so2_min",
+}
 
 # Config fallback when the setting is unset -- a UX/policy default (what a fresh
 # install shows), NOT the same thing as the variable's natural floor (see
@@ -102,19 +119,27 @@ _MIN_SETTING_KEY = {"pm2_5": "pm2_5_min", "pm10": "pm10_min", "aod": "aod_min", 
 # the way surface PM2.5/PM10 do), but a reasonable single number if forced to pick one.
 # SO2's default of 1.0 DU is likewise a judgment call, not an official breakpoint --
 # clearly above typical background/industrial SO2 (usually well under 1 DU) so it
-# highlights genuine plumes without being tuned to any specific eruption.
-_DEFAULT_MIN = {"pm2_5": 35, "pm10": 150, "aod": 0.5, "so2": 1.0}
+# highlights genuine plumes without being tuned to any specific eruption. so2_volcanic
+# reuses the SAME 1.0 DU default -- confirmed live it's the right order of magnitude
+# despite being a different physical quantity: an initial live snapshot's max was
+# ~0.02 DU (a quiet-activity forecast run), but percentile analysis of a later, more
+# active run showed p99.9 ~2.1 DU and a max ~19.9 DU -- this field is far more
+# bursty/skewed than so2 (heavy-tailed toward real eruption events rather than a
+# smoothly-varying background), so a single low-activity snapshot's max badly
+# understates its real range. Don't re-derive a custom scale from one live snapshot
+# again without checking percentiles, not just min/max.
+_DEFAULT_MIN = {"pm2_5": 35, "pm10": 150, "aod": 0.5, "so2": 1.0, "so2_volcanic": 1.0}
 
 # The true physical minimum for each variable -- concentrations/AOD/SO2 can't go
-# negative, so this is always 0 for all four, REGARDLESS of what _DEFAULT_MIN ships
+# negative, so this is always 0 for all five, REGARDLESS of what _DEFAULT_MIN ships
 # as. Used only to decide whether plot()'s alpha fade should apply at all: at vmin ==
 # the natural floor there is no real threshold to feather (nothing in the data can be
 # below it), so fading unconditionally would carve holes out of genuinely-present-but
 # -low readings instead (see plot()'s comment). Comparing against _DEFAULT_MIN instead
 # of this would break the moment _DEFAULT_MIN stops being 0 for some variable (as AOD
-# and now SO2 are not) -- the two are deliberately kept as separate constants so that
-# never happens silently again.
-_NATURAL_FLOOR = {"pm2_5": 0, "pm10": 0, "aod": 0, "so2": 0}
+# and both SO2 variables are not) -- the two are deliberately kept as separate
+# constants so that never happens silently again.
+_NATURAL_FLOOR = {"pm2_5": 0, "pm10": 0, "aod": 0, "so2": 0, "so2_volcanic": 0}
 
 # Fixed, non-configurable top of the colour gradient -- confirmed live against real
 # CAMS data (see the published spec's issue comments): AOD rarely exceeds ~2.5 even
@@ -126,17 +151,20 @@ _NATURAL_FLOOR = {"pm2_5": 0, "pm10": 0, "aod": 0, "so2": 0}
 # a realistic fixed ceiling is a much harder scale to misconfigure. SO2's ceiling of
 # 20 DU is a judgment call (issue #254) covering most tracked volcanic events without
 # needing extreme-event-specific scaling -- not confirmed against real eruption data
-# the way PM2.5/PM10/AOD's ceilings were.
-_FIXED_CEILING = {"pm2_5": 250, "pm10": 400, "aod": 3, "so2": 20}
+# the way PM2.5/PM10/AOD's ceilings were. so2_volcanic reuses the same 20 DU ceiling
+# -- see _DEFAULT_MIN above for why (confirmed the right order of magnitude live,
+# despite being a different physical quantity from so2).
+_FIXED_CEILING = {"pm2_5": 250, "pm10": 400, "aod": 3, "so2": 20, "so2_volcanic": 20}
 
-# so2's opacity/threshold settings are owned by Volcano Properties ("volcanoes"
-# config section, issue #254's "Show Smoke Plume" toggle), not air_quality's own --
-# every other variable's settings section is this task's own (self.section ==
-# "air_quality"), the unmodified default via .get(variable, self.section).
-# Similarly, so2's opacity setting key is "smoke_opacity" (a Volcano Properties
-# concept), not the plain "opacity" key the other three read from their own section.
-_SETTINGS_SECTION_OVERRIDE = {"so2": "volcanoes"}
-_OPACITY_SETTING_KEY = {"so2": "smoke_opacity"}
+# so2_volcanic's opacity/threshold settings are owned by Volcano Properties
+# ("volcanoes" config section, issue #254's "Show Smoke Plume" toggle), not
+# air_quality's own -- every other variable's settings section (so2 included) is this
+# task's own (self.section == "air_quality"), the unmodified default via
+# .get(variable, self.section). Similarly, so2_volcanic's opacity setting key is
+# "smoke_opacity" (a Volcano Properties concept), not the plain "opacity" key the
+# other four read from their own section.
+_SETTINGS_SECTION_OVERRIDE = {"so2_volcanic": "volcanoes"}
+_OPACITY_SETTING_KEY = {"so2_volcanic": "smoke_opacity"}
 
 # Fixed AQI-recognisable gradient (green -> yellow -> orange -> red -> purple),
 # matching the colour convention of every mainstream phone weather app's air-quality
@@ -346,7 +374,20 @@ class AirQualityUpdater(Updater):
             fresh = self._is_render_fresh(out, [current_nc], sig)
             if not fresh:
                 logger.info(f"Generating air quality {variable} plot...")
-                self.plot(variable, current_nc, out)
+                try:
+                    self.plot(variable, current_nc, out)
+                except Exception as e:
+                    # so2_volcanic in particular isn't present in every CDS forecast
+                    # run's response (confirmed live -- unlike the other four
+                    # variables, which have been present in every fetch so far),
+                    # unlike a genuine bug this is an expected, recurring upstream
+                    # condition. One variable's cache miss must not abort the whole
+                    # cycle -- pm2_5/pm10/aod/so2 (already rendered above in this same
+                    # loop when so2_volcanic is the one missing) must still get their
+                    # signatures written, and Smoke Plume simply keeps showing its
+                    # last successfully-rendered PNG until the field reappears.
+                    logger.warning(f"Air quality {variable} plot failed, skipping: {e}")
+                    continue
                 self._write_render_signature(out, sig)
 
         # Publish whichever variable is currently configured -- unconditionally of
