@@ -2,7 +2,7 @@
 // satellites.js (architecture review candidate "a home for copy-pasted legend/
 // hover-popup plumbing"). vitest runs in the default "node" environment, so
 // maplibregl.Popup and the map object are faked minimally here.
-import { describe, test, expect, vi, beforeEach } from 'vitest';
+import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest';
 import { hoverPopup } from './_hoverpopup.js';
 
 function fakePopupElement() {
@@ -40,6 +40,11 @@ function fakeMap() {
 
 beforeEach(() => {
     globalThis.maplibregl = { Popup: vi.fn(fakePopup) };
+    vi.useFakeTimers();
+});
+
+afterEach(() => {
+    vi.useRealTimers();
 });
 
 describe('hoverPopup', () => {
@@ -79,7 +84,7 @@ describe('hoverPopup', () => {
         expect(popup.addTo).not.toHaveBeenCalled();
     });
 
-    test('mouseleave resets the cursor and removes the popup', () => {
+    test('mouseleave resets the cursor and removes the popup after the close delay', () => {
         const map = fakeMap();
         hoverPopup(map, 'quakes-layer', { html: () => '<div/>' });
 
@@ -87,9 +92,65 @@ describe('hoverPopup', () => {
             features: [{ properties: {}, geometry: { coordinates: [0, 0] } }],
         });
         map._handlers['mouseleave:quakes-layer']();
+        vi.advanceTimersByTime(200);
 
         expect(map.getCanvas().style.cursor).toBe('');
         const popup = globalThis.maplibregl.Popup.mock.results[0].value;
+        expect(popup.remove).toHaveBeenCalled();
+    });
+
+    // ---- grace period: leaving the marker doesn't remove the popup instantly --
+    // the cursor needs time to cross the offset gap into the popup itself (e.g. to
+    // reach a scrollbar on tall content) -----------------------------------------
+
+    test('mouseleave does not remove the popup immediately -- only after the close delay elapses', () => {
+        const map = fakeMap();
+        hoverPopup(map, 'quakes-layer', { html: () => '<div/>' });
+        const popup = globalThis.maplibregl.Popup.mock.results[0].value;
+
+        map._handlers['mouseenter:quakes-layer']({
+            features: [{ properties: {}, geometry: { coordinates: [0, 0] } }],
+        });
+        map._handlers['mouseleave:quakes-layer']();
+
+        expect(popup.remove).not.toHaveBeenCalled();
+        vi.advanceTimersByTime(199);
+        expect(popup.remove).not.toHaveBeenCalled();
+        vi.advanceTimersByTime(1);
+        expect(popup.remove).toHaveBeenCalled();
+    });
+
+    test('re-entering the marker within the close delay cancels the pending close', () => {
+        const map = fakeMap();
+        hoverPopup(map, 'quakes-layer', { html: () => '<div/>' });
+        const popup = globalThis.maplibregl.Popup.mock.results[0].value;
+
+        map._handlers['mouseenter:quakes-layer']({
+            features: [{ properties: {}, geometry: { coordinates: [0, 0] } }],
+        });
+        map._handlers['mouseleave:quakes-layer']();
+        vi.advanceTimersByTime(100);
+        map._handlers['mouseenter:quakes-layer']({
+            features: [{ properties: {}, geometry: { coordinates: [0, 0] } }],
+        });
+        vi.advanceTimersByTime(200);
+
+        expect(popup.remove).not.toHaveBeenCalled();
+    });
+
+    test('a custom closeDelayMs is honoured', () => {
+        const map = fakeMap();
+        hoverPopup(map, 'quakes-layer', { html: () => '<div/>', closeDelayMs: 500 });
+        const popup = globalThis.maplibregl.Popup.mock.results[0].value;
+
+        map._handlers['mouseenter:quakes-layer']({
+            features: [{ properties: {}, geometry: { coordinates: [0, 0] } }],
+        });
+        map._handlers['mouseleave:quakes-layer']();
+        vi.advanceTimersByTime(200);
+
+        expect(popup.remove).not.toHaveBeenCalled();
+        vi.advanceTimersByTime(300);
         expect(popup.remove).toHaveBeenCalled();
     });
 
@@ -106,6 +167,23 @@ describe('hoverPopup', () => {
         });
         popup.getElement()._listeners.mouseenter();   // mouse moves onto the popup
         map._handlers['mouseleave:flightradar-layer'](); // ...then off the marker
+        vi.advanceTimersByTime(200);
+
+        expect(popup.remove).not.toHaveBeenCalled();
+    });
+
+    test('entering the popup within the close delay (after leaving the marker) cancels the pending close', () => {
+        const map = fakeMap();
+        hoverPopup(map, 'flightradar-layer', { html: () => '<div/>' });
+        const popup = globalThis.maplibregl.Popup.mock.results[0].value;
+
+        map._handlers['mouseenter:flightradar-layer']({
+            features: [{ properties: {}, geometry: { coordinates: [0, 0] } }],
+        });
+        map._handlers['mouseleave:flightradar-layer']();  // gap-crossing moment
+        vi.advanceTimersByTime(100);                       // still mid-flight
+        popup.getElement()._listeners.mouseenter();         // ...arrives at the popup
+        vi.advanceTimersByTime(200);
 
         expect(popup.remove).not.toHaveBeenCalled();
     });
@@ -121,6 +199,7 @@ describe('hoverPopup', () => {
         popup.getElement()._listeners.mouseenter();
         map._handlers['mouseleave:flightradar-layer']();
         popup.getElement()._listeners.mouseleave();   // mouse now leaves the popup too
+        vi.advanceTimersByTime(200);
 
         expect(popup.remove).toHaveBeenCalled();
         expect(map.getCanvas().style.cursor).toBe('');
@@ -136,6 +215,7 @@ describe('hoverPopup', () => {
         });
         popup.getElement()._listeners.mouseenter();
         popup.getElement()._listeners.mouseleave();   // back onto the marker, never left it
+        vi.advanceTimersByTime(200);
 
         expect(popup.remove).not.toHaveBeenCalled();
     });
@@ -203,5 +283,22 @@ describe('hoverPopup', () => {
 
         expect(popup.getElement().removeEventListener).toHaveBeenCalledWith('mouseenter', expect.any(Function));
         expect(popup.getElement().removeEventListener).toHaveBeenCalledWith('mouseleave', expect.any(Function));
+    });
+
+    test('stop() cancels a pending close timer rather than letting it fire later', () => {
+        const map = fakeMap();
+        const stop = hoverPopup(map, 'quakes-layer', { html: () => '<div/>' });
+        const popup = globalThis.maplibregl.Popup.mock.results[0].value;
+
+        map._handlers['mouseenter:quakes-layer']({
+            features: [{ properties: {}, geometry: { coordinates: [0, 0] } }],
+        });
+        map._handlers['mouseleave:quakes-layer'](); // schedules a delayed close
+        stop();                                      // torn down before it fires
+        popup.remove.mockClear();
+
+        vi.advanceTimersByTime(200);
+
+        expect(popup.remove).not.toHaveBeenCalled();
     });
 });

@@ -21,27 +21,48 @@
  * need this) would still close it before the mouse ever reaches the popup. Every
  * caller gets this for free; simpler content (a one-line quake magnitude, say)
  * simply never has a reason to be entered, so the added listeners are inert there.
+ *
+ * closeDelayMs (default 200): leaving the marker doesn't remove the popup
+ * immediately -- it's offset from the marker (see `offset`), so the cursor has to
+ * cross a real gap of neither-hovered space to reach it, and an instant remove()
+ * never gave it time to arrive. This is a grace period, not a fixed close delay:
+ * it's cancelled the moment the mouse reaches the marker or the popup (see
+ * cancelClose()), so a genuine move-away still closes promptly once the timer
+ * fires. Long content needing to actually scroll (ui/index.html's
+ * .maplibregl-popup-content max-height) made this gap-crossing failure visible,
+ * but it applies to every caller uniformly, not just scrollable popups.
  */
-export function hoverPopup(map, layerId, { offset = 15, html, maxWidth }) {
+export function hoverPopup(map, layerId, { offset = 15, html, maxWidth, closeDelayMs = 200 }) {
     const popupOpts = { closeButton: false, closeOnClick: false, offset };
     if (maxWidth) popupOpts.maxWidth = maxWidth;
     const popup = new maplibregl.Popup(popupOpts);
 
     let overMarker = false;
     let overPopup = false;
+    let closeTimer = null;
 
-    const closeIfNeitherHovered = () => {
-        if (overMarker || overPopup) return;
-        map.getCanvas().style.cursor = '';
-        popup.remove();
+    const cancelClose = () => {
+        if (closeTimer) { clearTimeout(closeTimer); closeTimer = null; }
     };
 
-    const onPopupEnter = () => { overPopup = true; };
+    const closeIfNeitherHovered = () => {
+        cancelClose();
+        if (overMarker || overPopup) return;
+        closeTimer = setTimeout(() => {
+            closeTimer = null;
+            if (overMarker || overPopup) return;
+            map.getCanvas().style.cursor = '';
+            popup.remove();
+        }, closeDelayMs);
+    };
+
+    const onPopupEnter = () => { overPopup = true; cancelClose(); };
     const onPopupLeave = () => { overPopup = false; closeIfNeitherHovered(); };
 
     const onEnter = (e) => {
         if (!e.features.length) return;
         overMarker = true;
+        cancelClose();
         map.getCanvas().style.cursor = 'pointer';
         const coords = e.features[0].geometry.coordinates.slice();
         popup.setLngLat(coords).setHTML(html(e.features[0])).addTo(map);
@@ -59,6 +80,7 @@ export function hoverPopup(map, layerId, { offset = 15, html, maxWidth }) {
     map.on('mouseleave', layerId, onLeave);
 
     return () => {
+        cancelClose();
         map.off('mouseenter', layerId, onEnter);
         map.off('mouseleave', layerId, onLeave);
         const el = popup.getElement();
