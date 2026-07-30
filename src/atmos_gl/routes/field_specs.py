@@ -128,7 +128,7 @@ _HOURS = SliderSpec(min=0, max=96, step=1, suffix="h")
 _MINUTES = SliderSpec(min=0, max=120, step=1, suffix="mins")
 _FONTSIZE = SliderSpec(min=6, max=24, step=1, suffix="px")
 _OPACITY = SliderSpec(min=0, max=100, step=1)
-_PARTICLE_ALPHA = SliderSpec(min=0, max=100, step=5)
+_PARTICLE_OPACITY = SliderSpec(min=0, max=100, step=5)
 _PARTICLE_SPEED_LIKE = SliderSpec(min=0, max=100, step=1)
 _PARTICLE_SIZE = SliderSpec(min=0.1, max=5.0, step=0.05, decimals=2)
 _TRAIL_LENGTH = SliderSpec(min=0, max=100, step=1)
@@ -452,7 +452,7 @@ FIELD_SPECS = {
     # uses) -- live tuning found wind's useful values sitting in a much narrower band,
     # so its sliders were rescaled to give that band the full 0-100 (or 1-5) resolution.
     ("wind", "particle_speed"): SliderSpec(min=10, max=100, step=1),
-    ("wind", "particle_alpha"): _PARTICLE_ALPHA,
+    ("wind", "particle_opacity"): _PARTICLE_OPACITY,
     ("wind", "flow_coherence_radius"): _FLOW_COHERENCE_RADIUS,
     ("wind", "trail_length"): SliderSpec(min=10, max=100, step=1),
     ("wind", "trail_thickness"): SliderSpec(min=1, max=5, step=1),
@@ -472,7 +472,7 @@ FIELD_SPECS = {
     ]),
     ("jetstream", "opacity"): _OPACITY,
     ("jetstream", "particle_speed"): _PARTICLE_SPEED_LIKE,
-    ("jetstream", "particle_alpha"): _PARTICLE_ALPHA,
+    ("jetstream", "particle_opacity"): _PARTICLE_OPACITY,
     ("jetstream", "flow_coherence_radius"): _FLOW_COHERENCE_RADIUS,
     ("jetstream", "trail_length"): _TRAIL_LENGTH,
     ("jetstream", "trail_thickness"): _TRAIL_THICKNESS,
@@ -522,7 +522,7 @@ FIELD_SPECS = {
     ]),
     ("currents", "opacity"): _OPACITY,
     ("currents", "particle_speed"): _PARTICLE_SPEED_LIKE,
-    ("currents", "particle_alpha"): _PARTICLE_ALPHA,
+    ("currents", "particle_opacity"): _PARTICLE_OPACITY,
     ("currents", "current_speed_minimum"): SliderSpec(
         min=0.0, max=5.0, step=0.1, decimals=2, suffix=" m/s"
     ),
@@ -542,7 +542,7 @@ FIELD_SPECS = {
     ("waves", "particle_speed"): _PARTICLE_SPEED_LIKE,
     ("waves", "particle_size"): _PARTICLE_SIZE,
     ("waves", "bar_length"): SliderSpec(min=1, max=8, step=1),
-    ("waves", "particle_alpha"): _PARTICLE_ALPHA,
+    ("waves", "particle_opacity"): _PARTICLE_OPACITY,
     ("waves", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
     ("temperature", "level_of_detail"): _LEVEL_OF_DETAIL,
     ("temperature", "opacity"): _OPACITY,
@@ -636,8 +636,8 @@ _LABEL_OVERRIDES = {
     ("currents", "fill_floor"): "Fill Floor (min speed shown)",
     ("currents", "fill_knee"): "Fill Knee (full-opacity speed)",
     ("wind", "vector_color"): "Particle color",
-    ("wind", "particle_alpha"): "Particle opacity",
-    ("currents", "particle_alpha"): "Particle opacity",
+    # particle_opacity needs no override -- field_label()'s generic "spaced +
+    # capitalised" fallback already produces "Particle opacity" from the option name.
     ("wind", "opacity"): "Heatmap opacity",
     ("currents", "opacity"): "Heatmap opacity",
     ("ozone", "critical_du"): "Critical Ozone Threshold (Dobson Units)",

@@ -33,12 +33,12 @@ describe('defaultSpeed', () => {
 });
 
 describe('defaultAlpha', () => {
-    test('maps particle_alpha 0-100 to 0-1', () => {
-        expect(defaultAlpha({ particle_alpha: 50 })).toBeCloseTo(0.5);
+    test('maps particle_opacity 0-100 to 0-1', () => {
+        expect(defaultAlpha({ particle_opacity: 50 })).toBeCloseTo(0.5);
     });
     test('clamps out-of-range values', () => {
-        expect(defaultAlpha({ particle_alpha: 150 })).toBeCloseTo(1.0);
-        expect(defaultAlpha({ particle_alpha: -20 })).toBeCloseTo(0);
+        expect(defaultAlpha({ particle_opacity: 150 })).toBeCloseTo(1.0);
+        expect(defaultAlpha({ particle_opacity: -20 })).toBeCloseTo(0);
     });
     test('falls back to 90 when missing', () => {
         expect(defaultAlpha({})).toBeCloseTo(0.9);

@@ -30,19 +30,15 @@ class StormsCollector(CollectorBase):
         self.storm_adapter = StormAdapter()
 
     def source_url(self) -> str | None:
-        """Storms' two ATCF mirrors (jtwc_url/nhc_url) live directly in its own config
-        section, not data_collector.datasources -- CollectorBase.source_url()'s
-        datasource_key lookup doesn't apply here. JTWC is the primary source shown."""
-        return (
-            self.settings.get("jtwc_url", "").strip()
-            or self.settings.get("nhc_url", "").strip()
-            or None
-        )
+        """Storms' two ATCF mirrors live in data_collector.datasources under two keys
+        (jtwc/nhc), not the single datasource_key CollectorBase.source_url() looks up --
+        overridden here to try both, JTWC first as the primary source shown."""
+        return self.datasource_url("jtwc") or self.datasource_url("nhc") or None
 
     def has_new_data(self) -> bool:
         """HEAD both ATCF directory URLs; skip if neither has changed."""
-        jtwc = self.settings.get("jtwc_url", "").strip().rstrip("/")
-        nhc = self.settings.get("nhc_url", "").strip().rstrip("/")
+        jtwc = self.datasource_url("jtwc")
+        nhc = self.datasource_url("nhc")
         changed = False
         for url in filter(None, [jtwc, nhc]):
             result = self._head_changed(url)
@@ -237,8 +233,8 @@ class StormsCollector(CollectorBase):
         return left_points + right_points[::-1] + [left_points[0]]
 
     def collect(self) -> None:
-        jtwc = self.settings.get("jtwc_url", "").strip()
-        nhc_fst = self.settings.get("nhc_url", "").strip()
+        jtwc = self.datasource_url("jtwc")
+        nhc_fst = self.datasource_url("nhc")
         nhc_btk = nhc_fst.replace("fst", "btk")
         expiry_days = self.settings.get("expiry_days", 4)
 
