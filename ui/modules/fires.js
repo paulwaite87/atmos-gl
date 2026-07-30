@@ -107,7 +107,7 @@ export function loadLayer(map, config, fullConfig = {}) {
     // the hotspot circle layer, so dots always render on top of the risk shading.
     const legendSlotId = 'fires-legend-slot';
     const setLegend = (cfg) => {
-        showLegend(legendSlotId, `${window.MAP_UI}/${keyFilename(cfg.outfile)}?t=${Date.now()}`);
+        showLegend(legendSlotId, `${window.MAP_UI}/${keyFilename(cfg.outfile)}?t=${Date.now()}`, opacityUniform(cfg, 0.7));
     };
 
     const stopHeatmap = createFillLayer(map, {

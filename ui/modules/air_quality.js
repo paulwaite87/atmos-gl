@@ -1,5 +1,6 @@
 import { liveLayerSync } from './_refresh.js';
 import { keyFilename, showLegend, removeLegend } from './_legend.js';
+import { opacityUniform } from './_opacity.js';
 
 // Insert "_<variable>" before the extension: "data/air_quality.png" ->
 // "data/air_quality_pm2_5.png". The backend always keeps all 3 variables fresh on
@@ -25,7 +26,11 @@ export function loadLayer(map, config) {
     const urlFor = (cfg) => `${window.MAP_UI}/${variableFilename(cfg.outfile, cfg.variable)}`;
 
     const addLegend = (cfg) => {
-        showLegend(slotId, `${window.MAP_UI}/${keyFilename(variableFilename(cfg.outfile, cfg.variable))}?t=${Date.now()}`);
+        showLegend(
+            slotId,
+            `${window.MAP_UI}/${keyFilename(variableFilename(cfg.outfile, cfg.variable))}?t=${Date.now()}`,
+            opacityUniform(cfg, 1),
+        );
     };
 
     const mount = (cfg) => {

@@ -99,7 +99,7 @@ export async function loadLayer(map, config, fullConfig = {}) {
     // visibly inconsistent with the rest (different bar height/length, its own
     // font-size convention, no shared styling code).
     const addLegend = (cfg) => {
-        showLegend(slotId, `${window.MAP_UI}/${keyFilename(cfg.outfile)}?t=${Date.now()}`);
+        showLegend(slotId, `${window.MAP_UI}/${keyFilename(cfg.outfile)}?t=${Date.now()}`, opacityUniform(cfg, 0.6));
     };
 
     // Keep the static-raster (non-stepping) heatmap opacity live too. Fill (stepping) mode
