@@ -160,7 +160,7 @@ is a really informative layer to have running. Once the key is in place, enable
 
 #### Copernicus CDS/ADS API Key
 This is optional.
-It is for the `Greenhouse Gases` layer specifically — without it that layer stays disabled.
+It is for the `Greenhouse Gases` and `Air Quality` layers — without it both stay disabled.
 
 Register for a free account at https://ads.atmosphere.copernicus.eu/ (click
 `Login/Register` — the same login also works for Copernicus's other data stores, so
@@ -169,10 +169,12 @@ is shown on your profile page once logged in. Put it in `.env` as `CDSAPI_KEY` �
 exact name, no `AIS_`/`OPENWEATHER_`-style prefix, since it's the literal name the
 `cdsapi` Python library itself reads.
 
-One extra one-time step which registration alone doesn't cover: **accepting the CC-BY
-licence both datasets require**. The general Terms of Use / Privacy Statement
-you accept when registering do NOT cover this — it's a separate, per-dataset
-licence, not an account-level setting, so you won't find it under your profile.
+One extra one-time step which registration alone doesn't cover, for `Greenhouse Gases`
+only: **accepting the CC-BY licence both of its CAMS datasets require**. The general
+Terms of Use / Privacy Statement you accept when registering do NOT cover this — it's
+a separate, per-dataset licence, not an account-level setting, so you won't find it
+under your profile. `Air Quality`'s CAMS dataset carries no such extra licence-click,
+so if you only care about that layer you can skip this step entirely.
 
 To accept it: open either dataset's page —
 [cams-global-greenhouse-gas-forecasts](https://ads.atmosphere.copernicus.eu/datasets/cams-global-greenhouse-gas-forecasts)
@@ -184,8 +186,9 @@ form. There's a licence checkbox/accept button down there, separate from the acc
 terms you saw at sign-up. Both datasets require the *same* licence (`CC-BY-4.0`), so
 accepting it once, on either page, covers both — no need to repeat it on the second.
 
-Once both the key is set and the licence is accepted, select `Greenhouse Gases` in
-the Atmos GL Configurator's `Show` tab, under the `Climate` group.
+Once the key is set (and, for Greenhouse Gases, the licence accepted), select
+`Greenhouse Gases` in the Atmos GL Configurator's `Show` tab under the `Climate`
+group, and/or `Air Quality` under the `Events` group.
 
 ### Forecasting
 The map has a time scrubber built right into it — play, step forward/back, or drag through
@@ -267,6 +270,7 @@ The full list is:
 * Active storms
 * Earthquakes
 * Volcanoes
+* Air Quality (PM2.5/PM10/Smoke)
 * Shipping
 * Flight Radar
 * Satellites
@@ -415,6 +419,26 @@ fires are most probably burning. When you see a group of many together spread ac
 a line or in a cluster, there is a high probability is is a wildfire.
 ![Wildfires](docs/atmos-gl-wildfires.png)
 
+#### Air Quality
+Needs a [Copernicus CDS/ADS API Key](#copernicus-cdsads-api-key), the same one used by
+Greenhouse Gases below. Shows near-real-time air quality sourced from Copernicus CAMS's
+global atmospheric composition forecast. A `Variable` selector switches between:
+
+* `PM2.5` — fine particulate matter, the pollutant most closely tied to respiratory and
+  cardiovascular health effects.
+* `PM10` — coarser particulate matter (dust, pollen, larger combustion particles).
+* `Smoke (AOD)` — Aerosol Optical Depth, a column-wide measure most useful for tracking
+  wildfire smoke plumes as they spread. Being dimensionless, it has no official
+  health-based threshold the way surface PM2.5/PM10 do.
+
+The `PM2.5`/`PM10` dropdown entries show the concentration widely considered "Unhealthy
+for Sensitive Groups" by the US EPA's Air Quality Index, and that same value is the
+default for the `Critical threshold` slider — readings below it fade out via a smooth
+transparency ramp, so the map highlights genuinely elevated readings rather than
+colourising the whole globe. All three variables render every cycle, so switching
+between them in the config UI applies instantly, no render wait. Colours follow the
+familiar green → yellow → orange → red → purple AQI convention used by most phone
+weather apps' air-quality widgets.
 
 ### Climate
 This area is quite fascinating as it covers the entire planet. The data is sourced
@@ -572,6 +596,7 @@ The data collector is a separate background process which collects data for:
 * Satellites
 * SST
 * Greenhouse Gases (CO2/CH4)
+* Air Quality (PM2.5/PM10/Smoke AOD)
 * GFS Atmos:
   * Isobars
   * Precipitation
