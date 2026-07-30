@@ -204,9 +204,33 @@ def test_config_page_renders_prefixed_slider_badge():
     assert 'id="badge-quakes__min_mag"' in resp.text
 
 
-def test_config_page_selects_correct_option_despite_stored_int_vs_string_options():
+def _write_temp_config(tmp_path, **sections):
+    """Writes a minimal config JSON containing just the given sections and points
+    CONFIG_PATH at it (same pattern as test_status_route.py's _write_temp_config) --
+    render_tab_group's `if section_data is not none` guard skips any section absent
+    from the dict, so a fixture only needs the section(s) a given test actually cares
+    about. Isolates a test from whatever the real config/atmos-gl.json currently holds
+    -- that file is gitignored and "drifts constantly during normal use" (CLAUDE.md's
+    Settings changes section), so asserting against its live values (as three tests
+    here used to) is inherently flaky: it only passes by coincidence of the dev
+    environment's current state, not anything the code under test guarantees."""
+    path = tmp_path / "atmos-gl.json"
+    path.write_text(json.dumps(sections))
+    return path
+
+
+def test_config_page_selects_correct_option_despite_stored_int_vs_string_options(tmp_path, monkeypatch):
     """vei_min is stored as an int (4) in config.json but SelectSpec options are
     strings ("4") -- regression guard for the type-mismatch bug this exposed."""
+    config_path = _write_temp_config(
+        tmp_path,
+        volcanoes={
+            "enabled": False, "icon_zoom": 1.0, "significant_only": True,
+            "vei_min": 4, "erupt_date_codes": [], "runs_per_day": 1,
+        },
+    )
+    monkeypatch.setenv("CONFIG_PATH", str(config_path))
+
     resp = client.get("/config")
     html = resp.text
     idx = html.index('id="volcanoes__vei_min"')
@@ -214,7 +238,16 @@ def test_config_page_selects_correct_option_despite_stored_int_vs_string_options
     assert '<option value="4" selected>' in select_html
 
 
-def test_config_page_renders_multiselect_with_correct_options_checked():
+def test_config_page_renders_multiselect_with_correct_options_checked(tmp_path, monkeypatch):
+    config_path = _write_temp_config(
+        tmp_path,
+        volcanoes={
+            "enabled": False, "icon_zoom": 1.0, "significant_only": True,
+            "vei_min": 0, "erupt_date_codes": ["D1"], "runs_per_day": 1,
+        },
+    )
+    monkeypatch.setenv("CONFIG_PATH", str(config_path))
+
     resp = client.get("/config")
     html = resp.text
     assert 'id="volcanoes__erupt_date_codes"' in html
@@ -224,11 +257,19 @@ def test_config_page_renders_multiselect_with_correct_options_checked():
     assert '<option value="D1" selected>' in select_html
 
 
-def test_config_page_renders_grouped_transfer_with_active_options_on_the_right():
-    """satellites_collector.groups (live config: ["stations", "weather", "science",
-    "resource"]) -- active groups render in the right ("active"/saved) select, grouped
-    under the same <optgroup> headings as the left ("available") select, and never in
-    both at once."""
+def test_config_page_renders_grouped_transfer_with_active_options_on_the_right(tmp_path, monkeypatch):
+    """satellites_collector.groups -- active groups render in the right ("active"/
+    saved) select, grouped under the same <optgroup> headings as the left
+    ("available") select, and never in both at once."""
+    config_path = _write_temp_config(
+        tmp_path,
+        satellites_collector={
+            "enabled": True, "groups": ["stations", "weather", "science", "resource"],
+            "runs_per_day": 6, "log_level": "INFO",
+        },
+    )
+    monkeypatch.setenv("CONFIG_PATH", str(config_path))
+
     resp = client.get("/config")
     html = resp.text
     assert 'id="satellites_collector__groups__available"' in html
@@ -240,7 +281,7 @@ def test_config_page_renders_grouped_transfer_with_active_options_on_the_right()
     available_html = html[avail_idx:active_idx]
     active_html = html[active_idx : html.index("</select>", active_idx)]
 
-    # "stations" is active (in the live config) -> right box only.
+    # "stations" is active (in the fixture) -> right box only.
     assert '<option value="stations">' in active_html
     assert '<option value="stations">' not in available_html
     # "starlink" is not active -> left box only.
