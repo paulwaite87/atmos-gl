@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Copernicus CAMS PM2.5/PM10/smoke-AOD/SO2 source for the air_quality layer, via the
-CDS API (CDSAPI_KEY) -- same submit-then-poll mechanics, credential resolution, and
+"""Copernicus CAMS PM2.5/PM10/smoke-AOD/SO2(x2) source for the air_quality layer, via
+the CDS API (CDSAPI_KEY) -- same submit-then-poll mechanics, credential resolution, and
 bounded timeout as CamsGhgForecastCollector (collectors/greenhouse_gases.py), shared
 via lib/cds_client.py rather than re-implemented here.
 
@@ -24,10 +24,17 @@ neither key at all).
 SO2 (issue #254, the Volcano Properties "Smoke Plume" overlay) added as a 4th
 variable in the same combined request -- `total_column_sulphur_dioxide`, the
 vertically-integrated column quantity (confirmed live against the dataset's own
-form schema), not `sulphur_dioxide` (the 3D near-surface mixing ratio). Fetched
-unconditionally alongside PM2.5/PM10/AOD regardless of whether Air Quality or
-Volcanoes is the layer currently enabled -- this collector has no knowledge of
-either layer's settings, same as before.
+form schema), not `sulphur_dioxide` (the 3D near-surface mixing ratio). A 5th,
+`total_column_volcanic_sulphur_dioxide`, added alongside it (not instead of) -- CDS's
+own schema exposes this as a genuinely distinct variable, not a filtered view of the
+general one, isolating ash-plume-associated SO2 specifically rather than all
+atmospheric SO2 from every source (industrial, general atmospheric, etc.). Both
+confirmed live against real downloaded files -- general SO2 as in-file "tcso2",
+volcanic as in-file "tc_VSO2" (see tasks/air_quality.py's _CAMS_VARS). general SO2
+stays a selectable Air Quality Variable option; volcanic SO2 backs Smoke Plume
+exclusively (see tasks/air_quality.py's _SETTINGS_SECTION_OVERRIDE). Both fetched
+unconditionally regardless of whether Air Quality or Volcanoes is the layer currently
+enabled -- this collector has no knowledge of either layer's settings, same as before.
 """
 import logging
 from datetime import datetime, timedelta, timezone
@@ -49,6 +56,7 @@ _CAMS_FORECAST_VARS = (
     "particulate_matter_10um",
     "total_aerosol_optical_depth_550nm",
     "total_column_sulphur_dioxide",
+    "total_column_volcanic_sulphur_dioxide",
 )
 # CAMS issues two atmospheric-composition forecast runs per day (00Z/12Z), unlike
 # greenhouse_gases' one-run/day dataset -- the newest run isn't always published yet

@@ -4,13 +4,16 @@ import { fetchOrThrow, popupCard, preloadIcons } from './_feedhelpers.js';
 import { keyFilename, showLegend, removeLegend } from './_legend.js';
 import { opacityUniform } from './_opacity.js';
 
-// AirQualityUpdater._output_path_for("so2") (tasks/air_quality.py), derived from
-// lib/output_files.py's OUTFILES["air_quality"] -- rendered unconditionally every
+// AirQualityUpdater._output_path_for("so2_volcanic") (tasks/air_quality.py), derived
+// from lib/output_files.py's OUTFILES["air_quality"] -- rendered unconditionally every
 // cycle regardless of whether Air Quality OR Volcanoes is enabled (issue #254), so
 // it's always safe to read directly here. Its opacity/threshold are baked in
 // server-side from the "volcanoes" section (Volcano Properties is the sole settings
 // owner -- see tasks/air_quality.py's _SETTINGS_SECTION_OVERRIDE), not this file.
-const SMOKE_IMAGE = 'data/air_quality_so2.png';
+// so2_volcanic (NOT so2, air_quality's own general SO2 picker option) is a distinct
+// CDS variable isolating ash-plume-associated SO2 specifically -- see
+// tasks/air_quality.py's _CAMS_VARS and lib/air_quality.py's module docstring.
+const SMOKE_IMAGE = 'data/air_quality_so2_volcanic.png';
 
 export function loadLayer(map, config) {
     const sourceId = 'volcanoes-source';
