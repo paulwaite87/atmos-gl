@@ -24,6 +24,7 @@ from atmos_gl.lib.scheduling import interval_elapsed
 from atmos_gl.db.ship_adapter import ShipAdapter
 from atmos_gl.db.aircraft_adapter import AircraftAdapter
 from atmos_gl.db.volcanic_activity_adapter import VolcanicActivityAdapter
+from atmos_gl.db.process_status_adapter import ProcessStatusAdapter
 
 logger = logging.getLogger("atmos_gl.housekeeper")
 
@@ -60,6 +61,7 @@ class Housekeeper:
         self.config_path = config_path
         self.config = AtmosGLConfig(config_path)
         self.settings = {}
+        self.process_status_adapter = ProcessStatusAdapter()
         self.refresh_settings()
         logger.debug("Initializing Housekeeper")
 
@@ -339,6 +341,12 @@ class Housekeeper:
         logger.info("Housekeeper service started.")
         while True:
             self.refresh_settings()
+            # Coarse liveness heartbeat for the System Status section (Global tab) --
+            # independent of `enabled`, so it keeps ticking even while sweeping itself
+            # is disabled. A dead container simply stops advancing this row.
+            self.process_status_adapter.record_process_run(
+                "housekeeper", "service", success=True
+            )
             if self.settings.get("enabled", False):
                 now = time.time()
                 interval = self._interval_seconds()

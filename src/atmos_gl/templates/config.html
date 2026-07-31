@@ -25,6 +25,13 @@
         .status-health-icon.health-rate-limited { color: #ffc107; }
         .status-health-icon.health-blocked { color: #dc3545; }
         .status-health-icon.health-error { color: #dc3545; }
+        .status-health-icon.health-unknown { color: #6c757d; }
+        /* System Status section (Global tab): reuses .status-row/.status-fill/
+           .status-health-icon above for visual consistency with the Data Status tab,
+           but its rows (service heartbeat / DB ping / disk usage) don't fit that
+           tab's percent+segments+channel-toggle shape, so they get their own simple
+           label + detail-text layout instead of status-track's progress bar. */
+        .status-detail { font-size: 0.85rem; color: #adb5bd; flex: 1 1 auto; }
         .status-label-block { width: 160px; flex: 0 0 160px; }
         .status-label { font-weight: 600; font-size: 0.9rem; overflow-wrap: break-word; }
         /* Collector rows with a known upstream URL (see CollectorBase.source_url()) render
@@ -39,6 +46,11 @@
         .status-fill.ok { background-color: #198754; }
         .status-fill.warn { background-color: #ffc107; }
         .status-fill.bad { background-color: #dc3545; }
+        /* Data Volume row's track shows TWO stacked segments -- our own data/ footprint
+           (a fixed accent colour, independent of the overall ok/warn/bad reading) then
+           everything else used on that volume (the health-coloured segment) -- so
+           "how much is us vs. the rest of the disk" is visible at a glance. */
+        .status-fill.ours { background-color: #0d6efd; }
         .status-fill.off { background-color: #ced4da; }
         /* Multi-hour layers (isobars, wind, ...) replace the single solid .status-fill
            with one of these per forecast hour -- green once rendered, light amber while
@@ -107,6 +119,11 @@
                     <div class="tab-pane fade show active" id="global-pane">
                         <div id="container-global">
                             {{ field_macros.render_tab_group(["common", "map_builder", "animation"], config_data) }}
+                        </div>
+                        <div class="grouping-box">
+                            <h5>System Status</h5>
+                            <p class="text-muted small mb-3">Backend service liveness, database connectivity, and data volume usage -- see the Data Status tab for per-layer data freshness.</p>
+                            <div id="container-system-status"></div>
                         </div>
                     </div>
 
@@ -249,10 +266,8 @@
         const CONFIG_API_URL = API_URL + "/config";
         // ui_router routes (config.py) return HTML, not JSON, so they live outside /api.
         const CONFIG_PAGE_BASE = API_URL.replace(/\/api$/, "");
-        const REGIONS_API_URL = API_URL + "/regions";
         const VESSEL_CLASSES_API_URL = API_URL + "/vessel_classes";
         let masterConfigCache = {};
-        let dynamicRegions = {}
         let dynamicVesselClasses = {}
 
         const COLOR_MAP = {
@@ -325,13 +340,6 @@
                 const configJson = await configResponse.json();
                 if (configJson.status === "success") {
                     masterConfigCache = configJson.data;
-                }
-
-                // Fetch regions from the database
-                const regionResponse = await fetch(REGIONS_API_URL);
-                const regionJson = await regionResponse.json();
-                if (regionJson.status === "success") {
-                    dynamicRegions = regionJson.data;
                 }
 
                 // Fetch vessel classes from the database
@@ -1010,6 +1018,130 @@
         document.getElementById("data-status-tab")?.addEventListener("hidden.bs.tab", () => {
             clearInterval(dataStatusTimer);
             dataStatusTimer = null;
+        });
+
+        // --- System Status (Global tab) -- infrastructure health (service liveness,
+        // DB connectivity, disk usage), distinct from the Data Status tab's per-layer
+        // data FRESHNESS above. Reuses .status-row/.status-fill/.status-health-icon
+        // for visual consistency, but with its own simple render function -- these
+        // rows (heartbeat / DB ping / disk usage) don't fit renderStatusRows' percent+
+        // segments+channel-toggle shape built for collectors/layers. ---
+        const SYSTEM_STATUS_API_URL = API_URL + "/system_status";
+        let systemStatusTimer = null;
+
+        function serviceHealthIcon(status) {
+            if (status === "ok") return { glyph: "✓", cls: "health-ok", title: "Running" };
+            if (status === "stale") return { glyph: "⚠", cls: "health-rate-limited", title: "Heartbeat is late" };
+            if (status === "dead") return { glyph: "⛔", cls: "health-blocked", title: "No recent heartbeat -- likely down" };
+            return { glyph: "?", cls: "health-unknown", title: "No heartbeat recorded yet" };
+        }
+
+        // Inverted polarity vs statusFillClass() above: for disk usage, HIGH percent
+        // is bad, not good.
+        function diskStatusIcon(pctUsed) {
+            if (pctUsed >= 90) return { glyph: "⛔", cls: "health-blocked", fillClass: "bad", title: "Data volume is nearly full" };
+            if (pctUsed >= 75) return { glyph: "⚠", cls: "health-rate-limited", fillClass: "warn", title: "Data volume usage is high" };
+            return { glyph: "✓", cls: "health-ok", fillClass: "ok", title: "Data volume usage is healthy" };
+        }
+
+        function formatBytes(bytes) {
+            if (bytes == null) return "unknown";
+            return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
+        }
+
+        function renderSystemStatusRow(icon, label, detailHtml, trackHtml = "") {
+            return `
+                <div class="status-row">
+                    <span class="status-health-icon ${icon.cls}" title="${escapeHtml(icon.title || "")}">${icon.glyph}</span>
+                    <div class="status-label-block"><div class="status-label">${escapeHtml(label)}</div></div>
+                    ${trackHtml}
+                    <div class="status-detail">${detailHtml}</div>
+                </div>`;
+        }
+
+        function renderSystemStatus(data) {
+            const container = document.getElementById("container-system-status");
+            if (!container) return;
+            if (!data) {
+                container.innerHTML = '<div class="status-empty">No data yet.</div>';
+                return;
+            }
+
+            const serviceRows = (data.services || []).map(svc => {
+                const icon = serviceHealthIcon(svc.status);
+                const detail = svc.last_seen
+                    ? `last seen ${formatRelativeTime(svc.last_seen)}`
+                    : escapeHtml(svc.detail || "no heartbeat yet");
+                return renderSystemStatusRow(icon, svc.display_name, detail);
+            }).join("");
+
+            const db = data.database || {};
+            const dbIcon = db.ok
+                ? { glyph: "✓", cls: "health-ok", title: "Connected" }
+                : { glyph: "⛔", cls: "health-blocked", title: db.error || "Unreachable" };
+            const dbDetail = db.ok
+                ? `connected &middot; ${db.latency_ms} ms`
+                : escapeHtml(db.error || "unreachable");
+            const dbRow = renderSystemStatusRow(dbIcon, "Database", dbDetail);
+
+            const disk = data.disk || {};
+            let diskRow;
+            if (disk.percent_used == null) {
+                diskRow = renderSystemStatusRow(
+                    { glyph: "?", cls: "health-unknown", title: "Disk usage unavailable" },
+                    "Data Volume", "unavailable"
+                );
+            } else {
+                const icon = diskStatusIcon(disk.percent_used);
+                // "Ours" (data/'s own footprint: renders + fieldstore cache) as a fixed
+                // accent segment, then everything else used on this volume in the
+                // health-coloured segment -- two stacked fills inside one track.
+                const oursPct = (disk.our_data_bytes != null && disk.total_bytes)
+                    ? Math.max(0, Math.min(100, 100 * disk.our_data_bytes / disk.total_bytes))
+                    : 0;
+                const otherUsedPct = Math.max(0, disk.percent_used - oursPct);
+                const trackHtml = `
+                    <div class="status-track" style="max-width: 200px;">
+                        <div style="display: flex; height: 100%; width: 100%;">
+                            <div class="status-fill ours" style="width: ${oursPct}%;" title="atmos-gl data: ${formatBytes(disk.our_data_bytes)}"></div>
+                            <div class="status-fill ${icon.fillClass}" style="width: ${otherUsedPct}%;" title="Other usage on this volume"></div>
+                        </div>
+                    </div>
+                    <div class="status-pct">${disk.percent_used.toFixed(0)}%</div>`;
+                const detail = disk.our_data_bytes != null
+                    ? `${formatBytes(disk.our_data_bytes)} atmos-gl data &middot; ${formatBytes(disk.free_bytes)} free of ${formatBytes(disk.total_bytes)}`
+                    : `${formatBytes(disk.free_bytes)} free of ${formatBytes(disk.total_bytes)}`;
+                diskRow = renderSystemStatusRow(icon, "Data Volume", detail, trackHtml);
+            }
+
+            container.innerHTML = serviceRows + dbRow + diskRow;
+        }
+
+        async function loadSystemStatus() {
+            try {
+                const res = await fetch(SYSTEM_STATUS_API_URL);
+                const json = await res.json();
+                if (json.status !== "success") return;
+                renderSystemStatus(json.data);
+            } catch (err) {
+                console.error("System Status fetch failed:", err);
+            }
+        }
+
+        // Global is the default active tab, so load immediately on page ready (not
+        // gated on a "shown.bs.tab" event the way Data Status's lazy-loaded tab is),
+        // then pause/resume the poll timer same as Data Status when navigating away.
+        loadSystemStatus();
+        systemStatusTimer = setInterval(loadSystemStatus, 15000);
+        document.getElementById("global-tab")?.addEventListener("shown.bs.tab", () => {
+            loadSystemStatus();
+            if (!systemStatusTimer) {
+                systemStatusTimer = setInterval(loadSystemStatus, 15000);
+            }
+        });
+        document.getElementById("global-tab")?.addEventListener("hidden.bs.tab", () => {
+            clearInterval(systemStatusTimer);
+            systemStatusTimer = null;
         });
     </script>
 </body>

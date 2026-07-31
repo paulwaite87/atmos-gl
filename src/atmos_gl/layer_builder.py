@@ -367,6 +367,15 @@ class LayerBuilder:
         ]
         results = await asyncio.gather(*futures, return_exceptions=True)
         broken, plotted_by_section = self._handle_results(sections, results)
+        # Liveness heartbeat for the System Status section (Global tab) -- written
+        # once per ROUND (not just once per outer cycle in start_scheduler()), since a
+        # single outer cycle can take many minutes to drain a large multi-hour
+        # backlog (see _run_dispatch_cycle's docstring); a heartbeat that only ticked
+        # once per outer cycle would read as "stale" during a long but healthy
+        # backlog-catchup, indistinguishable from an actually-dead process.
+        self.process_status_adapter.record_process_run(
+            "layer_builder", "service", success=True
+        )
         if broken:
             self._recycle_pool()
         return plotted_by_section
@@ -436,6 +445,14 @@ class LayerBuilder:
         try:
             while True:
                 self.refresh_settings()
+                # Coarse liveness heartbeat for the System Status section (Global tab) --
+                # independent of `enabled`, so it keeps ticking even while rendering
+                # itself is disabled (the only case that reaches here without also
+                # ticking _dispatch_round's own per-round heartbeat below). A dead
+                # container simply stops advancing this row.
+                self.process_status_adapter.record_process_run(
+                    "layer_builder", "service", success=True
+                )
 
                 if self.enabled:
                     self.map_data.refresh()
