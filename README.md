@@ -171,12 +171,9 @@ is shown on your profile page once logged in. Put it in `.env` as `CDSAPI_KEY` �
 exact name, no `AIS_`/`OPENWEATHER_`-style prefix, since it's the literal name the
 `cdsapi` Python library itself reads.
 
-One extra one-time step which registration alone doesn't cover, for `Greenhouse Gases`
-only: **accepting the CC-BY licence both of its CAMS datasets require**. The general
-Terms of Use / Privacy Statement you accept when registering do NOT cover this — it's
-a separate, per-dataset licence, not an account-level setting, so you won't find it
-under your profile. `Air Quality`'s CAMS dataset carries no such extra licence-click,
-so if you only care about that layer you can skip this step entirely.
+For viewing `Greenhouse Gases` one extra step is required which registration alone 
+doesn't cover: **accepting the CC-BY licence**. This is a separate, per-dataset 
+licence, not an account-level setting, so you won't find it under your profile. 
 
 To accept it: open either dataset's page —
 [cams-global-greenhouse-gas-forecasts](https://ads.atmosphere.copernicus.eu/datasets/cams-global-greenhouse-gas-forecasts)
@@ -414,6 +411,7 @@ Hover a marker for its country, activity type and report description, plus — f
 volcanoes HANS is watching — its USGS alert level and colour code. A volcano drops off
 the map automatically once it's no longer reported as active in either source (after 14
 days of inactivity), so there's nothing to filter or configure beyond `Icon zoom`.
+![Volcanoes](docs/atmos-gl-volcanoes.png)
 
 ##### Smoke Plume
 Also in Volcano Properties, `Show Smoke Plume` overlays a global, volcano-specific SO2
@@ -428,6 +426,7 @@ all some of the time — CAMS only populates this variable when its model detect
 volcanic SO2 somewhere on the planet, so an empty overlay is telling you exactly
 that, not a stale or broken layer. Like Air Quality, it needs a
 [Copernicus CDS/ADS API Key](#copernicus-cdsads-api-key).
+![Volcanoes](docs/atmos-gl-volcanoes-smoke-plume.png)
 
 #### Wildfires
 If you have a [NASA FIRMS API Key](#nasa-firms-api-key) then you can enable the
