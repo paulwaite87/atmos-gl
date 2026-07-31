@@ -32,6 +32,14 @@ class PrecipitationUpdater(Updater, MultiHourRenderMixin):
         # The data texture is sqrt-encoded against this, so most of the 8-bit range
         # is spent on the low rates where precip actually lives (see encode_frames).
         self.VMAX_PRECIP = 100.0
+        # Below this, raw GFS PRATE is blur/quantization noise, not real precipitation
+        # -- the model rarely outputs an exact 0.0, so residual convective-scheme
+        # values (as small as ~1e-8 mm/hr) show up across most of the globe. Matches
+        # the palette's own lowest defined band (LEVELS[0] below). Fixed, independent
+        # of the user-configurable min_mm_hr slider: the frontend applies min_mm_hr
+        # live on top of this floor, so u_min=0 means "any MEANINGFUL precipitation",
+        # not "any nonzero noise".
+        self.MEANINGFUL_PRECIP_MM_HR = 0.1
         # Static PNG + GPU data texture.
         self.per_hour_outputs = [".png", "_data.png"]
         self.status_product = "precipitation"
@@ -164,10 +172,17 @@ class PrecipitationUpdater(Updater, MultiHourRenderMixin):
         # Smooth the GLOBAL field before encoding so the banded LUT produces smooth
         # band boundaries instead of tracing the raw 0.25-deg grid (the old static
         # render smoothed its regional clip the same way; the texture never did).
+        # Floor below MEANINGFUL_PRECIP_MM_HR AFTER smoothing (not before) -- flooring
+        # first still leaves a wide halo, since the blur below re-smears values back
+        # below the floor around every real rain patch. Flooring last guarantees no
+        # sub-floor value survives into the texture at all, so the frontend's u_min=0
+        # ("any MEANINGFUL precipitation") isn't diluted by a blur-noise halo -- a
+        # fixed floor, independent of the user-adjustable min_mm_hr slider.
         base, _ = os.path.splitext(output_path_for_hour)
         smoothed = self._smooth_global_field(
             field0["lat"], field0["lon"], field0["values"]
         )
+        smoothed[smoothed < self.MEANINGFUL_PRECIP_MM_HR] = 0.0
         encode_frames(
             [smoothed], f"{base}_data.png", 0.0, self.VMAX_PRECIP, transform="sqrt"
         )

@@ -91,7 +91,15 @@ function fragmentBodyFor(paletteName) {
             // A threshold of exactly 0 means "any precipitation, however light" --
             // not "include the dry areas too". prate<=0 (no rain) is always excluded,
             // independent of u_min; u_min==0 no longer paints the whole globe.
-            if (prate <= 0.0 || prate < u_min) discard;
+            if (prate <= 0.0) discard;
+
+            // Anti-alias the outer no-rain/rain edge the same way the inner band
+            // edges are AA'd below (screen-space derivative of prate), instead of a
+            // hard cutoff -- otherwise this edge alone traces the raw source grid
+            // and looks stepped/blocky against every other (AA'd) boundary.
+            float edgeAA = max(fwidth(prate), 1e-6);
+            float edgeAlpha = clamp((prate - u_min) / edgeAA + 0.5, 0.0, 1.0);
+            if (edgeAlpha <= 0.0) discard;
 
             int b = bandOf(prate);
             vec3 cHere = BAND_COL[b];
@@ -120,7 +128,7 @@ function fragmentBodyFor(paletteName) {
             }
 
             vec3 c = mix(cOther, cHere, w);
-            return vec4(c, u_alpha);
+            return vec4(c, u_alpha * edgeAlpha);
         }`;
 }
 
