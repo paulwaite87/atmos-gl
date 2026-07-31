@@ -404,6 +404,13 @@ FIELD_SPECS = {
     ("flightradar", "view_tracks"): ToggleSpec(),
     ("flightradar", "track_limit"): SliderSpec(min=5, max=100, step=5),
     ("flightradar", "track_color"): ColorSpec(),
+    # Coastline/lake-shore outline overlay -- a halo'd pair of stroke colours (main +
+    # contrasting halo, see ui/modules/landmass.js) rather than a single colour, so it
+    # stays legible over any basemap/data-layer combination underneath.
+    ("landmass", "color"): ColorSpec(),
+    ("landmass", "halo_color"): ColorSpec(),
+    ("landmass", "linewidth"): SliderSpec(min=0.2, max=5.0, step=0.1, decimals=1, suffix="px"),
+    ("landmass", "opacity"): _OPACITY,
     # --- Shipping (shipping) ---
     ("shipping", "icon_zoom"): _ICON_ZOOM,
     # Track shown only while hovering a ship (shipping.js) -- not a persistent overlay,
@@ -678,6 +685,7 @@ SECTION_LABELS = {
     "terminator": "Terminator Night/day Shade",
     "markers": "Place Markers",
     "flightradar": "Flight Radar",
+    "landmass": "Landmass Outlines",
     "shipping": "Shipping Overlay",
     "shipping_collector": "Shipping Collector (AIS Loop)",
     "lightning_collector": "Lightning Collector Daemon",

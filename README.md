@@ -499,6 +499,8 @@ But there is another mode available `Anomaly SST` which shows the variation from
 #### Air Temperature
 Air/land temperatures are a measure of what's going on in our atmosphere, resolved
 globally at the same grid resolution as everything else here.
+![Air Temperature](docs/atmos-gl-air-temperature.png)
+
 
 #### Waves
 This one is a colourisation depicting wave height across the planet. It gets quite
