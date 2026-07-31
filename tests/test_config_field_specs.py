@@ -766,3 +766,41 @@ def test_config_page_renders_jetstream_palette_select_with_stratosphere_option()
     assert '<option value="stratosphere"' in select_html
     assert '<option value="aurora"' in select_html
     assert '<option value="inferno"' in select_html
+
+
+# --- Landmass outlines ---
+
+
+def test_landmass_reuses_the_shared_opacity_spec():
+    assert FIELD_SPECS[("landmass", "opacity")] is FIELD_SPECS[("isobars", "opacity")]
+
+
+def test_landmass_has_two_independent_color_fields():
+    """Main stroke + halo are separate, independently-saved colours (see
+    ui/modules/landmass.js's halo technique), not one shared colour spec."""
+    assert FIELD_SPECS[("landmass", "color")].kind == "color"
+    assert FIELD_SPECS[("landmass", "halo_color")].kind == "color"
+    assert (
+        FIELD_SPECS[("landmass", "color")]
+        is not FIELD_SPECS[("landmass", "halo_color")]
+    )
+
+
+def test_section_label_for_landmass_matches_the_show_tab_wording():
+    assert section_label("landmass") == "Landmass Outlines"
+
+
+def test_config_page_renders_landmass_toggle_on_show_tab():
+    resp = client.get("/config")
+    html = resp.text
+    assert 'type="checkbox" id="landmass__enabled"' in html
+
+
+def test_config_page_renders_landmass_fields_section_and_gated_fallback():
+    resp = client.get("/config")
+    html = resp.text
+    assert 'id="fields-section-landmass"' in html
+    assert 'id="fallback-section-landmass"' in html
+    assert 'id="landmass__color"' in html
+    assert 'id="landmass__halo_color"' in html
+    assert 'id="landmass__linewidth"' in html
