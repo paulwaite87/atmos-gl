@@ -6,7 +6,7 @@ import numpy as np
 import matplotlib.colors as mcolors
 import cartopy.crs as ccrs
 
-from scipy.ndimage import gaussian_filter
+from scipy.ndimage import gaussian_filter, binary_dilation
 from scipy.interpolate import RegularGridInterpolator
 
 # Internal imports
@@ -174,15 +174,14 @@ class PrecipitationUpdater(Updater, MultiHourRenderMixin):
         # render smoothed its regional clip the same way; the texture never did).
         # Floor below MEANINGFUL_PRECIP_MM_HR AFTER smoothing (not before) -- flooring
         # first still leaves a wide halo, since the blur below re-smears values back
-        # below the floor around every real rain patch. Flooring last guarantees no
-        # sub-floor value survives into the texture at all, so the frontend's u_min=0
-        # ("any MEANINGFUL precipitation") isn't diluted by a blur-noise halo -- a
-        # fixed floor, independent of the user-adjustable min_mm_hr slider.
+        # below the floor around every real rain patch. A fixed floor, independent of
+        # the user-adjustable min_mm_hr slider, so the frontend's u_min=0 ("any
+        # MEANINGFUL precipitation") isn't diluted by a blur-noise halo.
         base, _ = os.path.splitext(output_path_for_hour)
         smoothed = self._smooth_global_field(
             field0["lat"], field0["lon"], field0["values"]
         )
-        smoothed[smoothed < self.MEANINGFUL_PRECIP_MM_HR] = 0.0
+        smoothed = self._apply_meaningful_floor(smoothed)
         encode_frames(
             [smoothed], f"{base}_data.png", 0.0, self.VMAX_PRECIP, transform="sqrt"
         )
@@ -232,7 +231,48 @@ class PrecipitationUpdater(Updater, MultiHourRenderMixin):
         sigma = base_sigma * factor
         if sigma > 0:
             arr = gaussian_filter(arr, sigma=sigma)
+        # Side effect (matches regrid_for_lod's self.lod_desc pattern): the blur radius
+        # in grid CELLS at whatever resolution this returned, for _apply_meaningful_floor
+        # to size its dilation from -- a fixed radius would be wrong at a different LOD's
+        # grid spacing (LOD2/3 upsample first, so the same physical smoothing radius
+        # spans more cells there than at LOD1's native grid).
+        self._smooth_sigma_cells = sigma
         return arr
+
+    def _apply_meaningful_floor(self, arr):
+        """Zero out everywhere that isn't near a real precipitation core, smoothly
+        fading the immediate surroundings of a core rather than hard-clipping.
+
+        A pure per-cell value clip/fade (`arr < floor -> 0`, or even a smoothstep
+        ramp over the same range) can't tell apart two very different populations of
+        sub-floor value that both fall in the same range: widespread blur/quantization
+        NOISE far from any real rain (as high as ~0.05mm/hr, per live measurement --
+        comparable in magnitude to genuine rain-edge falloff, so a value-only test
+        can't separate them) vs. the genuine, spatially-local smooth falloff the
+        Gaussian blur above gives the true edge of a real core. A hard clip kills both
+        (but the real-edge kill is blocky, quantized to the grid); a plain smoothstep
+        dims both without eliminating either (verified live: coverage only dropped
+        from ~85% to ~71%, not the ~18% a real "meaningful precipitation only" reading
+        should give).
+
+        So: identify real cores (>= floor) directly, dilate that mask by the blur's own
+        3-sigma support radius (the distance beyond which the Gaussian's contribution
+        is negligible) to capture just their genuine falloff halo, and zero
+        EVERYTHING outside that halo outright -- no fade, no matter how large the
+        residual value, since anything out there is noise by construction. Inside the
+        halo, keep the smoothstep fade so the true edge itself is smooth rather than a
+        hard cliff.
+        """
+        floor = self.MEANINGFUL_PRECIP_MM_HR
+        sigma_cells = getattr(self, "_smooth_sigma_cells", 0.0)
+        radius = max(2, int(round(3 * sigma_cells)))
+
+        core = arr >= floor
+        halo = binary_dilation(core, iterations=radius) if core.any() else core
+
+        t = np.clip(arr / floor, 0.0, 1.0)
+        t = t * t * (3.0 - 2.0 * t)  # smoothstep: C1-continuous, 0 at 0 and 1 at floor
+        return np.where(halo, arr * t, 0.0)
 
     def run(self, max_hours=None):
         # Warms the shared per-cycle GFS baseline cache (map_data.shared_state) for
