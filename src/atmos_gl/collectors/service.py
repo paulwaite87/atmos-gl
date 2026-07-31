@@ -214,6 +214,13 @@ class CollectorService:
         try:
             while True:
                 self.refresh_settings()  # recomputes update_period_s, fields.refresh(), etc.
+                # Coarse liveness heartbeat for the System Status section (Global tab) --
+                # independent of `enabled`/collect_once, so it keeps ticking even while
+                # collection itself is disabled. Written every loop tick regardless of
+                # outcome below; a dead container simply stops advancing this row.
+                self.process_status_adapter.record_process_run(
+                    "data_collector", "service", success=True
+                )
                 poll_s = int(self.settings.get("backfill_poll_seconds", poll_s))
                 full_period = self.update_period_s
                 enabled = self.settings.get("enabled", False)
