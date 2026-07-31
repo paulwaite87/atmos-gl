@@ -469,8 +469,7 @@ colourising the whole globe. All four variables render every cycle, so switching
 between them in the config UI applies instantly, no render wait. Colours follow the
 familiar green → yellow → orange → red → purple AQI convention used by most phone
 weather apps' air-quality widgets.
-![Ait Quality](docs/atmos-gl-air-quality.png)
-
+![Air Quality](docs/atmos-gl-air-quality.png)
 
 ### Climate
 This area is quite fascinating as it covers the entire planet. The data is sourced
