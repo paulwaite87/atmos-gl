@@ -43,6 +43,30 @@ export function cssToRgb(str) {
     } catch { return [1, 1, 1]; }
 }
 
+/**
+ * Chooses which per-hour texture entry(ies) render() should bind for this frame,
+ * given the current-hour (e0) and next-hour (e1) cache entries' readiness. Exported
+ * (pure, no GL/map dependency) so this decision is unit-testable without a full
+ * WebGL/MapLibre harness -- this module otherwise has none.
+ *
+ * Prefers both hours ready (smooth inter-hour interpolation via u_frac, matching
+ * lastSnap.playing/frac). If only ONE is ready, returns it for BOTH texture slots
+ * with frac pinned to 0 -- mix() of identical inputs is that value regardless of
+ * frac, so this is just the clearest way to say "show this one hour alone" -- rather
+ * than null, so a still-catching-up neighbour hour (e.g. right after a render-
+ * backlog-inducing cache clear, or simply the newest just-published hour with no
+ * next-hour render yet) doesn't blank an otherwise-ready frame. Returns null only
+ * when NEITHER hour is ready (nothing to draw at all).
+ */
+export function selectRenderTextures(e0, e1, playing, frac) {
+    if (e0 && e0.ready && e1 && e1.ready) {
+        return { texA: e0, texB: e1, frac: playing ? frac : 0.0 };
+    }
+    if (e0 && e0.ready) return { texA: e0, texB: e0, frac: 0.0 };
+    if (e1 && e1.ready) return { texA: e1, texB: e1, frac: 0.0 };
+    return null;
+}
+
 export function createFillLayer(map, opts) {
     const {
         sectionKey,
@@ -352,7 +376,9 @@ void main(){
             if (!prog) { requestFallback(); return; }
             const e0 = getHourTexture(lastSnap.hour);
             const e1 = getHourTexture(Math.min(lastSnap.maxHour, lastSnap.hour + 1));
-            if (!e0 || !e1 || !e0.ready || !e1.ready) { map.triggerRepaint(); return; }
+            const sel = selectRenderTextures(e0, e1, lastSnap.playing, lastSnap.frac);
+            if (!sel) { map.triggerRepaint(); return; }
+            const { texA, texB, frac } = sel;
 
             gl.useProgram(prog);
             // MapLibre projection uniforms (globe/mercator), from args.
@@ -365,10 +391,10 @@ void main(){
             gl.uniform4f(U('u_projection_tile_mercator_coords'), pd.tileMercatorCoords[0], pd.tileMercatorCoords[1], pd.tileMercatorCoords[2], pd.tileMercatorCoords[3]);
 
             // data + colour
-            gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, e0.tex); gl.uniform1i(U('u_tex0'), 0);
-            gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, e1.tex); gl.uniform1i(U('u_tex1'), 1);
+            gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, texA.tex); gl.uniform1i(U('u_tex0'), 0);
+            gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, texB.tex); gl.uniform1i(U('u_tex1'), 1);
             if (cmapTex) { gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, cmapTex); gl.uniform1i(U('u_cmap'), 2); }
-            gl.uniform1f(U('u_frac'), lastSnap.playing ? lastSnap.frac : 0.0);
+            gl.uniform1f(U('u_frac'), frac);
             gl.uniform1f(U('u_vmin'), vmin);
             gl.uniform1f(U('u_span'), vspan);
             gl.uniform2f(U('u_texsize'), texSize[0], texSize[1]);
