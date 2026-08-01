@@ -149,7 +149,17 @@ export function loadLayer(map, config, fullConfig = {}) {
         vmin: 0.0,
         vspan: 1.0,                            // value = stored sqrt-position in [0,1]
         opacity: 1.0,                          // per-pixel alpha comes from u_alpha
-        bicubic: true,                         // smooth band contours at high zoom (16-tap)
+        // Bilinear, NOT bicubic -- unlike a smooth continuous colour ramp (pwat, sst,
+        // ...), precipitation makes HARD decisions on the sampled value (bandOf()'s
+        // band index, the discard threshold below): cubic reconstruction can overshoot
+        // near a sharp transition (textbook Gibbs-like ringing), and a hard decision
+        // amplifies that invisible-elsewhere ripple into a visible flip -- rendering
+        // as a jittery, blocky-looking boundary (confirmed live: switching this to
+        // bicubic reproduced the exact artifact reported; bilinear can't overshoot,
+        // since it's a convex combination of the 4 nearest texels, bounded by their
+        // own min/max). The in-shader fwidth() edge-AA below already smooths what
+        // bicubic was here for (band + outer-edge contours) without the ringing risk.
+        bicubic: false,
         // Bands + edge-AA are computed in-shader from LEVELS, so it looks smooth at
         // LOW/MEDIUM LOD -- no heavy supersampling. resolution from cfg.level_of_detail.
         fragmentBody: fragmentBodyFor(palette),
