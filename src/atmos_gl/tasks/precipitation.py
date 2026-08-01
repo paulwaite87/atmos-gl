@@ -44,11 +44,22 @@ class PrecipitationUpdater(Updater, MultiHourRenderMixin):
         # resolution the texture is encoded at (independent of level_of_detail's own
         # upsample factor -- this is about smoothing the encoded grid's own texel
         # step for the GPU's benefit, not about the underlying meteorological
-        # smoothing _smooth_global_field already does). Small and fixed rather than
-        # LOD-scaled: at higher LOD the grid is already finer (less step to begin
-        # with), so the same absolute cell-count softens proportionally less there,
-        # which is the right direction anyway.
-        self.EDGE_SMOOTH_SIGMA_CELLS = 0.75
+        # smoothing _smooth_global_field already does). Fixed rather than LOD-scaled:
+        # at higher LOD the grid is already finer (less step to begin with), so the
+        # same absolute cell-count softens proportionally less there, which is the
+        # right direction anyway.
+        #
+        # 0.75 (this constant's original value) was tuned by eye at a moderate zoom
+        # and looked fine there, but a native 0.25-deg grid cell is still tens of
+        # screen pixels wide once a user zooms in close -- no bilinear-sampled amount
+        # of a 0.75-cell blur meaningfully softens a transition at that scale, and the
+        # native grid's steps were clearly visible again (reported live, at zoom ~7).
+        # 2.0 (support radius ~6 cells, ~1.5deg at LOD1) trades a wider, softer halo
+        # around each core for one that stays visually smooth much closer in to that
+        # kind of zoom -- confirmed against the real pipeline, both in a raw decoded-
+        # texture crop (organic falloff, no steps even cell-by-cell) and live in the
+        # browser at zoom ~7-7.6.
+        self.EDGE_SMOOTH_SIGMA_CELLS = 2.0
         # Static PNG + GPU data texture.
         self.per_hour_outputs = [".png", "_data.png"]
         self.status_product = "precipitation"
