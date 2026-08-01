@@ -1,140 +1,70 @@
-// Regression: a min_mm_hr threshold of exactly 0 must still exclude dry (prate<=0)
+// Regression: a min_mm_hr threshold of exactly 0 must still exclude dry (value<=0)
 // pixels -- "any precipitation, however light" does not mean "show the dry areas
-// too". Before the fix, `if (prate < u_min) discard;` with u_min=0 never discarded
-// anything (prate can't be negative), painting the whole globe in the lowest band.
-// Runs the REAL fragmentBodyFor() source extracted verbatim from
-// ui/modules/precipitation.js, not a reimplementation.
-import { chromium } from "playwright";
-import { extractFromParticlesEngine } from "./extract_shaders.js";
+// too". Before an earlier fix, a value<u_min-only test with u_min=0 never excluded
+// anything (values can't be negative), painting the whole globe in the lowest band.
+//
+// precipitation.js's colour logic was later re-engineered to build its LUT via
+// buildSteppedLUT() (_thresholdpalette.js) -- the same mechanism pwat/ozone already
+// use -- rather than a bespoke per-pixel GLSL discard/band/fwidth shader. That move
+// eliminated an entire category of GPU-rendering bugs (bicubic ringing, then
+// fwidth() noise amplification, then an unexplained seam) that a hand-rolled
+// per-pixel shader kept re-introducing. So this test now exercises the REAL
+// buildSteppedLUT() function directly (plain JS, no browser/WebGL needed at all),
+// in the SAME sqrt-encoded position space precipitation.js itself builds its LUT in
+// (see toSqrtPos there) -- not plain mm/hr, which would round anything below
+// ~0.2mm/hr down to the same "zero" LUT entry as true-dry pixels over only 256
+// linear entries spanning 0-100mm/hr.
+import { buildSteppedLUT } from "../../ui/modules/_thresholdpalette.js";
 
-// Sentinel the framebuffer is pre-cleared to; a `discard` leaves it untouched, so a
-// readback still equal to this means the fragment was discarded.
-const SENTINEL = [0.123, 0.456, 0.789, 0.321];
-
-async function shadeAt(value, uMin) {
-  const { fragmentBodyFor } = extractFromParticlesEngine("ui/modules/precipitation.js", [
-    "fragmentBodyFor",
-  ]);
-  const body = fragmentBodyFor("standard");
-  const fsSource = `#version 300 es
-precision highp float;
-out vec4 fragColor;
-uniform float u_value;
-${body}
-void main(){
-    fragColor = shade(u_value, vec2(0.0));
-}`;
-  const vsSource = `#version 300 es
-in vec2 a_pos;
-void main(){ gl_Position = vec4(a_pos, 0.0, 1.0); }`;
-
-  const browser = await chromium.launch({
-    args: ["--use-gl=swiftshader", "--enable-webgl2", "--ignore-gpu-blocklist", "--no-sandbox"],
-  });
-  try {
-    const page = await browser.newPage();
-    return await page.evaluate(
-      ({ vsSource, fsSource, value, uMin, sentinel }) => {
-        const canvas = document.createElement("canvas");
-        canvas.width = 1; canvas.height = 1;
-        const gl = canvas.getContext("webgl2");
-        gl.getExtension("EXT_color_buffer_float");
-
-        function compile(type, src) {
-          const sh = gl.createShader(type);
-          gl.shaderSource(sh, src);
-          gl.compileShader(sh);
-          if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(sh));
-          return sh;
-        }
-        const prog = gl.createProgram();
-        gl.attachShader(prog, compile(gl.VERTEX_SHADER, vsSource));
-        gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, fsSource));
-        gl.linkProgram(prog);
-        if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
-
-        const quad = new Float32Array([-1,-1, 1,-1, -1,1, -1,1, 1,-1, 1,1]);
-        const vao = gl.createVertexArray();
-        gl.bindVertexArray(vao);
-        const buf = gl.createBuffer();
-        gl.bindBuffer(gl.ARRAY_BUFFER, buf);
-        gl.bufferData(gl.ARRAY_BUFFER, quad, gl.STATIC_DRAW);
-        const loc = gl.getAttribLocation(prog, "a_pos");
-        gl.enableVertexAttribArray(loc);
-        gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
-
-        const outTex = gl.createTexture();
-        gl.bindTexture(gl.TEXTURE_2D, outTex);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, 1, 1, 0, gl.RGBA, gl.FLOAT, null);
-        const fbo = gl.createFramebuffer();
-        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
-        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, outTex, 0);
-        gl.viewport(0, 0, 1, 1);
-        gl.clearColor(sentinel[0], sentinel[1], sentinel[2], sentinel[3]);
-        gl.clear(gl.COLOR_BUFFER_BIT);
-
-        gl.useProgram(prog);
-        gl.uniform1f(gl.getUniformLocation(prog, "u_value"), value);
-        gl.uniform1f(gl.getUniformLocation(prog, "u_min"), uMin);
-        gl.uniform1f(gl.getUniformLocation(prog, "u_alpha"), 1.0);
-
-        gl.bindVertexArray(vao);
-        gl.drawArrays(gl.TRIANGLES, 0, 6);
-
-        const out = new Float32Array(4);
-        gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.FLOAT, out);
-        return Array.from(out);
-      },
-      { vsSource, fsSource, value, uMin, sentinel: SENTINEL }
-    );
-  } finally {
-    await browser.close();
-  }
-}
+const VMAX = 100.0;
+const LEVELS = [0.1, 0.5, 1.0, 2.0, 3.0, 5.0, 10.0, 15.0, 20.0, 30.0, 50.0, 100.0];
+const toSqrtPos = (mmPerHour) => Math.sqrt(Math.max(0, mmPerHour) / VMAX);
+const LEVELS_SQRT = LEVELS.map(toSqrtPos);
+const PALETTE_STANDARD = [
+  [0.0, 1.0, 1.0], [0.0, 0.5, 1.0], [0.0, 1.0, 0.0], [1.0, 1.0, 0.0],
+  [1.0, 0.5, 0.0], [1.0, 0.0, 0.0], [1.0, 0.0, 1.0],
+];
+const FLAT_COLOR = [0, 0, 0, 0];
 
 function assert(condition, message) {
   if (!condition) throw new Error("ASSERTION FAILED: " + message);
 }
 
-const isSentinel = (px) => px.every((v, i) => Math.abs(v - SENTINEL[i]) < 1e-4);
-
-// value = sqrt-encoded position in [0,1]; the shader decodes prate = value*value*100.
-// prate=0 -> value=0. prate=0.05 (below the real 0.1mm/hr band floor but > 0) -> small.
-const VALUE_ZERO = 0.0;
-const VALUE_LIGHT_RAIN = Math.sqrt(0.05 / 100.0); // prate = 0.05 mm/hr
-
-async function main() {
-  // u_min = 0 ("any precipitation, however light") must still discard true-dry pixels.
-  const dryAtZeroThreshold = await shadeAt(VALUE_ZERO, 0.0);
-  assert(
-    isSentinel(dryAtZeroThreshold),
-    `expected prate=0 with u_min=0 to be discarded (no wash over dry areas), got ${JSON.stringify(dryAtZeroThreshold)}`
-  );
-
-  // ...but a genuinely light-rain pixel must still render at u_min=0.
-  const lightRainAtZeroThreshold = await shadeAt(VALUE_LIGHT_RAIN, 0.0);
-  assert(
-    !isSentinel(lightRainAtZeroThreshold),
-    `expected prate=0.05 with u_min=0 to render (not be discarded), got ${JSON.stringify(lightRainAtZeroThreshold)}`
-  );
-
-  // No regression for an explicit nonzero threshold: below-threshold still discards.
-  const belowExplicitThreshold = await shadeAt(VALUE_LIGHT_RAIN, 1.0); // prate=0.05 < min=1.0
-  assert(
-    isSentinel(belowExplicitThreshold),
-    `expected prate=0.05 with u_min=1.0 to be discarded, got ${JSON.stringify(belowExplicitThreshold)}`
-  );
-
-  console.log("PASS: precipitation_zero_threshold");
-  console.log(`  dry pixel, u_min=0:        discarded (sentinel preserved)`);
-  console.log(`  light-rain pixel, u_min=0: rendered`);
-  console.log(`  light-rain pixel, u_min=1: discarded (no regression)`);
+// Mirrors precipitation.js's own LUT lookup: shade() samples texture(u_cmap,
+// vec2(value, 0.5)) directly, where `value` is the sqrt position in [0,1] -- so a
+// LUT entry index is just round(sqrtPos * 255).
+function lutEntryFor(lut, sqrtPos) {
+  const i = Math.max(0, Math.min(255, Math.round(sqrtPos * 255)));
+  const o = i * 4;
+  return { r: lut[o], g: lut[o + 1], b: lut[o + 2], a: lut[o + 3] };
 }
 
-main().catch((err) => {
-  console.error("FAIL: precipitation_zero_threshold");
-  console.error(err.message);
-  process.exit(1);
-});
+function main() {
+  // u_min = 0 ("any precipitation, however light") must still exclude true-dry (0).
+  const lutAtZeroThreshold = buildSteppedLUT({
+    vmin: 0.0, vmax: 1.0, minValue: toSqrtPos(0.0), levels: LEVELS_SQRT,
+    paletteColors: PALETTE_STANDARD, flatColor: FLAT_COLOR,
+  });
+  const dry = lutEntryFor(lutAtZeroThreshold, toSqrtPos(0.0));
+  assert(dry.a === 0, `expected value=0mm/hr with minValue=0 to be transparent (no wash over dry areas), got alpha=${dry.a}`);
+
+  // ...but a genuinely light-rain value (0.05mm/hr, below the 0.1 band floor but > 0)
+  // must still render at minValue=0.
+  const lightRain = lutEntryFor(lutAtZeroThreshold, toSqrtPos(0.05));
+  assert(lightRain.a > 0, `expected value=0.05mm/hr with minValue=0 to render (not transparent), got alpha=${lightRain.a}`);
+
+  // No regression for an explicit nonzero threshold: below-threshold still hides.
+  const lutAtExplicitThreshold = buildSteppedLUT({
+    vmin: 0.0, vmax: 1.0, minValue: toSqrtPos(1.0), levels: LEVELS_SQRT,
+    paletteColors: PALETTE_STANDARD, flatColor: FLAT_COLOR,
+  });
+  const belowExplicit = lutEntryFor(lutAtExplicitThreshold, toSqrtPos(0.05)); // 0.05 < minValue=1.0
+  assert(belowExplicit.a === 0, `expected value=0.05mm/hr with minValue=1.0mm/hr to be transparent, got alpha=${belowExplicit.a}`);
+
+  console.log("PASS: precipitation_zero_threshold");
+  console.log("  dry value (0mm/hr), minValue=0:            transparent");
+  console.log("  light-rain value (0.05mm/hr), minValue=0:  rendered");
+  console.log("  light-rain value (0.05mm/hr), minValue=1:  transparent (no regression)");
+}
+
+main();
