@@ -91,16 +91,20 @@ function fragmentBodyFor(paletteName) {
             // A threshold of exactly 0 means "any precipitation, however light" --
             // not "include the dry areas too". prate<=0 (no rain) is always excluded,
             // independent of u_min; u_min==0 no longer paints the whole globe.
-            if (prate <= 0.0) discard;
+            if (prate <= 0.0 || prate < u_min) discard;
 
-            // Anti-alias the outer no-rain/rain edge the same way the inner band
-            // edges are AA'd below (screen-space derivative of prate), instead of a
-            // hard cutoff -- otherwise this edge alone traces the raw source grid
-            // and looks stepped/blocky against every other (AA'd) boundary.
-            float edgeAA = max(fwidth(prate), 1e-6);
-            float edgeAlpha = clamp((prate - u_min) / edgeAA + 0.5, 0.0, 1.0);
-            if (edgeAlpha <= 0.0) discard;
-
+            // No fwidth()-based edge AA here (unlike the inter-band blend below) --
+            // the backend's own Gaussian floor (_apply_meaningful_floor's
+            // EDGE_SMOOTH_SIGMA_CELLS) already makes prate fall off smoothly over
+            // several source-grid cells around real rain, so the boundary is smooth
+            // in the DATA itself well before it reaches the GPU. Adding a SECOND,
+            // per-pixel AA pass on top of that (as a previous version of this shader
+            // did) was actively counterproductive: once prate barely changes from one
+            // pixel to the next (which the backend blur guarantees near this edge),
+            // fwidth(prate) -- the GPU's own screen-space derivative estimate -- gets
+            // very small and noisy, and dividing by it amplified that noise into a
+            // visibly jittery/stepped edge (confirmed live: removing this pass, with
+            // the smoothed data unchanged, is what actually fixed it).
             int b = bandOf(prate);
             vec3 cHere = BAND_COL[b];
 
@@ -128,7 +132,7 @@ function fragmentBodyFor(paletteName) {
             }
 
             vec3 c = mix(cOther, cHere, w);
-            return vec4(c, u_alpha * edgeAlpha);
+            return vec4(c, u_alpha);
         }`;
 }
 
