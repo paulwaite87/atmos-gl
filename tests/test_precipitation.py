@@ -56,6 +56,7 @@ def test_save_precipitation_key_honours_a_configured_key_fontsize():
 def make_floor_updater(sigma_cells=1.2):
     u = PrecipitationUpdater.__new__(PrecipitationUpdater)
     u.MEANINGFUL_PRECIP_MM_HR = 0.1
+    u.EDGE_SMOOTH_SIGMA_CELLS = 0.75
     u._smooth_sigma_cells = sigma_cells
     return u
 
@@ -86,8 +87,13 @@ def test_apply_meaningful_floor_keeps_a_smooth_halo_around_a_real_core():
 
     result = u._apply_meaningful_floor(arr)
 
-    assert result[20, 20] == 5.0  # core untouched (t=1 at/above floor)
-    assert result[20, 22] > 0.0  # inside the halo: smoothed, not zeroed
+    # A single-pixel spike is an unrealistic stand-in for a real core (which arrives
+    # here already spread over many cells by _smooth_global_field's own blur) -- the
+    # final edge-softening blur (EDGE_SMOOTH_SIGMA_CELLS) spreads a lone spike's peak
+    # a lot more than it would a real, already-blurred core. So assert relative
+    # dominance (still clearly the peak, not attenuated to noise level) rather than
+    # an exact value.
+    assert result[20, 20] > result[20, 22] > 0.0  # core still dominates its halo neighbour
     assert result[20, 35] == 0.0  # outside the halo: zeroed despite equal magnitude
 
 

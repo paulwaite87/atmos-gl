@@ -40,6 +40,15 @@ class PrecipitationUpdater(Updater, MultiHourRenderMixin):
         # live on top of this floor, so u_min=0 means "any MEANINGFUL precipitation",
         # not "any nonzero noise".
         self.MEANINGFUL_PRECIP_MM_HR = 0.1
+        # Final softening pass in _apply_meaningful_floor, in grid CELLS at whatever
+        # resolution the texture is encoded at (independent of level_of_detail's own
+        # upsample factor -- this is about smoothing the encoded grid's own texel
+        # step for the GPU's benefit, not about the underlying meteorological
+        # smoothing _smooth_global_field already does). Small and fixed rather than
+        # LOD-scaled: at higher LOD the grid is already finer (less step to begin
+        # with), so the same absolute cell-count softens proportionally less there,
+        # which is the right direction anyway.
+        self.EDGE_SMOOTH_SIGMA_CELLS = 0.75
         # Static PNG + GPU data texture.
         self.per_hour_outputs = [".png", "_data.png"]
         self.status_product = "precipitation"
@@ -272,7 +281,19 @@ class PrecipitationUpdater(Updater, MultiHourRenderMixin):
 
         t = np.clip(arr / floor, 0.0, 1.0)
         t = t * t * (3.0 - 2.0 * t)  # smoothstep: C1-continuous, 0 at 0 and 1 at floor
-        return np.where(halo, arr * t, 0.0)
+        result = np.where(halo, arr * t, 0.0)
+
+        # `halo`'s own edge is still a hard, grid-quantized cutoff (0 the instant a
+        # cell falls outside the dilated mask) -- at typical zoom this renders as a
+        # visibly stepped/staircase boundary, since the frontend now samples bilinear
+        # rather than bicubic (bicubic's smoother reconstruction rang/overshot right at
+        # this same edge, which is a worse artifact -- see loadLayer()'s bicubic:false).
+        # A small Gaussian pass here is safe from that overshoot risk (a Gaussian
+        # kernel's weights are all positive and sum to 1, so it's a strict weighted
+        # average -- it cannot produce a value outside the local input range, unlike
+        # cubic reconstruction), so it just softens the hard step into a gradual ramp
+        # over about a cell, for bilinear sampling to interpolate cleanly.
+        return gaussian_filter(result, sigma=self.EDGE_SMOOTH_SIGMA_CELLS)
 
     def run(self, max_hours=None):
         # Warms the shared per-cycle GFS baseline cache (map_data.shared_state) for
