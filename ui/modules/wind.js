@@ -1,4 +1,4 @@
-import { createCurrentParticleGLLayer } from './_currentparticles_gl.js';
+import { createCurrentParticleGLLayer } from './_streamparticles_gl.js';
 import { createFillLayer } from './_webglfill.js';
 import { keyFilename, showLegend, removeLegend } from './_legend.js';
 import { opacityUniform } from './_opacity.js';

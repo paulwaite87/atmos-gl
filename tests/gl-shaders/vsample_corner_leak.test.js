@@ -1,6 +1,6 @@
 // Currents/streamline-engine counterpart to wsample_corner_leak.test.js -- same
 // coastline-corner particle leak, same fix, in sampleVelSmooth (VEL_SAMPLE,
-// _currentparticles_gl.js) instead of sampleWindSmooth. See that file's docstring for
+// _streamparticles_gl.js) instead of sampleWindSmooth. See that file's docstring for
 // the full explanation of why a convex coastline feature (an isolated single-texel
 // headland/island tip) leaks under LINEAR filtering while a straight edge doesn't.
 import { chromium } from "playwright";
@@ -35,7 +35,7 @@ function cornerTexture() {
 }
 
 async function sampleAt(px, py, linearFilter) {
-  const { VEL_SAMPLE, PACK } = extractFromParticlesEngine("ui/modules/_currentparticles_gl.js", ["VEL_SAMPLE", "PACK"]);
+  const { VEL_SAMPLE, PACK } = extractFromParticlesEngine("ui/modules/_streamparticles_gl.js", ["VEL_SAMPLE", "PACK"]);
   const fsSource = `#version 300 es
 precision highp float;
 in vec2 v_uv;

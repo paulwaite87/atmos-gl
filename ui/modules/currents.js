@@ -1,5 +1,5 @@
 import { createFillLayer } from './_webglfill.js';
-import { createCurrentParticleGLLayer } from './_currentparticles_gl.js';
+import { createCurrentParticleGLLayer } from './_streamparticles_gl.js';
 import { timeline } from './timeline.js';
 import { keyFilename, showLegend, removeLegend } from './_legend.js';
 import { opacityUniform } from './_opacity.js';
@@ -33,7 +33,7 @@ export function buildLUT(paletteName) {
 // Resolve the configured palette (falling back to the default for an unset/unknown
 // name), read fresh from whatever cfg is passed in -- NOT captured once at mount. Both
 // the fill and particle engines below call colormap(cfg) with the live config on every
-// refresh (see _webglfill.js's refreshFill()/_currentparticles_gl.js's refresh()); a
+// refresh (see _webglfill.js's refreshFill()/_streamparticles_gl.js's refresh()); a
 // bare `config.palette` closed over at loadLayer()-time would silently ignore a later
 // palette change (the bug this fixes -- see jetstream.js's identical fix).
 export function paletteFor(cfg) {

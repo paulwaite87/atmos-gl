@@ -11,7 +11,7 @@ import { linkProg, makeTex, makeStateTex, randomAge, QUAD_VS, COH_H_FS, COH_V_FS
  * The consumer picks behaviour via opts (sectionKey, hourDataUrl, colormap, landReset,
  * vmax, primitive, ...).
  *
- * Only waves.js uses this engine now — wind.js moved onto _currentparticles_gl.js's
+ * Only waves.js uses this engine now — wind.js moved onto _streamparticles_gl.js's
  * streamline-ribbon engine (see that file's docstring; still labeled PROTOTYPE in
  * wind.js as of this writing, so the STREAK primitive mode below stays in place rather
  * than being deleted). waves.js is NOT a candidate for the same move: its BAR primitive
@@ -19,7 +19,7 @@ import { linkProg, makeTex, makeStateTex, randomAge, QUAD_VS, COH_H_FS, COH_V_FS
  * equivalent — see docs/adr/0003-keep-waves-on-the-oriented-quad-engine.md.
  *
  * NOT used by currents: ocean currents render as flowing STREAMLINE ribbon trails
- * (a geometrically distinct technique — see _currentparticles_gl.js's own docstring),
+ * (a geometrically distinct technique — see _streamparticles_gl.js's own docstring),
  * not an oriented quad. The two files share several opt names by convention (vmax,
  * colormap, landReset, maxSpeedColor) because currents' engine was written to look
  * similar to configure, not because it shares this engine's rendering code.
