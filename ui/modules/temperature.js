@@ -1,6 +1,6 @@
 import { createFillLayer } from './_webglfill.js';
 import { CMAP_RDYLBU_R, rgbToRgba } from './_colormaps.js';
-import { keyFilename, showLegend, removeLegend } from './_legend.js';
+import { standardLegend } from './_legend.js';
 import { opacityUniform } from './_opacity.js';
 
 // GPU scrubber layer. Linear RdYlBu_r ramp over [-40, 50] °C, matching the static
@@ -9,11 +9,7 @@ const VMIN = -40.0;
 const VMAX = 50.0;
 
 export function loadLayer(map, config, fullConfig = {}) {
-    const slotId = 'temperature-legend-slot';
-
-    const addLegend = (cfg) => {
-        showLegend(slotId, `${window.MAP_UI}/${keyFilename(cfg.outfile)}?t=${Date.now()}`, opacityUniform(cfg, 0.85));
-    };
+    const legend = standardLegend('temperature-legend-slot', (cfg) => cfg.outfile, 0.85);
 
     createFillLayer(map, {
         sectionKey: 'temperature',
@@ -35,12 +31,12 @@ export function loadLayer(map, config, fullConfig = {}) {
             u_alpha: opacityUniform(cfg, 0.85),
         }),
         colormap: () => rgbToRgba(CMAP_RDYLBU_R),
-        onMount: addLegend,
-        onRefresh: addLegend,
-        onUnmount: () => removeLegend(slotId),
+        onMount: legend.addLegend,
+        onRefresh: legend.addLegend,
+        onUnmount: legend.removeLegend,
         // key_fontsize changes never touch the fill's data texture, so the default
         // imageUrl regen chase can't detect that the legend needs re-fetching --
         // keyUrl gives it its own independent chase.
-        keyUrl: (cfg) => `${window.MAP_UI}/${keyFilename(cfg.outfile)}`,
+        keyUrl: legend.keyUrl,
     });
 }
