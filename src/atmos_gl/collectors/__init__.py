@@ -56,7 +56,6 @@ visibility control, and the data must already be present so a layer renders the 
 user toggles it on. (The async pair is the deliberate exception: key-gated + enabled.)
 """
 
-import time
 import logging
 
 from .quakes import QuakeCollector
@@ -75,7 +74,7 @@ from atmos_gl.collectors.air_quality import AirQualityCollector
 from atmos_gl.collectors.gfs_atmos import GfsAtmosCollector
 from atmos_gl.collectors.gfs_waves import GfsWavesCollector
 from atmos_gl.collectors.rtofs_currents import RtofsCurrentsCollector
-from atmos_gl.db.process_status_adapter import ProcessStatusAdapter
+from atmos_gl.collectors.driving import EventFeedDriver
 
 logger = logging.getLogger(__name__)
 
@@ -127,85 +126,21 @@ def resolve_embeddable(name):
     return getattr(importlib.import_module(module_name), cls_name)
 
 
-def _drive(collectors, config, last_runs: dict) -> None:
-    """Run each collector in `collectors`, subject to per-collector scheduling.
-
-    The single loop shared by every synchronous collector family. Per collector:
-      * is_stale()      — gates on the collector's own runs_per_day / period_s, so a
-                          fast feed (quakes, 24/day) and a slow one (volcanoes, 1/day)
-                          share this loop without the loop knowing their cadence.
-      * has_new_data()  — cheap HEAD/ETag (or file-age) pre-check; on unchanged remote we
-                          record the timestamp and skip the full fetch.
-      * collect()       — full fetch, called only when stale AND changed.
-
-    last_runs is mutated in-place: {section -> time.monotonic() of last check}. The
-    timestamp is updated on BOTH "collected" and "unchanged" outcomes so each collector's
-    period counts down correctly between checks. One collector failing is logged and
-    skipped; it never aborts the others.
-
-    Also records process_status for the Data Status UI (process_status_adapter.record_process_run): a
-    successful check OR collect both count as "success" (last_updated advances) — an
-    unchanged-but-verified remote is not staleness, it's the collector doing its job. A
-    not-yet-due collector (is_stale() False) records nothing; it wasn't checked at all.
-
-    record_process_start() is called right before feed.collect() -- the potentially
-    slow part (a multi-hundred-MB download, for example) -- so the Data Status UI can
-    show "running" instead of sitting on a stale reading for however long collect()
-    takes. data_collector and map_api (which serves that UI) are separate processes,
-    so this has to go through process_status (the shared DB), not an in-memory flag.
-
-    A collector whose `channel_key` is set and disabled in data_collector.channel_enabled
-    is skipped entirely -- not even is_stale()/has_new_data(), since those can themselves
-    hit the network (e.g. a HEAD request). last_runs is deliberately left untouched so
-    re-enabling triggers an immediate collection rather than waiting out a stale period.
-    """
-    now = time.monotonic()
-    process_status_adapter = ProcessStatusAdapter()
-    channel_enabled = config.get_setting("data_collector", "channel_enabled", {}) or {}
-    for CollectorCls in collectors:
-        key = CollectorCls.section
-        if CollectorCls.channel_key and not channel_enabled.get(CollectorCls.channel_key, True):
-            logger.debug(f"{key}: channel '{CollectorCls.channel_key}' disabled; skipping.")
-            continue
-        try:
-            feed = CollectorCls(config)
-            if not feed.is_stale(last_runs.get(key)):
-                logger.debug(
-                    f"{key}: not yet due "
-                    f"(period {feed.period_s:.0f}s, "
-                    f"next in {feed.period_s - (time.monotonic() - (last_runs.get(key) or 0)):.0f}s)."
-                )
-                continue
-            if not feed.has_new_data():
-                last_runs[key] = now
-                process_status_adapter.record_process_run(key, "collector", success=True)
-                continue
-            logger.info(f"{key}: collecting...")
-            process_status_adapter.record_process_start(key, "collector")
-            feed.collect()
-            last_runs[key] = now
-            process_status_adapter.record_process_run(key, "collector", success=True)
-        except Exception as exc:
-            logger.error(
-                f"collector {CollectorCls.__name__} failed: {exc}", exc_info=True
-            )
-            process_status_adapter.record_process_run(
-                key, "collector", success=False, error=str(exc)
-            )
-
-
 def collect_event_feeds(config, last_runs: dict) -> None:
     """Drive the DB-writing event feeds (quakes, storms, volcanoes, satellites, markers).
 
     Collection is UNCONDITIONAL of the layer's `enabled` flag; see module docstring.
+    See collectors/driving.py's EventFeedDriver for the shared scheduling contract
+    (is_stale/has_new_data/collect, channel gating, process_status recording).
     """
-    _drive(COLLECTORS, config, last_runs)
+    EventFeedDriver(config, last_runs).drive(COLLECTORS)
 
 
 def collect_file_caches(config, last_runs: dict) -> None:
     """Drive the file-cache collectors (sst, clouds).
 
-    Same scheduling contract as collect_event_feeds; separate last_runs dict so the two
-    families schedule independently. Collection is UNCONDITIONAL of `enabled`.
+    Same scheduling contract as collect_event_feeds (EventFeedDriver); separate
+    last_runs dict so the two families schedule independently. Collection is
+    UNCONDITIONAL of `enabled`.
     """
-    _drive(CACHE_COLLECTORS, config, last_runs)
+    EventFeedDriver(config, last_runs).drive(CACHE_COLLECTORS)
