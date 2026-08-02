@@ -3,12 +3,11 @@ import os
 import logging
 import warnings
 import numpy as np
-from scipy.ndimage import distance_transform_edt
 
 # Internal imports
 from atmos_gl.lib.config import AtmosGLConfig
 from atmos_gl.lib.texture import encode_uv
-from atmos_gl.lib.coastline import coastline_land_mask
+from atmos_gl.lib.coastline import LandMaskCache, nearest_fill_and_regrid_uv
 from .common import Updater, MapData, MultiHourRenderMixin, ForecastState
 from .plotting import opaque_cmap
 
@@ -71,8 +70,8 @@ class WavesUpdater(Updater, MultiHourRenderMixin):
         self.per_hour_outputs = ["_data.png"]
         self.status_product = "waves"
         # The land mask depends only on the (fixed) regrid geometry, so compute it once
-        # per run and reuse for every hour. Keyed by grid shape. Mirrors currents.py.
-        self._land_mask_cache = {}
+        # per run and reuse for every hour. Keyed by grid shape.
+        self._land_mask = LandMaskCache("Waves")
 
     def save_waves_key(self, output_path, cmap, norm, threshold=0.0):
         """Generates a standalone Wave Height key image (separate _key.png)."""
@@ -99,26 +98,6 @@ class WavesUpdater(Updater, MultiHourRenderMixin):
             decorate=_mark_threshold,
         )
 
-    def _land_mask_for(self, lat, lon, shape):
-        """Boolean land mask (True over land) on the regridded (_WAVES_REGRID_STEP_DEG)
-        swell data grid, cut from true coastline geometry. Computed once per grid shape
-        and cached for the run. Mirrors currents.py's _land_mask_for exactly. Returns
-        None if geometry is unavailable, so callers simply skip the cut that hour.
-        """
-        if shape in self._land_mask_cache:
-            return self._land_mask_cache[shape]
-        mesh_lon, mesh_lat = np.meshgrid(np.asarray(lon), np.asarray(lat))
-        land = coastline_land_mask(
-            mesh_lon, mesh_lat, -180.0, -90.0, 180.0, 90.0, res="50m"
-        )
-        self._land_mask_cache[shape] = land
-        if land is not None:
-            logger.info(
-                f"Waves: built {shape} coastline land mask "
-                f"({int(land.sum())} land cells cut)."
-            )
-        return land
-
     def _masked_uv(self, field0):
         """Regrid + true-coastline-mask u/v once, shared by BOTH the per-hour swell
         texture (particles) and, via the frontend's in-shader valueDecode, the heat
@@ -132,27 +111,13 @@ class WavesUpdater(Updater, MultiHourRenderMixin):
         Returns (new_lats, u, v) -- new_lats is passed straight through to encode_uv
         for correct north-at-top row orientation (see encode_uv's docstring).
         """
-        u_native = np.asarray(field0["u"], dtype=np.float32).copy()
-        v_native = np.asarray(field0["v"], dtype=np.float32).copy()
-        lat_native = field0.get("lat")
-        lon_native = field0.get("lon")
-
-        for native in (u_native, v_native):
-            bad = ~np.isfinite(native)
-            if bad.any() and not bad.all():
-                idx = distance_transform_edt(bad, return_distances=False, return_indices=True)
-                native[:] = native[tuple(idx)]
-
-        new_lats, new_lons, u = self.regrid_for_lod(
-            u_native, lat_native, lon_native, fill_value=np.nan,
-            step_override=_WAVES_REGRID_STEP_DEG,
-        )
-        _, _, v = self.regrid_for_lod(
-            v_native, lat_native, lon_native, fill_value=np.nan,
-            step_override=_WAVES_REGRID_STEP_DEG,
+        new_lats, new_lons, u, v = nearest_fill_and_regrid_uv(
+            self.regrid_for_lod, field0["u"], field0["v"],
+            field0.get("lat"), field0.get("lon"),
+            step_deg=_WAVES_REGRID_STEP_DEG,
         )
 
-        land = self._land_mask_for(new_lats, new_lons, u.shape)
+        land = self._land_mask.get(new_lats, new_lons, u.shape)
         if land is not None and land.shape == u.shape:
             u[land] = np.nan
             v[land] = np.nan
