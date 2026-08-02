@@ -109,6 +109,7 @@ const TITLE_VARIANTS = {
     default: { color: '#333', size: 13 },   // popupCard's own former default
     callsign: { color: '#007bff', size: 16 }, // flight radar / volcanoes / shipping
     alert: { color: '#ff4a4a', size: 14 },    // storms / lightning / quakes
+    plain: { color: '#000', size: 14 },       // markers -- bold, no accent colour
 };
 
 const LABEL_COLOR = '#666';

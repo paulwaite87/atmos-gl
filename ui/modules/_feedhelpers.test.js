@@ -178,6 +178,11 @@ describe('buildPopupHtml', () => {
             expect(html).toContain('<strong style="font-size:14px;color:#ff4a4a;">Cyclone Freddy</strong>');
         });
 
+        test('the plain variant is #000/14px (markers -- bold, no accent colour)', () => {
+            const html = buildPopupHtml({ title: { text: 'Auckland', variant: 'plain' } });
+            expect(html).toContain('<strong style="font-size:14px;color:#000;">Auckland</strong>');
+        });
+
         test('an unknown variant falls back to default rather than throwing', () => {
             const html = buildPopupHtml({ title: { text: 'X', variant: 'not-a-variant' } });
             expect(html).toContain('font-size:13px;color:#333;');
