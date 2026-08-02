@@ -261,12 +261,12 @@ describe('buildPopupHtml', () => {
             expect(html).not.toContain('<script>');
         });
 
-        test('single item renders "Label: value" followed by a line break', () => {
+        test('single item renders as its own block-level "Label: value" line', () => {
             const html = buildPopupHtml({
                 title: { text: 'X' },
                 blocks: [{ type: 'line', items: [{ label: 'Type', value: 'A320' }] }],
             });
-            expect(html).toContain('<span style="color:#666;">Type:</span> A320<br>');
+            expect(html).toContain('<div><span style="color:#666;">Type:</span> A320</div>');
         });
 
         test('multiple items on one line are joined with " | " (shipping\'s MMSI | IMO)', () => {
@@ -278,7 +278,15 @@ describe('buildPopupHtml', () => {
                 ] }],
             });
             expect(html).toContain(
-                '<span style="color:#666;">MMSI:</span> 123456789 | <span style="color:#666;">IMO:</span> 987654<br>');
+                '<div><span style="color:#666;">MMSI:</span> 123456789 | <span style="color:#666;">IMO:</span> 987654</div>');
+        });
+
+        test('a line always starts on its own line, immediately after the title (no explicit divider needed)', () => {
+            const html = buildPopupHtml({
+                title: { text: 'BAW123', variant: 'callsign' },
+                blocks: [{ type: 'line', items: [{ label: 'Type', value: 'A320' }] }],
+            });
+            expect(html).toContain('</strong><div><span style="color:#666;">Type:</span> A320</div>');
         });
 
         test('raw:true skips escaping (flight radar\'s &deg; heading entity)', () => {

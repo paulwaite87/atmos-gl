@@ -654,8 +654,8 @@ function popupHtml(f) {
     const blocks = [];
     if (routePath) {
         blocks.push({ type: 'emphasis', html: routePath + plausibleWarningHtml(p.route_plausible) });
+        blocks.push({ type: 'divider' });
     }
-    blocks.push({ type: 'divider' });
     if (p.aircraft_type) blocks.push({ type: 'line', items: [{ label: 'Type', value: p.aircraft_type }] });
     blocks.push({ type: 'line', items: [{ label: 'Class', value: cls }] });
     if (p.airline) blocks.push({ type: 'line', items: [{ label: 'Airline', value: p.airline }] });

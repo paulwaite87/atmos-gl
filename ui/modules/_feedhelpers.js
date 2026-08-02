@@ -136,9 +136,13 @@ function renderRows(rows) {
 }
 
 function renderLine(items) {
-    return items.map(({ label, value, raw = false }) =>
+    // Block-level (a <div>, not a trailing <br>) so a line always starts on its own
+    // line regardless of what precedes it -- title, another line, or a divider --
+    // the same reason `rows` wraps each row in a <div> rather than relying on <br>.
+    const content = items.map(({ label, value, raw = false }) =>
         `<span style="color:${LABEL_COLOR};">${escapeHtml(label)}:</span> ${escapeMaybe(value, raw)}`
-    ).join(' | ') + '<br>';
+    ).join(' | ');
+    return `<div>${content}</div>`;
 }
 
 function renderBlock(block) {
