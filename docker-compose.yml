@@ -98,6 +98,7 @@ services:
       - CONFIG_PATH=/opt/project/config/atmos-gl.json
       - MAPTILER_API_KEY=${MAPTILER_API_KEY}
       - FIRMS_API_KEY=${FIRMS_API_KEY}
+      - LAYER_BUILDER_ORDER_URL=http://layer_builder:9100
     restart: unless-stopped
     depends_on:
       atmos_gl_db:
