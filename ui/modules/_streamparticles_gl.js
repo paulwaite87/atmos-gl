@@ -87,6 +87,13 @@ float rand(vec2 co){
 // it. Returns vec3(vx, vy, coverage).
 const VEL_SAMPLE = `
 uniform float u_smoothPx;
+// Live minimum-magnitude threshold (0 = disabled, the default for every consumer that
+// doesn't set it -- e.g. currents/jetstream). Folded into hasData here, ONE place,
+// rather than duplicated as a separate check in every caller (UPDATE_FS's reset test,
+// BAR_VS_BODY's discard, STREAMLINE_VS_BODY's discard) -- ported from _particles_gl.js's
+// WSAMPLE, which established this same pattern (see that file's identical comment) for
+// waves' min_wave_height, the eventual consumer here too once waves migrates.
+uniform float u_minValue;
 vec4 cp_bsplineW(float f){
     float f2 = f*f, f3 = f2*f;
     return vec4(
@@ -131,7 +138,9 @@ vec3 sampleVelSmooth(sampler2D tex, vec2 p, float vmax){
     }
     if (c0.a < 0.5) return vec3(0.0, 0.0, 0.0);
     if (wsum < 0.01) return vec3(0.0, 0.0, 0.0);
-    return vec3(sumv / wsum, 1.0);
+    vec2 v = sumv / wsum;
+    if (u_minValue > 0.0 && length(v) < u_minValue) return vec3(0.0, 0.0, 0.0);
+    return vec3(v, 1.0);
 }`;
 
 // DIRECTION-COHERENCE filter (opt-in via coherenceRadius; currents never sets it, so this
@@ -592,6 +601,11 @@ export function createCurrentParticleGLLayer(map, opts) {
         calmSpeed = (cfg) => { const v = Number(cfg.calm_speed); return isFinite(v) && v > 0 ? v : 2.5; },
         calmDrop  = (cfg) => 0.0,
         calmFade  = (cfg) => 0.0,
+        // Live minimum-magnitude threshold (real units, e.g. metres for waves' swell
+        // height): below it, a cell is treated as no-data everywhere sampleVelSmooth is
+        // used -- same as land. 0 (the default) disables it entirely; currents/
+        // jetstream never set this.
+        minValue = () => 0.0,
         // Zoom-adaptive drawn density (ported from _particles_gl.js): the fixed particle
         // budget concentrates into the shrinking respawn box as you zoom in (viewBox()
         // below), so DRAW fewer of the (randomly distributed) particles to keep on-screen
@@ -677,6 +691,7 @@ export function createCurrentParticleGLLayer(map, opts) {
     let curSpeed = defaultSpeed, curThick = 2.0, curMaxSpeed = vmax, curAlpha = 0.9, curLandReset = 1.0;
     let curHalfLen = 7.0;         // bar mode's crest half-length (px); set in applyParams
     let curCalmSpeed = 2.5, curCalmDrop = 0.0, curCalmFade = 0.0;   // calm-cell; set in applyParams
+    let curMinValue = 0.0;        // live min-magnitude threshold; set in applyParams
     let curH = 8.0e-4;            // streamline integration step (tail arc); set in applyParams
     let curSmoothPx = 1.0;        // sampleVelSmooth coarse-cell spacing; set in applyParams
     // Zoom compensation: curH (trail arc) and curSpeed (per-frame advection step) are
@@ -704,6 +719,7 @@ export function createCurrentParticleGLLayer(map, opts) {
         curH = hFromConfig(cfg);
         curHalfLen = lenFromConfig(cfg);
         curCalmSpeed = calmSpeed(cfg); curCalmDrop = calmDrop(cfg); curCalmFade = calmFade(cfg);
+        curMinValue = Number(minValue(cfg)) || 0.0;
         const newSmoothPx = Number(smoothPx(cfg));
         curSmoothPx = (isFinite(newSmoothPx) && newSmoothPx >= 1.0) ? newSmoothPx : 1.0;
         const newCoh = Number(coherenceRadius(cfg)) || 0;
@@ -1020,6 +1036,7 @@ export function createCurrentParticleGLLayer(map, opts) {
         // floatPos above fixes. Retrying now that positions are full-precision.
         gl.uniform1f(u('u_speed'), curSpeed * curLengthZoomFactor);
         gl.uniform1f(u('u_smoothPx'), curSmoothPx);
+        gl.uniform1f(u('u_minValue'), curMinValue);
         gl.uniform1f(u('u_ageStep'), curAgeStep);
         gl.uniform1f(u('u_seed'), Math.random());
         gl.uniform1f(u('u_landReset'), curLandReset);
@@ -1062,6 +1079,7 @@ export function createCurrentParticleGLLayer(map, opts) {
         gl.uniform1f(u('u_res'), RES);
         gl.uniform1f(u('u_vmax'), vmax);
         gl.uniform1f(u('u_smoothPx'), curSmoothPx);
+        gl.uniform1f(u('u_minValue'), curMinValue);
         gl.uniform1f(u('u_H'), curH * curLengthZoomFactor);
         gl.uniform1f(u('u_halfThick'), Math.max(0.5, curThick));
         gl.uniform1f(u('u_halfLen'), curHalfLen);   // bar mode only; no-op uniform (-1) for streamline
