@@ -1,6 +1,6 @@
 import { liveDataSync } from './_datasync.js';
 import { hoverPopup } from './_hoverpopup.js';
-import { fetchOrThrow, popupCard } from './_feedhelpers.js';
+import { fetchOrThrow, buildPopupHtml } from './_feedhelpers.js';
 import { createFillLayer } from './_webglfill.js';
 import { buildThresholdLUT } from './_thresholdpalette.js';
 import { keyFilename, showLegend, removeLegend } from './_legend.js';
@@ -46,10 +46,9 @@ export function loadLayer(map, config, fullConfig = {}) {
         // width: 140 (default is 45, tuned for other layers' short labels like "VEI") --
         // "Fire Radiative Power" is the longest label here; every row shares one width
         // so the popup's label column stays aligned.
-        return popupCard({
-            title: 'Active Fire',
-            titleColor: '#ff5a1f',
-            rows: [
+        return buildPopupHtml({
+            title: { text: 'Active Fire', variant: 'fire' },
+            blocks: [{ type: 'divider' }, { type: 'rows', rows: [
                 { label: 'Confidence', value: d.confidence, width: 140 },
                 { label: 'Fire Risk', value: d.fire_risk != null ? Number(d.fire_risk).toFixed(0) : 'N/A', width: 140 },
                 { label: 'Fire Radiative Power', value: `${Number(d.frp).toFixed(1)} MW`, width: 140 },
@@ -57,7 +56,7 @@ export function loadLayer(map, config, fullConfig = {}) {
                 { label: 'Satellite', value: SATELLITE_NAMES[d.satellite] || d.satellite, width: 140 },
                 { label: 'Day/Night', value: d.daynight === 'D' ? 'Day' : d.daynight === 'N' ? 'Night' : d.daynight, width: 140 },
                 { label: 'Detected', value: age, width: 140 },
-            ],
+            ] }],
         });
     };
 

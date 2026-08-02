@@ -51,9 +51,9 @@ export function loadLayer(map, config) {
         const rows = [
             { label: 'Type', value: p.record_type },
         ];
-        // width:130 (popupCard's per-row override, default 45) -- these labels are
-        // much longer than this card's other rows ("Type"/"Time"/"Hour"), and popupCard's
-        // label column is a fixed-width inline-block: at the default 45px they wrap
+        // width:130 (the rows block's per-row override, default 45) -- these labels are
+        // much longer than this card's other rows ("Type"/"Time"/"Hour"), and the rows
+        // block's label column is a fixed-width inline-block: at the default 45px they wrap
         // across 2-4 lines regardless of the popup's own maxWidth (a completely
         // separate constraint), which is what actually made the wider popup look like
         // it hadn't changed anything. 130px fits "Min sea-level pressure:" (the

@@ -56,36 +56,6 @@ export async function preloadIcons(map, icons) {
     }));
 }
 
-// DEPRECATED -- superseded by buildPopupHtml below (architecture review candidate
-// #6, superseding docs/adr/0002-dont-extend-hoverpopup-for-markers.md). Kept only
-// until every caller has migrated; delete once volcanoes.js/storms.js/satellites.js
-// (its last three callers) are off it.
-export function popupCard({ title, titleColor = '#333', titleSize = 13, padding = 4, rows = [], fontSize = 12 }) {
-    // Escaped here, not left to each caller: title/label/value all ultimately trace
-    // back to an external feed (see escapeHtml's comment) -- escaping unconditionally
-    // inside the shared template means no caller (present or future) can forget.
-    const rowsHtml = rows
-        .map(({ label, value, width = 45 }) =>
-            // Label bold+black, value standard-weight+light-grey -- reads better than
-            // the reverse (a subdued label next to a bold value drew the eye to the
-            // value first, before its label gave it context). Both routed through
-            // escapeHtml() -- see this function's top-level comment and escapeHtml's
-            // own docstring.
-            // min-width, not width: an inline-block box doesn't clip overflowing
-            // content, so a bold label wider than `width` (e.g. "Storm category")
-            // was painting straight past the box edge -- burying margin-right's gap
-            // under the overflow instead of creating one. min-width still aligns
-            // short labels at `width`px but lets long ones expand instead of
-            // overlapping the value that follows.
-            `<div><strong style="min-width:${width}px;display:inline-block;margin-right:6px;">${escapeHtml(label)}:</strong><span style="color:#666;">${escapeHtml(value)}</span></div>`)
-        .join('');
-    return `<div style="font-family:sans-serif;font-size:${fontSize}px;color:#000;padding:${padding}px;">
-            <strong style="font-size:${titleSize}px;color:${titleColor};">${escapeHtml(title)}</strong>
-            <hr style="border:0;border-top:1px solid #ccc;margin:4px 0;">
-            ${rowsHtml}
-        </div>`;
-}
-
 // The one-stop-shop popup content model (architecture review candidate #6,
 // superseding docs/adr/0002-dont-extend-hoverpopup-for-markers.md) -- replaces
 // popupCard AND every hand-rolled popup template (quakes/lightning/flightradar/
@@ -110,6 +80,7 @@ const TITLE_VARIANTS = {
     callsign: { color: '#007bff', size: 16 }, // flight radar / volcanoes / shipping
     alert: { color: '#ff4a4a', size: 14 },    // storms / lightning / quakes
     plain: { color: '#000', size: 14 },       // markers -- bold, no accent colour
+    fire: { color: '#ff5a1f', size: 13 },     // fires -- distinct orange, not alert's red
 };
 
 const LABEL_COLOR = '#666';

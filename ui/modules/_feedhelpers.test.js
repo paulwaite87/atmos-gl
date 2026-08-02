@@ -3,7 +3,7 @@
 // the same load scaffold"). fetch/window/createImageBitmap are faked minimally, same
 // approach _reconcile.test.js/_legend.test.js take for browser globals.
 import { describe, test, expect, vi, beforeEach } from 'vitest';
-import { fetchOrThrow, preloadIcons, popupCard, escapeHtml, buildPopupHtml } from './_feedhelpers.js';
+import { fetchOrThrow, preloadIcons, escapeHtml, buildPopupHtml } from './_feedhelpers.js';
 
 function fakeMap(existingIds = []) {
     const images = new Set(existingIds);
@@ -96,60 +96,6 @@ describe('escapeHtml', () => {
     });
 });
 
-describe('popupCard', () => {
-    test('escapes an XSS payload in the title and in a row value, so it renders inert', () => {
-        const html = popupCard({
-            title: '<script>alert(1)</script>',
-            rows: [{ label: 'Name', value: '<img src=x onerror=alert(1)>' }],
-        });
-        expect(html).not.toContain('<script>');
-        expect(html).not.toContain('<img src=x onerror=alert(1)>');
-        expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
-        expect(html).toContain('&lt;img src=x onerror=alert(1)&gt;');
-    });
-
-
-    test('renders the title, hr, and each row (bold label, grey value) with default width', () => {
-        const html = popupCard({
-            title: 'Test Volcano',
-            rows: [{ label: 'VEI', value: 4 }],
-        });
-        expect(html).toContain('Test Volcano');
-        expect(html).toContain('<hr');
-        expect(html).toContain('<strong style="min-width:45px;display:inline-block;margin-right:6px;">VEI:</strong>');
-        expect(html).toContain('<span style="color:#666;">4</span>');
-    });
-
-    test('applies per-row width and card-level title/padding overrides', () => {
-        const html = popupCard({
-            title: 'Satellite',
-            titleColor: '#222',
-            titleSize: 14,
-            padding: 4,
-            rows: [{ label: 'NORAD', value: 123, width: 50 }],
-        });
-        expect(html).toContain('font-size:14px;color:#222');
-        expect(html).toContain('padding:4px');
-        expect(html).toContain('width:50px');
-    });
-
-    test('renders no rows when the rows array is empty', () => {
-        const html = popupCard({ title: 'Empty' });
-        expect(html).toContain('Empty');
-        expect(html).not.toContain('<span');
-    });
-
-    test('defaults the body font-size to 12px', () => {
-        const html = popupCard({ title: 'Test' });
-        expect(html).toContain('font-size:12px;color:#000');
-    });
-
-    test('applies an explicit fontSize to the body', () => {
-        const html = popupCard({ title: 'Test', fontSize: 16 });
-        expect(html).toContain('font-size:16px;color:#000');
-    });
-});
-
 // buildPopupHtml -- the one-stop-shop content model replacing popupCard AND every
 // hand-rolled popup template (architecture review candidate #6, superseding
 // docs/adr/0002-dont-extend-hoverpopup-for-markers.md). Grounded directly against
@@ -181,6 +127,11 @@ describe('buildPopupHtml', () => {
         test('the plain variant is #000/14px (markers -- bold, no accent colour)', () => {
             const html = buildPopupHtml({ title: { text: 'Auckland', variant: 'plain' } });
             expect(html).toContain('<strong style="font-size:14px;color:#000;">Auckland</strong>');
+        });
+
+        test('the fire variant is #ff5a1f/13px (fires -- distinct orange, not alert\'s red)', () => {
+            const html = buildPopupHtml({ title: { text: 'Active Fire', variant: 'fire' } });
+            expect(html).toContain('<strong style="font-size:13px;color:#ff5a1f;">Active Fire</strong>');
         });
 
         test('an unknown variant falls back to default rather than throwing', () => {
