@@ -1,6 +1,5 @@
-import { liveLayerSync } from './_refresh.js';
 import { createFillLayer } from './_webglfill.js';
-import { createParticleGLController } from './_particles_gl.js';
+import { createCurrentParticleGLLayer } from './_streamparticles_gl.js';
 import { keyFilename, showLegend, removeLegend } from './_legend.js';
 import { opacityUniform } from './_opacity.js';
 
@@ -19,10 +18,18 @@ import { opacityUniform } from './_opacity.js';
  *
  * Both the heat fill and the bars decode from the SAME per-hour swell velocity
  * texture (waves_f{NNN}_data.png) -- the fill via valueDecode (length(u,v), exactly
- * mirroring wind.js's speed fill), the bars via the shared particle engine
- * (_particles_gl.js, primitive: 'bar'). min_wave_height is a live client-side
- * uniform on both (u_minWave on the fill, minValue on the particle engine), not baked
- * into the texture -- see _particles_gl.js's WSAMPLE docstring for why.
+ * mirroring wind.js's speed fill), the bars via the shared stream particle engine
+ * (_streamparticles_gl.js, primitive: 'bar' -- candidate #7, particle-engine
+ * consolidation; waves moved off the now-deleted _particles_gl.js, whose bar primitive
+ * this engine's BAR_VS_BODY ports). min_wave_height is a live client-side uniform on
+ * both (u_minWave on the fill, minValue on the particle engine), not baked into the
+ * texture -- see _streamparticles_gl.js's VEL_SAMPLE docstring for why.
+ *
+ * speedFromConfig/thicknessFromConfig/ageStep below replicate exactly what waves got
+ * for free as _particles_gl.js's module defaults (that engine's defaultSpeed/
+ * defaultThickness/ageStep) -- this engine's own defaults differ (tuned for currents/
+ * jetstream instead), so waves must override them explicitly to keep its drift speed,
+ * bar thickness, and particle lifetime unchanged by the migration.
  */
 
 export const VMAX_WAVES = 8.0;   // must match backend tasks/waves.py VMAX_WAVES
@@ -74,6 +81,22 @@ function buildBarLUT() {
     return lut;
 }
 
+// particle_speed (0-100) -> the drift-speed multiplier. Replicates
+// _particles_gl.js's own defaultSpeed exactly (divides by 1000, not this engine's own
+// default speedFromConfig, which divides by 500 -- see this file's module docstring).
+export function speedFromConfig(cfg) {
+    const p = Number(cfg.particle_speed);
+    return (isFinite(p) ? Math.min(100, Math.max(0, p)) : 50) / 1000;
+}
+
+// particle_size (0.5-5px) -> bar thickness. Replicates _particles_gl.js's pre-migration
+// override exactly -- this engine's own default thicknessFromConfig reads
+// trail_thickness, a field waves' config never sets.
+export function thicknessFromConfig(cfg) {
+    const v = Number(cfg.particle_size);
+    return isFinite(v) ? Math.min(5, Math.max(0.5, v)) : 1.5;
+}
+
 export function loadLayer(map, config, fullConfig = {}) {
     const slotId = 'waves-legend-slot';
 
@@ -97,7 +120,7 @@ export function loadLayer(map, config, fullConfig = {}) {
         vspan: 1.0,                      // valueDecode already returns normalised magnitude
         bicubic: true,
         opacity: opacityUniform(config, 0.7),
-        beforeId: 'waves-anim-layer',     // particle layer id -> heatmap stays underneath
+        beforeId: 'waves-trails-layer',   // particle layer id -> heatmap stays underneath
         valueDecode,
         fragmentBody: `
             uniform float u_alpha;
@@ -123,21 +146,20 @@ export function loadLayer(map, config, fullConfig = {}) {
         keyUrl: (cfg) => `${window.MAP_UI}/${keyFilename(cfg.outfile)}`,
     });
 
-    // Animated swell bars (GPU custom layer). Uses the shared particle engine with
-    // primitive:'bar' (crest perpendicular to flow, fixed length). Forecast-stepped
-    // like wind: the engine subscribes to the shared timeline and loads per-hour
-    // swell fields (waves_f{NNN}_data.png) via the default hourDataUrl. Unlike
-    // createFillLayer, this engine doesn't self-manage config sync -- driven below by
-    // this module's own liveLayerSync, same as the pre-migration version.
-    const bars = createParticleGLController(map, {
+    // Animated swell bars (GPU custom layer). Uses the shared stream particle engine
+    // with primitive:'bar' (crest perpendicular to flow, fixed length). Forecast-
+    // stepped like wind: the engine subscribes to the shared timeline and loads
+    // per-hour swell fields (waves_f{NNN}_data.png) via the default hourDataUrl.
+    // Unlike _particles_gl.js's controller, this engine self-manages its own config
+    // sync internally (liveLayerSync) and returns a single teardown function directly
+    // -- same pattern as currents.js/jetstream.js -- so there's no separate
+    // liveLayerSync wrapper needed here any more.
+    const stopBars = createCurrentParticleGLLayer(map, {
         sectionKey: 'waves',
         primitive: 'bar',                   // perpendicular crest bars (windy.com swell look)
-        // The engine's default renderMode ('trails') draws fade-accumulation POINTS and
-        // ignores `primitive` entirely -- only 'streaks' mode dispatches through
-        // buildDrawShaders(primitive), which is what actually draws bars. Force it, or
-        // waves silently renders as near-invisible points instead of crest bars.
-        renderMode: () => 'streaks',
         initialConfig: config,
+        initialAnimation: fullConfig.animation || {},
+        initialCommon: fullConfig.common || {},
         // Particle density per level_of_detail (1/2/3). Bars read denser than wind
         // streaks, so these are much lower than wind's defaults. Tune to taste.
         lodCount: { 1: 4000, 2: 9000, 3: 18000 },
@@ -147,36 +169,38 @@ export function loadLayer(map, config, fullConfig = {}) {
         // Without this, a particle that drifts onto a no-data (land) cell just sits
         // there forever -- velocity samples as zero on land, so it never advects away,
         // rendering a static bar right at the coastline until its age naturally expires
-        // (tests/gl-shaders/particles_land_reset.test.js verifies this against the real
-        // UPDATE_FS shader: landReset=0 leaves a land-stuck particle unmoved; =1 resets
-        // it to a random ocean-eligible position immediately). Matches currents, which
-        // has always had this set.
+        // (tests/gl-shaders/streamparticles_update_land_reset.test.js verifies this
+        // against the real UPDATE_FS shader: landReset=0 leaves a land-stuck particle
+        // unmoved; =1 resets it to a random ocean-eligible position immediately).
+        // Matches currents, which has always had this set.
         landReset: () => 1.0,
         // Live minimum-wave-height threshold: below it, a cell is treated as no-data
-        // for the particles too, same as land (WSAMPLE folds this into hasData) -- a
-        // deliberate behaviour change from the pre-migration tile engine, where
+        // for the particles too, same as land (VEL_SAMPLE folds this into hasData) --
+        // a deliberate behaviour change from the pre-migration tile engine, where
         // min_wave_height only ever hid the heat fill, never affected the bars.
         minValue: (cfg) => Math.max(0, Number(cfg.min_wave_height) || 0),
-        // Bars are FIXED length (not speed-scaled like wind streaks), sized from the
-        // bar_length config key (1..20 px, default 7) to match the old wave engine.
-        lenSpeedScale: 0,
-        streakLen: (cfg) => { const v = Number(cfg.bar_length);
-                              return isFinite(v) ? Math.min(20, Math.max(1, v)) : 7; },
-        thickness: (cfg) => { const v = Number(cfg.particle_size);
-                              return isFinite(v) ? Math.min(5, Math.max(0.5, v)) : 1.5; },
+        // Bars are FIXED length -- bar_length (1..20px, default 7) already matches
+        // this engine's own default lenFromConfig exactly, so no override needed here.
+        speedFromConfig,
+        thicknessFromConfig,
+        // particle_lifetime was never a real waves config field (see config template),
+        // so the pre-migration engine's ageStep default always evaluated to this same
+        // fixed 1/70 for waves in practice -- this engine's own default (1/180) would
+        // silently double bar lifetime, so pin it explicitly rather than relying on a
+        // config field that doesn't exist.
+        ageStep: () => 1.0 / 70,
+        // Calm-cell handling: waves previously got _particles_gl.js's module defaults
+        // (calmSpeed=2.5, which this engine's own default already matches -- no
+        // override needed; calmDrop=0.06, calmFade=0.6, which this engine defaults OFF
+        // at the engine level, so pin them explicitly to keep waves' pre-migration look).
+        calmDrop: () => 0.06,
+        calmFade: () => 0.6,
         // hourDataUrl defaults to <outfile_base>_f{NNN}_data.png — the per-hour swell
         // field the collector now writes (GFS-Wave global 0p25, forecast-stepped).
     });
 
-    const unsubBars = liveLayerSync(map, {
-        sectionKey: 'waves', initialConfig: config,
-        mount: (cfg) => bars.mount(cfg),
-        refresh: (cfg) => bars.refresh(cfg),
-        unmount: () => bars.unmount(),
-    });
-
     return () => {
-        try { unsubBars && unsubBars(); } catch (e) {}
+        try { stopBars && stopBars(); } catch (e) {}
         try { teardownHeatmap && teardownHeatmap(); } catch (e) {}
     };
 }

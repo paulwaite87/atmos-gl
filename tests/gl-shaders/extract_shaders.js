@@ -53,6 +53,14 @@ export function captureParticleControllerOpts(path, exportedFn = "loadLayer") {
       captured.opts = opts;
       return () => {};
     },
+    // _streamparticles_gl.js's controller self-manages its own liveLayerSync and
+    // returns the teardown function directly (unlike createParticleGLController's
+    // {mount,refresh,unmount} shape above) -- waves.js (bar mode), currents.js, and
+    // jetstream.js all call this one.
+    createCurrentParticleGLLayer: (_map, opts) => {
+      captured.opts = opts;
+      return () => {};
+    },
     // waves.js (and others) also call createFillLayer for their heat fill, alongside
     // the particle controller this helper actually cares about -- stub it so
     // evaluating the module doesn't throw ReferenceError.
