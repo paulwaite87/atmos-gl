@@ -14,6 +14,10 @@ boundary/level layers (isobars, precipitation's `BoundaryNorm`), and SST's
 runtime-computed range — those do not share the scalar-field renderer or its spec
 shape.
 
+| Term | Definition | Aliases to avoid |
+| ---- | ---------- | ---------------- |
+| **Single-hour scalar updater** | `SingleHourScalarUpdater` (`tasks/single_hour_scalar.py`), the shared base behind `ScalarFieldUpdater` and `PrecipitationUpdater` — owns the constructor fields and `run()` wiring (`get_gfs_state()` warm-up → key-refresh hook → `render_all_hours()`) genuinely identical between the two. `plot()` stays a full per-subclass override, not hook-split: the two classes' static-render color models and texture pipelines diverge too much (precipitation's discrete banded palette + smoothing/floor/sqrt-transform pipeline vs. the scalar-field trio's plain `Normalize`/threshold `cmap`) for splitting `plot()` into sub-hooks to pay off — see the module's own docstring. | scalar renderer base |
+
 ## Backend collectors
 
 | Term | Definition | Aliases to avoid |
