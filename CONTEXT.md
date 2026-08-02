@@ -23,6 +23,7 @@ shape.
 | Term | Definition | Aliases to avoid |
 | ---- | ---------- | ---------------- |
 | **Single-file field collector** | A `FieldCollectorBase` subclass (`SingleFileFieldCollector`, `collectors/field_base.py`) that fetches one whole file per forecast hour for a single product — `GfsWavesCollector`, `RtofsCurrentsCollector` — sharing one `collect()`/`backfill_hour()` implementation behind `_resolve_download_url()`/`_guard_cycle()` hooks. Distinct from `GfsAtmosCollector`'s multi-product byte-range fetch, which stays its own implementation, subclassing `FieldCollectorBase` directly. | multi-file collector |
+| **Collector driver** | `CollectorDriver` (`collectors/driving.py`), the shared gate/try/record envelope behind `EventFeedDriver` (event feeds + file caches — `is_stale`/`has_new_data`/`collect`, own `last_runs` timestamp bookkeeping) and `FieldCollectorDriver` (the three `FieldCollectorBase` subclasses — unconditional `collect(ctx)`, freshness handled internally per forecast hour, a shared `CycleContext`). `_drive_one()` stays a full per-subclass override, not hook-split further: construction arity, whether there's an external freshness pre-check, and what per-cycle state gets threaded through are real domain differences between the two families, not incidental duplication — see the module's own docstring and `docs/adr/0001-dont-unify-gfs-rtofs-baseline-probing.md` for the same reasoning applied to a different pair in this package. | driver base |
 
 ## Data conventions
 
