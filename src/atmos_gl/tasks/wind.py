@@ -91,26 +91,39 @@ class WindUpdater(Updater, MultiHourRenderMixin):
         # --- windspeed heatmap (mirrors TemperatureUpdater.plot) ---
         new_lats, new_lons, spd_smooth = self.regrid_for_lod(speed, lats, lons)
 
-        plot = Plot(self.map_data.region)
-        plot.get_figure()
-        norm = mcolors.Normalize(vmin=0.0, vmax=self.VMAX_SPEED)
-        plot.ax.contourf(
-            new_lons,
-            clamp_lats_to_mercator_limit(new_lats),
-            spd_smooth,
-            levels=20,
-            cmap=WIND_CMAP,
-            norm=norm,
-            transform=ccrs.PlateCarree(),
-            extend="max",
-            zorder=2,
-        )
-
         out_for_hour = self.get_output_path_for_hour(state.fhour)
-        plot.save_figure(out_for_hour)
-        plt_close = getattr(plot, "close", None)
-        if callable(plt_close):
-            plt_close()
+
+        # The static heatmap (contourf) and the velocity texture (encode_uv, below)
+        # are independent outputs -- a contourf failure must not block the texture,
+        # since that's what the frontend's animated WebGL wind layer actually reads.
+        # contourf occasionally hits a known Cartopy bug (antimeridian-wrapping
+        # polygon reprojection inside its own get_datalim() call) for specific,
+        # deterministic field topologies -- see ScalarFieldUpdater.plot() (PR #281)
+        # for the same fix applied there; issue #283 tracks this one.
+        try:
+            plot = Plot(self.map_data.region)
+            plot.get_figure()
+            norm = mcolors.Normalize(vmin=0.0, vmax=self.VMAX_SPEED)
+            plot.ax.contourf(
+                new_lons,
+                clamp_lats_to_mercator_limit(new_lats),
+                spd_smooth,
+                levels=20,
+                cmap=WIND_CMAP,
+                norm=norm,
+                transform=ccrs.PlateCarree(),
+                extend="max",
+                zorder=2,
+            )
+            plot.save_figure(out_for_hour)
+
+            plt_close = getattr(plot, "close", None)
+            if callable(plt_close):
+                plt_close()
+        except Exception as e:
+            logger.warning(
+                f"{self.section}: static render f{state.fhour:03d} failed: {e}"
+            )
 
         # --- velocity texture: raw field; frontend applies direction-coherence live ---
         base, _ = os.path.splitext(out_for_hour)
