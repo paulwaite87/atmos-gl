@@ -37,7 +37,7 @@ export function extractFromParticlesEngine(path, names) {
 export function captureParticleControllerOpts(path, exportedFn = "loadLayer") {
   let src = fs.readFileSync(path, "utf8");
   src = src.replace(/^import\s*\{[^}]*\}\s*from\s*['"][^'"]+['"];?$/gm, "");
-  src = src.replace(/^export function/gm, "function");
+  src = src.replace(/^export (async function|function)/gm, "$1");
   src = src.replace(/^export const/gm, "const");
 
   const captured = { opts: null };
