@@ -1,20 +1,24 @@
 #!/usr/bin/env python3
 import argparse
+import json
 import logging
 import sys
 import os
 import signal
 import asyncio
 import multiprocessing
+import threading
 from functools import partial
 from concurrent.futures import ProcessPoolExecutor
 from concurrent.futures.process import BrokenProcessPool
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 # Library imports
 from atmos_gl.lib.config import AtmosGLConfig
 from atmos_gl.lib.logging import setup_logging, set_loglevel
 from atmos_gl.db.process_status_adapter import ProcessStatusAdapter
 from atmos_gl.collectors import FIELD_COLLECTOR_CLASSES, CACHE_COLLECTORS
+from atmos_gl.round_robin_order import RoundRobinOrder
 
 
 # Task imports
@@ -154,6 +158,75 @@ MULTI_HOUR_SECTIONS = [
 ]
 SINGLE_SHOT_SECTIONS = [name for name in TASK_CLASSES if name not in MULTI_HOUR_SECTIONS]
 
+# Internal-only listener for reprioritising the round-robin order (architecture review
+# candidate "test changed processes much more quickly") -- never called directly.
+# routes/layer_builder.py on map_api (the app's one public API surface, port 9000)
+# proxies POST/GET /api/layer_builder/priority to this over the agl docker network;
+# nothing outside this container talks to this port. Not published to the host.
+ORDER_SERVER_PORT = 9100
+
+
+class _OrderRequestHandler(BaseHTTPRequestHandler):
+    """`order` is bound per-subclass by _start_order_server() below (BaseHTTPRequestHandler
+    instantiates a fresh handler object per request, so the shared RoundRobinOrder has to
+    live on the class, not the instance)."""
+
+    order: RoundRobinOrder
+
+    def _reply(self, status, payload):
+        body = json.dumps(payload).encode()
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_GET(self):
+        if self.path == "/priority":
+            self._reply(200, {"order": self.order.current()})
+        else:
+            self._reply(404, {"error": "not found"})
+
+    def do_POST(self):
+        length = int(self.headers.get("Content-Length", 0) or 0)
+        raw = self.rfile.read(length) if length else b"{}"
+        try:
+            payload = json.loads(raw or b"{}")
+        except json.JSONDecodeError:
+            self._reply(400, {"error": "invalid JSON"})
+            return
+
+        if self.path == "/priority":
+            sections = payload.get("sections")
+            if not isinstance(sections, list) or not sections:
+                self._reply(400, {"error": "sections must be a non-empty list"})
+                return
+            try:
+                self.order.reorder(sections)
+            except ValueError as e:
+                self._reply(400, {"error": str(e)})
+                return
+            self._reply(200, {"order": self.order.current()})
+        elif self.path == "/priority/reset":
+            self.order.reset()
+            self._reply(200, {"order": self.order.current()})
+        else:
+            self._reply(404, {"error": "not found"})
+
+    def log_message(self, fmt, *args):
+        logger.debug("order-server: " + fmt % args)
+
+
+def _start_order_server(order: RoundRobinOrder, port: int = ORDER_SERVER_PORT) -> ThreadingHTTPServer:
+    """Starts the priority-reorder listener in a daemon thread. `port=0` (tests only)
+    binds an OS-assigned free port -- read it back via server.server_address[1]."""
+    handler_cls = type("_BoundOrderRequestHandler", (_OrderRequestHandler,), {"order": order})
+    server = ThreadingHTTPServer(("0.0.0.0", port), handler_cls)
+    thread = threading.Thread(target=server.serve_forever, name="order-server", daemon=True)
+    thread.start()
+    logger.info(f"Round-robin priority endpoint listening on :{server.server_address[1]}")
+    return server
+
 
 def _worker_init(config_path):
     """Runs once per worker PROCESS at spawn. The child never calls main(), so it must
@@ -237,6 +310,13 @@ class LayerBuilder:
         self._tier = self.config.get_setting("common", "performance_tier", _DEFAULT_TIER)
         self._max_workers = workers_for_tier(self._tier, os.cpu_count())
         self._pool = None
+
+        # In-memory priority order for the multi-hour round-robin dispatch below --
+        # defaults to MULTI_HOUR_SECTIONS' declared order, reorderable live via
+        # /api/layer_builder/priority (see _start_order_server()). Resets on restart,
+        # deliberately -- this is a dev-speed tool, not persisted config.
+        self.order = RoundRobinOrder(MULTI_HOUR_SECTIONS)
+        self._order_server = None
 
         # Static (derived from the collector class registries, not config), so computed
         # once here rather than every dispatch cycle -- see dispatchable_sections().
@@ -421,9 +501,14 @@ class LayerBuilder:
             return
 
         while True:
+            # Priority order is read fresh each round, so a reorder() made mid-cycle
+            # (via POST /api/layer_builder/priority) takes effect on the very next
+            # round without touching one already dispatched to the process pool --
+            # see round_robin_order.py's module docstring.
+            ordered_multi_hour = self.order.ordered(multi_hour_pending)
+            sections = single_shot + ordered_multi_hour
             max_hours_by_section = {s: None for s in single_shot}
-            max_hours_by_section.update(multi_hour_pending)
-            sections = list(max_hours_by_section)
+            max_hours_by_section.update({s: 1 for s in ordered_multi_hour})
             plotted_by_section = await self._dispatch_round(
                 loop, sections, baseline, max_hours_by_section
             )
@@ -440,6 +525,7 @@ class LayerBuilder:
         self.map_data.refresh()
         self._primer = TASK_CLASSES[next(iter(TASK_CLASSES))](self.config, self.map_data)
         self._pool = self._new_pool()
+        self._order_server = _start_order_server(self.order)
         loop = asyncio.get_running_loop()
 
         try:
@@ -476,6 +562,8 @@ class LayerBuilder:
         finally:
             if self._pool is not None:
                 self._pool.shutdown(wait=False, cancel_futures=True)
+            if self._order_server is not None:
+                self._order_server.shutdown()
 
 
 def main():

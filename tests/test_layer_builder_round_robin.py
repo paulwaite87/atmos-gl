@@ -24,6 +24,7 @@ from atmos_gl.layer_builder import (
     workers_for_tier,
     dispatchable_sections,
 )
+from atmos_gl.round_robin_order import RoundRobinOrder
 
 
 def test_multi_hour_and_single_shot_sections_partition_task_classes():
@@ -261,6 +262,7 @@ def make_bare_layer_builder():
     lb.config = MagicMock()
     lb.config.get_setting.return_value = {}
     lb._layer_channel_keys = {}
+    lb.order = RoundRobinOrder(MULTI_HOUR_SECTIONS)
     return lb
 
 
@@ -460,6 +462,22 @@ async def test_run_dispatch_cycle_dispatches_everything_when_no_channel_mapping_
 
     dispatched_sections = set(lb._dispatch_round.call_args_list[0].args[1])
     assert dispatched_sections == set(SINGLE_SHOT_SECTIONS) | set(MULTI_HOUR_SECTIONS)
+
+
+@pytest.mark.asyncio
+async def test_run_dispatch_cycle_dispatches_multi_hour_sections_in_the_orders_priority_order():
+    """The whole point of RoundRobinOrder: a section bumped to the front via
+    reorder() (e.g. through POST /api/layer_builder/priority) is the first multi-hour
+    section in the very next round's dispatch list -- not just present in the set."""
+    lb = make_bare_layer_builder()
+    lb.order.reorder(["pwat"])
+    lb._dispatch_round = AsyncMock(return_value={s: 0 for s in MULTI_HOUR_SECTIONS})
+
+    await lb._run_dispatch_cycle(loop=MagicMock(), baseline={})
+
+    sections = lb._dispatch_round.call_args_list[0].args[1]
+    multi_hour_dispatched = [s for s in sections if s in MULTI_HOUR_SECTIONS]
+    assert multi_hour_dispatched[0] == "pwat"
 
 
 @pytest.mark.asyncio

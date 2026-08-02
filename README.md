@@ -726,6 +726,30 @@ One useful command for shipping is:
 That will print out some status info about ships in each region, ship totals and also lightning
 strikes per region.
 
+### Testing a Changed Layer Faster (Round-Robin Priority)
+`layer_builder` renders the multi-hour layers (isobars, precipitation, wind, currents,
+jetstream, waves, temperature, ozone, stormwatch, pwat, fires) in rounds — one forecast
+hour per section per round — cycling through them in a fixed declared order. If you're
+iterating on one layer's render code, waiting for it to come back around can be slow.
+
+Bump a layer to the front of the next round without disturbing whatever's already in
+flight:
+
+    curl -X POST http://localhost:9000/api/layer_builder/priority \
+        -H 'Content-Type: application/json' \
+        -d '{"sections": ["precipitation"]}'
+
+Check the current order:
+
+    curl http://localhost:9000/api/layer_builder/priority
+
+Reset back to the default order:
+
+    curl -X POST http://localhost:9000/api/layer_builder/priority/reset
+
+This is in-memory only — it resets to the default order whenever `layer_builder`
+restarts (e.g. after `make reload`).
+
 ### Everything Else
 `make test`, `make lint` and `make bash` are all there for you too — run `make help` for
 the full list.
