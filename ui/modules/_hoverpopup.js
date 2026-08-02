@@ -1,13 +1,17 @@
 // ui/modules/_hoverpopup.js
 /**
- * Shared hover-popup wiring behind quakes.js, storms.js, volcanoes.js, and
- * satellites.js -- architecture review candidate "a home for copy-pasted
- * legend/hover-popup plumbing". All four independently rebuilt the same
- * maplibregl.Popup construction, mouseenter/mouseleave cursor+setLngLat+setHTML+
- * addTo/remove dance, and map.on/off teardown. This owns that mechanics once; each
- * caller supplies only its own layerId and an html(feature) -> string renderer, since
- * the popup CONTENT is genuinely bespoke per layer (different fields, different
- * layout) and isn't part of the duplication.
+ * Shared hover-popup wiring behind every popup-bearing layer, including markers.js
+ * (architecture review candidate #6, "make popup functionality a one-stop-shop for
+ * every instance", superseding docs/adr/0002-dont-extend-hoverpopup-for-markers.md).
+ * Originally quakes.js/storms.js/volcanoes.js/satellites.js, which independently
+ * rebuilt the same maplibregl.Popup construction, mouseenter/mouseleave cursor+
+ * setLngLat+setHTML+addTo/remove dance, and map.on/off teardown; widened to also
+ * cover flightradar.js/shipping.js's sticky-hover needs and, per the superseded ADR,
+ * markers.js's multi-layer/mousemove/live-enable shape (see `layerId`/`event`/
+ * `enabled` below). This owns that mechanics once; each caller supplies only its own
+ * layerId(s) and an html(feature) -> string renderer, since the popup CONTENT is
+ * genuinely bespoke per layer (different fields, different layout, see
+ * buildPopupHtml in _feedhelpers.js for how content itself is now unified too).
  *
  * maxWidth is optional and omitted from the Popup options entirely when not given --
  * passing an explicit `undefined` through to `new maplibregl.Popup({..., maxWidth})`

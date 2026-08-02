@@ -1,11 +1,15 @@
 // ui/modules/_feedhelpers.js
 /**
- * Shared fetch/icon/popup-card plumbing behind the six event-feed layers (quakes.js,
- * volcanoes.js, satellites.js, storms.js, lightning.js, shipping.js) -- architecture
- * review candidate "six frontend event-feed modules copy-paste the same load
- * scaffold". mount/refresh/unmount stay bespoke per module (layer count and pulse
- * wiring genuinely vary -- see ADR-0002 for why this repo doesn't force those into a
- * shared shape); this owns only the pieces that were actually duplicated byte-for-byte.
+ * Shared fetch/icon/popup plumbing behind every popup-bearing layer (quakes.js,
+ * volcanoes.js, satellites.js, storms.js, lightning.js, shipping.js, flightradar.js,
+ * fires.js, markers.js) -- architecture review candidate #6, "make popup
+ * functionality a one-stop-shop for every instance", superseding
+ * docs/adr/0002-dont-extend-hoverpopup-for-markers.md (markers.js was the one
+ * deliberate holdout; it's since migrated too, alongside hoverPopup.js's own
+ * widened event/layer/enabled interface). mount/refresh/unmount stay bespoke per
+ * module (layer count and pulse wiring genuinely vary); buildPopupHtml (below) owns
+ * popup CONTENT, hoverPopup (_hoverpopup.js) owns the show/hide/positioning
+ * mechanic -- together they're the one-stop-shop, not this file alone.
  */
 
 // HTML-entity-escape untrusted text before it's interpolated into a popup template
