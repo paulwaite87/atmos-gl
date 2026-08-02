@@ -1,7 +1,7 @@
 import { liveDataSync } from './_datasync.js';
 import { hoverPopup } from './_hoverpopup.js';
 import { startPulse } from './_pulse.js';
-import { fetchOrThrow, popupCard } from './_feedhelpers.js';
+import { fetchOrThrow, buildPopupHtml } from './_feedhelpers.js';
 
 // ATCF's own storm-type/category codes (field TY in b-deck/a-deck lines) -- see
 // https://www.nrlmry.navy.mil/atcf_web/docs/database/new/abdeck.txt. Translated to
@@ -70,7 +70,11 @@ export function loadLayer(map, config) {
         rows.push({ label: 'Time', value: dateStr });
         if (p.tau > 0) rows.push({ label: 'Hour', value: `+${p.tau}` });
         const fontSize = Number(currentCfg.popup_fontsize) || 12;
-        return popupCard({ title: p.name || p.sid, titleColor: '#ff4a4a', titleSize: 14, rows, fontSize });
+        return buildPopupHtml({
+            title: { text: p.name || p.sid, variant: 'alert' },
+            blocks: [{ type: 'divider' }, { type: 'rows', rows }],
+            fontSize,
+        });
     };
 
     const mount = async (cfg) => {
