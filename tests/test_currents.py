@@ -6,8 +6,6 @@ Updater.__init__, wire only what the method under test reads).
 """
 from unittest.mock import MagicMock, patch
 
-import numpy as np
-
 from atmos_gl.tasks.currents import CurrentsUpdater
 
 
@@ -104,17 +102,20 @@ def test_save_currents_key_uses_the_configured_palette_colors():
         assert colors == u.PALETTES["cyberpunk"]
 
 
-# ---- _land_mask_for -------------------------------------------------------------
+# ---- land mask wiring ------------------------------------------------------------
+# The caching/coastline-cut logic itself moved to LandMaskCache (lib/coastline.py,
+# shared with WavesUpdater -- see tests/test_coastline.py for its own coverage). This
+# just confirms CurrentsUpdater wires one up correctly, not the logic again.
 
-def test_land_mask_for_is_cached_per_shape():
-    u = make_bare_updater()
-    u._land_mask_cache = {}
-    sentinel = np.array([[True, False]])
-    with patch(
-        "atmos_gl.tasks.currents.coastline_land_mask", return_value=sentinel
-    ) as mock_coast:
-        first = u._land_mask_for(lat=[0.0], lon=[0.0, 1.0], shape=(1, 2))
-        second = u._land_mask_for(lat=[0.0], lon=[0.0, 1.0], shape=(1, 2))
-        assert first is sentinel
-        assert second is sentinel
-        mock_coast.assert_called_once()
+def test_init_wires_a_land_mask_cache_labelled_currents():
+    from atmos_gl.lib.coastline import LandMaskCache
+
+    def fake_updater_init(self, config, section, map_data):
+        self.section = section.lower()
+        self.settings = {}
+
+    with patch("atmos_gl.tasks.common.Updater.__init__", fake_updater_init):
+        u = CurrentsUpdater(config=MagicMock(), map_data=MagicMock())
+
+    assert isinstance(u._land_mask, LandMaskCache)
+    assert u._land_mask._label == "Currents"

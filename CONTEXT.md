@@ -46,3 +46,7 @@ hour" takes a `ForecastState` parameter rather than reading `self`. Before this,
 four raw attributes it replaced (`run_date_str`/`run_id`/`forecast_hour_str`) were
 mutated directly on `self`, forcing `hasattr` guards and two separate save/restore
 `try`/`finally` dances to avoid callers clobbering each other's state.
+
+| Term | Definition | Aliases to avoid |
+| ---- | ---------- | ---------------- |
+| **Land mask cache** | `LandMaskCache` (`lib/coastline.py`), a per-run, per-grid-shape cache around `coastline_land_mask()` — shared by `CurrentsUpdater` and `WavesUpdater`, whose own caching wrappers used to be byte-identical. Paired with `nearest_fill_and_regrid_uv()` (nearest-fill native NaN, then regrid u/v) — also byte-identical between the two before extraction, apart from the regrid-step constant. Each caller applies its own steps (e.g. currents' speed-minimum threshold) and the land-mask cut itself afterward, since ordering differs between the two. Distinct from `coastline_land_mask()` itself, which `sst.py`/`greenhouse_gases.py` call directly with no caching wrapper. | coastline cache |
