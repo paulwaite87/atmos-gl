@@ -157,7 +157,7 @@ layout(location = 1) out vec4 o_age;
 uniform sampler2D u_particles;     // current head positions
 uniform sampler2D u_age;
 uniform sampler2D u_vel;
-uniform float u_vmax, u_speed, u_seed, u_landReset, u_ageStep;
+uniform float u_vmax, u_speed, u_seed, u_landReset, u_ageStep, u_calmSpeed, u_calmDrop;
 uniform vec4 u_bboxPos;
 const float PI = 3.141592653589793;
 const float STEP = 0.0005;
@@ -219,6 +219,17 @@ void main(){
            rlon = (r < wlo) ? (bmin.x + r) : (r - wlo); }
     float rlat = bmin.y + rand(seed + 2.7) * (bmax.y - bmin.y);
     vec2 randPos = vec2(rlon, rlat);
+    // Calm-cell quick respawn (ported from _particles_gl.js's "calm-zone handling"):
+    // in genuinely low-speed cells (real troughs / lee zones / slack water) particles
+    // barely move, so they DWELL and pile up into bright lines even though the data
+    // is smooth. Give slow particles a respawn probability that ramps up as speed
+    // falls below u_calmSpeed, so they don't accumulate -- gentle and narrow (only
+    // near-calm); the age lifecycle still does the main recycling, this only
+    // de-clumps the calm troughs. u_calmDrop=0 (the default for consumers that don't
+    // set it) disables this entirely.
+    float spd = length(vel);
+    float calmDrop = (1.0 - clamp(spd / max(u_calmSpeed, 0.01), 0.0, 1.0)) * u_calmDrop;
+    bool calmReset = rand(seed + 3.9) < calmDrop;
     // NOTE: do NOT reset particles merely for leaving the view bbox — that confines the
     // whole field to the visible disc and renders as a "petal" cluster on a globe. The
     // bbox is used only to bias where *respawns* land (density where you're looking).
@@ -229,7 +240,8 @@ void main(){
     // landReset on, a coastal hit is still an unfaded pop AND the trail shader discards
     // a head sitting on no-data outright, so fading it further wouldn't show anyway.
     bool reset = (age >= 1.0) || (npos.y <= 0.0) || (npos.y >= 1.0)
-                 || (u_landReset > 0.5 && hasData < 0.5);
+                 || (u_landReset > 0.5 && hasData < 0.5)
+                 || calmReset;
     if (reset) {
         o_pos = encodePos(randPos);
         // New random lifetime factor + age reset to 0 (born fresh, will fade in).
@@ -477,7 +489,7 @@ precision highp float;
 in float v_speed; in float v_t; in float v_age;
 out vec4 fragColor;
 uniform sampler2D u_cmap;
-uniform float u_vmax, u_maxspeed, u_alpha;
+uniform float u_vmax, u_maxspeed, u_alpha, u_calmFade;
 void main(){
     float s = clamp(v_speed / u_maxspeed, 0.0, 1.0);
     vec3 c = texture(u_cmap, vec2(s, 0.5)).rgb;
@@ -488,7 +500,12 @@ void main(){
     // not just the total cycle length.
     float fadeIn = smoothstep(0.0, 0.20, v_age);
     float fadeOut = 1.0 - smoothstep(0.65, 1.0, v_age);
-    float a = u_alpha * aTail * fadeIn * fadeOut;
+    // Speed fade (ported from _particles_gl.js's "calm-zone handling"): dims particles
+    // in low-speed areas so real calm troughs read as faint rather than as bright
+    // crowded lines. u_calmFade=0 (the default for consumers that don't set it) is a
+    // no-op. Ramps with speed up to ~30% of u_maxspeed.
+    float spdFade = mix(1.0 - u_calmFade, 1.0, smoothstep(0.0, 0.3, s));
+    float a = u_alpha * aTail * fadeIn * fadeOut * spdFade;
     if (a <= 0.003) discard;
     fragColor = vec4(c, a);
 }`;
@@ -562,6 +579,19 @@ export function createCurrentParticleGLLayer(map, opts) {
         // gives positions enough precision to avoid that.
         lengthZoomComp = 1.0,
         lengthZoomRef = 2.0,
+        // Calm-cell handling (ported from _particles_gl.js's "calm-zone handling" --
+        // see UPDATE_FS/trailFragmentShader above). calmSpeed: speed below which a
+        // cell counts as "calm". calmDrop: peak per-frame respawn probability at zero
+        // speed (ramps to 0 at calmSpeed), de-clumping slow particles. calmFade: how
+        // strongly low speed dims opacity [0..1]. Defaults OFF (0) at the engine
+        // level -- unlike _particles_gl.js, which defaulted these on for its only two
+        // consumers (wind, waves), this engine now serves four very different
+        // consumers, most of which never had this behaviour; a consumer that wants it
+        // (waves, migrating from _particles_gl.js's own non-zero defaults) opts in
+        // explicitly rather than every other consumer silently inheriting a new look.
+        calmSpeed = (cfg) => { const v = Number(cfg.calm_speed); return isFinite(v) && v > 0 ? v : 2.5; },
+        calmDrop  = (cfg) => 0.0,
+        calmFade  = (cfg) => 0.0,
         // Zoom-adaptive drawn density (ported from _particles_gl.js): the fixed particle
         // budget concentrates into the shrinking respawn box as you zoom in (viewBox()
         // below), so DRAW fewer of the (randomly distributed) particles to keep on-screen
@@ -646,6 +676,7 @@ export function createCurrentParticleGLLayer(map, opts) {
     let curCfg = initialConfig, curAnim = initialAnimation;
     let curSpeed = defaultSpeed, curThick = 2.0, curMaxSpeed = vmax, curAlpha = 0.9, curLandReset = 1.0;
     let curHalfLen = 7.0;         // bar mode's crest half-length (px); set in applyParams
+    let curCalmSpeed = 2.5, curCalmDrop = 0.0, curCalmFade = 0.0;   // calm-cell; set in applyParams
     let curH = 8.0e-4;            // streamline integration step (tail arc); set in applyParams
     let curSmoothPx = 1.0;        // sampleVelSmooth coarse-cell spacing; set in applyParams
     // Zoom compensation: curH (trail arc) and curSpeed (per-frame advection step) are
@@ -672,6 +703,7 @@ export function createCurrentParticleGLLayer(map, opts) {
         curLandReset = landReset(cfg) > 0.5 ? 1.0 : 0.0;
         curH = hFromConfig(cfg);
         curHalfLen = lenFromConfig(cfg);
+        curCalmSpeed = calmSpeed(cfg); curCalmDrop = calmDrop(cfg); curCalmFade = calmFade(cfg);
         const newSmoothPx = Number(smoothPx(cfg));
         curSmoothPx = (isFinite(newSmoothPx) && newSmoothPx >= 1.0) ? newSmoothPx : 1.0;
         const newCoh = Number(coherenceRadius(cfg)) || 0;
@@ -991,6 +1023,8 @@ export function createCurrentParticleGLLayer(map, opts) {
         gl.uniform1f(u('u_ageStep'), curAgeStep);
         gl.uniform1f(u('u_seed'), Math.random());
         gl.uniform1f(u('u_landReset'), curLandReset);
+        gl.uniform1f(u('u_calmSpeed'), curCalmSpeed);
+        gl.uniform1f(u('u_calmDrop'), curCalmDrop);
         gl.uniform4f(u('u_bboxPos'), curBbox[0], curBbox[1], curBbox[2], curBbox[3]);
         gl.disable(gl.BLEND);
         gl.drawArrays(gl.TRIANGLES, 0, 6);
@@ -1034,6 +1068,7 @@ export function createCurrentParticleGLLayer(map, opts) {
         gl.uniform1f(u('u_eps'), eps);              // bar mode only; no-op uniform (-1) for streamline
         gl.uniform1f(u('u_maxspeed'), curMaxSpeed);
         gl.uniform1f(u('u_alpha'), curAlpha);
+        gl.uniform1f(u('u_calmFade'), curCalmFade);
         gl.uniform2f(u('u_viewport'), gl.drawingBufferWidth, gl.drawingBufferHeight);
         gl.disable(gl.DEPTH_TEST);
         gl.enable(gl.BLEND);
