@@ -29,8 +29,9 @@ import cartopy.crs as ccrs
 
 from atmos_gl.lib.config import AtmosGLConfig
 from atmos_gl.lib.texture import encode_frames
-from .common import Updater, MapData, MultiHourRenderMixin, ForecastState
+from .common import MapData, ForecastState
 from .plotting import Plot, clamp_lats_to_mercator_limit
+from .single_hour_scalar import SingleHourScalarUpdater
 
 logging.getLogger("cfgrib").setLevel(logging.ERROR)
 
@@ -191,14 +192,13 @@ SPECS = {
 }
 
 
-class ScalarFieldUpdater(Updater, MultiHourRenderMixin):
+class ScalarFieldUpdater(SingleHourScalarUpdater):
     def __init__(self, config: AtmosGLConfig, map_data: MapData, spec: ScalarFieldSpec):
         super().__init__(config, spec.product, map_data)
         self.spec = spec
-        self.level_of_detail = int(self.settings.get("level_of_detail", 1))
-        self.lod_desc = None
-        self.per_hour_outputs = [".png", "_data.png"]
-        self.status_product = spec.product
+
+    def _write_key(self):
+        self._write_legend_key()
 
     def _resolve_cmap(self):
         """The plain named `spec.cmap` for temperature/stormwatch, or the live
@@ -312,24 +312,3 @@ class ScalarFieldUpdater(Updater, MultiHourRenderMixin):
             [field0["values"]], f"{base}_data.png", self.spec.vmin, self.spec.vmax
         )
         logger.info(f"Finished {self.section} texture f{state.fhour:03d}.")
-
-    def run(self, max_hours=None):
-        # Warms the shared per-cycle GFS baseline cache (map_data.shared_state) for
-        # other updaters this cycle; render_all_hours resolves its own state from the
-        # catalog below, so the return value here is unused.
-        self.get_gfs_state()
-        # The legend key is cheap to draw and depends only on palette/threshold/
-        # key_fontsize settings, not forecast data. Refresh it unconditionally every
-        # run, so settings changes apply immediately instead of waiting on
-        # should_plot_for_hour's data-freshness gate below.
-        self._write_legend_key()
-        # Render EVERY available forecast hour (gap-filling), so the scrubber has
-        # a PNG for each hour. should_plot_for_hour skips hours already fresh.
-        # max_hours=1 from layer_builder's round-robin dispatch renders one hour and
-        # returns, so this layer doesn't monopolise a render-pool worker.
-        return self.render_all_hours(
-            self.status_product,
-            plot_fn=self.plot,
-            field_ready=lambda f: f.get("values") is not None,
-            max_hours=max_hours,
-        )
