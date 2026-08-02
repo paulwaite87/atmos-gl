@@ -1,5 +1,6 @@
 import { liveDataSync } from './_datasync.js';
-import { escapeHtml } from './_feedhelpers.js';
+import { escapeHtml, buildPopupHtml } from './_feedhelpers.js';
+import { hoverPopup } from './_hoverpopup.js';
 
 // Static place-marker layer: a small dot + label per place, loaded from the
 // hard-coded markers/markers.geojson. Labels are collision-managed and revealed
@@ -28,60 +29,52 @@ export function loadLayer(map, config) {
     // and stores them on each marker row, so the weather rides along in feature
     // properties (t, rh, ws, wd). Hovering a marker shows it; weather_popup gates display.
     let weatherEnabled = !!config.weather_popup;   // markers.weather_popup toggle (live)
+    let stopPopup = null;
     const COMPASS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
     const compassOf = (deg) => COMPASS[Math.round(deg / 45) % 8];
 
-    const popup = new maplibregl.Popup({
-        closeButton: false, closeOnClick: false, offset: 12, maxWidth: '240px',
-    });
-    const row = (label, value) =>
-        `<div style="display:flex;justify-content:space-between;gap:14px;">` +
-        `<span style="color:#666;">${label}</span><strong>${value}</strong></div>`;
-    const popupHtml = (props, w) => {
-        const pop = numberWithCommas(props.pop)
+    // Hover popup content: title + optional country/pop subtitle + either weather
+    // rows or a no-data fallback -- see buildPopupHtml (_feedhelpers.js). Weather
+    // rides along in the feature properties (null where not sampled).
+    const popupHtml = (f) => {
+        const props = f.properties || {};
+        const pop = numberWithCommas(props.pop);
         // name/country come from the repo-committed markers/markers.geojson, not an
         // external feed -- escaped anyway for consistency with every other popup
         // template, not because this specific source is considered attacker-reachable.
-        const country = props.country
-            ? `<div style="color:#888;font-size:11px;margin-top:-2px;">${escapeHtml(props.country)}<br/>Pop: ${pop}</div>` : '';
-        let body;
-        if (w) {
-            const parts = [];
-            if (w.t !== undefined) parts.push(row('Temp', `${Number(w.t).toFixed(1)} &deg;C`));
-            if (w.rh !== undefined) parts.push(row('Humidity', `${w.rh}%`));
-            if (w.ws !== undefined) {
-                const kmh = Math.round(w.ws * 3.6);
-                const dir = (w.wd !== undefined) ? ` from ${compassOf(w.wd)}` : '';
-                parts.push(row('Wind', `${kmh} km/h${dir}`));
-            }
-            body = parts.length ? parts.join('') : '<div style="color:#888;">No data</div>';
-        } else {
-            body = '<div style="color:#888;font-size:12px;">Weather data unavailable</div>';
-        }
-        return `<div style="font-family:sans-serif;font-size:12.5px;color:#111;padding:2px 4px;min-width:150px;">` +
-            `<div style="font-size:14px;font-weight:700;">${escapeHtml(props.name) || 'Unknown'}</div>${country}` +
-            `<hr style="border:0;border-top:1px solid #ddd;margin:6px 0;">${body}</div>`;
-    };
+        const subtitle = props.country
+            ? `${escapeHtml(props.country)}<br/>Pop: ${pop}` : undefined;
 
-    // Hover popups: show on mousemove over a marker (anchored to the marker, so it stays
-    // put while you're on it and follows when you slide to an adjacent one), hide on leave.
-    const onMarkerHover = (e) => {
-        if (!weatherEnabled || !e.features || !e.features.length) return;
-        map.getCanvas().style.cursor = 'pointer';
-        const f = e.features[0];
-        const coords = f.geometry.coordinates.slice();
-        const p = f.properties || {};
-        // Weather rides along in the feature properties (null where not sampled).
         const w = {};
-        if (p.t != null) w.t = p.t;
-        if (p.rh != null) w.rh = p.rh;
-        if (p.ws != null) w.ws = p.ws;
-        if (p.wd != null) w.wd = p.wd;
-        popup.setLngLat(coords)
-            .setHTML(popupHtml(p, Object.keys(w).length ? w : null))
-            .addTo(map);
+        if (props.t != null) w.t = props.t;
+        if (props.rh != null) w.rh = props.rh;
+        if (props.ws != null) w.ws = props.ws;
+        if (props.wd != null) w.wd = props.wd;
+        const weather = Object.keys(w).length ? w : null;
+
+        const blocks = [{ type: 'divider' }];
+        if (weather) {
+            const rows = [];
+            if (weather.t !== undefined) rows.push({ label: 'Temp', value: `${Number(weather.t).toFixed(1)} &deg;C`, raw: true });
+            if (weather.rh !== undefined) rows.push({ label: 'Humidity', value: `${weather.rh}%`, raw: true });
+            if (weather.ws !== undefined) {
+                const kmh = Math.round(weather.ws * 3.6);
+                const dir = (weather.wd !== undefined) ? ` from ${compassOf(weather.wd)}` : '';
+                rows.push({ label: 'Wind', value: `${kmh} km/h${dir}`, raw: true });
+            }
+            blocks.push(rows.length ? { type: 'rows', rows } : { type: 'fallback', text: 'No data' });
+        } else {
+            blocks.push({ type: 'fallback', text: 'Weather data unavailable' });
+        }
+
+        return buildPopupHtml({
+            title: { text: props.name || 'Unknown', variant: 'plain' },
+            subtitle,
+            blocks,
+            padding: 4,
+            fontSize: 12.5,
+        });
     };
-    const onLeave = () => { map.getCanvas().style.cursor = ''; popup.remove(); };
 
     // Keep the marker layers pinned to the top of the stack. Layers enabled AFTER markers
     // (precipitation, etc.) would otherwise render above the small dots/labels, hiding
@@ -164,13 +157,16 @@ export function loadLayer(map, config) {
         });
 
         // Weather popups: load the precomputed data (when enabled) and make markers
-        // clickable. Handlers are always bound but no-op unless weather_popup is on, so
-        // the toggle can flip live via refresh() without a remount.
+        // clickable. The enabled predicate is always bound but no-ops unless
+        // weather_popup is on, so the toggle can flip live via refresh() without a
+        // rebind (event:'move' across both layers -- see hoverPopup's docstring for
+        // why markers needs mousemove/multi-layer/live-enable, unlike every other
+        // popup consumer's mouseenter/single-layer/bind-for-lifetime shape).
         weatherEnabled = !!cfg.weather_popup;
-        for (const id of [dotLayerId, labelLayerId]) {
-            map.on('mousemove', id, onMarkerHover);
-            map.on('mouseleave', id, onLeave);
-        }
+        stopPopup = hoverPopup(map, [dotLayerId, labelLayerId], {
+            offset: 12, maxWidth: '240px', event: 'move',
+            enabled: () => weatherEnabled, html: popupHtml,
+        });
         // Keep markers clickable/hoverable above later-added layers, now and on every
         // subsequent layer-stack change.
         ensureOnTop();
@@ -179,10 +175,11 @@ export function loadLayer(map, config) {
 
     // Marker geometry is static, but the weather on each feature refreshes every backend
     // cycle — so re-pull the API and setData to pick up new conditions, then re-apply
-    // styling. weather_popup can toggle live (closes any open popup when turned off).
+    // styling. weather_popup can toggle live; an already-open popup closes on the next
+    // mousemove/mouseleave rather than instantly (hoverPopup's enabled predicate is
+    // checked per-event, not proactively on a live toggle mid-hover).
     const refresh = async (cfg) => {
         weatherEnabled = !!cfg.weather_popup;
-        if (!weatherEnabled) popup.remove();
         try {
             const res = await fetch(dataUrl, { cache: 'no-cache' });
             if (res.ok) {
@@ -200,11 +197,7 @@ export function loadLayer(map, config) {
 
     const unmount = () => {
         map.off('styledata', ensureOnTop);
-        for (const id of [dotLayerId, labelLayerId]) {
-            map.off('mousemove', id, onMarkerHover);
-            map.off('mouseleave', id, onLeave);
-        }
-        popup.remove();
+        stopPopup?.();
         if (map.getLayer(labelLayerId)) map.removeLayer(labelLayerId);
         if (map.getLayer(dotLayerId)) map.removeLayer(dotLayerId);
         if (map.getSource(sourceId)) map.removeSource(sourceId);

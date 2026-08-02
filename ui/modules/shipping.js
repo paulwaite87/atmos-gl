@@ -1,6 +1,6 @@
 import { liveDataSync } from './_datasync.js';
 import { hoverPopup } from './_hoverpopup.js';
-import { fetchOrThrow, preloadIcons, escapeHtml } from './_feedhelpers.js';
+import { fetchOrThrow, preloadIcons, buildPopupHtml } from './_feedhelpers.js';
 
 // Helper function: Parses time difference into '3d 13h 20 mins ago' formats
 function formatLastUpdate(lastUpdateStr) {
@@ -74,21 +74,31 @@ export function loadLayer(map, config) {
         // name/vessel_class/destination/callsign are AIS ShipStaticData fields --
         // self-reported by the vessel's own transponder with no validation, so fully
         // attacker-controlled free text (see escapeHtml's comment in _feedhelpers.js).
-        return `<div style="font-family:sans-serif;font-size:12px;color:#000;padding:5px;">
-                <strong style="color:#007bff;font-size:14px;">${escapeHtml(s.name)}</strong><br>
-                <span style="color:#666;">Class:</span> ${escapeHtml(s.vessel_class)}<br>
-                <span style="color:#666;">Dest:</span> ${escapeHtml(s.destination)}<br>
-                <hr style="margin:5px 0;">
-                <span style="color:#666;">MMSI:</span> ${s.mmsi} |
-                <span style="color:#666;">IMO:</span> ${s.imo}<br>
-                <span style="color:#666;">Callsign:</span> ${escapeHtml(s.callsign)}<br>
-                <span style="color:#666;">Draught:</span> ${s.draught}m |
-                <span style="color:#666;">Heading:</span> ${s.heading}°<br>
-                <span style="color:#666;">Length:</span> ${s.length}m |
-                <span style="color:#666;">Beam:</span> ${s.beam}m<br>
-                <span style="color:#666;">Speed:</span> ${s.speed}knots<br>
-                <span style="color:#666;">Last seen:</span> ${lastSeenText}
-            </div>`;
+        // mmsi/imo/draught/heading/length/beam/speed are trusted numeric AIS fields,
+        // never escaped -- raw:true preserves that exactly.
+        return buildPopupHtml({
+            title: { text: s.name, variant: 'callsign' },
+            blocks: [
+                { type: 'line', items: [{ label: 'Class', value: s.vessel_class }] },
+                { type: 'line', items: [{ label: 'Dest', value: s.destination }] },
+                { type: 'divider' },
+                { type: 'line', items: [
+                    { label: 'MMSI', value: s.mmsi, raw: true },
+                    { label: 'IMO', value: s.imo, raw: true },
+                ] },
+                { type: 'line', items: [{ label: 'Callsign', value: s.callsign }] },
+                { type: 'line', items: [
+                    { label: 'Draught', value: `${s.draught}m`, raw: true },
+                    { label: 'Heading', value: `${s.heading}°`, raw: true },
+                ] },
+                { type: 'line', items: [
+                    { label: 'Length', value: `${s.length}m`, raw: true },
+                    { label: 'Beam', value: `${s.beam}m`, raw: true },
+                ] },
+                { type: 'line', items: [{ label: 'Speed', value: `${s.speed}knots`, raw: true }] },
+                { type: 'line', items: [{ label: 'Last seen', value: lastSeenText, raw: true }] },
+            ],
+        });
     };
 
     // Hover-only track (shipping.view_tracks/track_limit/track_color): empty until a

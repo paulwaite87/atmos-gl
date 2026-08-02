@@ -1,6 +1,6 @@
 import { liveDataSync } from './_datasync.js';
 import { hoverPopup } from './_hoverpopup.js';
-import { fetchOrThrow, popupCard, preloadIcons } from './_feedhelpers.js';
+import { fetchOrThrow, buildPopupHtml, preloadIcons } from './_feedhelpers.js';
 import { keyFilename, showLegend, removeLegend } from './_legend.js';
 import { opacityUniform } from './_opacity.js';
 
@@ -46,14 +46,10 @@ export function loadLayer(map, config) {
                 value: `${p.hans_alert_level || 'N/A'} (${p.hans_color_code || 'N/A'})`,
             });
         }
-        return popupCard({
-            title: p.name || 'Unknown Volcano',
-            // Matches flightradar.js's callsign title styling (color:#007bff,
-            // font-size:16px), rather than popupCard's own #333/13px defaults.
-            titleColor: '#007bff',
-            titleSize: 16,
+        return buildPopupHtml({
+            title: { text: p.name || 'Unknown Volcano', variant: 'callsign' },
+            blocks: [{ type: 'divider' }, { type: 'rows', rows }],
             padding: 3,
-            rows,
         });
     };
 

@@ -50,3 +50,19 @@ mutated directly on `self`, forcing `hasattr` guards and two separate save/resto
 | Term | Definition | Aliases to avoid |
 | ---- | ---------- | ---------------- |
 | **Land mask cache** | `LandMaskCache` (`lib/coastline.py`), a per-run, per-grid-shape cache around `coastline_land_mask()` — shared by `CurrentsUpdater` and `WavesUpdater`, whose own caching wrappers used to be byte-identical. Paired with `nearest_fill_and_regrid_uv()` (nearest-fill native NaN, then regrid u/v) — also byte-identical between the two before extraction, apart from the regrid-step constant. Each caller applies its own steps (e.g. currents' speed-minimum threshold) and the land-mask cut itself afterward, since ordering differs between the two. Distinct from `coastline_land_mask()` itself, which `sst.py`/`greenhouse_gases.py` call directly with no caching wrapper. | coastline cache |
+
+## Frontend popups
+
+| Term | Definition | Aliases to avoid |
+| ---- | ---------- | ---------------- |
+| **Popup content block** | A typed entry in `buildPopupHtml`'s (`ui/modules/_feedhelpers.js`) `blocks` array — `divider`, `rows`, `line`, `emphasis`, `notice`, or `fallback` — each a named, reusable shape rather than a raw-HTML escape hatch, so every current popup layout (a fused title line, a `<br>`-separated field list, a conditional route callout, a live-computed row colour, a no-data fallback) stays expressible without a caller reaching around the shared model. `line` and `rows` are both block-level (wrapped in a `<div>`), so a block always starts on its own line regardless of what precedes it — no reliance on a preceding divider or trailing `<br>`. | popup section |
+| **Title variant** | A named entry in `buildPopupHtml`'s `TITLE_VARIANTS` (`default`/`callsign`/`alert`/`plain`/`fire`) fixing a title's color+size as one unit, rather than raw `titleColor`/`titleSize` params a caller could set to anything. Add a new variant when a genuinely distinct, deliberately-chosen style shows up (e.g. `fire`'s `#ff5a1f`, found only when migrating fires.js — a 9th popup consumer missed in the original cataloguing pass); don't fold a real distinct color into an existing variant just to avoid naming one. | title style |
+
+`buildPopupHtml` (content) and the widened `hoverPopup` (`_hoverpopup.js` — show/hide/
+positioning, now accepting `layerId` as a string-or-array, a configurable `event`
+("enter"/"move"), and a live `enabled` predicate) together are the "one-stop-shop"
+every popup-bearing layer goes through, including `markers.js` — architecture review
+candidate #6, which superseded `docs/adr/0002-dont-extend-hoverpopup-for-markers.md`
+(that ADR's four axes — multi-layer, mousemove, live-enable, a caller-specific
+`maxWidth` — are exactly what `hoverPopup` widened to cover). `popupCard`, the prior
+content model, is deleted; every caller migrated onto `buildPopupHtml` instead.
