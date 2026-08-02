@@ -84,8 +84,15 @@ the option should always be surfaced.
 
 This preference has limits: only extract where the overlap is genuine, not superficial
 — see "Deepening Template-Method Hierarchies" below for the template-method-specific
-form of this same instinct, and `docs/adr/0002-dont-extend-hoverpopup-for-markers.md`
-for a case where forcing a shared abstraction was the wrong call.
+form of this same instinct. Genuine-vs-superficial is itself a judgment call, not a
+fact to look up: when it's unclear which side of the line something falls on, put it
+to the user rather than deciding it unilaterally — and treat whatever call they make
+as correct for this codebase, not a decision to second-guess or quietly reverse later
+without them. `docs/adr/0002-dont-extend-hoverpopup-for-markers.md` is one such call:
+judged one way at the time (leave `markers.js` bespoke), then deliberately revisited
+and judged differently later once unifying every popup became the explicit goal —
+both were legitimate calls for the question being asked at the time, not a first
+"wrong" attempt corrected by a second "right" one.
 
 ## Deepening Template-Method Hierarchies
 
@@ -114,7 +121,10 @@ This only applies where template-method structure already governs the modules in
 question. Where no such structure exists — a handful of leaf modules just doing
 similar-looking things — a narrow, local extraction (or no extraction at all) is the
 right call; don't invent a base class/hook hierarchy from scratch to justify one.
-See `docs/adr/0002-dont-extend-hoverpopup-for-markers.md` for that other case.
+`docs/adr/0002-dont-extend-hoverpopup-for-markers.md` is an example of this specific
+point holding even after the ADR's own broader conclusion was later revisited: the
+eventual fix widened `hoverPopup`'s parameters, not a class/hook hierarchy — no
+base class was ever warranted, whichever way the wider unification call went.
 
 ## Goal-Driven Execution
 
