@@ -408,7 +408,7 @@ export function airlineForFlight(flightCallsign) {
 // ---------------------------------------------------------------------------------
 import { liveDataSync } from './_datasync.js';
 import { hoverPopup } from './_hoverpopup.js';
-import { fetchOrThrow, preloadIcons, escapeHtml } from './_feedhelpers.js';
+import { fetchOrThrow, preloadIcons, escapeHtml, buildPopupHtml } from './_feedhelpers.js';
 
 // Deliberately tightened below flightradar_collector.starvation_floor_minutes
 // (default 30 min, AircraftCollector's cache-warming sweep's worst-case gap for a
@@ -638,35 +638,42 @@ function popupHtml(f) {
     const status = flightStatus(p.on_ground, p.gs, p.baro_rate_fpm);
     const target = targetAltitudeLabel(p.nav_altitude_mcp_ft, p.alt_baro_ft, groundAmbiguous);
     const cls = aircraftClass(p.aircraft_type);
-    const staleNote = p.frozen
-        ? '<div style="color:#c0392b;font-size:11px;margin-top:4px;">&#9888; Signal lost -- position frozen</div>' : '';
     // route_stops is null both when this callsign has never been enriched yet AND
     // when adsb.lol confirmed it has no route (the API can't distinguish the two --
-    // see FlightRoute's own docstring) -- either way, hide the route line and its
-    // separating <hr> entirely rather than showing a placeholder.
+    // see FlightRoute's own docstring) -- either way, the route emphasis block is
+    // simply omitted rather than showing a placeholder.
     const routePath = routePathHtml(parseRouteStops(p.route_stops));
-    const routeBlock = routePath
-        ? `<div style="font-weight:bold;color:#000;font-size:20px;margin-top:2px;">${routePath}${plausibleWarningHtml(p.route_plausible)}</div>
-            <hr style="border:0;border-top:1px solid #ccc;margin:4px 0;">`
-        : '';
+
     // flight/aircraft_type/registration are raw ADS-B transponder fields (self-reported,
     // no validation, same attacker-controlled-free-text class as AIS -- see escapeHtml's
     // comment in _feedhelpers.js). airline/cls/hex are derived/lookup values, but escaped
     // too rather than trusting their fallback paths never echo the raw input back out.
-    return `<div style="font-family:sans-serif;font-size:12px;color:#000;padding:5px;">
-            <strong style="color:#007bff;font-size:16px;">${escapeHtml(p.flight)}</strong><br>
-            ${routeBlock}
-            ${p.aircraft_type ? `<span style="color:#666;">Type:</span> ${escapeHtml(p.aircraft_type)}<br>` : ''}
-            <span style="color:#666;">Class:</span> ${escapeHtml(cls)}<br>
-            ${p.airline ? `<span style="color:#666;">Airline:</span> ${escapeHtml(p.airline)}<br>` : ''}
-            ${p.registration ? `<span style="color:#666;">Registration:</span> ${escapeHtml(p.registration)}<br>` : ''}
-            ${status ? `<span style="color:#666;">Status:</span> ${status}<br>` : ''}
-            <span style="color:#666;">Altitude:</span> ${alt}<br>
-            ${target ? `<span style="color:#666;">Target altitude:</span> ${target}<br>` : ''}
-            <span style="color:#666;">Speed:</span> ${Math.round(p.gs)} kts<br>
-            <span style="color:#666;">Heading:</span> ${Math.round(p.track)}&deg;<br>
-            <span style="color:#666;">ICAO:</span> ${escapeHtml(p.hex)}${staleNote}
-        </div>`;
+    // status/alt/target/speed/heading are computed labels, not feed data -- raw:true
+    // preserves their original unescaped rendering (heading's `&deg;` entity would be
+    // double-encoded otherwise).
+    const blocks = [];
+    if (routePath) {
+        blocks.push({ type: 'emphasis', html: routePath + plausibleWarningHtml(p.route_plausible) });
+    }
+    blocks.push({ type: 'divider' });
+    if (p.aircraft_type) blocks.push({ type: 'line', items: [{ label: 'Type', value: p.aircraft_type }] });
+    blocks.push({ type: 'line', items: [{ label: 'Class', value: cls }] });
+    if (p.airline) blocks.push({ type: 'line', items: [{ label: 'Airline', value: p.airline }] });
+    if (p.registration) blocks.push({ type: 'line', items: [{ label: 'Registration', value: p.registration }] });
+    if (status) blocks.push({ type: 'line', items: [{ label: 'Status', value: status, raw: true }] });
+    blocks.push({ type: 'line', items: [{ label: 'Altitude', value: alt, raw: true }] });
+    if (target) blocks.push({ type: 'line', items: [{ label: 'Target altitude', value: target, raw: true }] });
+    blocks.push({ type: 'line', items: [{ label: 'Speed', value: `${Math.round(p.gs)} kts`, raw: true }] });
+    blocks.push({ type: 'line', items: [{ label: 'Heading', value: `${Math.round(p.track)}&deg;`, raw: true }] });
+    blocks.push({ type: 'line', items: [{ label: 'ICAO', value: p.hex }] });
+    if (p.frozen) {
+        blocks.push({ type: 'notice', text: '&#9888; Signal lost -- position frozen', raw: true });
+    }
+
+    return buildPopupHtml({
+        title: { text: p.flight, variant: 'callsign' },
+        blocks,
+    });
 }
 
 // One id per page load, sent on every poll so AircraftCollector's aircraft_interest
