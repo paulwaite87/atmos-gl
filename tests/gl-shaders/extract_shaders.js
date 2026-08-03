@@ -1,6 +1,6 @@
-// Extracts shader source constants (and any other named consts/functions) from the
-// REAL ui/modules/_particles_gl.js file via a sandboxed vm eval -- not a
-// reimplementation. This lets shader-level tests exercise the exact GLSL that ships to
+// Extracts shader source constants (and any other named consts/functions) from a REAL
+// engine module (e.g. ui/modules/_streamparticles_gl.js) via a sandboxed vm eval -- not
+// a reimplementation. This lets shader-level tests exercise the exact GLSL that ships to
 // production, not a JS/Python re-derivation of what the shader is supposed to do
 // (which could silently drift from the real thing).
 //

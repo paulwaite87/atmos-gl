@@ -1,8 +1,10 @@
-// Verifies sampleWindSmooth's masked-and-renormalized bicubic sampling (architecture
-// fix for the coastline velocity dampening found while fixing waves' landReset bug):
-// a no-data (alpha=0) neighbour must be excluded from the weighted average, not
-// blended in as if it were valid data. Runs the REAL WSAMPLE shader source, extracted
-// verbatim from ui/modules/_particles_gl.js -- not a reimplementation.
+// Streamline-engine counterpart to wsample_land_masking.test.js -- same masked-and-
+// renormalized bicubic sampling regression (a no-data/land neighbour must be excluded
+// from the weighted average, not blended in as if it were valid data), run against
+// sampleVelSmooth (VEL_SAMPLE, ui/modules/_streamparticles_gl.js) instead of
+// sampleWindSmooth (WSAMPLE, the now-deleted _particles_gl.js). VEL_SAMPLE's own
+// docstring points back at wsample_land_masking.test.js as its reference test; this
+// closes the gap left when _particles_gl.js was deleted (candidate #7, task #26).
 import { chromium } from "playwright";
 import { extractFromParticlesEngine } from "./extract_shaders.js";
 
@@ -22,16 +24,17 @@ function decodedVelocity(byte) {
 }
 
 async function sampleAt(px, py, textureBuilder) {
-  const { WSAMPLE } = extractFromParticlesEngine("ui/modules/_particles_gl.js", ["WSAMPLE"]);
+  const { VEL_SAMPLE, PACK } = extractFromParticlesEngine("ui/modules/_streamparticles_gl.js", ["VEL_SAMPLE", "PACK"]);
   const fsSource = `#version 300 es
 precision highp float;
 in vec2 v_uv;
 out vec4 fragColor;
 uniform sampler2D u_wind;
 uniform float u_vmax, u_px, u_py;
-${WSAMPLE}
+${PACK}
+${VEL_SAMPLE}
 void main(){
-    vec3 result = sampleWindSmooth(u_wind, vec2(u_px, u_py), u_vmax);
+    vec3 result = sampleVelSmooth(u_wind, vec2(u_px, u_py), u_vmax);
     fragColor = vec4(result, 1.0);
 }`;
 
@@ -148,8 +151,8 @@ function assert(condition, message) {
 async function main() {
   const cleanVelocity = decodedVelocity(OCEAN_BYTE);
 
-  // 1. Contamination near a coastline should now be gone (or very small), not the
-  //    ~17% dampening measured before the fix.
+  // 1. Contamination near a coastline should be gone (or very small), not the
+  //    ~17% dampening measured before the original fix (see wsample_land_masking).
   const nearCoast = await sampleAt(0.1875, 0.5, landOceanSplitTexture); // 1 texel from land
   const farFromCoast = await sampleAt(0.5625, 0.5, landOceanSplitTexture); // deep ocean
   const dampening = Math.abs(cleanVelocity - nearCoast.vx) / Math.abs(cleanVelocity);
@@ -179,7 +182,7 @@ async function main() {
     `expected an all-land neighbourhood to report no-data cleanly, got ${JSON.stringify(allLand)}`
   );
 
-  console.log("PASS: wsample_land_masking");
+  console.log("PASS: vsample_land_masking");
   console.log(`  near-coast dampening: ${(dampening * 100).toFixed(2)}% (was ~17% before the fix)`);
   console.log(`  far-from-coast:       vx=${farFromCoast.vx.toFixed(3)} (clean=${cleanVelocity.toFixed(3)})`);
   console.log(`  all-ocean (no fix regression): vx=${allOcean.vx.toFixed(3)}`);
@@ -187,7 +190,7 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error("FAIL: wsample_land_masking");
+  console.error("FAIL: vsample_land_masking");
   console.error(err.message);
   process.exit(1);
 });
