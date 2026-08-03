@@ -791,6 +791,16 @@ class MultiHourRenderMixin:
             return 0
         run_date, run_id, hours = resolved
 
+        # Hours before "now" are still retained in the catalog (data_collector.
+        # cache_hours is wider than what's reachable) but the scrubber's minHour only
+        # ever ratchets forward -- see layer_status()'s identical filter and its
+        # docstring. Applying the same filter here (not just in status reporting)
+        # matters most right after a section re-enables from a long-off channel: with
+        # max_hours=1 per round-robin turn, spending turns re-rendering unreachable
+        # past hours first delays reaching the one range a user can actually see.
+        now_fhour = self._now_fhour(run_date, run_id)
+        hours = [h for h in hours if h >= now_fhour]
+
         plotted = 0
         examined = 0
         for fh in hours:
