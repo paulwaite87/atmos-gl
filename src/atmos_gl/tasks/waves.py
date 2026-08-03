@@ -71,7 +71,21 @@ class WavesUpdater(Updater, MultiHourRenderMixin):
         self.status_product = "waves"
         # The land mask depends only on the (fixed) regrid geometry, so compute it once
         # per run and reuse for every hour. Keyed by grid shape.
-        self._land_mask = LandMaskCache("Waves")
+        # "10m" (not LandMaskCache's own "50m" default, which currents.py still uses):
+        # waves' animated bars can sit at any precise sub-cell position (not just show
+        # one flat color per grid cell), so a 50m-resolution coastline's simplification
+        # is visible as bars drifting onshore appearing to cross the coastline the
+        # basemap actually draws, well before the DATA's own (coarser) land boundary
+        # catches them -- found live (candidate #7, particle-engine consolidation).
+        # ~21s one-time cost per worker process (measured: 14.4s at 50m vs 35.8s at
+        # 10m for waves' global 0.08deg grid), paid once at first use per persistent
+        # worker, not per render -- see LandMaskCache's module-level geometry cache.
+        # Even at "10m" (a cartographic scale, 1:10M, not 10-metre precision), Natural
+        # Earth's coastline is measurably coarser than a real web-map dataset on
+        # complex, convoluted coastlines (thin peninsulas, dense island groups) -- an
+        # accepted, documented limitation, not a bug: see
+        # docs/adr/0011-accept-natural-earth-coastline-precision-for-ocean-layers.md.
+        self._land_mask = LandMaskCache("Waves", res="10m")
 
     def save_waves_key(self, output_path, cmap, norm, threshold=0.0):
         """Generates a standalone Wave Height key image (separate _key.png)."""

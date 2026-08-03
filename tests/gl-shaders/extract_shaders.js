@@ -1,6 +1,6 @@
-// Extracts shader source constants (and any other named consts/functions) from the
-// REAL ui/modules/_particles_gl.js file via a sandboxed vm eval -- not a
-// reimplementation. This lets shader-level tests exercise the exact GLSL that ships to
+// Extracts shader source constants (and any other named consts/functions) from a REAL
+// engine module (e.g. ui/modules/_streamparticles_gl.js) via a sandboxed vm eval -- not
+// a reimplementation. This lets shader-level tests exercise the exact GLSL that ships to
 // production, not a JS/Python re-derivation of what the shader is supposed to do
 // (which could silently drift from the real thing).
 //
@@ -37,7 +37,7 @@ export function extractFromParticlesEngine(path, names) {
 export function captureParticleControllerOpts(path, exportedFn = "loadLayer") {
   let src = fs.readFileSync(path, "utf8");
   src = src.replace(/^import\s*\{[^}]*\}\s*from\s*['"][^'"]+['"];?$/gm, "");
-  src = src.replace(/^export function/gm, "function");
+  src = src.replace(/^export (async function|function)/gm, "$1");
   src = src.replace(/^export const/gm, "const");
 
   const captured = { opts: null };
@@ -50,6 +50,14 @@ export function captureParticleControllerOpts(path, exportedFn = "loadLayer") {
       return { mount() {}, refresh() {}, unmount() {} };
     },
     createParticleGLLayer: (_map, opts) => {
+      captured.opts = opts;
+      return () => {};
+    },
+    // _streamparticles_gl.js's controller self-manages its own liveLayerSync and
+    // returns the teardown function directly (unlike createParticleGLController's
+    // {mount,refresh,unmount} shape above) -- waves.js (bar mode), currents.js, and
+    // jetstream.js all call this one.
+    createCurrentParticleGLLayer: (_map, opts) => {
       captured.opts = opts;
       return () => {};
     },

@@ -28,12 +28,16 @@ import { linkProg, makeTex, makeStateTex, randomAge, QUAD_VS, COH_H_FS, COH_V_FS
  *
  * wind.js also uses this engine now (see its own PROTOTYPE note — it swapped off
  * _particles_gl.js's oriented-quad STREAKS to try this streamline-ribbon technique, not
- * yet committed to permanently). waves.js remains on _particles_gl.js: its BAR primitive
- * marks swell-crest orientation at a point, not a flow trail, so it has no streamline
- * equivalent here — see docs/adr/0003-keep-waves-on-the-oriented-quad-engine.md. This
- * file's streamline-ribbon technique is geometrically distinct from an oriented quad and
- * isn't reproducible by _particles_gl.js's primitive modes, which is why currents (and
- * now wind) use this dedicated implementation instead of that shared one.
+ * yet committed to permanently).
+ *
+ * Two geometry modes, chosen via opts.primitive:
+ *   'streamline' (default; wind, currents, jetstream) — the technique described above.
+ *   'bar' (waves) — a single FIXED-length quad per particle, perpendicular to the flow
+ *      (swell-crest look), ported from _particles_gl.js's bar primitive -- see
+ *      BAR_VS_BODY below. docs/adr/0003-keep-waves-on-the-oriented-quad-engine.md
+ *      originally kept waves off this engine because a crest tick has no streamline
+ *      interpretation to migrate to; that ADR is now superseded (see its banner) --
+ *      the two geometry modes coexist in this one engine instead.
  *
  * createCurrentParticleGLLayer(map, opts) — opts mirror the wind/waves layer's NAMES
  * where useful (sectionKey, initialConfig, vmax, colormap, hourDataUrl, maxSpeedColor,
@@ -83,6 +87,13 @@ float rand(vec2 co){
 // it. Returns vec3(vx, vy, coverage).
 const VEL_SAMPLE = `
 uniform float u_smoothPx;
+// Live minimum-magnitude threshold (0 = disabled, the default for every consumer that
+// doesn't set it -- e.g. currents/jetstream). Folded into hasData here, ONE place,
+// rather than duplicated as a separate check in every caller (UPDATE_FS's reset test,
+// BAR_VS_BODY's discard, STREAMLINE_VS_BODY's discard) -- ported from _particles_gl.js's
+// WSAMPLE, which established this same pattern (see that file's identical comment) for
+// waves' min_wave_height, the eventual consumer here too once waves migrates.
+uniform float u_minValue;
 vec4 cp_bsplineW(float f){
     float f2 = f*f, f3 = f2*f;
     return vec4(
@@ -127,7 +138,24 @@ vec3 sampleVelSmooth(sampler2D tex, vec2 p, float vmax){
     }
     if (c0.a < 0.5) return vec3(0.0, 0.0, 0.0);
     if (wsum < 0.01) return vec3(0.0, 0.0, 0.0);
-    return vec3(sumv / wsum, 1.0);
+    vec2 v = sumv / wsum;
+    if (u_minValue > 0.0 && length(v) < u_minValue) return vec3(0.0, 0.0, 0.0);
+    return vec3(v, 1.0);
+}
+// Cheap, EXACT (unfiltered) validity check -- just the destination texel's own alpha,
+// no bicubic loop. sampleVelSmooth's full 16-tap loop runs even when only validity is
+// needed, so probing respawn candidates through it would cost 16x more per try than
+// necessary. Used by UPDATE_FS's respawn retry loop, where a generous attempt budget
+// matters: a view that's mostly land with only a narrow ocean strip needs many more
+// tries to reliably land in that strip than a mostly-ocean view does (found live:
+// candidate #7's bounded low-retry-count fix worked for open ocean but still let bars
+// spawn on land when zoomed into a coastline where land dominates the visible bbox).
+bool validAt(sampler2D tex, vec2 p){
+    vec2 texSize = vec2(textureSize(tex, 0));
+    vec2 pw = vec2(fract(p.x + 1.0), clamp(p.y, 0.0, 1.0));
+    ivec2 texSizeI = ivec2(texSize);
+    ivec2 px = clamp(ivec2(floor(pw * texSize)), ivec2(0), texSizeI - 1);
+    return texelFetch(tex, px, 0).a >= 0.5;
 }`;
 
 // DIRECTION-COHERENCE filter (opt-in via coherenceRadius; currents never sets it, so this
@@ -153,12 +181,21 @@ layout(location = 1) out vec4 o_age;
 uniform sampler2D u_particles;     // current head positions
 uniform sampler2D u_age;
 uniform sampler2D u_vel;
-uniform float u_vmax, u_speed, u_seed, u_landReset, u_ageStep;
+uniform float u_vmax, u_speed, u_seed, u_landReset, u_ageStep, u_calmSpeed, u_calmDrop;
 uniform vec4 u_bboxPos;
 const float PI = 3.141592653589793;
 const float STEP = 0.0005;
 ${PACK}
 ${VEL_SAMPLE}
+// One candidate respawn position within the bbox (may wrap the antimeridian).
+vec2 randCandidate(vec2 seed, vec2 bmin, vec2 bmax, bool lonWrap){
+    float rlon;
+    if (!lonWrap) { rlon = bmin.x + rand(seed + 1.3) * (bmax.x - bmin.x); }
+    else { float wlo = 1.0 - bmin.x, whi = bmax.x; float r = rand(seed + 1.3) * (wlo + whi);
+           rlon = (r < wlo) ? (bmin.x + r) : (r - wlo); }
+    float rlat = bmin.y + rand(seed + 2.7) * (bmax.y - bmin.y);
+    return vec2(rlon, rlat);
+}
 void main(){
     vec2 pos = decodePos(texture(u_particles, v_uv));
     vec4 ageState = texture(u_age, v_uv);
@@ -209,12 +246,48 @@ void main(){
     vec2 seed = (pos + v_uv) * (u_seed + 1.0);
     vec2 bmin = u_bboxPos.xy, bmax = u_bboxPos.zw;
     bool lonWrap = bmin.x > bmax.x;
-    float rlon;
-    if (!lonWrap) { rlon = bmin.x + rand(seed + 1.3) * (bmax.x - bmin.x); }
-    else { float wlo = 1.0 - bmin.x, whi = bmax.x; float r = rand(seed + 1.3) * (wlo + whi);
-           rlon = (r < wlo) ? (bmin.x + r) : (r - wlo); }
-    float rlat = bmin.y + rand(seed + 2.7) * (bmax.y - bmin.y);
-    vec2 randPos = vec2(rlon, rlat);
+    vec2 randPos = randCandidate(seed, bmin, bmax, lonWrap);
+    // Avoid respawning directly onto land: a plain uniform draw within the bbox has no
+    // land-avoidance at all, so on a view with significant land coverage particles
+    // could otherwise pop into existence sitting on a coastline/inland cell (found
+    // live: waves' bars visibly "spawning on land", independent of the coastline
+    // mask-resolution mismatch fixed separately). Retries when landReset is on, using
+    // the cheap exact validAt() check (not the full bicubic sampleVelSmooth) so the
+    // budget can afford to be generous -- a view that's mostly land with only a narrow
+    // ocean strip (e.g. zoomed into a coastline) needs many more tries to reliably land
+    // in that strip than a mostly-ocean view does; a small bounded budget silently
+    // degrades exactly there (found live: still spawned on land when zoomed into a
+    // coastline, at a retry count that worked fine for open ocean). Falls back to the
+    // last candidate if none validate within the budget rather than looping unboundedly
+    // (see streamparticles_respawn_land_avoidance.test.js).
+    if (u_landReset > 0.5) {
+        const int LAND_RETRY = 32;
+        for (int i = 0; i < LAND_RETRY; i++) {
+            if (validAt(u_vel, randPos)) break;
+            randPos = randCandidate(seed + vec2(float(i + 1) * 17.3, float(i + 1) * 31.1), bmin, bmax, lonWrap);
+        }
+    }
+    // Calm-cell quick respawn (ported from _particles_gl.js's "calm-zone handling"):
+    // in genuinely low-speed cells (real troughs / lee zones / slack water) particles
+    // barely move, so they DWELL and pile up into bright lines even though the data
+    // is smooth. Give slow particles a respawn probability that ramps up as speed
+    // falls below u_calmSpeed, so they don't accumulate -- gentle and narrow (only
+    // near-calm); the age lifecycle still does the main recycling, this only
+    // de-clumps the calm troughs. u_calmDrop=0 (the default for consumers that don't
+    // set it) disables this entirely.
+    float spd = length(vel);
+    float calmDrop = (1.0 - clamp(spd / max(u_calmSpeed, 0.01), 0.0, 1.0)) * u_calmDrop;
+    bool calmReset = rand(seed + 3.9) < calmDrop;
+    // Look ahead to the STEP'S DESTINATION, not just the cell the particle is
+    // currently sitting in: hasData (sampled at pos, before this step) only catches a
+    // particle already on land -- a step that CROSSES onto land this frame would
+    // otherwise commit npos there and sit visibly on land for a full frame before the
+    // following frame's (now correctly stale-free) check finally resets it. For a
+    // coastline-hugging onshore flow this reads as bars persisting past the coast,
+    // asymmetrically with offshore flow (which never approaches land in the first
+    // place) -- found live once bars lived long enough to actually reach a coastline
+    // during their lifetime (see streamparticles_update_land_lookahead.test.js).
+    float hasDataNew = sampleVelSmooth(u_vel, npos, u_vmax).z;
     // NOTE: do NOT reset particles merely for leaving the view bbox — that confines the
     // whole field to the visible disc and renders as a "petal" cluster on a globe. The
     // bbox is used only to bias where *respawns* land (density where you're looking).
@@ -225,7 +298,8 @@ void main(){
     // landReset on, a coastal hit is still an unfaded pop AND the trail shader discards
     // a head sitting on no-data outright, so fading it further wouldn't show anyway.
     bool reset = (age >= 1.0) || (npos.y <= 0.0) || (npos.y >= 1.0)
-                 || (u_landReset > 0.5 && hasData < 0.5);
+                 || (u_landReset > 0.5 && (hasData < 0.5 || hasDataNew < 0.5))
+                 || calmReset;
     if (reset) {
         o_pos = encodePos(randPos);
         // New random lifetime factor + age reset to 0 (born fresh, will fade in).
@@ -237,14 +311,19 @@ void main(){
     }
 }`;
 
-// Trail vertex shader BODY (MapLibre projection prelude + #version + define prepended at
-// link). One ribbon SEGMENT per (particle, streamline-step). gl_VertexID layout: 6 verts
-// per segment, STREAM_STEPS segments per particle. The tail is NOT stored — it is the
-// instantaneous streamline integrated UPSTREAM from the head through u_vel, so segment
-// `seg` connects streamline point[seg] (head side) to point[seg+1] (tail side). Both
-// endpoints are projected via projectTile(toMerc()) into a screen-space quad, tapered +
-// faded toward the tail. Only u_head + u_vel are sampled in the vertex stage.
-const TRAIL_VS_BODY = `
+// Trail vertex shader BODY, 'streamline' geometry mode (MapLibre projection prelude +
+// #version + define prepended at link). One ribbon SEGMENT per (particle,
+// streamline-step). gl_VertexID layout: 6 verts per segment, STREAM_STEPS segments per
+// particle. The tail is NOT stored — it is the instantaneous streamline integrated
+// UPSTREAM from the head through u_vel, so segment `seg` connects streamline
+// point[seg] (head side) to point[seg+1] (tail side). Both endpoints are projected via
+// projectTile(toMerc()) into a screen-space quad, tapered + faded toward the tail. Only
+// u_head + u_vel are sampled in the vertex stage.
+//
+// See BAR_VS_BODY below for the second geometry mode ('bar' -- a single fixed-length
+// quad perpendicular to the flow, ported from _particles_gl.js's bar primitive so
+// waves.js's swell-crest look can move onto this engine too).
+const STREAMLINE_VS_BODY = `
 precision highp float;
 uniform sampler2D u_head;     // single head-position state texture (newest positions)
 uniform sampler2D u_vel;
@@ -367,27 +446,130 @@ void main(){
     gl_Position = baseClip;
     gl_Position.xy += offNDC * baseClip.w;
 }`;
+
+// Trail vertex shader BODY, 'bar' geometry mode: ONE fixed-length quad per particle,
+// long axis PERPENDICULAR to the flow (crest), thickness axis ALONG the flow -- ported
+// from _particles_gl.js's buildDrawShaders bar primitive (see that file's VS), adapted
+// to this engine's per-vertex sampling (u_head/u_vel/u_age via texelFetch, VEL_SAMPLE's
+// masked-bicubic sampleVelSmooth, cp_decode's position packing) instead of _particles_gl.js's
+// own u_particles/u_wind/decodePos/WSAMPLE. Unlike the streamline body, there is no
+// upstream integration: direction comes from a single sampleVelSmooth tap at the head,
+// probed forward by u_eps (antimeridian-safe: probes backward instead if the forward
+// step would cross the seam) to get a local flow direction, then projected the same way
+// _particles_gl.js's bar VS does to find the screen-space crest/thickness axes.
+// Deliberately fixed-length (no lenSpeedScale/u_maxspeed-driven scaling): waves.js's
+// bar_length config always disabled speed-scaling on _particles_gl.js (lenSpeedScale:0),
+// so there was never a real second behaviour to port -- see waves.js's own comment on
+// why bars are fixed length, not speed-scaled like wind's streaks.
+const BAR_VS_BODY = `
+precision highp float;
+uniform sampler2D u_head;
+uniform sampler2D u_vel;
+uniform sampler2D u_age;
+uniform float u_res, u_vmax, u_halfLen, u_halfThick, u_eps;
+uniform vec2 u_viewport;
+out float v_speed;
+out float v_t;            // always 1.0 (flat bar, no tail to fade along) -- see trailFragmentShader
+out float v_age;
+const float CP_PI = 3.141592653589793;
+${VEL_SAMPLE}
+#ifdef POS_FLOAT
+vec2 cp_decode(vec4 c){ return c.xy; }
+#else
+float cp_unpack(vec2 c){ return (c.x*255.0*256.0 + c.y*255.0)/65535.0; }
+vec2 cp_decode(vec4 c){ return vec2(cp_unpack(c.rg), cp_unpack(c.ba)); }
+#endif
+vec2 cp_toMerc(vec2 p){
+    float lat = clamp((0.5 - p.y) * CP_PI, -1.4844222297453324, 1.4844222297453324);
+    float my = log(tan(CP_PI*0.25 + lat*0.5));
+    return vec2(p.x, 0.5 - my/(2.0*CP_PI));
+}
+void main(){
+    int pid = gl_VertexID / 6;
+    int corner = gl_VertexID - pid*6;
+    float col = mod(float(pid), u_res);
+    float row = floor(float(pid) / u_res);
+    ivec2 tc = ivec2(int(col), int(row));
+
+    vec2 pos = cp_decode(texelFetch(u_head, tc, 0));
+    v_age = texelFetch(u_age, tc, 0).r;
+
+    vec3 vs = sampleVelSmooth(u_vel, pos, u_vmax);
+    if (vs.z < 0.5) { v_speed = 0.0; v_t = 0.0; v_age = 0.0; gl_Position = vec4(2.0,2.0,2.0,1.0); return; }
+    vec2 vel = vs.xy;
+    v_speed = length(vel);
+
+    // Same field geometry as advection (vel.x/coslat*0.5, -vel.y) so the bar's
+    // orientation matches how the particle actually drifts.
+    float lat = (0.5 - pos.y) * CP_PI;
+    float coslat = max(cos(lat), 0.05);
+    vec2 dirEq = vec2(vel.x / coslat * 0.5, -vel.y);
+    dirEq = (length(dirEq) > 1e-5) ? normalize(dirEq) : vec2(0.0, -1.0);
+    // Antimeridian-safe forward probe (identical technique to _particles_gl.js's bar/
+    // streak VS): if the forward step would cross the seam, probe backward and negate,
+    // so the direction is always a small, correct local step on the same side of the seam.
+    vec2 posA = pos + dirEq * u_eps;
+    float dirSign = 1.0;
+    if (posA.x < 0.0 || posA.x > 1.0) {
+        posA = pos - dirEq * u_eps;
+        dirSign = -1.0;
+        posA.x = clamp(posA.x, 0.0002, 0.9998);
+    }
+    posA.y = clamp(posA.y, 0.0002, 0.9998);
+
+    vec4 cClip = projectTile(cp_toMerc(pos));
+    vec4 aClip = projectTile(cp_toMerc(posA));
+    if (cClip.w <= 0.0001 || aClip.w <= 0.0001) { v_speed = 0.0; v_t = 0.0; v_age = 0.0; gl_Position = vec4(2.0,2.0,2.0,1.0); return; }
+    vec2 cN = cClip.xy / cClip.w;
+    vec2 aN = aClip.xy / aClip.w;
+    vec2 pxDir = (aN - cN) * (u_viewport * 0.5) * dirSign;
+    vec2 sdir = (length(pxDir) > 1e-4) ? normalize(pxDir) : vec2(0.0, 1.0);   // flow dir (screen)
+    vec2 perp = vec2(-sdir.y, sdir.x);                                       // crest dir (screen)
+
+    v_t = 1.0;
+    vec2 ab[6] = vec2[6](vec2(-1.0,-1.0), vec2(1.0,-1.0), vec2(-1.0,1.0),
+                         vec2(-1.0, 1.0), vec2(1.0,-1.0), vec2( 1.0,1.0));
+    vec2 cc = ab[corner];
+    // length along perp (crest), thickness along sdir (flow) -- see _particles_gl.js's
+    // buildDrawShaders isBar branch, which this mirrors exactly.
+    vec2 offPix = perp * (cc.x * u_halfLen) + sdir * (cc.y * u_halfThick);
+    vec2 offNDC = offPix * 2.0 / u_viewport;
+    gl_Position = cClip;
+    gl_Position.xy += offNDC * cClip.w;
+}`;
+
 // tailFadeEnd: how far along the ribbon (0=tail tip, 1=head) the fade-in reaches full
 // opacity. Per-caller (not a module constant) so a consumer with much longer ribbons
 // (wind's streamlines vs. currents' own tuned 0.35) can fade more gradually without
 // changing every other adopter's look.
-const trailFragmentShader = (tailFadeEnd) => `#version 300 es
+//
+// ageFadeInEnd/ageFadeOutStart: lifecycle fade fractions (ease in over the particle's
+// first ageFadeInEnd of age, ease out over its last 1-ageFadeOutStart). Default 0.20/
+// 0.65 matches the streamline ribbons' own tuning (widened from an original 0.15/0.25
+// specifically so the transition itself reads as gradual against a long-lived,
+// visually-busy ribbon). A short-lived primitive with no trailing shape of its own
+// (bar mode) has no such ribbon to stay gradual against -- widening the fade there only
+// eats into the little on-screen life it has, reading as flicker with no time to show
+// movement. Per-caller, not a module constant, for exactly that reason.
+const trailFragmentShader = (tailFadeEnd, ageFadeInEnd = 0.20, ageFadeOutStart = 0.65) => `#version 300 es
 precision highp float;
 in float v_speed; in float v_t; in float v_age;
 out vec4 fragColor;
 uniform sampler2D u_cmap;
-uniform float u_vmax, u_maxspeed, u_alpha;
+uniform float u_vmax, u_maxspeed, u_alpha, u_calmFade;
 void main(){
     float s = clamp(v_speed / u_maxspeed, 0.0, 1.0);
     vec3 c = texture(u_cmap, vec2(s, 0.5)).rgb;
     // fade toward the tail (v_t=0) and slightly boost the head
     float aTail = smoothstep(0.0, ${tailFadeEnd.toFixed(3)}, v_t) * (0.5 + 0.5*s);
-    // lifecycle fade: ease in over the particle's first 20% of age, ease out over its
-    // last 35% -- widened (was 15%/25%) so the transitions themselves read as gradual,
-    // not just the total cycle length.
-    float fadeIn = smoothstep(0.0, 0.20, v_age);
-    float fadeOut = 1.0 - smoothstep(0.65, 1.0, v_age);
-    float a = u_alpha * aTail * fadeIn * fadeOut;
+    float fadeIn = smoothstep(0.0, ${ageFadeInEnd.toFixed(3)}, v_age);
+    float fadeOut = 1.0 - smoothstep(${ageFadeOutStart.toFixed(3)}, 1.0, v_age);
+    // Speed fade (ported from _particles_gl.js's "calm-zone handling"): dims particles
+    // in low-speed areas so real calm troughs read as faint rather than as bright
+    // crowded lines. u_calmFade=0 (the default for consumers that don't set it) is a
+    // no-op. Ramps with speed up to ~30% of u_maxspeed.
+    float spdFade = mix(1.0 - u_calmFade, 1.0, smoothstep(0.0, 0.3, s));
+    float a = u_alpha * aTail * fadeIn * fadeOut * spdFade;
     if (a <= 0.003) discard;
     fragColor = vec4(c, a);
 }`;
@@ -402,6 +584,21 @@ export function createCurrentParticleGLLayer(map, opts) {
         backfillKey = null,   // optional resolver (snap)=>{date,run,hour} for backfill
         vmax = 2.5,
         colormap = null,
+        // Geometry mode: 'streamline' (upstream-integrated ribbon; wind/currents/
+        // jetstream) or 'bar' (fixed-length quad perpendicular to flow; waves). See
+        // STREAMLINE_VS_BODY/BAR_VS_BODY above.
+        primitive = 'streamline',
+        // bar_length (1-20px) -> the bar's half-length (crest axis). Only meaningful
+        // when primitive:'bar' -- ignored (uniform doesn't exist in the linked
+        // streamline program) otherwise. Mirrors _particles_gl.js's defaultStreakLen
+        // range/default, since waves.js's bar_length config UI carries over unchanged.
+        lenFromConfig = (cfg) => {
+            const v = Number(cfg.bar_length);
+            return isFinite(v) ? Math.min(20, Math.max(1, v)) : 7;
+        },
+        // Forward-probe distance (tile-space) for the bar mode's local flow direction.
+        // Matches _particles_gl.js's own default; irrelevant for 'streamline' mode.
+        eps = 0.0015,
         maxSpeedColor = (cfg) => vmax,
         landReset = (cfg) => 1.0,
         // Default advection speed when the config doesn't specify particle_speed. This
@@ -446,6 +643,24 @@ export function createCurrentParticleGLLayer(map, opts) {
         // gives positions enough precision to avoid that.
         lengthZoomComp = 1.0,
         lengthZoomRef = 2.0,
+        // Calm-cell handling (ported from _particles_gl.js's "calm-zone handling" --
+        // see UPDATE_FS/trailFragmentShader above). calmSpeed: speed below which a
+        // cell counts as "calm". calmDrop: peak per-frame respawn probability at zero
+        // speed (ramps to 0 at calmSpeed), de-clumping slow particles. calmFade: how
+        // strongly low speed dims opacity [0..1]. Defaults OFF (0) at the engine
+        // level -- unlike _particles_gl.js, which defaulted these on for its only two
+        // consumers (wind, waves), this engine now serves four very different
+        // consumers, most of which never had this behaviour; a consumer that wants it
+        // (waves, migrating from _particles_gl.js's own non-zero defaults) opts in
+        // explicitly rather than every other consumer silently inheriting a new look.
+        calmSpeed = (cfg) => { const v = Number(cfg.calm_speed); return isFinite(v) && v > 0 ? v : 2.5; },
+        calmDrop  = (cfg) => 0.0,
+        calmFade  = (cfg) => 0.0,
+        // Live minimum-magnitude threshold (real units, e.g. metres for waves' swell
+        // height): below it, a cell is treated as no-data everywhere sampleVelSmooth is
+        // used -- same as land. 0 (the default) disables it entirely; currents/
+        // jetstream never set this.
+        minValue = () => 0.0,
         // Zoom-adaptive drawn density (ported from _particles_gl.js): the fixed particle
         // budget concentrates into the shrinking respawn box as you zoom in (viewBox()
         // below), so DRAW fewer of the (randomly distributed) particles to keep on-screen
@@ -474,6 +689,11 @@ export function createCurrentParticleGLLayer(map, opts) {
         // falls back to this module's currents-tuned LOD_COUNT when not overridden.
         lodCount = null,
         tailFadeEnd = 0.35,   // currents' own tuned default; see trailFragmentShader
+        // Lifecycle fade fractions; see trailFragmentShader's docstring on why bar
+        // mode (no trailing shape to stay gradual against) wants a narrower window
+        // than the streamline ribbons' own tuning.
+        ageFadeInEnd = 0.20,
+        ageFadeOutStart = 0.65,
         // Lifecycle hooks, matching createFillLayer's contract (_webglfill.js) exactly --
         // wind/currents never needed these (their legends piggyback on their accompanying
         // FILL layer's onMount/onRefresh/onUnmount instead), but a particle-only consumer
@@ -529,6 +749,9 @@ export function createCurrentParticleGLLayer(map, opts) {
     let velReady = false, pendingVelImg = null, pendingLut = null, pendingRebuild = false;
     let curCfg = initialConfig, curAnim = initialAnimation;
     let curSpeed = defaultSpeed, curThick = 2.0, curMaxSpeed = vmax, curAlpha = 0.9, curLandReset = 1.0;
+    let curHalfLen = 7.0;         // bar mode's crest half-length (px); set in applyParams
+    let curCalmSpeed = 2.5, curCalmDrop = 0.0, curCalmFade = 0.0;   // calm-cell; set in applyParams
+    let curMinValue = 0.0;        // live min-magnitude threshold; set in applyParams
     let curH = 8.0e-4;            // streamline integration step (tail arc); set in applyParams
     let curSmoothPx = 1.0;        // sampleVelSmooth coarse-cell spacing; set in applyParams
     // Zoom compensation: curH (trail arc) and curSpeed (per-frame advection step) are
@@ -554,6 +777,9 @@ export function createCurrentParticleGLLayer(map, opts) {
         curMaxSpeed = maxSpeedColor(cfg) || vmax;
         curLandReset = landReset(cfg) > 0.5 ? 1.0 : 0.0;
         curH = hFromConfig(cfg);
+        curHalfLen = lenFromConfig(cfg);
+        curCalmSpeed = calmSpeed(cfg); curCalmDrop = calmDrop(cfg); curCalmFade = calmFade(cfg);
+        curMinValue = Number(minValue(cfg)) || 0.0;
         const newSmoothPx = Number(smoothPx(cfg));
         curSmoothPx = (isFinite(newSmoothPx) && newSmoothPx >= 1.0) ? newSmoothPx : 1.0;
         const newCoh = Number(coherenceRadius(cfg)) || 0;
@@ -563,6 +789,11 @@ export function createCurrentParticleGLLayer(map, opts) {
         curTemporalBlend = temporalBlend(cfg);
     };
 
+    // gl_VertexID span per particle: one ribbon segment sextet per STREAM_STEPS
+    // (streamline) or a single quad (bar). Computed once -- primitive never changes for
+    // the lifetime of a controller instance.
+    const vertsPerParticle = primitive === 'bar' ? 6 : 6 * STREAM_STEPS;
+
     // compile/linkProg/makeTex/makeStateTex/randomAge are shared with _particles_gl.js via
     // _particlegl_primitives.js; randomState stays here -- see that module's docstring for
     // why. Trail program needs MapLibre's projection prelude (varies by render variant).
@@ -570,8 +801,9 @@ export function createCurrentParticleGLLayer(map, opts) {
         const key = shaderData.variantName || '__default__';
         if (trailProgCache.has(key)) return trailProgCache.get(key);
         if (trailProgFailed) return null;
-        const vs = `#version 300 es\n${shaderData.vertexShaderPrelude}\n${shaderData.define}\n${TRAIL_VS_BODY}`;
-        const p = linkProg(gl, vs, trailFragmentShader(tailFadeEnd), floatPos, sectionKey);
+        const body = primitive === 'bar' ? BAR_VS_BODY : STREAMLINE_VS_BODY;
+        const vs = `#version 300 es\n${shaderData.vertexShaderPrelude}\n${shaderData.define}\n${body}`;
+        const p = linkProg(gl, vs, trailFragmentShader(tailFadeEnd, ageFadeInEnd, ageFadeOutStart), floatPos, sectionKey);
         if (!p) { trailProgFailed = true; return null; }
         trailProgCache.set(key, p);
         return p;
@@ -864,9 +1096,12 @@ export function createCurrentParticleGLLayer(map, opts) {
         // floatPos above fixes. Retrying now that positions are full-precision.
         gl.uniform1f(u('u_speed'), curSpeed * curLengthZoomFactor);
         gl.uniform1f(u('u_smoothPx'), curSmoothPx);
+        gl.uniform1f(u('u_minValue'), curMinValue);
         gl.uniform1f(u('u_ageStep'), curAgeStep);
         gl.uniform1f(u('u_seed'), Math.random());
         gl.uniform1f(u('u_landReset'), curLandReset);
+        gl.uniform1f(u('u_calmSpeed'), curCalmSpeed);
+        gl.uniform1f(u('u_calmDrop'), curCalmDrop);
         gl.uniform4f(u('u_bboxPos'), curBbox[0], curBbox[1], curBbox[2], curBbox[3]);
         gl.disable(gl.BLEND);
         gl.drawArrays(gl.TRIANGLES, 0, 6);
@@ -904,10 +1139,14 @@ export function createCurrentParticleGLLayer(map, opts) {
         gl.uniform1f(u('u_res'), RES);
         gl.uniform1f(u('u_vmax'), vmax);
         gl.uniform1f(u('u_smoothPx'), curSmoothPx);
+        gl.uniform1f(u('u_minValue'), curMinValue);
         gl.uniform1f(u('u_H'), curH * curLengthZoomFactor);
         gl.uniform1f(u('u_halfThick'), Math.max(0.5, curThick));
+        gl.uniform1f(u('u_halfLen'), curHalfLen);   // bar mode only; no-op uniform (-1) for streamline
+        gl.uniform1f(u('u_eps'), eps);              // bar mode only; no-op uniform (-1) for streamline
         gl.uniform1f(u('u_maxspeed'), curMaxSpeed);
         gl.uniform1f(u('u_alpha'), curAlpha);
+        gl.uniform1f(u('u_calmFade'), curCalmFade);
         gl.uniform2f(u('u_viewport'), gl.drawingBufferWidth, gl.drawingBufferHeight);
         gl.disable(gl.DEPTH_TEST);
         gl.enable(gl.BLEND);
@@ -916,7 +1155,7 @@ export function createCurrentParticleGLLayer(map, opts) {
         // index) has no correlation with a particle's actual (randomly assigned) position,
         // so thinning by draw-count alone (not skipping/rebuilding) stays evenly
         // distributed. The update pass above still advects the FULL budget regardless.
-        gl.drawArrays(gl.TRIANGLES, 0, activeCount * 6 * STREAM_STEPS);
+        gl.drawArrays(gl.TRIANGLES, 0, activeCount * vertsPerParticle);
     };
 
     const makeLayer = (cfg) => ({

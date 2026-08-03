@@ -1,4 +1,4 @@
-import { createCurrentParticleGLLayer } from './_currentparticles_gl.js';
+import { createCurrentParticleGLLayer } from './_streamparticles_gl.js';
 import { createFillLayer } from './_webglfill.js';
 import { keyFilename, showLegend, removeLegend } from './_legend.js';
 import { opacityUniform } from './_opacity.js';
@@ -83,6 +83,64 @@ function buildFlatLUT(rgb) {
     return lut;
 }
 
+// particle_speed 10..100 -> the engine's own drift-speed units. 10x scaled down --
+// ui=50 now gives what ui=5 gave before.
+export function speedFromConfig(cfg) {
+    const ui = Number(cfg.particle_speed);
+    const v = (isFinite(ui) && ui >= 10 && ui <= 100) ? ui : 50;
+    return (v / 100) * 0.15;
+}
+
+// Wind's field is far noisier than ocean currents (0.25-deg GFS vs. smooth RTOFS), and
+// this engine re-integrates each ribbon live from scratch every frame -- with no
+// smoothing, small-scale field noise reads as trails jittering/flickering between paths
+// frame to frame. Reuses wind's existing flow_coherence_radius config field (already had
+// a live slider from the old engine); currents never sets this option, so its own
+// rendering is completely unaffected.
+export function coherenceRadius(cfg) {
+    const v = Number(cfg.flow_coherence_radius);
+    return (isFinite(v) && v > 0) ? v : 0;
+}
+
+// trail_length: the SAME config key as currents (both read the engine's shared
+// arc-length concept), but mapped into a much shorter range -- currents' own tuned
+// midpoint H (~8e-4) read as a "massively long strand" for wind's noisier, higher-
+// STREAM_STEPS ribbon. UI slider is 10-100, 5x-compressed relative to currents' plain
+// 0-100 (frac = t/500, not t/100): live tuning found every useful value sitting in the
+// bottom ~1/5 of the old 0-100 range (the rest was always "too long"), so the useful
+// sub-range was stretched across the whole slider for finer control -- old value 10
+// (the sweet spot) now reads as 50.
+export function hFromConfig(cfg) {
+    const t = Number(cfg.trail_length);
+    const frac = (t >= 10 && t <= 100) ? t / 500 : 0.1;
+    return 3.0e-5 + frac * (3.0e-4 - 3.0e-5);   // ~3e-5 .. 3e-4
+}
+
+// trail_thickness UI slider is 1-5 (integer, no unit) rather than currents' raw px.
+// 1 -> 0.5px (unchanged floor) .. 5 -> 1.5px.
+export function thicknessFromConfig(cfg) {
+    const t = Number(cfg.trail_thickness);
+    const v = (isFinite(t) && t >= 1 && t <= 5) ? t : 3;
+    return (v + 1) / 4;
+}
+
+// Calm-cell dimming/de-clumping, restored from _particles_gl.js's pre-migration module
+// defaults (calmDrop=0.06, calmFade=0.6) -- wind silently lost these when it moved onto
+// the shared engine, which defaults both to OFF (0) for every consumer. Unlike waves
+// (whose vector encodes wave HEIGHT in metres, not velocity -- see 0aeee90), wind's
+// field IS velocity (m/s), so the engine's own calmSpeed default (2.5 m/s) -- identical
+// to the old engine's default -- is a sound "calm" threshold against wind's 40 m/s VMAX
+// and needs no override here. No config UI field ever set calm_drop/calm_fade before
+// (no template entry), so these fall back to the restored defaults for every live user.
+export function calmDrop(cfg) {
+    const v = Number(cfg.calm_drop);
+    return (isFinite(v) && v >= 0) ? v : 0.06;
+}
+export function calmFade(cfg) {
+    const v = Number(cfg.calm_fade);
+    return (isFinite(v) && v >= 0) ? v : 0.6;
+}
+
 export async function loadLayer(map, config, fullConfig = {}) {
     // Fetch the backend-computed heatmap scale (written by wind.py after scanning all
     // hours; round-tripped as wind_meta.json). Falls back to 100 km/h if missing.
@@ -157,13 +215,12 @@ export async function loadLayer(map, config, fullConfig = {}) {
     const colorCfg = config.particle_color != null ? config.particle_color
         : (config.vector_color != null ? config.vector_color : '#ffffff');
     const particleColor = parseColor(colorCfg);
-    // PROTOTYPE (architecture review candidate "unify wind/currents particle
-    // rendering"): swapped from _particles_gl.js's oriented-quad streaks to
-    // _currentparticles_gl.js's live streamline-ribbon integration, to see if the
-    // currents technique also reads well for wind before committing to unifying the
-    // two engines for real. landReset:0 (wind blows over land, unlike ocean currents);
-    // speedFromConfig borrows currents' own tuned 0-100 -> 0-8 range as a first pass,
-    // not yet re-tuned for how wind's speeds should feel.
+    // Wind runs on the same shared stream particle engine as currents/jetstream/waves
+    // (candidate #7, particle-engine consolidation), in 'streamline' primitive mode
+    // (bar mode is a waves-only concept). landReset:0 -- wind blows over land, unlike
+    // ocean currents -- so the engine's land-avoidance retry/coastal look-ahead never
+    // applies here, same as jetstream. Every mapping function below was tuned live
+    // against wind's own field/UI ranges (see each function's docstring above).
     const teardownParticles = createCurrentParticleGLLayer(map, {
         sectionKey: 'wind',
         initialConfig: config,
@@ -173,11 +230,7 @@ export async function loadLayer(map, config, fullConfig = {}) {
         colormap: () => buildFlatLUT(particleColor),   // fixed colour (not speed-based)
         maxSpeedColor: () => vmaxMs,
         landReset: () => 0.0,             // wind flows over land; currents must not
-        speedFromConfig: (cfg) => {
-            const ui = Number(cfg.particle_speed);
-            const v = (isFinite(ui) && ui >= 10 && ui <= 100) ? ui : 50;
-            return (v / 100) * 0.15;      // 10x scaled down -- ui=50 now gives what ui=5 gave before
-        },
+        speedFromConfig,
         // Currents' own LOD_COUNT ({1:4000, 2:9000, 3:18000}) reads too dense for wind's
         // long streamline ribbons -- wind gets its own (lower) table instead. No longer
         // overridable via a separate particle_count setting (removed -- level_of_detail
@@ -189,38 +242,11 @@ export async function loadLayer(map, config, fullConfig = {}) {
         // Narrowed well below currents' own 0.35 instead, for a short, quick fade near
         // the tail tip.
         tailFadeEnd: 0.15,
-        // Wind's field is far noisier than ocean currents (0.25-deg GFS vs. smooth RTOFS),
-        // and this engine re-integrates each ribbon live from scratch every frame -- with
-        // no smoothing, small-scale field noise reads as trails jittering/flickering
-        // between paths frame to frame. Reuses wind's existing flow_coherence_radius
-        // config field (already had a live slider from the old engine); currents never
-        // sets this option, so its own rendering is completely unaffected.
-        coherenceRadius: (cfg) => {
-            const v = Number(cfg.flow_coherence_radius);
-            return (isFinite(v) && v > 0) ? v : 0;
-        },
-        // trail_length: the SAME config key as currents (both read the engine's shared
-        // arc-length concept), but mapped into a much shorter range -- currents' own
-        // tuned midpoint H (~8e-4) read as a "massively long strand" for wind's noisier,
-        // higher-STREAM_STEPS ribbon. UI slider is now 10-100, 5x-compressed relative to
-        // currents' plain 0-100 (frac = t/500, not t/100): live tuning found every
-        // useful value sitting in the bottom ~1/5 of the old 0-100 range (the rest was
-        // always "too long"), so the useful sub-range was stretched across the whole
-        // slider for finer control -- old value 10 (the sweet spot) now reads as 50.
-        hFromConfig: (cfg) => {
-            const t = Number(cfg.trail_length);
-            const frac = (t >= 10 && t <= 100) ? t / 500 : 0.1;
-            return 3.0e-5 + frac * (3.0e-4 - 3.0e-5);   // ~3e-5 .. 3e-4 -- a first pass, tune live
-        },
-        // trail_thickness UI slider is 1-5 (integer, no unit) rather than currents' raw
-        // px. First pass mapped slider max (5) to 2.5px (v/2) -- read too fat live.
-        // Narrowed so the same 5-step slider covers a smaller px range: 1 -> 0.5px
-        // (unchanged floor) .. 5 -> 1.5px (what the old scale's "3" used to give).
-        thicknessFromConfig: (cfg) => {
-            const t = Number(cfg.trail_thickness);
-            const v = (isFinite(t) && t >= 1 && t <= 5) ? t : 3;
-            return (v + 1) / 4;
-        },
+        coherenceRadius,
+        hFromConfig,
+        thicknessFromConfig,
+        calmDrop,
+        calmFade,
     });
 
     // Tear down both layers (particles first, then heatmap) on basemap style swap.

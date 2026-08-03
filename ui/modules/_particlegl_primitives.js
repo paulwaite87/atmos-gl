@@ -2,7 +2,7 @@
 /**
  * Low-level WebGL plumbing shared between wind/waves' oriented-quad particle engine
  * (_particles_gl.js) and currents/wind's streamline-ribbon engine
- * (_currentparticles_gl.js) -- architecture review candidate #4, "low-level WebGL
+ * (_streamparticles_gl.js) -- architecture review candidate #4, "low-level WebGL
  * plumbing duplicated between wind's and currents' particle engines". The two
  * engines' actual physics (oriented-quad streaks/bars vs. upstream-integrated
  * streamlines) is genuinely different and stays in its own file -- this module owns
