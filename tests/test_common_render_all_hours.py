@@ -23,6 +23,10 @@ def make_bare_layer(hours_resolved=("2026-06-13", "18", [0, 3, 6])):
     u.latest_store_run = MagicMock(return_value=hours_resolved)
     u.process_status_adapter = MagicMock()
     u.publish_current_hour = MagicMock()
+    # Default: nothing is "before now", matching every pre-existing test's expectation
+    # that all resolved hours are considered. test_skips_hours_before_now_fhour(_*)
+    # override this directly to exercise the filter itself.
+    u._now_fhour = MagicMock(return_value=0)
     return u
 
 
@@ -145,6 +149,40 @@ def test_no_catalog_data_returns_zero_and_does_not_publish():
     assert plotted == 0
     plot_fn.assert_not_called()
     u.publish_current_hour.assert_not_called()
+
+
+def test_skips_hours_before_now_fhour():
+    """Hours already in the catalog but before "now" are never reachable via the
+    scrubber (layer_status()'s own segments already filter them out -- see
+    Updater.layer_status()'s docstring), so rendering them wastes a max_hours=1
+    round-robin turn on output nobody can ever see. A section re-enabled after being
+    off for a while (e.g. a channel toggle) should catch up starting from "now", not
+    replay its entire past backlog first."""
+    u = make_bare_layer(hours_resolved=("2026-06-13", "18", [0, 3, 6, 9]))
+    u._now_fhour = MagicMock(return_value=6)
+    u.should_plot_for_hour = MagicMock(return_value=True)
+    u.get_db_field_at_hour = MagicMock(return_value={"values": [[1.0]]})
+    plot_fn = MagicMock()
+
+    plotted = u.render_all_hours("isobars", plot_fn, field_ready=lambda f: True)
+
+    assert plotted == 2
+    seen_hours = [call.args[1].fhour for call in plot_fn.call_args_list]
+    assert seen_hours == [6, 9]  # 0 and 3 are before "now" -- skipped entirely
+
+
+def test_skips_hours_before_now_fhour_respects_max_hours():
+    u = make_bare_layer(hours_resolved=("2026-06-13", "18", [0, 3, 6, 9]))
+    u._now_fhour = MagicMock(return_value=6)
+    u.should_plot_for_hour = MagicMock(return_value=True)
+    u.get_db_field_at_hour = MagicMock(return_value={"values": [[1.0]]})
+    plot_fn = MagicMock()
+
+    plotted = u.render_all_hours("isobars", plot_fn, field_ready=lambda f: True, max_hours=1)
+
+    assert plotted == 1
+    seen_hours = [call.args[1].fhour for call in plot_fn.call_args_list]
+    assert seen_hours == [6]  # the first reachable hour, not 0
 
 
 def test_no_instance_state_is_mutated():
