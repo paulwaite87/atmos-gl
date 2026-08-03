@@ -184,11 +184,23 @@ export function loadLayer(map, config, fullConfig = {}) {
         speedFromConfig,
         thicknessFromConfig,
         // particle_lifetime was never a real waves config field (see config template),
-        // so the pre-migration engine's ageStep default always evaluated to this same
-        // fixed 1/70 for waves in practice -- this engine's own default (1/180) would
-        // silently double bar lifetime, so pin it explicitly rather than relying on a
-        // config field that doesn't exist.
-        ageStep: () => 1.0 / 70,
+        // so the pre-migration engine's ageStep default always evaluated to a fixed
+        // 1/70 (~1.2s @60fps) for waves in practice. That number was tuned for
+        // wind/currents' STREAK/streamline modes specifically to stop long-lived
+        // particles self-organizing into visible filaments -- a risk that only exists
+        // because a streak/ribbon draws a shape connecting a particle's past
+        // positions. A bar draws no such shape, so the filamenting risk this was
+        // guarding against doesn't apply here at all, and there's no reason to keep
+        // bars this short-lived. Lengthened ~3.4x (found live: at 1/70, bars appeared
+        // and vanished before drifting far enough to read as moving in any
+        // direction -- "flickering" with no impression of flow).
+        ageStep: () => 1.0 / 240,
+        // Narrower lifecycle fade window than the streamline ribbons' own 0.20/0.65
+        // (see trailFragmentShader's docstring) -- a bar has no trailing shape to stay
+        // gradual against, so a wide fade just eats into its already-brief on-screen
+        // life. Matches _particles_gl.js's own pre-migration bar/streak fractions.
+        ageFadeInEnd: 0.15,
+        ageFadeOutStart: 0.75,
         // Calm-cell handling (calmDrop/calmFade) is deliberately left at this engine's
         // default OFF (0), not ported from _particles_gl.js's module defaults --
         // calmSpeed's default (2.5) means "m/s" for wind/currents' velocity-encoded

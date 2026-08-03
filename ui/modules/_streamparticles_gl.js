@@ -493,7 +493,16 @@ void main(){
 // opacity. Per-caller (not a module constant) so a consumer with much longer ribbons
 // (wind's streamlines vs. currents' own tuned 0.35) can fade more gradually without
 // changing every other adopter's look.
-const trailFragmentShader = (tailFadeEnd) => `#version 300 es
+//
+// ageFadeInEnd/ageFadeOutStart: lifecycle fade fractions (ease in over the particle's
+// first ageFadeInEnd of age, ease out over its last 1-ageFadeOutStart). Default 0.20/
+// 0.65 matches the streamline ribbons' own tuning (widened from an original 0.15/0.25
+// specifically so the transition itself reads as gradual against a long-lived,
+// visually-busy ribbon). A short-lived primitive with no trailing shape of its own
+// (bar mode) has no such ribbon to stay gradual against -- widening the fade there only
+// eats into the little on-screen life it has, reading as flicker with no time to show
+// movement. Per-caller, not a module constant, for exactly that reason.
+const trailFragmentShader = (tailFadeEnd, ageFadeInEnd = 0.20, ageFadeOutStart = 0.65) => `#version 300 es
 precision highp float;
 in float v_speed; in float v_t; in float v_age;
 out vec4 fragColor;
@@ -504,11 +513,8 @@ void main(){
     vec3 c = texture(u_cmap, vec2(s, 0.5)).rgb;
     // fade toward the tail (v_t=0) and slightly boost the head
     float aTail = smoothstep(0.0, ${tailFadeEnd.toFixed(3)}, v_t) * (0.5 + 0.5*s);
-    // lifecycle fade: ease in over the particle's first 20% of age, ease out over its
-    // last 35% -- widened (was 15%/25%) so the transitions themselves read as gradual,
-    // not just the total cycle length.
-    float fadeIn = smoothstep(0.0, 0.20, v_age);
-    float fadeOut = 1.0 - smoothstep(0.65, 1.0, v_age);
+    float fadeIn = smoothstep(0.0, ${ageFadeInEnd.toFixed(3)}, v_age);
+    float fadeOut = 1.0 - smoothstep(${ageFadeOutStart.toFixed(3)}, 1.0, v_age);
     // Speed fade (ported from _particles_gl.js's "calm-zone handling"): dims particles
     // in low-speed areas so real calm troughs read as faint rather than as bright
     // crowded lines. u_calmFade=0 (the default for consumers that don't set it) is a
@@ -634,6 +640,11 @@ export function createCurrentParticleGLLayer(map, opts) {
         // falls back to this module's currents-tuned LOD_COUNT when not overridden.
         lodCount = null,
         tailFadeEnd = 0.35,   // currents' own tuned default; see trailFragmentShader
+        // Lifecycle fade fractions; see trailFragmentShader's docstring on why bar
+        // mode (no trailing shape to stay gradual against) wants a narrower window
+        // than the streamline ribbons' own tuning.
+        ageFadeInEnd = 0.20,
+        ageFadeOutStart = 0.65,
         // Lifecycle hooks, matching createFillLayer's contract (_webglfill.js) exactly --
         // wind/currents never needed these (their legends piggyback on their accompanying
         // FILL layer's onMount/onRefresh/onUnmount instead), but a particle-only consumer
@@ -743,7 +754,7 @@ export function createCurrentParticleGLLayer(map, opts) {
         if (trailProgFailed) return null;
         const body = primitive === 'bar' ? BAR_VS_BODY : STREAMLINE_VS_BODY;
         const vs = `#version 300 es\n${shaderData.vertexShaderPrelude}\n${shaderData.define}\n${body}`;
-        const p = linkProg(gl, vs, trailFragmentShader(tailFadeEnd), floatPos, sectionKey);
+        const p = linkProg(gl, vs, trailFragmentShader(tailFadeEnd, ageFadeInEnd, ageFadeOutStart), floatPos, sectionKey);
         if (!p) { trailProgFailed = true; return null; }
         trailProgCache.set(key, p);
         return p;
