@@ -172,6 +172,15 @@ const float PI = 3.141592653589793;
 const float STEP = 0.0005;
 ${PACK}
 ${VEL_SAMPLE}
+// One candidate respawn position within the bbox (may wrap the antimeridian).
+vec2 randCandidate(vec2 seed, vec2 bmin, vec2 bmax, bool lonWrap){
+    float rlon;
+    if (!lonWrap) { rlon = bmin.x + rand(seed + 1.3) * (bmax.x - bmin.x); }
+    else { float wlo = 1.0 - bmin.x, whi = bmax.x; float r = rand(seed + 1.3) * (wlo + whi);
+           rlon = (r < wlo) ? (bmin.x + r) : (r - wlo); }
+    float rlat = bmin.y + rand(seed + 2.7) * (bmax.y - bmin.y);
+    return vec2(rlon, rlat);
+}
 void main(){
     vec2 pos = decodePos(texture(u_particles, v_uv));
     vec4 ageState = texture(u_age, v_uv);
@@ -222,12 +231,22 @@ void main(){
     vec2 seed = (pos + v_uv) * (u_seed + 1.0);
     vec2 bmin = u_bboxPos.xy, bmax = u_bboxPos.zw;
     bool lonWrap = bmin.x > bmax.x;
-    float rlon;
-    if (!lonWrap) { rlon = bmin.x + rand(seed + 1.3) * (bmax.x - bmin.x); }
-    else { float wlo = 1.0 - bmin.x, whi = bmax.x; float r = rand(seed + 1.3) * (wlo + whi);
-           rlon = (r < wlo) ? (bmin.x + r) : (r - wlo); }
-    float rlat = bmin.y + rand(seed + 2.7) * (bmax.y - bmin.y);
-    vec2 randPos = vec2(rlon, rlat);
+    vec2 randPos = randCandidate(seed, bmin, bmax, lonWrap);
+    // Avoid respawning directly onto land: a plain uniform draw within the bbox has no
+    // land-avoidance at all, so on a view with significant land coverage particles
+    // could otherwise pop into existence sitting on a coastline/inland cell (found
+    // live: waves' bars visibly "spawning on land", independent of the coastline
+    // mask-resolution mismatch fixed separately). Retries a bounded number of times
+    // when landReset is on, resampling validity each try and falling back to the last
+    // candidate if none validate within the budget rather than looping unboundedly
+    // (see streamparticles_respawn_land_avoidance.test.js).
+    if (u_landReset > 0.5) {
+        const int LAND_RETRY = 6;
+        for (int i = 0; i < LAND_RETRY; i++) {
+            if (sampleVelSmooth(u_vel, randPos, u_vmax).z >= 0.5) break;
+            randPos = randCandidate(seed + vec2(float(i + 1) * 17.3, float(i + 1) * 31.1), bmin, bmax, lonWrap);
+        }
+    }
     // Calm-cell quick respawn (ported from _particles_gl.js's "calm-zone handling"):
     // in genuinely low-speed cells (real troughs / lee zones / slack water) particles
     // barely move, so they DWELL and pile up into bright lines even though the data
