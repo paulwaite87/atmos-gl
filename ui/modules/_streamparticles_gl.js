@@ -141,6 +141,21 @@ vec3 sampleVelSmooth(sampler2D tex, vec2 p, float vmax){
     vec2 v = sumv / wsum;
     if (u_minValue > 0.0 && length(v) < u_minValue) return vec3(0.0, 0.0, 0.0);
     return vec3(v, 1.0);
+}
+// Cheap, EXACT (unfiltered) validity check -- just the destination texel's own alpha,
+// no bicubic loop. sampleVelSmooth's full 16-tap loop runs even when only validity is
+// needed, so probing respawn candidates through it would cost 16x more per try than
+// necessary. Used by UPDATE_FS's respawn retry loop, where a generous attempt budget
+// matters: a view that's mostly land with only a narrow ocean strip needs many more
+// tries to reliably land in that strip than a mostly-ocean view does (found live:
+// candidate #7's bounded low-retry-count fix worked for open ocean but still let bars
+// spawn on land when zoomed into a coastline where land dominates the visible bbox).
+bool validAt(sampler2D tex, vec2 p){
+    vec2 texSize = vec2(textureSize(tex, 0));
+    vec2 pw = vec2(fract(p.x + 1.0), clamp(p.y, 0.0, 1.0));
+    ivec2 texSizeI = ivec2(texSize);
+    ivec2 px = clamp(ivec2(floor(pw * texSize)), ivec2(0), texSizeI - 1);
+    return texelFetch(tex, px, 0).a >= 0.5;
 }`;
 
 // DIRECTION-COHERENCE filter (opt-in via coherenceRadius; currents never sets it, so this
@@ -236,14 +251,19 @@ void main(){
     // land-avoidance at all, so on a view with significant land coverage particles
     // could otherwise pop into existence sitting on a coastline/inland cell (found
     // live: waves' bars visibly "spawning on land", independent of the coastline
-    // mask-resolution mismatch fixed separately). Retries a bounded number of times
-    // when landReset is on, resampling validity each try and falling back to the last
-    // candidate if none validate within the budget rather than looping unboundedly
+    // mask-resolution mismatch fixed separately). Retries when landReset is on, using
+    // the cheap exact validAt() check (not the full bicubic sampleVelSmooth) so the
+    // budget can afford to be generous -- a view that's mostly land with only a narrow
+    // ocean strip (e.g. zoomed into a coastline) needs many more tries to reliably land
+    // in that strip than a mostly-ocean view does; a small bounded budget silently
+    // degrades exactly there (found live: still spawned on land when zoomed into a
+    // coastline, at a retry count that worked fine for open ocean). Falls back to the
+    // last candidate if none validate within the budget rather than looping unboundedly
     // (see streamparticles_respawn_land_avoidance.test.js).
     if (u_landReset > 0.5) {
-        const int LAND_RETRY = 6;
+        const int LAND_RETRY = 32;
         for (int i = 0; i < LAND_RETRY; i++) {
-            if (sampleVelSmooth(u_vel, randPos, u_vmax).z >= 0.5) break;
+            if (validAt(u_vel, randPos)) break;
             randPos = randCandidate(seed + vec2(float(i + 1) * 17.3, float(i + 1) * 31.1), bmin, bmax, lonWrap);
         }
     }
