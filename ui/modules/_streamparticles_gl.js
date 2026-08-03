@@ -239,6 +239,16 @@ void main(){
     float spd = length(vel);
     float calmDrop = (1.0 - clamp(spd / max(u_calmSpeed, 0.01), 0.0, 1.0)) * u_calmDrop;
     bool calmReset = rand(seed + 3.9) < calmDrop;
+    // Look ahead to the STEP'S DESTINATION, not just the cell the particle is
+    // currently sitting in: hasData (sampled at pos, before this step) only catches a
+    // particle already on land -- a step that CROSSES onto land this frame would
+    // otherwise commit npos there and sit visibly on land for a full frame before the
+    // following frame's (now correctly stale-free) check finally resets it. For a
+    // coastline-hugging onshore flow this reads as bars persisting past the coast,
+    // asymmetrically with offshore flow (which never approaches land in the first
+    // place) -- found live once bars lived long enough to actually reach a coastline
+    // during their lifetime (see streamparticles_update_land_lookahead.test.js).
+    float hasDataNew = sampleVelSmooth(u_vel, npos, u_vmax).z;
     // NOTE: do NOT reset particles merely for leaving the view bbox — that confines the
     // whole field to the visible disc and renders as a "petal" cluster on a globe. The
     // bbox is used only to bias where *respawns* land (density where you're looking).
@@ -249,7 +259,7 @@ void main(){
     // landReset on, a coastal hit is still an unfaded pop AND the trail shader discards
     // a head sitting on no-data outright, so fading it further wouldn't show anyway.
     bool reset = (age >= 1.0) || (npos.y <= 0.0) || (npos.y >= 1.0)
-                 || (u_landReset > 0.5 && hasData < 0.5)
+                 || (u_landReset > 0.5 && (hasData < 0.5 || hasDataNew < 0.5))
                  || calmReset;
     if (reset) {
         o_pos = encodePos(randPos);
