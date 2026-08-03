@@ -189,12 +189,17 @@ export function loadLayer(map, config, fullConfig = {}) {
         // silently double bar lifetime, so pin it explicitly rather than relying on a
         // config field that doesn't exist.
         ageStep: () => 1.0 / 70,
-        // Calm-cell handling: waves previously got _particles_gl.js's module defaults
-        // (calmSpeed=2.5, which this engine's own default already matches -- no
-        // override needed; calmDrop=0.06, calmFade=0.6, which this engine defaults OFF
-        // at the engine level, so pin them explicitly to keep waves' pre-migration look).
-        calmDrop: () => 0.06,
-        calmFade: () => 0.6,
+        // Calm-cell handling (calmDrop/calmFade) is deliberately left at this engine's
+        // default OFF (0), not ported from _particles_gl.js's module defaults --
+        // calmSpeed's default (2.5) means "m/s" for wind/currents' velocity-encoded
+        // field, but waves' (u,v) vector encodes WAVE HEIGHT in metres (0-8m,
+        // min_wave_height default 0.5m). Applying a 2.5 threshold to a height in
+        // metres treats nearly the whole ocean as "calm" (well under 2.5m) except the
+        // biggest Southern Ocean swells, giving most particles a ~6%/frame reset
+        // probability -- they never survive long enough to spread out, while the
+        // handful of areas exceeding 2.5m don't get reset at all. A short fixed bar
+        // doesn't accumulate/clump the way a long trail does, so de-clumping was never
+        // load-bearing for this primitive anyway.
         // hourDataUrl defaults to <outfile_base>_f{NNN}_data.png — the per-hour swell
         // field the collector now writes (GFS-Wave global 0p25, forecast-stepped).
     });
