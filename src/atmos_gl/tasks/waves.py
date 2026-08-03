@@ -80,6 +80,11 @@ class WavesUpdater(Updater, MultiHourRenderMixin):
         # ~21s one-time cost per worker process (measured: 14.4s at 50m vs 35.8s at
         # 10m for waves' global 0.08deg grid), paid once at first use per persistent
         # worker, not per render -- see LandMaskCache's module-level geometry cache.
+        # Even at "10m" (a cartographic scale, 1:10M, not 10-metre precision), Natural
+        # Earth's coastline is measurably coarser than a real web-map dataset on
+        # complex, convoluted coastlines (thin peninsulas, dense island groups) -- an
+        # accepted, documented limitation, not a bug: see
+        # docs/adr/0011-accept-natural-earth-coastline-precision-for-ocean-layers.md.
         self._land_mask = LandMaskCache("Waves", res="10m")
 
     def save_waves_key(self, output_path, cmap, norm, threshold=0.0):
