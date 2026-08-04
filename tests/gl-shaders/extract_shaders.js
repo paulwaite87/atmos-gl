@@ -33,8 +33,15 @@ export function extractFromParticlesEngine(path, names) {
  * Safe to call generically: none of a layer module's top-level closures inside
  * loadLayer touch `map`/MapLibre until createParticleGLController/liveLayerSync are
  * invoked, and both are stubbed here, so the rest of loadLayer's body never runs.
+ *
+ * Async-safe: some consumers' loadLayer is `async` with a genuine `await` before the
+ * particle-controller call (e.g. currents.js's `await recon.ready()`), which suspends
+ * the function and returns a pending Promise -- reading captured.opts synchronously
+ * right after calling loadLayer would see it still null for those. Always await the
+ * call (a no-op for the synchronous consumers, whose loadLayer returns the teardown
+ * function directly, not a thenable).
  */
-export function captureParticleControllerOpts(path, exportedFn = "loadLayer") {
+export async function captureParticleControllerOpts(path, exportedFn = "loadLayer") {
   let src = fs.readFileSync(path, "utf8");
   src = src.replace(/^import\s*\{[^}]*\}\s*from\s*['"][^'"]+['"];?$/gm, "");
   src = src.replace(/^export (async function|function)/gm, "$1");
@@ -73,6 +80,6 @@ export function captureParticleControllerOpts(path, exportedFn = "loadLayer") {
   };
   vm.createContext(context);
   vm.runInContext(src, context, { filename: path });
-  context[exportedFn]({}, {});
+  await context[exportedFn]({}, {});
   return captured.opts;
 }

@@ -10,6 +10,7 @@
 // failure mode.
 import { describe, test, expect } from 'vitest';
 import { hFromConfig, paletteFor } from './currents.js';
+import { captureParticleControllerOpts } from '../../tests/gl-shaders/extract_shaders.js';
 
 describe('hFromConfig', () => {
     test('maps trail_length 0..100 onto the 6e-4..2.2e-3 arc range', () => {
@@ -52,5 +53,45 @@ describe('paletteFor', () => {
 
     test('two different cfg objects resolve independently (no stale capture)', () => {
         expect(paletteFor({ palette: 'cyberpunk' })).not.toBe(paletteFor({ palette: 'toxic_neon' }));
+    });
+});
+
+// Wiring: does loadLayer's REAL createCurrentParticleGLLayer call actually pass what's
+// tested above (architecture review candidate D). loadLayer is async with a genuine
+// await (recon.ready()) before this call -- captureParticleControllerOpts must be
+// awaited itself, or it reads captured.opts before loadLayer's continuation runs.
+// captureParticleControllerOpts re-evaluates currents.js's source in a sandboxed vm
+// realm separate from this test's own ES import, so captured functions compare by
+// .toString() (same source), not reference.
+describe('createCurrentParticleGLLayer wiring', () => {
+    test('sets landReset to 1 -- currents must not flow over land', async () => {
+        const opts = await captureParticleControllerOpts('ui/modules/currents.js', 'loadLayer');
+        expect(opts.landReset({})).toBe(1.0);
+    });
+
+    test('speedFromConfig is quadratic (v/100)^2*3.2, unlike wind/waves/jetstream\'s linear mapping', async () => {
+        const opts = await captureParticleControllerOpts('ui/modules/currents.js', 'loadLayer');
+        expect(opts.speedFromConfig({ particle_speed: 50 })).toBeCloseTo(0.8);
+        expect(opts.speedFromConfig({ particle_speed: 100 })).toBeCloseTo(3.2);
+        expect(opts.speedFromConfig({})).toBeCloseTo(0.8);   // default 50
+    });
+
+    test('passes the tuned hFromConfig, not a re-implementation', async () => {
+        const opts = await captureParticleControllerOpts('ui/modules/currents.js', 'loadLayer');
+        expect(opts.hFromConfig.toString()).toBe(hFromConfig.toString());
+    });
+
+    test('sets RTOFS-hour-translated hourDataUrl/backfillKey, unlike wind/waves/jetstream', async () => {
+        const opts = await captureParticleControllerOpts('ui/modules/currents.js', 'loadLayer');
+        expect(typeof opts.hourDataUrl).toBe('function');
+        expect(typeof opts.backfillKey).toBe('function');
+    });
+
+    test('does not override calmDrop/calmFade/coherenceRadius/thicknessFromConfig -- engine defaults apply', async () => {
+        const opts = await captureParticleControllerOpts('ui/modules/currents.js', 'loadLayer');
+        expect(opts.calmDrop).toBeUndefined();
+        expect(opts.calmFade).toBeUndefined();
+        expect(opts.coherenceRadius).toBeUndefined();
+        expect(opts.thicknessFromConfig).toBeUndefined();
     });
 });
