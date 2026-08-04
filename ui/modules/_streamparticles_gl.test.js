@@ -20,14 +20,11 @@ function fixedMappers(overrides = {}) {
         landReset: () => 1.0,
         hFromConfig: () => 8.0e-4,
         lenFromConfig: () => 7,
-        calmSpeed: () => 2.5,
         calmDrop: () => 0.06,
         calmFade: () => 0.6,
         minValue: () => 0.0,
-        smoothPx: () => 1.0,
         coherenceRadius: () => 0,
         ageStep: () => 1 / 180,
-        temporalBlend: () => true,
         vmax: 2.5,
         ...overrides,
     };
@@ -41,11 +38,9 @@ describe('computeParams', () => {
         expect(p.curMaxSpeed).toBe(5.0);
         expect(p.curH).toBe(8.0e-4);
         expect(p.curHalfLen).toBe(7);
-        expect(p.curCalmSpeed).toBe(2.5);
         expect(p.curCalmDrop).toBe(0.06);
         expect(p.curCalmFade).toBe(0.6);
         expect(p.curAgeStep).toBeCloseTo(1 / 180);
-        expect(p.curTemporalBlend).toBe(true);
     });
 
     test('curAlpha reads cfg.particle_opacity directly (not via a mapper), falling back to 0.9', () => {
@@ -68,12 +63,6 @@ describe('computeParams', () => {
     test('curMinValue coerces non-finite/falsy minValue output to 0', () => {
         expect(computeParams({}, fixedMappers({ minValue: () => NaN }), 0).curMinValue).toBe(0.0);
         expect(computeParams({}, fixedMappers({ minValue: () => 1.5 }), 0).curMinValue).toBe(1.5);
-    });
-
-    test('curSmoothPx clamps to >=1.0, falling back to 1.0 when invalid', () => {
-        expect(computeParams({}, fixedMappers({ smoothPx: () => 2.5 }), 0).curSmoothPx).toBe(2.5);
-        expect(computeParams({}, fixedMappers({ smoothPx: () => 0.3 }), 0).curSmoothPx).toBe(1.0);
-        expect(computeParams({}, fixedMappers({ smoothPx: () => NaN }), 0).curSmoothPx).toBe(1.0);
     });
 
     test('curAgeStep falls back to 1/90 when ageStep output is invalid', () => {
