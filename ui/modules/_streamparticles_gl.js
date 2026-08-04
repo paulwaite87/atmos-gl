@@ -51,6 +51,18 @@ import { linkProg, makeTex, makeStateTex, randomAge, QUAD_VS, COH_H_FS, COH_V_FS
 const STREAM_STEPS = 40;        // streamline integration segments (tail = STREAM_STEPS+1 points)
 const LOD_COUNT = { 1: 4000, 2: 9000, 3: 18000 };
 
+// Engine-level tuning constants, formerly opts fields -- none of the four real
+// consumers (wind/waves/currents/jetstream) has ever overridden any of these
+// (architecture review candidate B, "prune createCurrentParticleGLLayer's dead opts").
+// Each is still live/active behaviour, just no longer configurable per-consumer.
+const BAR_EPS = 0.0015;         // bar mode's forward-probe distance (tile-space); irrelevant to 'streamline'
+const SMOOTH_PX = 1.0;          // sampleVelSmooth coarse-cell spacing; native/near-crisp
+const CALM_SPEED = 2.5;         // m/s calm-cell threshold (calmDrop/calmFade's companion)
+const LENGTH_ZOOM_COMP = 1.0;   // trail-length/advection-speed zoom compensation strength
+const LENGTH_ZOOM_REF = 2.0;    // zoom at which curH/curSpeed apply unscaled
+const DENSITY_ZOOM_REF = 3.5;   // zoom at/below which the full particle budget draws
+const DENSITY_ZOOM_FALLOFF = 0.5;   // drawn count halves every 1/falloff zoom levels above ref
+
 const lodOf = (cfg) => { const n = parseInt(cfg.level_of_detail, 10); return (n === 1 || n === 3) ? n : 2; };
 
 // 16-bit position packing across two 8-bit channels (no float-texture extension).
@@ -593,8 +605,8 @@ void main(){
 export function computeParams(cfg, mappers, prevCohRadius) {
     const {
         speedFromConfig, thicknessFromConfig, maxSpeedColor, landReset, hFromConfig,
-        lenFromConfig, calmSpeed, calmDrop, calmFade, minValue, smoothPx,
-        coherenceRadius, ageStep, temporalBlend, vmax,
+        lenFromConfig, calmDrop, calmFade, minValue,
+        coherenceRadius, ageStep, vmax,
     } = mappers;
     const curSpeed = speedFromConfig(cfg);
     const curThick = thicknessFromConfig(cfg);
@@ -603,21 +615,17 @@ export function computeParams(cfg, mappers, prevCohRadius) {
     const curLandReset = landReset(cfg) > 0.5 ? 1.0 : 0.0;
     const curH = hFromConfig(cfg);
     const curHalfLen = lenFromConfig(cfg);
-    const curCalmSpeed = calmSpeed(cfg);
     const curCalmDrop = calmDrop(cfg);
     const curCalmFade = calmFade(cfg);
     const curMinValue = Number(minValue(cfg)) || 0.0;
-    const newSmoothPx = Number(smoothPx(cfg));
-    const curSmoothPx = (isFinite(newSmoothPx) && newSmoothPx >= 1.0) ? newSmoothPx : 1.0;
     const newCoh = Number(coherenceRadius(cfg)) || 0;
     const cohChanged = newCoh !== prevCohRadius;
     const newAgeStep = Number(ageStep(cfg));
     const curAgeStep = (isFinite(newAgeStep) && newAgeStep > 0) ? newAgeStep : (1.0 / 90);
-    const curTemporalBlend = temporalBlend(cfg);
     return {
         curSpeed, curThick, curAlpha, curMaxSpeed, curLandReset, curH, curHalfLen,
-        curCalmSpeed, curCalmDrop, curCalmFade, curMinValue, curSmoothPx,
-        curCohRadius: newCoh, cohChanged, curAgeStep, curTemporalBlend,
+        curCalmDrop, curCalmFade, curMinValue,
+        curCohRadius: newCoh, cohChanged, curAgeStep,
     };
 }
 
@@ -675,27 +683,15 @@ export function createCurrentParticleGLLayer(map, opts) {
             const v = Number(cfg.bar_length);
             return isFinite(v) ? Math.min(20, Math.max(1, v)) : 7;
         },
-        // Forward-probe distance (tile-space) for the bar mode's local flow direction.
-        // Matches _particles_gl.js's own default; irrelevant for 'streamline' mode.
-        eps = 0.0015,
         maxSpeedColor = (cfg) => vmax,
         landReset = (cfg) => 1.0,
-        // Default advection speed when the config doesn't specify particle_speed. This
-        // must live in the engine (not injected via initialConfig) because liveLayerSync
-        // re-reads the RAW config section on every refresh tick — an initialConfig-only
-        // default applies at mount but is lost on the first refresh, dropping curSpeed to
-        // the fallback and visibly slowing the flow to "bright dots" after ~20s.
-        defaultSpeed = 0.4,
         // How to turn the config into the advection multiplier. Default reads
         // particle_speed as a raw multiplier (back-compat). Currents passes a mapper that
         // translates the 0-100 UI slider into its own min..max speed range.
-        speedFromConfig = (cfg) => (Number(cfg.particle_speed) > 0 ? Number(cfg.particle_speed) / 500 : defaultSpeed),
+        speedFromConfig = (cfg) => (Number(cfg.particle_speed) > 0 ? Number(cfg.particle_speed) / 500 : 0.4),
         // Direction-coherence radius (texels). 0 (the default) disables the filter
         // entirely -- currents never overrides this, so it stays completely inert there.
         coherenceRadius = (cfg) => 0,
-        // Masked-bicubic coarse-cell spacing for sampleVelSmooth (see VEL_SAMPLE above).
-        // 1 = native (near-crisp); raise only if a sharp shear still tears.
-        smoothPx = (cfg) => 1.0,
         // trail_length (0-100) -> integration arc H. Generic fallback range, not tuned
         // for either current consumer -- both wind and currents now set their own
         // hFromConfig (see wind.js/currents.js). A future consumer with no trail_length
@@ -710,29 +706,17 @@ export function createCurrentParticleGLLayer(map, opts) {
         // over fractions of this -- doubled from the first pass (90 -> 180, ~3s at 60fps)
         // because the transitions themselves read as too fast, not just the total cycle.
         ageStep = (cfg) => 1.0 / 180,
-        // Trail-length (and, again, advection-speed -- see the note at u_speed in
-        // advect()) zoom compensation. comp=1 holds screen-space length/speed
-        // ~constant; comp=0 disables (the old, zoom-unaware behaviour). ref is the
-        // zoom at which curH/curSpeed apply unscaled. Applying this to speed was tried
-        // and reverted three times before (full-strength from zoom 2; half-strength
-        // from zoom 5; full-strength from zoom 5), each producing its own visual
-        // defect -- since diagnosed as 16-bit position quantization noise dominating
-        // an advection step the compensation had shrunk too far, not a flaw in this
-        // curve itself. Retrying full-strength from zoom 2 now that floatPos (above)
-        // gives positions enough precision to avoid that.
-        lengthZoomComp = 1.0,
-        lengthZoomRef = 2.0,
         // Calm-cell handling (ported from _particles_gl.js's "calm-zone handling" --
-        // see UPDATE_FS/trailFragmentShader above). calmSpeed: speed below which a
-        // cell counts as "calm". calmDrop: peak per-frame respawn probability at zero
-        // speed (ramps to 0 at calmSpeed), de-clumping slow particles. calmFade: how
-        // strongly low speed dims opacity [0..1]. Defaults OFF (0) at the engine
-        // level -- unlike _particles_gl.js, which defaulted these on for its only two
-        // consumers (wind, waves), this engine now serves four very different
-        // consumers, most of which never had this behaviour; a consumer that wants it
-        // (waves, migrating from _particles_gl.js's own non-zero defaults) opts in
-        // explicitly rather than every other consumer silently inheriting a new look.
-        calmSpeed = (cfg) => { const v = Number(cfg.calm_speed); return isFinite(v) && v > 0 ? v : 2.5; },
+        // see UPDATE_FS/trailFragmentShader above). CALM_SPEED (module-level constant):
+        // speed below which a cell counts as "calm". calmDrop: peak per-frame respawn
+        // probability at zero speed (ramps to 0 at CALM_SPEED), de-clumping slow
+        // particles. calmFade: how strongly low speed dims opacity [0..1]. Defaults OFF
+        // (0) at the engine level -- unlike _particles_gl.js, which defaulted these on
+        // for its only two consumers (wind, waves), this engine now serves four very
+        // different consumers, most of which never had this behaviour; a consumer that
+        // wants it (waves, migrating from _particles_gl.js's own non-zero defaults)
+        // opts in explicitly rather than every other consumer silently inheriting a new
+        // look.
         calmDrop  = (cfg) => 0.0,
         calmFade  = (cfg) => 0.0,
         // Live minimum-magnitude threshold (real units, e.g. metres for waves' swell
@@ -740,20 +724,6 @@ export function createCurrentParticleGLLayer(map, opts) {
         // used -- same as land. 0 (the default) disables it entirely; currents/
         // jetstream never set this.
         minValue = () => 0.0,
-        // Zoom-adaptive drawn density (ported from _particles_gl.js): the fixed particle
-        // budget concentrates into the shrinking respawn box as you zoom in (viewBox()
-        // below), so DRAW fewer of the (randomly distributed) particles to keep on-screen
-        // density from silently climbing. densityZoomRef: zoom at/below which the full
-        // budget draws. densityZoomFalloff: drawn count halves every 1/falloff zoom levels
-        // above ref (0 disables). The update pass still advects the full budget -- only
-        // the draw count shrinks, so there's no rebuild and no respawn-rate change.
-        densityZoomRef = 3.5,
-        densityZoomFalloff = 0.5,
-        // Temporal hour-blending (ported from _particles_gl.js): cross-fades the current
-        // and next forecast-hour textures by the timeline's playback frac, so playback
-        // shows a continuous field instead of a once-per-hour "snap". Always on -- no
-        // longer a config-exposed toggle (removed; nobody wanted it off).
-        temporalBlend = () => true,
         // trail_thickness (px, ribbon half-thickness) -> curThick. Default reads the
         // config value directly as px; a consumer wanting a different UI scale (e.g. a
         // small integer slider) overrides this to convert, same pattern as
@@ -799,12 +769,13 @@ export function createCurrentParticleGLLayer(map, opts) {
     // changes or the radius is retuned (cohDirty), never per frame.
     let cohHProg = null, cohVProg = null, velCohTex = null, velCohNextTex = null, cohTempTex = null, cohFbo = null;
     let cohW = 0, cohH = 0, curCohRadius = 0, cohDirty = false, cohNextDirty = false, velImgW = 0, velImgH = 0;
-    // Temporal hour-blending (opt-in via temporalBlend; default on). Mirrors
-    // _particles_gl.js's windTexNext/windBlendTex/blendWind/loadWindNext/curFrac.
+    // Temporal hour-blending (always on -- no longer a config-exposed toggle; nobody
+    // wanted it off). Mirrors _particles_gl.js's
+    // windTexNext/windBlendTex/blendWind/loadWindNext/curFrac.
     let velTexNext = null, velBlendTex = null, velBlendFbo = null, blendProg = null;
     let velNextReady = false, pendingVelNextImg = null;
     let blendW = 0, blendH = 0;
-    let curFrac = 0, lastVelNextHour = -1, curTemporalBlend = true;
+    let curFrac = 0, lastVelNextHour = -1;
     let velNextRetryTimer = null;
     // Full-precision particle positions: requires rendering to a float color buffer.
     // With EXT_color_buffer_float, RGBA32F is color-renderable (spec guarantee), so
@@ -827,16 +798,15 @@ export function createCurrentParticleGLLayer(map, opts) {
     let activeCount = count;      // zoom-thinned drawn subset (<= count); see render()
     let velReady = false, pendingVelImg = null, pendingLut = null, pendingRebuild = false;
     let curCfg = initialConfig, curAnim = initialAnimation;
-    let curSpeed = defaultSpeed, curThick = 2.0, curMaxSpeed = vmax, curAlpha = 0.9, curLandReset = 1.0;
+    let curSpeed = 0.4, curThick = 2.0, curMaxSpeed = vmax, curAlpha = 0.9, curLandReset = 1.0;
     let curHalfLen = 7.0;         // bar mode's crest half-length (px); set in applyParams
-    let curCalmSpeed = 2.5, curCalmDrop = 0.0, curCalmFade = 0.0;   // calm-cell; set in applyParams
+    let curCalmDrop = 0.0, curCalmFade = 0.0;   // calm-cell; set in applyParams
     let curMinValue = 0.0;        // live min-magnitude threshold; set in applyParams
     let curH = 8.0e-4;            // streamline integration step (tail arc); set in applyParams
-    let curSmoothPx = 1.0;        // sampleVelSmooth coarse-cell spacing; set in applyParams
     // Zoom compensation: curH (trail arc) and curSpeed (per-frame advection step) are
     // both fixed UV-space distances, but UV-space maps to ~512*2^zoom screen px --
     // unscaled, both the ribbon's SCREEN length and the particle's SCREEN speed grow
-    // every time you zoom in. Scaled by 2^(-lengthZoomComp*(zoom-lengthZoomRef)) each
+    // every time you zoom in. Scaled by 2^(-LENGTH_ZOOM_COMP*(zoom-LENGTH_ZOOM_REF)) each
     // frame to hold both roughly constant on-screen instead, mirroring
     // _particles_gl.js's speedZoomComp -- applied to curH in drawTrails() and to
     // curSpeed in advect(), same factor, since both are just UV distances projected to
@@ -856,8 +826,8 @@ export function createCurrentParticleGLLayer(map, opts) {
     const applyParams = (cfg) => {
         const p = computeParams(cfg, {
             speedFromConfig, thicknessFromConfig, maxSpeedColor, landReset, hFromConfig,
-            lenFromConfig, calmSpeed, calmDrop, calmFade, minValue, smoothPx,
-            coherenceRadius, ageStep, temporalBlend, vmax,
+            lenFromConfig, calmDrop, calmFade, minValue,
+            coherenceRadius, ageStep, vmax,
         }, curCohRadius);
         curSpeed = p.curSpeed;
         curThick = p.curThick;
@@ -866,15 +836,12 @@ export function createCurrentParticleGLLayer(map, opts) {
         curLandReset = p.curLandReset;
         curH = p.curH;
         curHalfLen = p.curHalfLen;
-        curCalmSpeed = p.curCalmSpeed;
         curCalmDrop = p.curCalmDrop;
         curCalmFade = p.curCalmFade;
         curMinValue = p.curMinValue;
-        curSmoothPx = p.curSmoothPx;
         curCohRadius = p.curCohRadius;
         if (p.cohChanged) cohDirty = true;
         curAgeStep = p.curAgeStep;
-        curTemporalBlend = p.curTemporalBlend;
     };
 
     // gl_VertexID span per particle: one ribbon segment sextet per STREAM_STEPS
@@ -1105,7 +1072,6 @@ export function createCurrentParticleGLLayer(map, opts) {
     // already flags backfill for the CURRENT hour; the blend simply stays off (falls back
     // to the raw current-hour texture) until the next hour's texture arrives on its own.
     const loadVelocityNext = (cfg, snap) => {
-        if (!curTemporalBlend) return;
         const nextHour = snap.hour < snap.maxHour ? snap.hour + 1 : snap.hour;
         if (nextHour === lastVelNextHour && velNextReady) return;
         const url = hourDataUrl(cfg, nextHour, bustKey);
@@ -1150,19 +1116,19 @@ export function createCurrentParticleGLLayer(map, opts) {
         gl.uniform1i(u('u_age'), 2);
         gl.uniform1f(u('u_vmax'), vmax);
         // Scaled by curLengthZoomFactor (same curve as the trail ribbon, full strength
-        // from lengthZoomRef) -- fourth attempt at zoom-compensated speed. The first
-        // three (see lengthZoomComp above) produced stationary-looking particles,
+        // from LENGTH_ZOOM_REF) -- fourth attempt at zoom-compensated speed. The first
+        // three (see LENGTH_ZOOM_COMP above) produced stationary-looking particles,
         // fast particles piling up at boundaries, and crabbing; all three are now
         // understood to be symptoms of 16-bit position quantization noise dominating
         // an advection step shrunk small enough by the compensation -- exactly the bug
         // floatPos above fixes. Retrying now that positions are full-precision.
         gl.uniform1f(u('u_speed'), curSpeed * curLengthZoomFactor);
-        gl.uniform1f(u('u_smoothPx'), curSmoothPx);
+        gl.uniform1f(u('u_smoothPx'), SMOOTH_PX);
         gl.uniform1f(u('u_minValue'), curMinValue);
         gl.uniform1f(u('u_ageStep'), curAgeStep);
         gl.uniform1f(u('u_seed'), Math.random());
         gl.uniform1f(u('u_landReset'), curLandReset);
-        gl.uniform1f(u('u_calmSpeed'), curCalmSpeed);
+        gl.uniform1f(u('u_calmSpeed'), CALM_SPEED);
         gl.uniform1f(u('u_calmDrop'), curCalmDrop);
         gl.uniform4f(u('u_bboxPos'), curBbox[0], curBbox[1], curBbox[2], curBbox[3]);
         gl.disable(gl.BLEND);
@@ -1200,12 +1166,12 @@ export function createCurrentParticleGLLayer(map, opts) {
         gl.uniform1i(u('u_age'), 3);
         gl.uniform1f(u('u_res'), RES);
         gl.uniform1f(u('u_vmax'), vmax);
-        gl.uniform1f(u('u_smoothPx'), curSmoothPx);
+        gl.uniform1f(u('u_smoothPx'), SMOOTH_PX);
         gl.uniform1f(u('u_minValue'), curMinValue);
         gl.uniform1f(u('u_H'), curH * curLengthZoomFactor);
         gl.uniform1f(u('u_halfThick'), Math.max(0.5, curThick));
         gl.uniform1f(u('u_halfLen'), curHalfLen);   // bar mode only; no-op uniform (-1) for streamline
-        gl.uniform1f(u('u_eps'), eps);              // bar mode only; no-op uniform (-1) for streamline
+        gl.uniform1f(u('u_eps'), BAR_EPS);          // bar mode only; no-op uniform (-1) for streamline
         gl.uniform1f(u('u_maxspeed'), curMaxSpeed);
         gl.uniform1f(u('u_alpha'), curAlpha);
         gl.uniform1f(u('u_calmFade'), curCalmFade);
@@ -1258,10 +1224,10 @@ export function createCurrentParticleGLLayer(map, opts) {
             if (pendingLut) { uploadColormapNow(gl, pendingLut); pendingLut = null; }
             if (!velReady || !velTex) { map.triggerRepaint(); return; }
             curBbox = viewBox(map);
-            let zNow = lengthZoomRef;
+            let zNow = LENGTH_ZOOM_REF;
             try { zNow = map.getZoom(); } catch (_) { /* keep ref */ }
-            if (lengthZoomComp > 0) {
-                const raw = Math.pow(2, -lengthZoomComp * (zNow - lengthZoomRef));
+            if (LENGTH_ZOOM_COMP > 0) {
+                const raw = Math.pow(2, -LENGTH_ZOOM_COMP * (zNow - LENGTH_ZOOM_REF));
                 // Floor was 0.05, which stops compensating (and lets the ribbon's screen
                 // length start growing again) above ~zoom 6.3 -- easily reached by
                 // normal navigation. Dropped to 1e-6 so compensation keeps working up to
@@ -1271,8 +1237,8 @@ export function createCurrentParticleGLLayer(map, opts) {
             } else {
                 curLengthZoomFactor = 1.0;
             }
-            if (densityZoomFalloff > 0) {
-                const f = Math.pow(2, -Math.max(0, zNow - densityZoomRef) * densityZoomFalloff);
+            if (DENSITY_ZOOM_FALLOFF > 0) {
+                const f = Math.pow(2, -Math.max(0, zNow - DENSITY_ZOOM_REF) * DENSITY_ZOOM_FALLOFF);
                 const floorN = Math.max(256, Math.round(count * 0.06));
                 activeCount = Math.min(count, Math.max(floorN, Math.round(count * f)));
             } else {
@@ -1290,7 +1256,7 @@ export function createCurrentParticleGLLayer(map, opts) {
                 if (velCohTex) sCur = velCohTex;
                 if (velCohNextTex && velNextReady) sNext = velCohNextTex;
             }
-            if (curTemporalBlend && blendProg && velNextReady && sNext
+            if (blendProg && velNextReady && sNext
                 && curFrac > 0.001 && velImgW > 0) {
                 blendVel(gl, sCur, sNext);
                 activeVelTexRef = velBlendTex;
