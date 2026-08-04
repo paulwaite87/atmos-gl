@@ -11,6 +11,7 @@
 // in jetstream.js for the full story.
 import { describe, test, expect } from 'vitest';
 import { buildLUT, speedFromConfig, hFromConfig, coherenceRadius, paletteFor, LOD_COUNT } from './jetstream.js';
+import { captureParticleControllerOpts } from '../../tests/gl-shaders/extract_shaders.js';
 
 describe('buildLUT', () => {
     test('returns a 256-entry RGBA lookup table', () => {
@@ -156,5 +157,39 @@ describe('LOD_COUNT', () => {
         for (const tier of [1, 2, 3]) {
             expect(LOD_COUNT[tier]).toBeLessThan(engineDefault[tier]);
         }
+    });
+});
+
+// Wiring: does loadLayer's REAL createCurrentParticleGLLayer call actually pass what's
+// tested above (architecture review candidate D). captureParticleControllerOpts re-
+// evaluates jetstream.js's source in a sandboxed vm realm separate from this test's
+// own ES import, so captured functions/objects compare by .toString()/toEqual (same
+// source/shape), not reference.
+describe('createCurrentParticleGLLayer wiring', () => {
+    test('passes the tuned mapper functions, not a re-implementation', async () => {
+        const opts = await captureParticleControllerOpts('ui/modules/jetstream.js', 'loadLayer');
+        expect(opts.speedFromConfig.toString()).toBe(speedFromConfig.toString());
+        expect(opts.hFromConfig.toString()).toBe(hFromConfig.toString());
+        expect(opts.coherenceRadius.toString()).toBe(coherenceRadius.toString());
+        expect(opts.lodCount).toEqual(LOD_COUNT);
+    });
+
+    test('sets landReset to 0 -- jet-core wind blows over land and ocean alike', async () => {
+        const opts = await captureParticleControllerOpts('ui/modules/jetstream.js', 'loadLayer');
+        expect(opts.landReset({})).toBe(0.0);
+    });
+
+    test('sets onMount/onRefresh/onUnmount/keyUrl -- the only consumer with no accompanying fill layer', async () => {
+        const opts = await captureParticleControllerOpts('ui/modules/jetstream.js', 'loadLayer');
+        expect(typeof opts.onMount).toBe('function');
+        expect(typeof opts.onRefresh).toBe('function');
+        expect(typeof opts.onUnmount).toBe('function');
+        expect(typeof opts.keyUrl).toBe('function');
+    });
+
+    test('does not set hourDataUrl/backfillKey -- forecast hours are GFS-timeline-relative 1:1, unlike currents', async () => {
+        const opts = await captureParticleControllerOpts('ui/modules/jetstream.js', 'loadLayer');
+        expect(opts.hourDataUrl).toBeUndefined();
+        expect(opts.backfillKey).toBeUndefined();
     });
 });

@@ -56,3 +56,19 @@ mutated directly on `self`, forcing `hasattr` guards and two separate save/resto
 | Term | Definition | Aliases to avoid |
 | ---- | ---------- | ---------------- |
 | **Standard legend** | `standardLegend(slotId, outfileFor, opacityFallback)` (`ui/modules/_legend.js`), the `showLegend`+`opacityUniform` wiring every layer module rebuilt independently (12 near-identical copies, each also computing `keyFilename` a second time for its own separate `keyUrl` chase property). `outfileFor(cfg)` lets a caller insert its own variant suffix first (`sst.js`'s mode, `air_quality.js`'s variable, `greenhouse_gases.js`'s species+mode) via `insertBeforeExtension` — the same "insert before extension" split `keyFilename` itself now delegates to, previously re-derived 3× by those same three modules. Omitting `opacityFallback` (not passing a fallback number at all) preserves `currents.js`/`jetstream.js`'s documented exception — their legend key stays visible independent of the fill's own opacity — rather than defaulting to always-computed opacity gating. | legend helper |
+
+## Frontend popups
+
+| Term | Definition | Aliases to avoid |
+| ---- | ---------- | ---------------- |
+| **Popup content block** | A typed entry in `buildPopupHtml`'s (`ui/modules/_feedhelpers.js`) `blocks` array — `divider`, `rows`, `line`, `emphasis`, `notice`, or `fallback` — each a named, reusable shape rather than a raw-HTML escape hatch, so every current popup layout (a fused title line, a `<br>`-separated field list, a conditional route callout, a live-computed row colour, a no-data fallback) stays expressible without a caller reaching around the shared model. `line` and `rows` are both block-level (wrapped in a `<div>`), so a block always starts on its own line regardless of what precedes it — no reliance on a preceding divider or trailing `<br>`. | popup section |
+| **Title variant** | A named entry in `buildPopupHtml`'s `TITLE_VARIANTS` (`default`/`callsign`/`alert`/`plain`/`fire`) fixing a title's color+size as one unit, rather than raw `titleColor`/`titleSize` params a caller could set to anything. Add a new variant when a genuinely distinct, deliberately-chosen style shows up (e.g. `fire`'s `#ff5a1f`, found only when migrating fires.js — a 9th popup consumer missed in the original cataloguing pass); don't fold a real distinct color into an existing variant just to avoid naming one. | title style |
+
+`buildPopupHtml` (content) and the widened `hoverPopup` (`_hoverpopup.js` — show/hide/
+positioning, now accepting `layerId` as a string-or-array, a configurable `event`
+("enter"/"move"), and a live `enabled` predicate) together are the "one-stop-shop"
+every popup-bearing layer goes through, including `markers.js` — architecture review
+candidate #6, which superseded `docs/adr/0002-dont-extend-hoverpopup-for-markers.md`
+(that ADR's four axes — multi-layer, mousemove, live-enable, a caller-specific
+`maxWidth` — are exactly what `hoverPopup` widened to cover). `popupCard`, the prior
+content model, is deleted; every caller migrated onto `buildPopupHtml` instead.

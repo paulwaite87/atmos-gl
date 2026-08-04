@@ -1,4 +1,4 @@
-import { createCurrentParticleGLLayer } from './_currentparticles_gl.js';
+import { createCurrentParticleGLLayer } from './_streamparticles_gl.js';
 import { standardLegend } from './_legend.js';
 
 // Backend JetStreamUpdater.VMAX (m/s). Texture is R=U, G=V encoded as
@@ -73,7 +73,7 @@ export function coherenceRadius(cfg) {
 // Resolve the configured palette (falling back to the default for an unset/unknown
 // name), read fresh from whatever cfg is passed in -- NOT captured once at mount. The
 // engine calls colormap(cfg) with the live config on every refresh (see
-// _currentparticles_gl.js's refresh()); a bare `config.palette` closed over at
+// _streamparticles_gl.js's refresh()); a bare `config.palette` closed over at
 // loadLayer()-time would silently ignore a later palette change (the bug this fixes).
 export function paletteFor(cfg) {
     return (cfg.palette && PALETTES[cfg.palette]) ? cfg.palette : 'stratosphere';

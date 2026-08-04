@@ -1,5 +1,22 @@
 # Keep waves.js on the oriented-quad particle engine
 
+> **Superseded (2026-08-02).** A later architecture review (candidate #7, "particle
+> engine consolidation") revisited this from a different angle: not "does a BAR tick
+> have a streamline interpretation" (it doesn't, and the reasoning below on that point
+> still holds), but "does the underlying *data field* support one shared engine across
+> wind/jetstream/currents/waves regardless of primitive shape" -- confirmed yes (all
+> four already share the same `encode_uv` RG-texture velocity convention). The decision
+> below correctly weighed waves.js's own migration cost against its own benefit and
+> found it not worth it in isolation; the superseding decision instead weighs the cost
+> of adding a BAR geometry mode to the shared streamline engine (`_streamparticles_gl.js`,
+> the renamed `_currentparticles_gl.js`) once against the benefit of one engine for all
+> four consumers, which changes the calculus. `_streamparticles_gl.js` gained a `'bar'`
+> geometry mode (perpendicular-to-flow quad construction, alongside its existing
+> streamline ribbon) plus ported calm-cell de-clumping and a live min-value threshold,
+> and `waves.js` migrated onto it; `_particles_gl.js` was deleted once nothing referenced
+> it. The reasoning below is kept for the record -- it was correct for the question it
+> answered.
+
 `_particles_gl.js` and `_currentparticles_gl.js`'s docstrings both still asserted, as of
 this writing, that wind and waves share the oriented-quad engine while currents is a
 permanently isolated streamline engine. That's stale: since PR #133/#134, `wind.js`

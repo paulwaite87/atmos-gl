@@ -1,10 +1,9 @@
-// Verifies sampleWindSmooth's live u_minValue threshold (added for waves'
-// min_wave_height, see WSAMPLE's docstring in _particles_gl.js): a cell whose decoded
-// magnitude is below u_minValue must be treated as no-data, exactly like land --
-// hasData=0 -- so it participates identically in every consumer that already branches
-// on hasData<0.5 (UPDATE_FS's reset test, both draw shaders' discards). u_minValue=0
-// (the default for every consumer that doesn't set it, e.g. wind) must be a no-op.
-// Runs the REAL WSAMPLE shader source, extracted verbatim from ui/modules/_particles_gl.js.
+// Currents/streamline-engine counterpart to wsample_min_value_threshold.test.js -- the
+// same live u_minValue threshold (added for waves' min_wave_height, see WSAMPLE's
+// docstring in _particles_gl.js), ported onto sampleVelSmooth (VEL_SAMPLE,
+// _streamparticles_gl.js) instead of sampleWindSmooth, needed before waves.js can
+// migrate onto this engine's bar mode without losing that behaviour. Runs the REAL
+// VEL_SAMPLE shader source, extracted verbatim from ui/modules/_streamparticles_gl.js.
 import { chromium } from "playwright";
 import { extractFromParticlesEngine } from "./extract_shaders.js";
 
@@ -13,7 +12,7 @@ in vec2 a_pos;
 out vec2 v_uv;
 void main(){ v_uv = a_pos; gl_Position = vec4(a_pos * 2.0 - 1.0, 0.0, 1.0); }`;
 
-const VMAX = 8.0;   // waves' VMAX_WAVES
+const VMAX = 8.0;   // waves' VMAX_WAVES -- the eventual consumer of this threshold
 const W = 8;
 
 function assert(condition, message) {
@@ -32,16 +31,17 @@ function uniformSpeedTexture(speed) {
 }
 
 async function sampleAt(px, py, minValue) {
-  const { WSAMPLE } = extractFromParticlesEngine("ui/modules/_particles_gl.js", ["WSAMPLE"]);
+  const { VEL_SAMPLE, PACK } = extractFromParticlesEngine("ui/modules/_streamparticles_gl.js", ["VEL_SAMPLE", "PACK"]);
   const fsSource = `#version 300 es
 precision highp float;
 in vec2 v_uv;
 out vec4 fragColor;
-uniform sampler2D u_wind;
+uniform sampler2D u_vel;
 uniform float u_vmax, u_px, u_py;
-${WSAMPLE}
+${PACK}
+${VEL_SAMPLE}
 void main(){
-    vec3 result = sampleWindSmooth(u_wind, vec2(u_px, u_py), u_vmax);
+    vec3 result = sampleVelSmooth(u_vel, vec2(u_px, u_py), u_vmax);
     fragColor = vec4(result, 1.0);
 }`;
 
@@ -51,7 +51,7 @@ void main(){
   try {
     const page = await browser.newPage();
     return await page.evaluate(
-      ({ vsSource, fsSource, px, py, w, windData, minValue: mv }) => {
+      ({ vsSource, fsSource, px, py, w, velData, minValue: mv }) => {
         const canvas = document.createElement("canvas");
         canvas.width = 1; canvas.height = 1;
         const gl = canvas.getContext("webgl2");
@@ -80,14 +80,14 @@ void main(){
         gl.enableVertexAttribArray(loc);
         gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
 
-        // Matches production's makeWindTex: LINEAR, REPEAT-x, CLAMP-y.
-        const windTex = gl.createTexture();
-        gl.bindTexture(gl.TEXTURE_2D, windTex);
+        // Matches production's velTex: LINEAR, REPEAT-x, CLAMP-y.
+        const velTex = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, velTex);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, w, 0, gl.RGBA, gl.UNSIGNED_BYTE, windData);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, w, 0, gl.RGBA, gl.UNSIGNED_BYTE, velData);
 
         const outTex = gl.createTexture();
         gl.bindTexture(gl.TEXTURE_2D, outTex);
@@ -100,8 +100,8 @@ void main(){
         gl.viewport(0, 0, 1, 1);
 
         gl.useProgram(prog);
-        gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, windTex);
-        gl.uniform1i(gl.getUniformLocation(prog, "u_wind"), 0);
+        gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, velTex);
+        gl.uniform1i(gl.getUniformLocation(prog, "u_vel"), 0);
         gl.uniform1f(gl.getUniformLocation(prog, "u_vmax"), 8.0);
         gl.uniform1f(gl.getUniformLocation(prog, "u_smoothPx"), 1.0);
         gl.uniform1f(gl.getUniformLocation(prog, "u_minValue"), mv);
@@ -115,7 +115,7 @@ void main(){
         gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.FLOAT, out);
         return { vx: out[0], vy: out[1], hasData: out[2] };
       },
-      { vsSource: FULLSCREEN_VS, fsSource, px, py, w: W, windData: uniformSpeedTexture(3.0), minValue }
+      { vsSource: FULLSCREEN_VS, fsSource, px, py, w: W, velData: uniformSpeedTexture(3.0), minValue }
     );
   } finally {
     await browser.close();
@@ -128,7 +128,7 @@ async function main() {
   const disabled = await sampleAt(p.x, p.y, 0.0);
   assert(
     disabled.hasData >= 0.5 && Math.abs(disabled.vx - 3.0) < 0.05,
-    `u_minValue=0 (disabled, wind's default) must be a no-op: expected hasData>=0.5 and vx~3.0, got ${JSON.stringify(disabled)}`
+    `u_minValue=0 (disabled, currents'/jetstream's default) must be a no-op: expected hasData>=0.5 and vx~3.0, got ${JSON.stringify(disabled)}`
   );
 
   const belowSpeed = await sampleAt(p.x, p.y, 1.0);   // threshold below the data's 3.0 m/s
@@ -143,14 +143,14 @@ async function main() {
     `u_minValue=5.0 > data speed 3.0: must read as no-data (same as land), got ${JSON.stringify(aboveSpeed)}`
   );
 
-  console.log("PASS: wsample_min_value_threshold");
+  console.log("PASS: vsample_min_value_threshold");
   console.log(`  disabled (u_minValue=0):        hasData=${disabled.hasData}, vx=${disabled.vx.toFixed(3)}`);
   console.log(`  below data speed (u_minValue=1): hasData=${belowSpeed.hasData}`);
   console.log(`  above data speed (u_minValue=5): hasData=${aboveSpeed.hasData}`);
 }
 
 main().catch((err) => {
-  console.error("FAIL: wsample_min_value_threshold");
+  console.error("FAIL: vsample_min_value_threshold");
   console.error(err.message);
   process.exit(1);
 });

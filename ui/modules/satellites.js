@@ -1,7 +1,7 @@
 import { liveDataSync } from './_datasync.js';
 import { hoverPopup } from './_hoverpopup.js';
 import { startPulse } from './_pulse.js';
-import { fetchOrThrow, popupCard } from './_feedhelpers.js';
+import { fetchOrThrow, buildPopupHtml } from './_feedhelpers.js';
 
 export function loadLayer(map, config) {
     const sourceId = 'satellites-source';
@@ -14,14 +14,12 @@ export function loadLayer(map, config) {
 
     const popupHtml = (f) => {
         const p = f.properties;
-        return popupCard({
-            title: p.name,
-            titleColor: '#222',
-            titleSize: 14,
-            rows: [
+        return buildPopupHtml({
+            title: { text: p.name },
+            blocks: [{ type: 'divider' }, { type: 'rows', rows: [
                 { label: 'NORAD', value: p.norad_id, width: 50 },
                 { label: 'Alt', value: `${p.alt_km} km`, width: 50 },
-            ],
+            ] }],
         });
     };
 

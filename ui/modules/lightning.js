@@ -1,6 +1,6 @@
 import { liveDataSync } from './_datasync.js';
 import { hoverPopup } from './_hoverpopup.js';
-import { fetchOrThrow, preloadIcons, escapeHtml } from './_feedhelpers.js';
+import { fetchOrThrow, preloadIcons, buildPopupHtml } from './_feedhelpers.js';
 
 export function loadLayer(map, config) {
     const sourceId = 'lightning-source';
@@ -24,11 +24,13 @@ export function loadLayer(map, config) {
         const mins = Math.floor(p.age_minutes);
         const age = mins < 60 ? `${mins} mins ago` : `${(mins / 60).toFixed(1)} hours ago`;
         const color = mins <= recentMins ? '#28a745' : (mins <= keepMins ? '#f0ad4e' : '#d9534f');
-        return `<div style="font-family:sans-serif;font-size:12px;color:#000;padding:5px;">
-                <strong style="color:#ff4a4a;font-size:14px;">Strike at ${escapeHtml(p.timestamp)}</strong>
-                <hr style="border:0;border-top:1px solid #ccc;margin:6px 0;">
-                <div><span style="color:#666;width:40px;display:inline-block;">Age:</span> <strong style="color:${color};">${age}</strong></div>
-            </div>`;
+        return buildPopupHtml({
+            title: { text: `Strike at ${p.timestamp}`, variant: 'alert' },
+            blocks: [
+                { type: 'divider' },
+                { type: 'rows', rows: [{ label: 'Age', value: age, valueColor: color }] },
+            ],
+        });
     };
 
     const mount = async (cfg) => {
