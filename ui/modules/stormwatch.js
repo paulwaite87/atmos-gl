@@ -1,6 +1,6 @@
 import { createFillLayer } from './_webglfill.js';
 import { CMAP_YLORRD, rgbToRgba } from './_colormaps.js';
-import { keyFilename, showLegend, removeLegend } from './_legend.js';
+import { standardLegend } from './_legend.js';
 import { opacityUniform } from './_opacity.js';
 
 // GPU scrubber layer (CAPE). Linear YlOrRd ramp over [0, 5000] J/kg, matching the
@@ -10,11 +10,7 @@ const VMIN = 0.0;
 const VMAX = 5000.0;
 
 export function loadLayer(map, config, fullConfig = {}) {
-    const slotId = 'stormwatch-legend-slot';
-
-    const addLegend = (cfg) => {
-        showLegend(slotId, `${window.MAP_UI}/${keyFilename(cfg.outfile)}?t=${Date.now()}`, opacityUniform(cfg, 0.85));
-    };
+    const legend = standardLegend('stormwatch-legend-slot', (cfg) => cfg.outfile, 0.85);
 
     createFillLayer(map, {
         sectionKey: 'stormwatch',
@@ -42,12 +38,12 @@ export function loadLayer(map, config, fullConfig = {}) {
             u_min: Number(cfg.min_cape) >= 0 ? Number(cfg.min_cape) : 250.0,
         }),
         colormap: () => rgbToRgba(CMAP_YLORRD),
-        onMount: addLegend,
-        onRefresh: addLegend,
-        onUnmount: () => removeLegend(slotId),
+        onMount: legend.addLegend,
+        onRefresh: legend.addLegend,
+        onUnmount: legend.removeLegend,
         // key_fontsize changes never touch the fill's data texture, so the default
         // imageUrl regen chase can't detect that the legend needs re-fetching --
         // keyUrl gives it its own independent chase.
-        keyUrl: (cfg) => `${window.MAP_UI}/${keyFilename(cfg.outfile)}`,
+        keyUrl: legend.keyUrl,
     });
 }

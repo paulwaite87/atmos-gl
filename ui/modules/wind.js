@@ -1,6 +1,6 @@
 import { createCurrentParticleGLLayer } from './_streamparticles_gl.js';
 import { createFillLayer } from './_webglfill.js';
-import { keyFilename, showLegend, removeLegend } from './_legend.js';
+import { standardLegend } from './_legend.js';
 import { opacityUniform } from './_opacity.js';
 
 const VMAX_WIND = 40.0;   // m/s velocity-texture encoding range (must match backend)
@@ -150,15 +150,12 @@ export async function loadLayer(map, config, fullConfig = {}) {
         if (res.ok) { const m = await res.json(); if (m.heatmap_max_kph > 0) heatmapMaxKph = m.heatmap_max_kph; }
     } catch (_) { /* use default */ }
     const vmaxMs = heatmapMaxKph / 3.6;
-    const slotId = 'wind-legend-slot';
 
     // Backend-rendered key PNG (tasks/wind.py's save_wind_key), same as every other
     // layer -- previously this was a hand-built DOM gradient bar, the one layer
     // visibly inconsistent with the rest (different bar height/length, its own
     // font-size convention, no shared styling code).
-    const addLegend = (cfg) => {
-        showLegend(slotId, `${window.MAP_UI}/${keyFilename(cfg.outfile)}?t=${Date.now()}`, opacityUniform(cfg, 0.6));
-    };
+    const legend = standardLegend('wind-legend-slot', (cfg) => cfg.outfile, 0.6);
 
     // Keep the static-raster (non-stepping) heatmap opacity live too. Fill (stepping) mode
     // gets its opacity from u_alpha; static mode is a raster layer, so set raster-opacity
@@ -199,13 +196,13 @@ export async function loadLayer(map, config, fullConfig = {}) {
             u_alpha: opacityUniform(cfg, 0.6),   // fill-mode per-pixel opacity (live)
         }),
         colormap: () => buildLUT(),
-        onMount: (cfg) => { addLegend(cfg); applyHeatmapOpacity(cfg); },
-        onRefresh: (cfg) => { addLegend(cfg); applyHeatmapOpacity(cfg); },
-        onUnmount: () => removeLegend(slotId),
+        onMount: (cfg) => { legend.addLegend(cfg); applyHeatmapOpacity(cfg); },
+        onRefresh: (cfg) => { legend.addLegend(cfg); applyHeatmapOpacity(cfg); },
+        onUnmount: legend.removeLegend,
         // Palette changes never touch the heatmap's data texture (colour is applied
         // entirely client-side), so the default imageUrl regen chase can't detect that
         // the legend needs re-fetching -- keyUrl gives it its own independent chase.
-        keyUrl: (cfg) => `${window.MAP_UI}/${keyFilename(cfg.outfile)}`,
+        keyUrl: legend.keyUrl,
     });
 
     // 2) Particles, exactly as before EXCEPT a single fixed colour (particle_color), which

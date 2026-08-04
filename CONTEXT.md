@@ -51,6 +51,12 @@ mutated directly on `self`, forcing `hasattr` guards and two separate save/resto
 | ---- | ---------- | ---------------- |
 | **Land mask cache** | `LandMaskCache` (`lib/coastline.py`), a per-run, per-grid-shape cache around `coastline_land_mask()` — shared by `CurrentsUpdater` and `WavesUpdater`, whose own caching wrappers used to be byte-identical. Paired with `nearest_fill_and_regrid_uv()` (nearest-fill native NaN, then regrid u/v) — also byte-identical between the two before extraction, apart from the regrid-step constant. Each caller applies its own steps (e.g. currents' speed-minimum threshold) and the land-mask cut itself afterward, since ordering differs between the two. Distinct from `coastline_land_mask()` itself, which `sst.py`/`greenhouse_gases.py` call directly with no caching wrapper. | coastline cache |
 
+## Frontend legend wiring
+
+| Term | Definition | Aliases to avoid |
+| ---- | ---------- | ---------------- |
+| **Standard legend** | `standardLegend(slotId, outfileFor, opacityFallback)` (`ui/modules/_legend.js`), the `showLegend`+`opacityUniform` wiring every layer module rebuilt independently (12 near-identical copies, each also computing `keyFilename` a second time for its own separate `keyUrl` chase property). `outfileFor(cfg)` lets a caller insert its own variant suffix first (`sst.js`'s mode, `air_quality.js`'s variable, `greenhouse_gases.js`'s species+mode) via `insertBeforeExtension` — the same "insert before extension" split `keyFilename` itself now delegates to, previously re-derived 3× by those same three modules. Omitting `opacityFallback` (not passing a fallback number at all) preserves `currents.js`/`jetstream.js`'s documented exception — their legend key stays visible independent of the fill's own opacity — rather than defaulting to always-computed opacity gating. | legend helper |
+
 ## Frontend popups
 
 | Term | Definition | Aliases to avoid |

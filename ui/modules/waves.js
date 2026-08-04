@@ -1,6 +1,6 @@
 import { createFillLayer } from './_webglfill.js';
 import { createCurrentParticleGLLayer } from './_streamparticles_gl.js';
-import { keyFilename, showLegend, removeLegend } from './_legend.js';
+import { standardLegend } from './_legend.js';
 import { opacityUniform } from './_opacity.js';
 
 /**
@@ -98,11 +98,7 @@ export function thicknessFromConfig(cfg) {
 }
 
 export function loadLayer(map, config, fullConfig = {}) {
-    const slotId = 'waves-legend-slot';
-
-    const setLegend = (cfg) => {
-        showLegend(slotId, `${window.MAP_UI}/${keyFilename(cfg.outfile)}?t=${Date.now()}`, opacityUniform(cfg, 0.7));
-    };
+    const legend = standardLegend('waves-legend-slot', (cfg) => cfg.outfile, 0.7);
 
     // Heat fill: decode swell magnitude from the per-hour swell texture (already
     // regridded + true-coastline-masked server-side -- tasks/waves.py's _masked_uv),
@@ -137,13 +133,13 @@ export function loadLayer(map, config, fullConfig = {}) {
             u_minWave: Math.max(0, Number(cfg.min_wave_height) || 0),
         }),
         colormap: (cfg) => buildLUT(cfg.palette || 'ocean_storm'),
-        onMount: setLegend,
-        onRefresh: setLegend,
-        onUnmount: () => removeLegend(slotId),
+        onMount: legend.addLegend,
+        onRefresh: legend.addLegend,
+        onUnmount: legend.removeLegend,
         // Palette changes never touch the heatmap's data texture (colour is applied
         // entirely client-side), so the default imageUrl regen chase can't detect that
         // the legend needs re-fetching -- keyUrl gives it its own independent chase.
-        keyUrl: (cfg) => `${window.MAP_UI}/${keyFilename(cfg.outfile)}`,
+        keyUrl: legend.keyUrl,
     });
 
     // Animated swell bars (GPU custom layer). Uses the shared stream particle engine

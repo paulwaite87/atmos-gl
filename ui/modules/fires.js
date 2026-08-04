@@ -3,7 +3,7 @@ import { hoverPopup } from './_hoverpopup.js';
 import { fetchOrThrow, buildPopupHtml } from './_feedhelpers.js';
 import { createFillLayer } from './_webglfill.js';
 import { buildThresholdLUT } from './_thresholdpalette.js';
-import { keyFilename, showLegend, removeLegend } from './_legend.js';
+import { standardLegend } from './_legend.js';
 import { opacityUniform } from './_opacity.js';
 
 // Friendly names for the satellite codes FIRMS reports (VIIRS_NOAA20_NRT's "satellite"
@@ -104,10 +104,7 @@ export function loadLayer(map, config, fullConfig = {}) {
     // in lockstep with the hotspots above via its own independent liveLayerSync
     // subscription (createFillLayer's internal machinery). beforeId inserts it BENEATH
     // the hotspot circle layer, so dots always render on top of the risk shading.
-    const legendSlotId = 'fires-legend-slot';
-    const setLegend = (cfg) => {
-        showLegend(legendSlotId, `${window.MAP_UI}/${keyFilename(cfg.outfile)}?t=${Date.now()}`, opacityUniform(cfg, 0.7));
-    };
+    const legend = standardLegend('fires-legend-slot', (cfg) => cfg.outfile, 0.7);
 
     const stopHeatmap = createFillLayer(map, {
         sectionKey: 'fires',
@@ -136,9 +133,9 @@ export function loadLayer(map, config, fullConfig = {}) {
             paletteColors: FWI_PALETTE,
             flatColor: FWI_FLAT,
         }),
-        onMount: setLegend,
-        onRefresh: setLegend,
-        onUnmount: () => removeLegend(legendSlotId),
+        onMount: legend.addLegend,
+        onRefresh: legend.addLegend,
+        onUnmount: legend.removeLegend,
     });
 
     return () => {

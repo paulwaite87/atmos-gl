@@ -10,13 +10,23 @@
  * callers use.
  */
 
+import { opacityUniform } from './_opacity.js';
+
+// Insert `suffix` immediately before a filename's extension: ("sst.png", "_anomaly")
+// -> "sst_anomaly.png". Shared by keyFilename below and by callers that insert their
+// own variant suffix (sst.js's mode, air_quality.js's variable, greenhouse_gases.js's
+// species+mode) ahead of it -- those used to each re-derive this exact split.
+export function insertBeforeExtension(filename, suffix) {
+    const i = filename.lastIndexOf('.');
+    const base = i !== -1 ? filename.slice(0, i) : filename;
+    const ext  = i !== -1 ? filename.slice(i)    : '';
+    return `${base}${suffix}${ext}`;
+}
+
 // The backend writes a colourbar-key image alongside each layer's outfile, named by
 // inserting "_key" before the extension (e.g. "sst.png" -> "sst_key.png").
 export function keyFilename(outfile) {
-    const i = outfile.lastIndexOf('.');
-    const base = i !== -1 ? outfile.slice(0, i) : outfile;
-    const ext  = i !== -1 ? outfile.slice(i)    : '';
-    return `${base}_key${ext}`;
+    return insertBeforeExtension(outfile, '_key');
 }
 
 export function replaceSlot(slotId, populate) {
@@ -49,6 +59,28 @@ export function showLegend(slotId, url, opacity = 1) {
 
 export function removeLegend(slotId) {
     document.getElementById(slotId)?.remove();
+}
+
+// The showLegend+opacityUniform wiring every layer module rebuilt independently
+// (architecture review candidate "promote a standardLegend() helper" -- 12 near-
+// identical copies, plus every one of them computing keyFilename(outfile) a SECOND
+// time for their own separate keyUrl chase property). `outfileFor(cfg)` lets a caller
+// insert its own variant suffix first (sst.js's mode, air_quality.js's variable,
+// greenhouse_gases.js's species+mode) via insertBeforeExtension above.
+//
+// `opacityFallback` mirrors showLegend's own opacity contract: pass a number and the
+// key hides when cfg.opacity resolves to 0 (opacityUniform's honour-explicit-0
+// behaviour); omit it entirely (undefined) for currents.js/jetstream.js's documented
+// exception -- particles stay visible independent of the fill's own opacity, so the
+// key must never hide on opacity=0 either.
+export function standardLegend(slotId, outfileFor, opacityFallback) {
+    const urlFor = (cfg) => `${window.MAP_UI}/${keyFilename(outfileFor(cfg))}`;
+    const addLegend = (cfg) => {
+        const url = `${urlFor(cfg)}?t=${Date.now()}`;
+        if (opacityFallback === undefined) { showLegend(slotId, url); return; }
+        showLegend(slotId, url, opacityUniform(cfg, opacityFallback));
+    };
+    return { addLegend, removeLegend: () => removeLegend(slotId), keyUrl: urlFor };
 }
 
 const LEGENDS_HIDDEN_KEY = 'atmosgl.legendsHidden';

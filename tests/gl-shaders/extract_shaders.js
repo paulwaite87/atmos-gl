@@ -77,6 +77,13 @@ export async function captureParticleControllerOpts(path, exportedFn = "loadLaye
     // to let modules that call it (waves.js, wind.js, ...) evaluate without throwing.
     opacityUniform: (_cfg, fallback) => fallback,
     liveLayerSync: () => () => {},
+    // standardLegend (architecture review candidate #5) is called at the top of every
+    // consumer's loadLayer for its legend wiring, before the particle-controller call
+    // this helper actually cares about -- stub it the same way, returning the same
+    // { addLegend, removeLegend, keyUrl } shape callers reference (as onMount/onRefresh/
+    // onUnmount/keyUrl properties on the captured opts object), so evaluating the module
+    // doesn't throw ReferenceError.
+    standardLegend: () => ({ addLegend: () => {}, removeLegend: () => {}, keyUrl: () => {} }),
   };
   vm.createContext(context);
   vm.runInContext(src, context, { filename: path });
