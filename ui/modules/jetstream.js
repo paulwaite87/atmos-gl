@@ -1,5 +1,5 @@
-import { createCurrentParticleGLLayer } from './_currentparticles_gl.js';
-import { keyFilename, showLegend, removeLegend } from './_legend.js';
+import { createCurrentParticleGLLayer } from './_streamparticles_gl.js';
+import { standardLegend } from './_legend.js';
 
 // Backend JetStreamUpdater.VMAX (m/s). Texture is R=U, G=V encoded as
 // channel*(2*vmax)-vmax, same convention as wind/currents.
@@ -73,19 +73,14 @@ export function coherenceRadius(cfg) {
 // Resolve the configured palette (falling back to the default for an unset/unknown
 // name), read fresh from whatever cfg is passed in -- NOT captured once at mount. The
 // engine calls colormap(cfg) with the live config on every refresh (see
-// _currentparticles_gl.js's refresh()); a bare `config.palette` closed over at
+// _streamparticles_gl.js's refresh()); a bare `config.palette` closed over at
 // loadLayer()-time would silently ignore a later palette change (the bug this fixes).
 export function paletteFor(cfg) {
     return (cfg.palette && PALETTES[cfg.palette]) ? cfg.palette : 'stratosphere';
 }
 
 export function loadLayer(map, config, fullConfig = {}) {
-    const slotId = 'jetstream-legend-slot';
-
-    const addLegend = (cfg) => {
-        showLegend(slotId, `${window.MAP_UI}/${keyFilename(cfg.outfile)}?t=${Date.now()}`);
-    };
-    const clearLegend = () => removeLegend(slotId);
+    const legend = standardLegend('jetstream-legend-slot', (cfg) => cfg.outfile);
 
     // Particle-only, speed-colored (no heatmap -- see tasks/jetstream.py's docstring),
     // via the same shared engine wind and currents already use. No custom hourDataUrl/
@@ -108,17 +103,17 @@ export function loadLayer(map, config, fullConfig = {}) {
         // thicknessFromConfig/tailFadeEnd: not overridden -- the engine's own defaults
         // already match currents' choice not to override them either (jetstream reuses
         // currents' raw-px trail_thickness slider shape, see #184).
-        onMount: addLegend,
-        onRefresh: addLegend,
-        onUnmount: clearLegend,
+        onMount: legend.addLegend,
+        onRefresh: legend.addLegend,
+        onUnmount: legend.removeLegend,
         // Palette changes never touch the velocity texture (colour is applied entirely
         // client-side), so the default imageUrl regen chase can't detect that the
         // legend needs re-fetching -- keyUrl gives it its own independent chase.
-        keyUrl: (cfg) => `${window.MAP_UI}/${keyFilename(cfg.outfile)}`,
+        keyUrl: legend.keyUrl,
     });
 
     return () => {
         try { stopParticles && stopParticles(); } catch {}
-        try { clearLegend(); } catch {}
+        try { legend.removeLegend(); } catch {}
     };
 }

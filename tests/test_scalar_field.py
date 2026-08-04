@@ -67,6 +67,29 @@ def test_plot_dispatches_spec_to_render(key):
     assert mock_encode.call_args.args[3] == spec.vmax
 
 
+def test_plot_still_encodes_texture_when_contourf_raises():
+    """The static PNG (contourf) and the GPU data texture (encode_frames) are
+    independent outputs -- a contourf failure must not block the texture, since
+    that's what the frontend's animated WebGL layer actually reads. Regression for a
+    real, deterministic Cartopy bug (antimeridian-wrapping polygon reprojection
+    inside contourf's own get_datalim() call) that reproduced for a specific ozone
+    field on every attempt -- before this fix, that also permanently starved the
+    hour's GPU texture, not just its (legacy) static render."""
+    u = make_bare_updater(SPECS["ozone"])
+    field0 = {"lat": [0], "lon": [0], "values": [[1.0]]}
+    state = ForecastState.at_hour("2026-06-13", "18", 3)
+
+    with patch("atmos_gl.tasks.scalar_field.Plot") as MockPlot, patch(
+        "atmos_gl.tasks.scalar_field.encode_frames"
+    ) as mock_encode:
+        MockPlot.return_value.ax.contourf.side_effect = ValueError(
+            "Sequences of multi-polygons are not valid arguments"
+        )
+        u.plot(field0, state)  # must not raise
+
+    mock_encode.assert_called_once()
+
+
 def test_plot_skips_when_field_missing():
     u = make_bare_updater(SPECS["temperature"])
     state = ForecastState.at_hour("2026-06-13", "18", 3)

@@ -1,5 +1,18 @@
 # Don't extend _hoverpopup.js's interface to cover markers.js
 
+> **Superseded (2026-08-02).** A later architecture review (candidate #6, originally
+> just "unify popupCard's callsign-blue title styling") widened in scope to "make
+> popup functionality a one-stop-shop for every instance" -- an explicit product
+> decision to prioritize one consistent mechanic over minimizing per-adopter
+> interface surface, not a second caller organically showing up needing the same
+> four axes. `hoverPopup` now accepts `layerId` as a string-or-array, a configurable
+> `event` ("enter"/"move"), and a live `enabled` predicate; `markers.js` migrated onto
+> it, gaining the same sticky-hover/close-delay-grace-period behaviour every other
+> adopter already had (a deliberate, accepted behaviour change, not a regression).
+> The reasoning below is kept for the record -- it was correct for the question it
+> answered ("does a second caller justify this seam"), which is a different question
+> than "do we want one mechanic regardless."
+
 `ui/modules/_hoverpopup.js`'s `hoverPopup(map, layerId, {offset, html})` owns the shared
 Popup-construction + mouseenter/mouseleave + cursor + teardown mechanic behind
 `quakes.js`, `storms.js`, `volcanoes.js`, and `satellites.js`. A 2026 architecture review

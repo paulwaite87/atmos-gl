@@ -4,7 +4,10 @@
 // dependency in this repo), so `document` is faked minimally here rather than
 // relying on a real DOM -- same approach _reconcile.test.js takes for `window`.
 import { describe, test, expect, beforeEach } from 'vitest';
-import { keyFilename, showLegend, removeLegend, replaceSlot, initLegendToggle } from './_legend.js';
+import {
+    keyFilename, showLegend, removeLegend, replaceSlot, initLegendToggle,
+    insertBeforeExtension, standardLegend,
+} from './_legend.js';
 
 function fakeDocument() {
     const byId = {};
@@ -66,6 +69,78 @@ describe('keyFilename', () => {
 
     test('appends _key with no extension when there is no dot', () => {
         expect(keyFilename('sst')).toBe('sst_key');
+    });
+});
+
+describe('insertBeforeExtension', () => {
+    test('inserts the given suffix before the extension', () => {
+        expect(insertBeforeExtension('sst.png', '_anomaly')).toBe('sst_anomaly.png');
+    });
+
+    test('handles a multi-dot filename by splitting on the last dot', () => {
+        expect(insertBeforeExtension('waves.data.png', '_key')).toBe('waves.data_key.png');
+    });
+
+    test('appends the suffix with no extension when there is no dot', () => {
+        expect(insertBeforeExtension('sst', '_key')).toBe('sst_key');
+    });
+});
+
+describe('standardLegend', () => {
+    beforeEach(() => {
+        globalThis.document = fakeDocument();
+        globalThis.window = { MAP_UI: 'http://test' };
+    });
+
+    test('addLegend shows the key image at MAP_UI/keyFilename(outfileFor(cfg))', () => {
+        const legend = standardLegend('sst-legend-slot', (cfg) => cfg.outfile, 0.85);
+
+        legend.addLegend({ outfile: 'sst.png', opacity: 50 });
+
+        const slot = document.getElementById('sst-legend-slot');
+        expect(slot.children[0].src).toMatch(/^http:\/\/test\/sst_key\.png\?t=\d+$/);
+    });
+
+    test('addLegend hides the slot when cfg.opacity is explicitly 0', () => {
+        const legend = standardLegend('sst-legend-slot', (cfg) => cfg.outfile, 0.85);
+
+        legend.addLegend({ outfile: 'sst.png', opacity: 0 });
+
+        expect(document.getElementById('sst-legend-slot')).toBeNull();
+    });
+
+    test('addLegend always shows (ignores cfg.opacity) when opacityFallback is omitted', () => {
+        // Matches currents.js/jetstream.js: particles stay visible independent of the
+        // fill's own opacity, so the legend key must never hide on opacity=0 either.
+        const legend = standardLegend('currents-legend-slot', (cfg) => cfg.outfile);
+
+        legend.addLegend({ outfile: 'currents.png', opacity: 0 });
+
+        expect(document.getElementById('currents-legend-slot')).not.toBeNull();
+    });
+
+    test('outfileFor lets the caller supply a variant filename (e.g. sst mode)', () => {
+        const legend = standardLegend('sst-legend-slot', (cfg) => `sst_${cfg.mode}.png`, 1);
+
+        legend.addLegend({ outfile: 'sst.png', mode: 'anomaly' });
+
+        expect(document.getElementById('sst-legend-slot').children[0].src)
+            .toMatch(/^http:\/\/test\/sst_anomaly_key\.png\?t=\d+$/);
+    });
+
+    test('removeLegend removes the slot', () => {
+        const legend = standardLegend('sst-legend-slot', (cfg) => cfg.outfile, 1);
+        legend.addLegend({ outfile: 'sst.png' });
+
+        legend.removeLegend();
+
+        expect(document.getElementById('sst-legend-slot')).toBeNull();
+    });
+
+    test('keyUrl returns the same key URL (without cache-bust) that addLegend uses', () => {
+        const legend = standardLegend('sst-legend-slot', (cfg) => cfg.outfile, 1);
+
+        expect(legend.keyUrl({ outfile: 'sst.png' })).toBe('http://test/sst_key.png');
     });
 });
 

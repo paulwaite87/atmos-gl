@@ -14,11 +14,16 @@ boundary/level layers (isobars, precipitation's `BoundaryNorm`), and SST's
 runtime-computed range — those do not share the scalar-field renderer or its spec
 shape.
 
+| Term | Definition | Aliases to avoid |
+| ---- | ---------- | ---------------- |
+| **Single-hour scalar updater** | `SingleHourScalarUpdater` (`tasks/single_hour_scalar.py`), the shared base behind `ScalarFieldUpdater` and `PrecipitationUpdater` — owns the constructor fields and `run()` wiring (`get_gfs_state()` warm-up → key-refresh hook → `render_all_hours()`) genuinely identical between the two. `plot()` stays a full per-subclass override, not hook-split: the two classes' static-render color models and texture pipelines diverge too much (precipitation's discrete banded palette + smoothing/floor/sqrt-transform pipeline vs. the scalar-field trio's plain `Normalize`/threshold `cmap`) for splitting `plot()` into sub-hooks to pay off — see the module's own docstring. | scalar renderer base |
+
 ## Backend collectors
 
 | Term | Definition | Aliases to avoid |
 | ---- | ---------- | ---------------- |
 | **Single-file field collector** | A `FieldCollectorBase` subclass (`SingleFileFieldCollector`, `collectors/field_base.py`) that fetches one whole file per forecast hour for a single product — `GfsWavesCollector`, `RtofsCurrentsCollector` — sharing one `collect()`/`backfill_hour()` implementation behind `_resolve_download_url()`/`_guard_cycle()` hooks. Distinct from `GfsAtmosCollector`'s multi-product byte-range fetch, which stays its own implementation, subclassing `FieldCollectorBase` directly. | multi-file collector |
+| **Collector driver** | `CollectorDriver` (`collectors/driving.py`), the shared gate/try/record envelope behind `EventFeedDriver` (event feeds + file caches — `is_stale`/`has_new_data`/`collect`, own `last_runs` timestamp bookkeeping) and `FieldCollectorDriver` (the three `FieldCollectorBase` subclasses — unconditional `collect(ctx)`, freshness handled internally per forecast hour, a shared `CycleContext`). `_drive_one()` stays a full per-subclass override, not hook-split further: construction arity, whether there's an external freshness pre-check, and what per-cycle state gets threaded through are real domain differences between the two families, not incidental duplication — see the module's own docstring and `docs/adr/0001-dont-unify-gfs-rtofs-baseline-probing.md` for the same reasoning applied to a different pair in this package. | driver base |
 
 ## Data conventions
 
@@ -41,3 +46,29 @@ hour" takes a `ForecastState` parameter rather than reading `self`. Before this,
 four raw attributes it replaced (`run_date_str`/`run_id`/`forecast_hour_str`) were
 mutated directly on `self`, forcing `hasattr` guards and two separate save/restore
 `try`/`finally` dances to avoid callers clobbering each other's state.
+
+| Term | Definition | Aliases to avoid |
+| ---- | ---------- | ---------------- |
+| **Land mask cache** | `LandMaskCache` (`lib/coastline.py`), a per-run, per-grid-shape cache around `coastline_land_mask()` — shared by `CurrentsUpdater` and `WavesUpdater`, whose own caching wrappers used to be byte-identical. Paired with `nearest_fill_and_regrid_uv()` (nearest-fill native NaN, then regrid u/v) — also byte-identical between the two before extraction, apart from the regrid-step constant. Each caller applies its own steps (e.g. currents' speed-minimum threshold) and the land-mask cut itself afterward, since ordering differs between the two. Distinct from `coastline_land_mask()` itself, which `sst.py`/`greenhouse_gases.py` call directly with no caching wrapper. | coastline cache |
+
+## Frontend legend wiring
+
+| Term | Definition | Aliases to avoid |
+| ---- | ---------- | ---------------- |
+| **Standard legend** | `standardLegend(slotId, outfileFor, opacityFallback)` (`ui/modules/_legend.js`), the `showLegend`+`opacityUniform` wiring every layer module rebuilt independently (12 near-identical copies, each also computing `keyFilename` a second time for its own separate `keyUrl` chase property). `outfileFor(cfg)` lets a caller insert its own variant suffix first (`sst.js`'s mode, `air_quality.js`'s variable, `greenhouse_gases.js`'s species+mode) via `insertBeforeExtension` — the same "insert before extension" split `keyFilename` itself now delegates to, previously re-derived 3× by those same three modules. Omitting `opacityFallback` (not passing a fallback number at all) preserves `currents.js`/`jetstream.js`'s documented exception — their legend key stays visible independent of the fill's own opacity — rather than defaulting to always-computed opacity gating. | legend helper |
+
+## Frontend popups
+
+| Term | Definition | Aliases to avoid |
+| ---- | ---------- | ---------------- |
+| **Popup content block** | A typed entry in `buildPopupHtml`'s (`ui/modules/_feedhelpers.js`) `blocks` array — `divider`, `rows`, `line`, `emphasis`, `notice`, or `fallback` — each a named, reusable shape rather than a raw-HTML escape hatch, so every current popup layout (a fused title line, a `<br>`-separated field list, a conditional route callout, a live-computed row colour, a no-data fallback) stays expressible without a caller reaching around the shared model. `line` and `rows` are both block-level (wrapped in a `<div>`), so a block always starts on its own line regardless of what precedes it — no reliance on a preceding divider or trailing `<br>`. | popup section |
+| **Title variant** | A named entry in `buildPopupHtml`'s `TITLE_VARIANTS` (`default`/`callsign`/`alert`/`plain`/`fire`) fixing a title's color+size as one unit, rather than raw `titleColor`/`titleSize` params a caller could set to anything. Add a new variant when a genuinely distinct, deliberately-chosen style shows up (e.g. `fire`'s `#ff5a1f`, found only when migrating fires.js — a 9th popup consumer missed in the original cataloguing pass); don't fold a real distinct color into an existing variant just to avoid naming one. | title style |
+
+`buildPopupHtml` (content) and the widened `hoverPopup` (`_hoverpopup.js` — show/hide/
+positioning, now accepting `layerId` as a string-or-array, a configurable `event`
+("enter"/"move"), and a live `enabled` predicate) together are the "one-stop-shop"
+every popup-bearing layer goes through, including `markers.js` — architecture review
+candidate #6, which superseded `docs/adr/0002-dont-extend-hoverpopup-for-markers.md`
+(that ADR's four axes — multi-layer, mousemove, live-enable, a caller-specific
+`maxWidth` — are exactly what `hoverPopup` widened to cover). `popupCard`, the prior
+content model, is deleted; every caller migrated onto `buildPopupHtml` instead.

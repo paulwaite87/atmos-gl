@@ -45,6 +45,7 @@ from atmos_gl.collectors import (
     EMBEDDABLE_COLLECTORS,
     resolve_embeddable,
 )
+from atmos_gl.collectors.driving import FieldCollectorDriver
 from atmos_gl.collectors.field_base import CycleContext, drain_backfill
 
 logger = logging.getLogger("atmos_gl.collector_service")
@@ -112,37 +113,16 @@ class CollectorService:
 
     def _collect_fields(self):
         """Construct each field collector fresh this cycle (same per-cycle instantiation
-        convention as _drive() uses for the event feeds, so a live config edit — e.g.
+        convention EventFeedDriver uses for the event feeds, so a live config edit — e.g.
         cache_hours — reaches them without a restart) and share one CycleContext across all
         of them, so GfsAtmosCollector and GfsWavesCollector resolve their common GFS baseline
-        only once. One collector failing is logged and skipped; it never aborts the others
-        or the rest of collect_once(). Every attempt (success or failure) is recorded to
-        process_status via status_name (NOT section - all three share section
-        "data_collector", so status_name is the only unique key), for the Data Status UI.
-
-        A collector disabled in data_collector.channel_enabled (keyed by status_name --
-        gfs_atmos/gfs_waves/rtofs_currents) is skipped entirely, same as _drive()."""
-        ctx = CycleContext()
-        channel_enabled = self.config.get_setting("data_collector", "channel_enabled", {}) or {}
-        for CollectorCls in FIELD_COLLECTOR_CLASSES:
-            if not channel_enabled.get(CollectorCls.status_name, True):
-                logger.debug(
-                    f"{CollectorCls.status_name}: channel disabled; skipping."
-                )
-                continue
-            try:
-                CollectorCls(self.config, self.store).collect(ctx)
-                self.process_status_adapter.record_process_run(
-                    CollectorCls.status_name, "collector", success=True
-                )
-            except Exception as e:
-                logger.error(
-                    f"field collector {CollectorCls.__name__} failed: {e}",
-                    exc_info=True,
-                )
-                self.process_status_adapter.record_process_run(
-                    CollectorCls.status_name, "collector", success=False, error=str(e)
-                )
+        only once. See collectors/driving.py's FieldCollectorDriver for the shared
+        scheduling contract (channel gating by status_name, process_status recording,
+        one collector failing doesn't abort the others)."""
+        FieldCollectorDriver(
+            self.config, self.store, CycleContext(),
+            process_status_adapter=self.process_status_adapter,
+        ).drive(FIELD_COLLECTOR_CLASSES)
 
     # ------------------------------------------------------------------
     # Embedded async collector supervision

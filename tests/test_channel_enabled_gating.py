@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """Tests for the data_collector.channel_enabled per-source opt-out (wayfinder map #106,
 resolves #111): a collector whose channel is disabled must be skipped entirely by both
-driving loops -- _drive() (event feeds/file caches) and CollectorService._collect_fields()
-(the three FieldCollectorBase subclasses) -- without even touching is_stale()/
-has_new_data(), since those can themselves hit the network (e.g. a HEAD request).
+driving loops -- EventFeedDriver (event feeds/file caches, collectors/driving.py) and
+CollectorService._collect_fields() (via FieldCollectorDriver, the three
+FieldCollectorBase subclasses) -- without even touching is_stale()/has_new_data(),
+since those can themselves hit the network (e.g. a HEAD request).
 """
 from unittest.mock import MagicMock, patch
 
-from atmos_gl.collectors import _drive
+from atmos_gl.collectors.driving import EventFeedDriver
 from atmos_gl.collectors.base import CollectorBase
 from atmos_gl.collectors.service import CollectorService
 
@@ -56,39 +57,39 @@ def make_fake_config(channel_enabled):
     return config
 
 
-@patch("atmos_gl.collectors.ProcessStatusAdapter")
+@patch("atmos_gl.collectors.driving.ProcessStatusAdapter")
 def test_drive_skips_a_collector_whose_channel_is_disabled(mock_psa):
     FakeCls, calls = make_fake_collector_class("quakes", channel_key="quakes")
     config = make_fake_config({"quakes": False})
 
-    _drive([FakeCls], config, {})
+    EventFeedDriver(config, {}).drive([FakeCls])
 
     assert calls == []
 
 
-@patch("atmos_gl.collectors.ProcessStatusAdapter")
+@patch("atmos_gl.collectors.driving.ProcessStatusAdapter")
 def test_drive_runs_normally_when_channel_is_enabled(mock_psa):
     FakeCls, calls = make_fake_collector_class("quakes", channel_key="quakes")
     config = make_fake_config({"quakes": True})
 
-    _drive([FakeCls], config, {})
+    EventFeedDriver(config, {}).drive([FakeCls])
 
     assert calls == ["is_stale", "has_new_data", "collect"]
 
 
-@patch("atmos_gl.collectors.ProcessStatusAdapter")
+@patch("atmos_gl.collectors.driving.ProcessStatusAdapter")
 def test_drive_runs_normally_when_channel_key_absent_from_dict(mock_psa):
     """A channel not yet present in channel_enabled defaults to enabled -- an operator
     on an older config (or one edited by hand) shouldn't silently lose data."""
     FakeCls, calls = make_fake_collector_class("quakes", channel_key="quakes")
     config = make_fake_config({})
 
-    _drive([FakeCls], config, {})
+    EventFeedDriver(config, {}).drive([FakeCls])
 
     assert "collect" in calls
 
 
-@patch("atmos_gl.collectors.ProcessStatusAdapter")
+@patch("atmos_gl.collectors.driving.ProcessStatusAdapter")
 def test_drive_ignores_channel_enabled_for_a_collector_with_no_channel_key(mock_psa):
     """markers isn't part of the channel_enabled feature (reads a local file, not a
     remote source) -- channel_key stays None, so it always runs regardless of what's
@@ -96,12 +97,12 @@ def test_drive_ignores_channel_enabled_for_a_collector_with_no_channel_key(mock_
     FakeCls, calls = make_fake_collector_class("markers", channel_key=None)
     config = make_fake_config({"markers": False})
 
-    _drive([FakeCls], config, {})
+    EventFeedDriver(config, {}).drive([FakeCls])
 
     assert "collect" in calls
 
 
-@patch("atmos_gl.collectors.ProcessStatusAdapter")
+@patch("atmos_gl.collectors.driving.ProcessStatusAdapter")
 def test_drive_does_not_advance_last_runs_for_a_disabled_channel(mock_psa):
     """Re-enabling a channel should trigger immediate collection, not wait out an
     already-ticking period -- confirmed by last_runs staying untouched while disabled."""
@@ -109,7 +110,7 @@ def test_drive_does_not_advance_last_runs_for_a_disabled_channel(mock_psa):
     config = make_fake_config({"quakes": False})
     last_runs = {}
 
-    _drive([FakeCls], config, last_runs)
+    EventFeedDriver(config, last_runs).drive([FakeCls])
 
     assert last_runs == {}
 

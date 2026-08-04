@@ -29,8 +29,9 @@ import cartopy.crs as ccrs
 
 from atmos_gl.lib.config import AtmosGLConfig
 from atmos_gl.lib.texture import encode_frames
-from .common import Updater, MapData, MultiHourRenderMixin, ForecastState
+from .common import MapData, ForecastState
 from .plotting import Plot, clamp_lats_to_mercator_limit
+from .single_hour_scalar import SingleHourScalarUpdater
 
 logging.getLogger("cfgrib").setLevel(logging.ERROR)
 
@@ -191,14 +192,13 @@ SPECS = {
 }
 
 
-class ScalarFieldUpdater(Updater, MultiHourRenderMixin):
+class ScalarFieldUpdater(SingleHourScalarUpdater):
     def __init__(self, config: AtmosGLConfig, map_data: MapData, spec: ScalarFieldSpec):
         super().__init__(config, spec.product, map_data)
         self.spec = spec
-        self.level_of_detail = int(self.settings.get("level_of_detail", 1))
-        self.lod_desc = None
-        self.per_hour_outputs = [".png", "_data.png"]
-        self.status_product = spec.product
+
+    def _write_key(self):
+        self._write_legend_key()
 
     def _resolve_cmap(self):
         """The plain named `spec.cmap` for temperature/stormwatch, or the live
@@ -264,31 +264,46 @@ class ScalarFieldUpdater(Updater, MultiHourRenderMixin):
         # LOD interpolation
         new_lats, new_lons, values_smooth = self.regrid_for_lod(values, lats, lons)
 
-        plot = Plot(self.map_data.region)
-        plot.get_figure()
-
-        cmap = self._resolve_cmap()
-        norm = mcolors.Normalize(vmin=self.spec.vmin, vmax=self.spec.vmax)
-
-        plot.ax.contourf(
-            new_lons,
-            clamp_lats_to_mercator_limit(new_lats),
-            values_smooth,
-            levels=20,
-            cmap=cmap,
-            norm=norm,
-            transform=ccrs.PlateCarree(),
-            extend=self.spec.extend,
-            zorder=2,
-        )
-
-        # Per-hour output path
         output_path_for_hour = self.get_output_path_for_hour(state.fhour)
-        plot.save_figure(output_path_for_hour)
 
-        plt_close = getattr(plot, "close", None)
-        if callable(plt_close):
-            plt_close()
+        # The static PNG (contourf) and the GPU data texture (encode_frames, below)
+        # are independent outputs -- a contourf failure must not block the texture,
+        # since that's what the frontend's animated WebGL layer actually reads.
+        # contourf occasionally hits a known Cartopy bug (antimeridian-wrapping
+        # polygon reprojection inside its own get_datalim() call, deep in
+        # cartopy.crs._rings_to_multi_polygon -> shapely's MultiPolygon() rejecting a
+        # nested multi-polygon) for specific, deterministic field topologies -- not
+        # something we can prevent from our side without changing the render method
+        # entirely. should_plot_for_hour will keep retrying next cycle, but a
+        # persistently-triggering field (confirmed possible: the same hour's data can
+        # trip this on every attempt) would otherwise never get its texture either.
+        try:
+            plot = Plot(self.map_data.region)
+            plot.get_figure()
+
+            cmap = self._resolve_cmap()
+            norm = mcolors.Normalize(vmin=self.spec.vmin, vmax=self.spec.vmax)
+
+            plot.ax.contourf(
+                new_lons,
+                clamp_lats_to_mercator_limit(new_lats),
+                values_smooth,
+                levels=20,
+                cmap=cmap,
+                norm=norm,
+                transform=ccrs.PlateCarree(),
+                extend=self.spec.extend,
+                zorder=2,
+            )
+            plot.save_figure(output_path_for_hour)
+
+            plt_close = getattr(plot, "close", None)
+            if callable(plt_close):
+                plt_close()
+        except Exception as e:
+            logger.warning(
+                f"{self.section}: static render f{state.fhour:03d} failed: {e}"
+            )
 
         # --- WebGL single-hour data texture (one frame per forecast hour;
         # the frontend scrubber assembles the animation from consecutive hours) ---
@@ -297,24 +312,3 @@ class ScalarFieldUpdater(Updater, MultiHourRenderMixin):
             [field0["values"]], f"{base}_data.png", self.spec.vmin, self.spec.vmax
         )
         logger.info(f"Finished {self.section} texture f{state.fhour:03d}.")
-
-    def run(self, max_hours=None):
-        # Warms the shared per-cycle GFS baseline cache (map_data.shared_state) for
-        # other updaters this cycle; render_all_hours resolves its own state from the
-        # catalog below, so the return value here is unused.
-        self.get_gfs_state()
-        # The legend key is cheap to draw and depends only on palette/threshold/
-        # key_fontsize settings, not forecast data. Refresh it unconditionally every
-        # run, so settings changes apply immediately instead of waiting on
-        # should_plot_for_hour's data-freshness gate below.
-        self._write_legend_key()
-        # Render EVERY available forecast hour (gap-filling), so the scrubber has
-        # a PNG for each hour. should_plot_for_hour skips hours already fresh.
-        # max_hours=1 from layer_builder's round-robin dispatch renders one hour and
-        # returns, so this layer doesn't monopolise a render-pool worker.
-        return self.render_all_hours(
-            self.status_product,
-            plot_fn=self.plot,
-            field_ready=lambda f: f.get("values") is not None,
-            max_hours=max_hours,
-        )

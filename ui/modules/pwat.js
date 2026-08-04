@@ -1,5 +1,5 @@
 import { createFillLayer } from './_webglfill.js';
-import { keyFilename, showLegend, removeLegend } from './_legend.js';
+import { standardLegend } from './_legend.js';
 import { buildThresholdLUT } from './_thresholdpalette.js';
 import { opacityUniform } from './_opacity.js';
 
@@ -24,11 +24,7 @@ const PALETTES = {
 const FLAT_COLOR = [0, 0, 0, 0]; // fully transparent -- unremarkable moisture
 
 export function loadLayer(map, config, fullConfig = {}) {
-    const slotId = 'pwat-legend-slot';
-
-    const addLegend = (cfg) => {
-        showLegend(slotId, `${window.MAP_UI}/${keyFilename(cfg.outfile)}?t=${Date.now()}`, opacityUniform(cfg, 0.85));
-    };
+    const legend = standardLegend('pwat-legend-slot', (cfg) => cfg.outfile, 0.85);
 
     createFillLayer(map, {
         sectionKey: 'pwat',
@@ -56,12 +52,12 @@ export function loadLayer(map, config, fullConfig = {}) {
             paletteColors: PALETTES[cfg.palette] || PALETTES.standard,
             flatColor: FLAT_COLOR,
         }),
-        onMount: addLegend,
-        onRefresh: addLegend,
-        onUnmount: () => removeLegend(slotId),
+        onMount: legend.addLegend,
+        onRefresh: legend.addLegend,
+        onUnmount: legend.removeLegend,
         // Palette changes never touch the fill's data texture (colour is applied
         // entirely client-side), so the default imageUrl regen chase can't detect that
         // the legend needs re-fetching -- keyUrl gives it its own independent chase.
-        keyUrl: (cfg) => `${window.MAP_UI}/${keyFilename(cfg.outfile)}`,
+        keyUrl: legend.keyUrl,
     });
 }

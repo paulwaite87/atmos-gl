@@ -1,9 +1,9 @@
 import { liveDataSync } from './_datasync.js';
 import { hoverPopup } from './_hoverpopup.js';
-import { fetchOrThrow, popupCard } from './_feedhelpers.js';
+import { fetchOrThrow, buildPopupHtml } from './_feedhelpers.js';
 import { createFillLayer } from './_webglfill.js';
 import { buildThresholdLUT } from './_thresholdpalette.js';
-import { keyFilename, showLegend, removeLegend } from './_legend.js';
+import { standardLegend } from './_legend.js';
 import { opacityUniform } from './_opacity.js';
 
 // Friendly names for the satellite codes FIRMS reports (VIIRS_NOAA20_NRT's "satellite"
@@ -46,10 +46,9 @@ export function loadLayer(map, config, fullConfig = {}) {
         // width: 140 (default is 45, tuned for other layers' short labels like "VEI") --
         // "Fire Radiative Power" is the longest label here; every row shares one width
         // so the popup's label column stays aligned.
-        return popupCard({
-            title: 'Active Fire',
-            titleColor: '#ff5a1f',
-            rows: [
+        return buildPopupHtml({
+            title: { text: 'Active Fire', variant: 'fire' },
+            blocks: [{ type: 'divider' }, { type: 'rows', rows: [
                 { label: 'Confidence', value: d.confidence, width: 140 },
                 { label: 'Fire Risk', value: d.fire_risk != null ? Number(d.fire_risk).toFixed(0) : 'N/A', width: 140 },
                 { label: 'Fire Radiative Power', value: `${Number(d.frp).toFixed(1)} MW`, width: 140 },
@@ -57,7 +56,7 @@ export function loadLayer(map, config, fullConfig = {}) {
                 { label: 'Satellite', value: SATELLITE_NAMES[d.satellite] || d.satellite, width: 140 },
                 { label: 'Day/Night', value: d.daynight === 'D' ? 'Day' : d.daynight === 'N' ? 'Night' : d.daynight, width: 140 },
                 { label: 'Detected', value: age, width: 140 },
-            ],
+            ] }],
         });
     };
 
@@ -105,10 +104,7 @@ export function loadLayer(map, config, fullConfig = {}) {
     // in lockstep with the hotspots above via its own independent liveLayerSync
     // subscription (createFillLayer's internal machinery). beforeId inserts it BENEATH
     // the hotspot circle layer, so dots always render on top of the risk shading.
-    const legendSlotId = 'fires-legend-slot';
-    const setLegend = (cfg) => {
-        showLegend(legendSlotId, `${window.MAP_UI}/${keyFilename(cfg.outfile)}?t=${Date.now()}`, opacityUniform(cfg, 0.7));
-    };
+    const legend = standardLegend('fires-legend-slot', (cfg) => cfg.outfile, 0.7);
 
     const stopHeatmap = createFillLayer(map, {
         sectionKey: 'fires',
@@ -137,9 +133,9 @@ export function loadLayer(map, config, fullConfig = {}) {
             paletteColors: FWI_PALETTE,
             flatColor: FWI_FLAT,
         }),
-        onMount: setLegend,
-        onRefresh: setLegend,
-        onUnmount: () => removeLegend(legendSlotId),
+        onMount: legend.addLegend,
+        onRefresh: legend.addLegend,
+        onUnmount: legend.removeLegend,
     });
 
     return () => {

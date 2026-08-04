@@ -301,4 +301,125 @@ describe('hoverPopup', () => {
 
         expect(popup.remove).not.toHaveBeenCalled();
     });
+
+    // ---- markers.js parity (architecture review candidate #6 -- unify ALL popup
+    // consumers, superseding ADR-0002): multi-layer binding, a configurable
+    // event pair, and a live enabled predicate --------------------------------
+
+    describe('multi-layer binding (layerId as an array)', () => {
+        test('registers the enter/leave pair on every id in the array', () => {
+            const map = fakeMap();
+            hoverPopup(map, ['markers-dots', 'markers-labels'], { html: () => '<div/>' });
+
+            expect(map.on).toHaveBeenCalledWith('mouseenter', 'markers-dots', expect.any(Function));
+            expect(map.on).toHaveBeenCalledWith('mouseleave', 'markers-dots', expect.any(Function));
+            expect(map.on).toHaveBeenCalledWith('mouseenter', 'markers-labels', expect.any(Function));
+            expect(map.on).toHaveBeenCalledWith('mouseleave', 'markers-labels', expect.any(Function));
+        });
+
+        test('entering via either layer in the array opens the same popup', () => {
+            const map = fakeMap();
+            hoverPopup(map, ['markers-dots', 'markers-labels'], { html: () => '<div/>' });
+            const popup = globalThis.maplibregl.Popup.mock.results[0].value;
+
+            map._handlers['mouseenter:markers-labels']({
+                features: [{ properties: {}, geometry: { coordinates: [0, 0] } }],
+            });
+
+            expect(popup.addTo).toHaveBeenCalledWith(map);
+        });
+
+        test('stop() unbinds every id in the array', () => {
+            const map = fakeMap();
+            const stop = hoverPopup(map, ['markers-dots', 'markers-labels'], { html: () => '<div/>' });
+
+            stop();
+
+            expect(map._handlers['mouseenter:markers-dots']).toBeUndefined();
+            expect(map._handlers['mouseenter:markers-labels']).toBeUndefined();
+            expect(map._handlers['mouseleave:markers-dots']).toBeUndefined();
+            expect(map._handlers['mouseleave:markers-labels']).toBeUndefined();
+        });
+
+        test('a bare string layerId still works exactly as before (regression guard)', () => {
+            const map = fakeMap();
+            hoverPopup(map, 'quakes-layer', { html: () => '<div/>' });
+
+            expect(map.on).toHaveBeenCalledWith('mouseenter', 'quakes-layer', expect.any(Function));
+        });
+    });
+
+    describe('configurable event pair (event: "enter" | "move")', () => {
+        test('defaults to mouseenter/mouseleave when event is omitted (regression guard)', () => {
+            const map = fakeMap();
+            hoverPopup(map, 'quakes-layer', { html: () => '<div/>' });
+
+            expect(map.on).toHaveBeenCalledWith('mouseenter', 'quakes-layer', expect.any(Function));
+            expect(map.on).not.toHaveBeenCalledWith('mousemove', 'quakes-layer', expect.any(Function));
+        });
+
+        test('event: "move" registers mousemove/mouseleave instead of mouseenter/mouseleave', () => {
+            const map = fakeMap();
+            hoverPopup(map, 'markers-dots', { html: () => '<div/>', event: 'move' });
+
+            expect(map.on).toHaveBeenCalledWith('mousemove', 'markers-dots', expect.any(Function));
+            expect(map.on).toHaveBeenCalledWith('mouseleave', 'markers-dots', expect.any(Function));
+            expect(map.on).not.toHaveBeenCalledWith('mouseenter', 'markers-dots', expect.any(Function));
+        });
+
+        test('mousemove positions and shows the popup the same way mouseenter does', () => {
+            const map = fakeMap();
+            const html = vi.fn(() => '<div/>');
+            hoverPopup(map, 'markers-dots', { html, event: 'move' });
+            const popup = globalThis.maplibregl.Popup.mock.results[0].value;
+
+            map._handlers['mousemove:markers-dots']({
+                features: [{ properties: {}, geometry: { coordinates: [5, 6] } }],
+            });
+
+            expect(popup.setLngLat).toHaveBeenCalledWith([5, 6]);
+            expect(popup.addTo).toHaveBeenCalledWith(map);
+        });
+    });
+
+    describe('live enabled predicate', () => {
+        test('entering does nothing while enabled() returns false', () => {
+            const map = fakeMap();
+            hoverPopup(map, 'markers-dots', { html: () => '<div/>', enabled: () => false });
+            const popup = globalThis.maplibregl.Popup.mock.results[0].value;
+
+            map._handlers['mouseenter:markers-dots']({
+                features: [{ properties: {}, geometry: { coordinates: [0, 0] } }],
+            });
+
+            expect(popup.addTo).not.toHaveBeenCalled();
+            expect(map.getCanvas().style.cursor).toBe('');
+        });
+
+        test('entering opens the popup normally once enabled() returns true', () => {
+            const map = fakeMap();
+            let live = false;
+            hoverPopup(map, 'markers-dots', { html: () => '<div/>', enabled: () => live });
+            const popup = globalThis.maplibregl.Popup.mock.results[0].value;
+
+            live = true;
+            map._handlers['mouseenter:markers-dots']({
+                features: [{ properties: {}, geometry: { coordinates: [0, 0] } }],
+            });
+
+            expect(popup.addTo).toHaveBeenCalledWith(map);
+        });
+
+        test('omitting enabled entirely behaves as always-enabled (regression guard)', () => {
+            const map = fakeMap();
+            hoverPopup(map, 'quakes-layer', { html: () => '<div/>' });
+            const popup = globalThis.maplibregl.Popup.mock.results[0].value;
+
+            map._handlers['mouseenter:quakes-layer']({
+                features: [{ properties: {}, geometry: { coordinates: [0, 0] } }],
+            });
+
+            expect(popup.addTo).toHaveBeenCalledWith(map);
+        });
+    });
 });

@@ -1,13 +1,17 @@
 // ui/modules/_hoverpopup.js
 /**
- * Shared hover-popup wiring behind quakes.js, storms.js, volcanoes.js, and
- * satellites.js -- architecture review candidate "a home for copy-pasted
- * legend/hover-popup plumbing". All four independently rebuilt the same
- * maplibregl.Popup construction, mouseenter/mouseleave cursor+setLngLat+setHTML+
- * addTo/remove dance, and map.on/off teardown. This owns that mechanics once; each
- * caller supplies only its own layerId and an html(feature) -> string renderer, since
- * the popup CONTENT is genuinely bespoke per layer (different fields, different
- * layout) and isn't part of the duplication.
+ * Shared hover-popup wiring behind every popup-bearing layer, including markers.js
+ * (architecture review candidate #6, "make popup functionality a one-stop-shop for
+ * every instance", superseding docs/adr/0002-dont-extend-hoverpopup-for-markers.md).
+ * Originally quakes.js/storms.js/volcanoes.js/satellites.js, which independently
+ * rebuilt the same maplibregl.Popup construction, mouseenter/mouseleave cursor+
+ * setLngLat+setHTML+addTo/remove dance, and map.on/off teardown; widened to also
+ * cover flightradar.js/shipping.js's sticky-hover needs and, per the superseded ADR,
+ * markers.js's multi-layer/mousemove/live-enable shape (see `layerId`/`event`/
+ * `enabled` below). This owns that mechanics once; each caller supplies only its own
+ * layerId(s) and an html(feature) -> string renderer, since the popup CONTENT is
+ * genuinely bespoke per layer (different fields, different layout, see
+ * buildPopupHtml in _feedhelpers.js for how content itself is now unified too).
  *
  * maxWidth is optional and omitted from the Popup options entirely when not given --
  * passing an explicit `undefined` through to `new maplibregl.Popup({..., maxWidth})`
@@ -31,11 +35,29 @@
  * fires. Long content needing to actually scroll (ui/index.html's
  * .maplibregl-popup-content max-height) made this gap-crossing failure visible,
  * but it applies to every caller uniformly, not just scrollable popups.
+ *
+ * `layerId` accepts a single id or an array -- markers.js binds across its dot AND
+ * label layers to the same popup (architecture review candidate #6, superseding
+ * docs/adr/0002-dont-extend-hoverpopup-for-markers.md: markers.js originally stayed
+ * bespoke specifically because it needed this, plus the two options below, at once).
+ *
+ * `event` ("enter", the default, or "move") selects mouseenter/mouseleave vs
+ * mousemove/mouseleave -- markers.js needs mousemove so the popup tracks
+ * continuously and doesn't flicker crossing between its adjacent dot/label layers.
+ *
+ * `enabled` (optional) is checked live on every enter/move event, same as a
+ * feature-less event -- lets a caller flip a setting (markers.js's weather_popup
+ * toggle) without rebinding, instead of the on/off dance every other caller here
+ * uses (bind once for the layer's whole lifetime).
  */
-export function hoverPopup(map, layerId, { offset = 15, html, maxWidth, closeDelayMs = 200 }) {
+export function hoverPopup(map, layerId, {
+    offset = 15, html, maxWidth, closeDelayMs = 200, event = 'enter', enabled,
+}) {
     const popupOpts = { closeButton: false, closeOnClick: false, offset };
     if (maxWidth) popupOpts.maxWidth = maxWidth;
     const popup = new maplibregl.Popup(popupOpts);
+    const layerIds = Array.isArray(layerId) ? layerId : [layerId];
+    const enterEvent = event === 'move' ? 'mousemove' : 'mouseenter';
 
     let overMarker = false;
     let overPopup = false;
@@ -60,6 +82,7 @@ export function hoverPopup(map, layerId, { offset = 15, html, maxWidth, closeDel
     const onPopupLeave = () => { overPopup = false; closeIfNeitherHovered(); };
 
     const onEnter = (e) => {
+        if (enabled && !enabled()) return;
         if (!e.features.length) return;
         overMarker = true;
         cancelClose();
@@ -76,13 +99,17 @@ export function hoverPopup(map, layerId, { offset = 15, html, maxWidth, closeDel
     };
     const onLeave = () => { overMarker = false; closeIfNeitherHovered(); };
 
-    map.on('mouseenter', layerId, onEnter);
-    map.on('mouseleave', layerId, onLeave);
+    for (const id of layerIds) {
+        map.on(enterEvent, id, onEnter);
+        map.on('mouseleave', id, onLeave);
+    }
 
     return () => {
         cancelClose();
-        map.off('mouseenter', layerId, onEnter);
-        map.off('mouseleave', layerId, onLeave);
+        for (const id of layerIds) {
+            map.off(enterEvent, id, onEnter);
+            map.off('mouseleave', id, onLeave);
+        }
         const el = popup.getElement();
         if (el) {
             el.removeEventListener('mouseenter', onPopupEnter);

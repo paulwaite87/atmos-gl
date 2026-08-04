@@ -3,13 +3,12 @@ import os
 import logging
 
 import numpy as np
-from scipy.ndimage import distance_transform_edt
 
 from atmos_gl.lib.config import AtmosGLConfig
 from atmos_gl.lib.texture import encode_uv
 from .common import MapData, ForecastState
 from .vector_field import VectorFieldUpdater
-from atmos_gl.lib.coastline import coastline_land_mask
+from atmos_gl.lib.coastline import LandMaskCache, nearest_fill_and_regrid_uv
 
 logger = logging.getLogger(__name__)
 
@@ -56,31 +55,10 @@ class CurrentsUpdater(VectorFieldUpdater):
         super().__init__(config, "Currents", map_data)
         # The land mask depends only on the (fixed) regrid geometry, so compute it once
         # per run and reuse for every hour. Keyed by grid shape.
-        self._land_mask_cache = {}
+        self._land_mask = LandMaskCache("Currents")
 
     def _warm_baseline_cache(self):
         self.get_rtofs_state()
-
-    def _land_mask_for(self, lat, lon, shape):
-        """Boolean land mask (True over land) on the regridded (_CURRENTS_REGRID_STEP_DEG)
-        current data grid, cut from true coastline geometry. Computed once per grid shape
-        and cached for the run. Uses Natural Earth '50m' land (cheaper than 10m over the
-        whole globe, still finer than the texture can show). Returns None if geometry is
-        unavailable, so plot() simply skips the cut that hour.
-        """
-        if shape in self._land_mask_cache:
-            return self._land_mask_cache[shape]
-        mesh_lon, mesh_lat = np.meshgrid(np.asarray(lon), np.asarray(lat))  # (nlat,nlon)
-        land = coastline_land_mask(
-            mesh_lon, mesh_lat, -180.0, -90.0, 180.0, 90.0, res="50m"
-        )
-        self._land_mask_cache[shape] = land
-        if land is not None:
-            logger.info(
-                f"Currents: built {shape} coastline land mask "
-                f"({int(land.sum())} land cells cut)."
-            )
-        return land
 
     def plot(self, field0, state: ForecastState):
         """Write the per-hour current velocity texture (R=U east, G=V north).
@@ -95,30 +73,14 @@ class CurrentsUpdater(VectorFieldUpdater):
         So one data-side mask removes slow water and land encroachment from the speed
         fill and the flowing particles together.
         """
-        # .copy(): the in-place nearest-fill below must not mutate field0's own arrays
-        # (np.asarray is a no-op view when the source is already float32).
-        u_native = np.asarray(field0["u"], dtype=np.float32).copy()
-        v_native = np.asarray(field0["v"], dtype=np.float32).copy()
-        lat_native = field0.get("lat")
-        lon_native = field0.get("lon")
-
-        # Nearest-fill RTOFS's native NaN (land cells, ~33% of the grid) before
+        # RTOFS's native NaN (land cells, ~33% of the grid) is nearest-filled before
         # regridding -- same technique SST uses -- so bilinear interpolation doesn't
         # bleed NaN outward from the coast into legitimate near-shore water; the true
         # coastline mask below is what actually determines land/sea, not this fill.
-        for native in (u_native, v_native):
-            bad = ~np.isfinite(native)
-            if bad.any() and not bad.all():
-                idx = distance_transform_edt(bad, return_distances=False, return_indices=True)
-                native[:] = native[tuple(idx)]
-
-        new_lats, new_lons, u = self.regrid_for_lod(
-            u_native, lat_native, lon_native, fill_value=np.nan,
-            step_override=_CURRENTS_REGRID_STEP_DEG,
-        )
-        _, _, v = self.regrid_for_lod(
-            v_native, lat_native, lon_native, fill_value=np.nan,
-            step_override=_CURRENTS_REGRID_STEP_DEG,
+        new_lats, new_lons, u, v = nearest_fill_and_regrid_uv(
+            self.regrid_for_lod, field0["u"], field0["v"],
+            field0.get("lat"), field0.get("lon"),
+            step_deg=_CURRENTS_REGRID_STEP_DEG,
         )
 
         # (1) Speed-minimum threshold (m/s). Below this -> no display. 0 disables.
@@ -133,7 +95,7 @@ class CurrentsUpdater(VectorFieldUpdater):
             v[below] = np.nan
 
         # (2) Coastline cut: remove ocean values that the regrid smeared onto land.
-        land = self._land_mask_for(new_lats, new_lons, u.shape)
+        land = self._land_mask.get(new_lats, new_lons, u.shape)
         if land is not None and land.shape == u.shape:
             u[land] = np.nan
             v[land] = np.nan

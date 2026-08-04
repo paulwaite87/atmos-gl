@@ -12,8 +12,9 @@ from scipy.interpolate import RegularGridInterpolator
 # Internal imports
 from atmos_gl.lib.config import AtmosGLConfig
 from atmos_gl.lib.texture import encode_frames
-from .common import Updater, MapData, MultiHourRenderMixin, ForecastState
+from .common import MapData, ForecastState
 from .plotting import Plot, clamp_lats_to_mercator_limit
+from .single_hour_scalar import SingleHourScalarUpdater
 
 # Silence warnings
 warnings.filterwarnings("ignore", message=".*missingValue.*")
@@ -22,11 +23,9 @@ logging.getLogger("cfgrib").setLevel(logging.ERROR)
 logger = logging.getLogger(__name__)
 
 
-class PrecipitationUpdater(Updater, MultiHourRenderMixin):
+class PrecipitationUpdater(SingleHourScalarUpdater):
     def __init__(self, config: AtmosGLConfig, map_data: MapData):
-        super().__init__(config, "Precipitation", map_data)
-        self.level_of_detail = int(self.settings.get("level_of_detail", 1))
-        self.lod_desc = None
+        super().__init__(config, "precipitation", map_data)
 
         # Top of the precip scale (mm/hr). Must match the frontend shader's VMAX.
         # The data texture is sqrt-encoded against this, so most of the 8-bit range
@@ -60,9 +59,6 @@ class PrecipitationUpdater(Updater, MultiHourRenderMixin):
         # texture crop (organic falloff, no steps even cell-by-cell) and live in the
         # browser at zoom ~7-7.6.
         self.EDGE_SMOOTH_SIGMA_CELLS = 2.0
-        # Static PNG + GPU data texture.
-        self.per_hour_outputs = [".png", "_data.png"]
-        self.status_product = "precipitation"
 
         self.PALETTES = {
             "standard": [
@@ -123,6 +119,9 @@ class PrecipitationUpdater(Updater, MultiHourRenderMixin):
             weight="bold",
             tick_format="%.1f",
         )
+
+    def _write_key(self):
+        self.save_precipitation_key(self.output_path)
 
     def plot(self, field0, state: ForecastState):
         """Static region render (frame 0) + colourbar key + global N-frame texture.
@@ -305,24 +304,3 @@ class PrecipitationUpdater(Updater, MultiHourRenderMixin):
         # cubic reconstruction), so it just softens the hard step into a gradual ramp
         # over about a cell, for bilinear sampling to interpolate cleanly.
         return gaussian_filter(result, sigma=self.EDGE_SMOOTH_SIGMA_CELLS)
-
-    def run(self, max_hours=None):
-        # Warms the shared per-cycle GFS baseline cache (map_data.shared_state) for
-        # other updaters this cycle; render_all_hours resolves its own state from the
-        # catalog below, so the return value here is unused.
-        self.get_gfs_state()
-        # The legend key is cheap to draw and depends only on palette/key_fontsize
-        # settings, not forecast data. Refresh it unconditionally every run, so
-        # settings changes apply immediately instead of waiting on should_plot_for_hour's
-        # data-freshness gate below.
-        self.save_precipitation_key(self.output_path)
-        # Render EVERY available forecast hour (gap-filling), so the scrubber has
-        # a PNG for each hour. should_plot_for_hour skips hours already fresh.
-        # max_hours=1 from layer_builder's round-robin dispatch renders one hour and
-        # returns, so this layer doesn't monopolise a render-pool worker.
-        return self.render_all_hours(
-            "precipitation",
-            plot_fn=self.plot,
-            field_ready=lambda f: f.get("values") is not None,
-            max_hours=max_hours,
-        )

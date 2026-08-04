@@ -1,6 +1,6 @@
-// Extracts shader source constants (and any other named consts/functions) from the
-// REAL ui/modules/_particles_gl.js file via a sandboxed vm eval -- not a
-// reimplementation. This lets shader-level tests exercise the exact GLSL that ships to
+// Extracts shader source constants (and any other named consts/functions) from a REAL
+// engine module (e.g. ui/modules/_streamparticles_gl.js) via a sandboxed vm eval -- not
+// a reimplementation. This lets shader-level tests exercise the exact GLSL that ships to
 // production, not a JS/Python re-derivation of what the shader is supposed to do
 // (which could silently drift from the real thing).
 //
@@ -33,11 +33,18 @@ export function extractFromParticlesEngine(path, names) {
  * Safe to call generically: none of a layer module's top-level closures inside
  * loadLayer touch `map`/MapLibre until createParticleGLController/liveLayerSync are
  * invoked, and both are stubbed here, so the rest of loadLayer's body never runs.
+ *
+ * Async-safe: some consumers' loadLayer is `async` with a genuine `await` before the
+ * particle-controller call (e.g. currents.js's `await recon.ready()`), which suspends
+ * the function and returns a pending Promise -- reading captured.opts synchronously
+ * right after calling loadLayer would see it still null for those. Always await the
+ * call (a no-op for the synchronous consumers, whose loadLayer returns the teardown
+ * function directly, not a thenable).
  */
-export function captureParticleControllerOpts(path, exportedFn = "loadLayer") {
+export async function captureParticleControllerOpts(path, exportedFn = "loadLayer") {
   let src = fs.readFileSync(path, "utf8");
   src = src.replace(/^import\s*\{[^}]*\}\s*from\s*['"][^'"]+['"];?$/gm, "");
-  src = src.replace(/^export function/gm, "function");
+  src = src.replace(/^export (async function|function)/gm, "$1");
   src = src.replace(/^export const/gm, "const");
 
   const captured = { opts: null };
@@ -53,6 +60,14 @@ export function captureParticleControllerOpts(path, exportedFn = "loadLayer") {
       captured.opts = opts;
       return () => {};
     },
+    // _streamparticles_gl.js's controller self-manages its own liveLayerSync and
+    // returns the teardown function directly (unlike createParticleGLController's
+    // {mount,refresh,unmount} shape above) -- waves.js (bar mode), currents.js, and
+    // jetstream.js all call this one.
+    createCurrentParticleGLLayer: (_map, opts) => {
+      captured.opts = opts;
+      return () => {};
+    },
     // waves.js (and others) also call createFillLayer for their heat fill, alongside
     // the particle controller this helper actually cares about -- stub it so
     // evaluating the module doesn't throw ReferenceError.
@@ -62,9 +77,16 @@ export function captureParticleControllerOpts(path, exportedFn = "loadLayer") {
     // to let modules that call it (waves.js, wind.js, ...) evaluate without throwing.
     opacityUniform: (_cfg, fallback) => fallback,
     liveLayerSync: () => () => {},
+    // standardLegend (architecture review candidate #5) is called at the top of every
+    // consumer's loadLayer for its legend wiring, before the particle-controller call
+    // this helper actually cares about -- stub it the same way, returning the same
+    // { addLegend, removeLegend, keyUrl } shape callers reference (as onMount/onRefresh/
+    // onUnmount/keyUrl properties on the captured opts object), so evaluating the module
+    // doesn't throw ReferenceError.
+    standardLegend: () => ({ addLegend: () => {}, removeLegend: () => {}, keyUrl: () => {} }),
   };
   vm.createContext(context);
   vm.runInContext(src, context, { filename: path });
-  context[exportedFn]({}, {});
+  await context[exportedFn]({}, {});
   return captured.opts;
 }
