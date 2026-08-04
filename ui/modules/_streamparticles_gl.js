@@ -1168,10 +1168,18 @@ export function createCurrentParticleGLLayer(map, opts) {
         gl.uniform1f(u('u_vmax'), vmax);
         gl.uniform1f(u('u_smoothPx'), SMOOTH_PX);
         gl.uniform1f(u('u_minValue'), curMinValue);
-        gl.uniform1f(u('u_H'), curH * curLengthZoomFactor);
         gl.uniform1f(u('u_halfThick'), Math.max(0.5, curThick));
-        gl.uniform1f(u('u_halfLen'), curHalfLen);   // bar mode only; no-op uniform (-1) for streamline
-        gl.uniform1f(u('u_eps'), BAR_EPS);          // bar mode only; no-op uniform (-1) for streamline
+        // Geometry-mode-specific uniforms: STREAMLINE_VS_BODY declares u_H (integration
+        // arc), never u_halfLen/u_eps; BAR_VS_BODY declares u_halfLen/u_eps (crest
+        // half-length, forward-probe distance), never u_H. `primitive` is fixed for the
+        // lifetime of this controller instance (see vertsPerParticle above), so this is
+        // an explicit, one-branch-per-frame dispatch, not a re-decision.
+        if (primitive === 'bar') {
+            gl.uniform1f(u('u_halfLen'), curHalfLen);
+            gl.uniform1f(u('u_eps'), BAR_EPS);
+        } else {
+            gl.uniform1f(u('u_H'), curH * curLengthZoomFactor);
+        }
         gl.uniform1f(u('u_maxspeed'), curMaxSpeed);
         gl.uniform1f(u('u_alpha'), curAlpha);
         gl.uniform1f(u('u_calmFade'), curCalmFade);
