@@ -7,6 +7,7 @@
 // the new shared engine defaults OFF (0) for every consumer unless opted in.
 import { describe, test, expect } from 'vitest';
 import { speedFromConfig, coherenceRadius, hFromConfig, thicknessFromConfig, calmDrop, calmFade } from './wind.js';
+import { captureParticleControllerOpts } from '../../tests/gl-shaders/extract_shaders.js';
 
 describe('speedFromConfig', () => {
     test('maps particle_speed 10..100 onto the 0..0.15 drift range', () => {
@@ -79,5 +80,40 @@ describe('calmFade', () => {
     test('reads a configured calm_fade when present', () => {
         expect(calmFade({ calm_fade: 0.2 })).toBeCloseTo(0.2);
         expect(calmFade({ calm_fade: 0 })).toBe(0);
+    });
+});
+
+// Wiring: does loadLayer's REAL createCurrentParticleGLLayer call actually pass the
+// functions/values tested above, not a hand-copied literal that could silently drift
+// from what wind.js really does (architecture review candidate D -- the gap this
+// closes: config mapper -> opts was tested, but opts really reaching the engine call
+// wasn't). captureParticleControllerOpts stubs loadLayer's imports and captures the
+// real opts object -- via a sandboxed vm re-evaluation of wind.js's own source, a
+// separate realm from this test's normal ES import, so captured functions can never
+// be reference-equal (toBe) to the ones imported above; comparing .toString() instead
+// proves it's the exact same source, which is what "not a re-implementation" means.
+describe('createCurrentParticleGLLayer wiring', () => {
+    test('passes the restored calm-cell mappers, not a re-implementation', async () => {
+        const opts = await captureParticleControllerOpts('ui/modules/wind.js', 'loadLayer');
+        expect(opts.calmDrop.toString()).toBe(calmDrop.toString());
+        expect(opts.calmFade.toString()).toBe(calmFade.toString());
+    });
+
+    test('passes the tuned mapper functions, not a re-implementation', async () => {
+        const opts = await captureParticleControllerOpts('ui/modules/wind.js', 'loadLayer');
+        expect(opts.speedFromConfig.toString()).toBe(speedFromConfig.toString());
+        expect(opts.coherenceRadius.toString()).toBe(coherenceRadius.toString());
+        expect(opts.hFromConfig.toString()).toBe(hFromConfig.toString());
+        expect(opts.thicknessFromConfig.toString()).toBe(thicknessFromConfig.toString());
+    });
+
+    test('sets landReset to 0 -- wind blows over land, unlike ocean currents/waves', async () => {
+        const opts = await captureParticleControllerOpts('ui/modules/wind.js', 'loadLayer');
+        expect(opts.landReset({})).toBe(0.0);
+    });
+
+    test('does not override primitive -- wind stays on the default streamline mode', async () => {
+        const opts = await captureParticleControllerOpts('ui/modules/wind.js', 'loadLayer');
+        expect(opts.primitive).toBeUndefined();
     });
 });
