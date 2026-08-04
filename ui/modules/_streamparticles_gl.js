@@ -575,6 +575,85 @@ void main(){
 }`;
 
 
+// Pure parameter derivation for createCurrentParticleGLLayer's per-refresh state (see
+// applyParams below, which wraps this with the closure's cur* assignment). Exported
+// for direct unit testing -- see _streamparticles_gl.test.js -- independent of any GL
+// context. `mappers` is the engine's already-resolved (post-default) config-mapper
+// bundle, i.e. exactly the functions createCurrentParticleGLLayer's own opts
+// destructure holds after defaulting -- kept as a single param bundle rather than ~15
+// positional args, and passed already-resolved rather than raw `opts` so the default
+// lambdas stay defined in exactly one place (the opts destructure).
+//
+// `prevCohRadius` is the previous curCohRadius, since coherence-radius change
+// detection needs a "did it change" comparison that a pure function can't otherwise
+// make. The returned `cohChanged` is intentionally not named `cohDirty`: cohDirty
+// itself is a closure flag with other writers (a fresh raw texture upload, see
+// uploadVelNow) and other resetters (runCoherence, after it actually rebuilds) --
+// applyParams below only ever ORs cohChanged into it, never overwrites it.
+export function computeParams(cfg, mappers, prevCohRadius) {
+    const {
+        speedFromConfig, thicknessFromConfig, maxSpeedColor, landReset, hFromConfig,
+        lenFromConfig, calmSpeed, calmDrop, calmFade, minValue, smoothPx,
+        coherenceRadius, ageStep, temporalBlend, vmax,
+    } = mappers;
+    const curSpeed = speedFromConfig(cfg);
+    const curThick = thicknessFromConfig(cfg);
+    const curAlpha = Number(cfg.particle_opacity) > 0 ? Number(cfg.particle_opacity) / 100 : 0.9;
+    const curMaxSpeed = maxSpeedColor(cfg) || vmax;
+    const curLandReset = landReset(cfg) > 0.5 ? 1.0 : 0.0;
+    const curH = hFromConfig(cfg);
+    const curHalfLen = lenFromConfig(cfg);
+    const curCalmSpeed = calmSpeed(cfg);
+    const curCalmDrop = calmDrop(cfg);
+    const curCalmFade = calmFade(cfg);
+    const curMinValue = Number(minValue(cfg)) || 0.0;
+    const newSmoothPx = Number(smoothPx(cfg));
+    const curSmoothPx = (isFinite(newSmoothPx) && newSmoothPx >= 1.0) ? newSmoothPx : 1.0;
+    const newCoh = Number(coherenceRadius(cfg)) || 0;
+    const cohChanged = newCoh !== prevCohRadius;
+    const newAgeStep = Number(ageStep(cfg));
+    const curAgeStep = (isFinite(newAgeStep) && newAgeStep > 0) ? newAgeStep : (1.0 / 90);
+    const curTemporalBlend = temporalBlend(cfg);
+    return {
+        curSpeed, curThick, curAlpha, curMaxSpeed, curLandReset, curH, curHalfLen,
+        curCalmSpeed, curCalmDrop, curCalmFade, curMinValue, curSmoothPx,
+        curCohRadius: newCoh, cohChanged, curAgeStep, curTemporalBlend,
+    };
+}
+
+// Pure respawn-bbox derivation from the map's current view. Exported for direct unit
+// testing -- see _streamparticles_gl.test.js -- against a mock map object, no GL or
+// MapLibre instance required. See the notes at this function's call site in
+// createCurrentParticleGLLayer's render() on why longitude is derived from viewport
+// pixel width rather than getBounds()'s east/west (globe projection).
+export function viewBox(map) {
+    try {
+        const b = map.getBounds();
+        let n = b.getNorth(), s = b.getSouth();
+        if (!Number.isFinite(n) || !Number.isFinite(s)) return [0, 0, 1, 1];
+        const padLat = Math.max(0, n - s) * 0.15;
+        n = Math.min(89.9, n + padLat); s = Math.max(-89.9, s - padLat);
+        let yN = Math.max(0, (90 - n) / 180), yS = Math.min(1, (90 - s) / 180);
+        const MIN_H = 0.006;
+        if (yS - yN < MIN_H) {
+            const cy = Math.min(1 - MIN_H * 0.5, Math.max(MIN_H * 0.5, (yN + yS) * 0.5));
+            yN = cy - MIN_H * 0.5; yS = cy + MIN_H * 0.5;
+        }
+        const c = map.getCenter();
+        const cv = map.getCanvas();
+        const vw = (cv && cv.clientWidth) || 1024;
+        const worldPx = 512 * Math.pow(2, map.getZoom());
+        let spanLon = (vw / worldPx) * 360 * 1.4;
+        if (!Number.isFinite(spanLon) || spanLon >= 350) return [0, yN, 1, yS];
+        spanLon = Math.max(1.0, spanLon);
+        const cl = ((((c.lng + 180) % 360) + 360) % 360) / 360;
+        const half = (spanLon / 360) / 2;
+        const lonMin = ((((cl - half) % 1) + 1) % 1);
+        const lonMax = ((((cl + half) % 1) + 1) % 1);
+        return [lonMin, yN, lonMax, yS];
+    } catch (_) { return [0, 0, 1, 1]; }
+}
+
 export function createCurrentParticleGLLayer(map, opts) {
     const {
         sectionKey = 'currents',
@@ -770,23 +849,32 @@ export function createCurrentParticleGLLayer(map, opts) {
     const particleCount = (cfg) => {
         return Math.max(256, (lodCount || LOD_COUNT)[lodOf(cfg)] || 9000);
     };
+    // Thin wrapper over the top-level computeParams (see above): bundles this
+    // closure's already-resolved mapper functions, calls the pure computation, then
+    // assigns the result onto the cur* closure vars. cohDirty is only ever ORed in,
+    // never overwritten -- see computeParams's docstring on why.
     const applyParams = (cfg) => {
-        curSpeed = speedFromConfig(cfg);
-        curThick = thicknessFromConfig(cfg);
-        curAlpha = Number(cfg.particle_opacity) > 0 ? Number(cfg.particle_opacity) / 100 : 0.9;
-        curMaxSpeed = maxSpeedColor(cfg) || vmax;
-        curLandReset = landReset(cfg) > 0.5 ? 1.0 : 0.0;
-        curH = hFromConfig(cfg);
-        curHalfLen = lenFromConfig(cfg);
-        curCalmSpeed = calmSpeed(cfg); curCalmDrop = calmDrop(cfg); curCalmFade = calmFade(cfg);
-        curMinValue = Number(minValue(cfg)) || 0.0;
-        const newSmoothPx = Number(smoothPx(cfg));
-        curSmoothPx = (isFinite(newSmoothPx) && newSmoothPx >= 1.0) ? newSmoothPx : 1.0;
-        const newCoh = Number(coherenceRadius(cfg)) || 0;
-        if (newCoh !== curCohRadius) { curCohRadius = newCoh; cohDirty = true; }
-        const newAgeStep = Number(ageStep(cfg));
-        curAgeStep = (isFinite(newAgeStep) && newAgeStep > 0) ? newAgeStep : (1.0 / 90);
-        curTemporalBlend = temporalBlend(cfg);
+        const p = computeParams(cfg, {
+            speedFromConfig, thicknessFromConfig, maxSpeedColor, landReset, hFromConfig,
+            lenFromConfig, calmSpeed, calmDrop, calmFade, minValue, smoothPx,
+            coherenceRadius, ageStep, temporalBlend, vmax,
+        }, curCohRadius);
+        curSpeed = p.curSpeed;
+        curThick = p.curThick;
+        curAlpha = p.curAlpha;
+        curMaxSpeed = p.curMaxSpeed;
+        curLandReset = p.curLandReset;
+        curH = p.curH;
+        curHalfLen = p.curHalfLen;
+        curCalmSpeed = p.curCalmSpeed;
+        curCalmDrop = p.curCalmDrop;
+        curCalmFade = p.curCalmFade;
+        curMinValue = p.curMinValue;
+        curSmoothPx = p.curSmoothPx;
+        curCohRadius = p.curCohRadius;
+        if (p.cohChanged) cohDirty = true;
+        curAgeStep = p.curAgeStep;
+        curTemporalBlend = p.curTemporalBlend;
     };
 
     // gl_VertexID span per particle: one ribbon segment sextet per STREAM_STEPS
@@ -845,9 +933,10 @@ export function createCurrentParticleGLLayer(map, opts) {
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     };
 
-    // viewBox (equirect bbox) for spawn density -- ported from _particles_gl.js's more
-    // robust version (whole world fallback). The naive map.getBounds()-only version this
-    // replaced had three latent bugs wind's engine already found and fixed:
+    // viewBox (equirect bbox) for spawn density -- now the top-level exported viewBox(map)
+    // above (ported from _particles_gl.js's more robust version, whole world fallback).
+    // The naive map.getBounds()-only version this replaced had three latent bugs wind's
+    // engine already found and fixed:
     //   1. No latitude padding -- respawns land exactly at the visible edge, so new
     //      particles visibly pop in right at the screen boundary instead of just outside it.
     //   2. No minimum-height floor -- getBounds()'s N/S span can collapse toward zero at
@@ -860,33 +949,6 @@ export function createCurrentParticleGLLayer(map, opts) {
     //      geometrically correct regardless of globe rotation.
     // currents' viewBox() is exposed to the identical class of bug -- same globe
     // projection, same getBounds()-based respawn biasing.
-    const viewBox = () => {
-        try {
-            const b = map.getBounds();
-            let n = b.getNorth(), s = b.getSouth();
-            if (!Number.isFinite(n) || !Number.isFinite(s)) return [0, 0, 1, 1];
-            const padLat = Math.max(0, n - s) * 0.15;
-            n = Math.min(89.9, n + padLat); s = Math.max(-89.9, s - padLat);
-            let yN = Math.max(0, (90 - n) / 180), yS = Math.min(1, (90 - s) / 180);
-            const MIN_H = 0.006;
-            if (yS - yN < MIN_H) {
-                const cy = Math.min(1 - MIN_H * 0.5, Math.max(MIN_H * 0.5, (yN + yS) * 0.5));
-                yN = cy - MIN_H * 0.5; yS = cy + MIN_H * 0.5;
-            }
-            const c = map.getCenter();
-            const cv = map.getCanvas();
-            const vw = (cv && cv.clientWidth) || 1024;
-            const worldPx = 512 * Math.pow(2, map.getZoom());
-            let spanLon = (vw / worldPx) * 360 * 1.4;
-            if (!Number.isFinite(spanLon) || spanLon >= 350) return [0, yN, 1, yS];
-            spanLon = Math.max(1.0, spanLon);
-            const cl = ((((c.lng + 180) % 360) + 360) % 360) / 360;
-            const half = (spanLon / 360) / 2;
-            const lonMin = ((((cl - half) % 1) + 1) % 1);
-            const lonMax = ((((cl + half) % 1) + 1) % 1);
-            return [lonMin, yN, lonMax, yS];
-        } catch (_) { return [0, 0, 1, 1]; }
-    };
     let curBbox = [0, 0, 1, 1];
 
     const uploadVelNow = (gl, img) => {
@@ -1195,7 +1257,7 @@ export function createCurrentParticleGLLayer(map, opts) {
             if (pendingVelNextImg) { uploadVelNextNow(gl, pendingVelNextImg); pendingVelNextImg = null; }
             if (pendingLut) { uploadColormapNow(gl, pendingLut); pendingLut = null; }
             if (!velReady || !velTex) { map.triggerRepaint(); return; }
-            curBbox = viewBox();
+            curBbox = viewBox(map);
             let zNow = lengthZoomRef;
             try { zNow = map.getZoom(); } catch (_) { /* keep ref */ }
             if (lengthZoomComp > 0) {
