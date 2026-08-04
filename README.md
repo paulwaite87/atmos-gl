@@ -501,7 +501,6 @@ Air/land temperatures are a measure of what's going on in our atmosphere, resolv
 globally at the same grid resolution as everything else here.
 ![Air Temperature](docs/atmos-gl-air-temperature.png)
 
-
 #### Waves
 This one is a colourisation depicting wave height across the planet. It gets quite
 interesting when you watch waves interacting with a storm, or a tsunami eventuates
@@ -628,8 +627,14 @@ The data collector is a separate background process which collects data for:
 * Volcanoes
 * Satellites
 * SST
-* Greenhouse Gases (CO2/CH4)
-* Air Quality (PM2.5/PM10/Smoke AOD/SO2)
+* Greenhouse Gases 
+  * CO2 - Carbon Dioxide
+  * CH4 - Methane
+* Air Quality
+  * PM2.5 - Fine Particulate Matter 2.5 microns
+  * PM10 - Coarse Particulate Matter 10 microns
+  * Smoke AOD - Aerosol Optical Depth of smoke from fire
+  * SO2 - Sulphur Dioxide from all sources
 * GFS Atmos:
   * Isobars
   * Precipitation
