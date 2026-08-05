@@ -23,6 +23,19 @@ VMAX_WAVES = 8.0
 # empirically-timed value as SST's/currents' (see tasks/sst.py, tasks/currents.py):
 # GFS-Wave's native 0.25 deg grid is coarser than this, and the true coastline mask
 # needs a fine enough grid to snap to. Not a user setting, for the same reason.
+#
+# Finer steps were tried and reverted: the coastline mask itself now scales fine
+# (lib/coastline.py's coastline_land_mask rasterizes GSHHG 'h' directly onto the grid,
+# ~19s/~3.8GB even for a full-globe 162M-point 0.02deg grid), but the surrounding
+# regrid pass (scipy RegularGridInterpolator building a full global mesh, for both u
+# and v) does not: memory scales with grid point count, and isolated measurement
+# (WavesUpdater._masked_uv called directly, not through the render pool) showed
+# 0.08deg=(2251,4500) costs ~1.6GB peak RSS, while 0.04deg=(4501,9000) -- only 4x the
+# points -- already climbs past 5GB and gets OOM-killed on this deployment's host
+# (dmesg: `Out of memory: Killed process ... (python) ... anon-rss:5249264kB`; 0.02deg
+# hit the same wall live too). 0.08 is the ceiling this host supports for a
+# full-global regrid; going finer needs a lower-memory regrid path (float32, or tiling
+# the interpolation instead of building one 162M-point mesh), not just a smaller step.
 _WAVES_REGRID_STEP_DEG = 0.08
 
 # Wave-height gradients for the legend key renderer, mirrored client-side in waves.js
@@ -70,22 +83,12 @@ class WavesUpdater(Updater, MultiHourRenderMixin):
         self.per_hour_outputs = ["_data.png"]
         self.status_product = "waves"
         # The land mask depends only on the (fixed) regrid geometry, so compute it once
-        # per run and reuse for every hour. Keyed by grid shape.
-        # "10m" (not LandMaskCache's own "50m" default, which currents.py still uses):
-        # waves' animated bars can sit at any precise sub-cell position (not just show
-        # one flat color per grid cell), so a 50m-resolution coastline's simplification
-        # is visible as bars drifting onshore appearing to cross the coastline the
-        # basemap actually draws, well before the DATA's own (coarser) land boundary
-        # catches them -- found live (candidate #7, particle-engine consolidation).
-        # ~21s one-time cost per worker process (measured: 14.4s at 50m vs 35.8s at
-        # 10m for waves' global 0.08deg grid), paid once at first use per persistent
-        # worker, not per render -- see LandMaskCache's module-level geometry cache.
-        # Even at "10m" (a cartographic scale, 1:10M, not 10-metre precision), Natural
-        # Earth's coastline is measurably coarser than a real web-map dataset on
-        # complex, convoluted coastlines (thin peninsulas, dense island groups) -- an
-        # accepted, documented limitation, not a bug: see
-        # docs/adr/0011-accept-natural-earth-coastline-precision-for-ocean-layers.md.
-        self._land_mask = LandMaskCache("Waves", res="10m")
+        # per run and reuse for every hour. Keyed by grid shape. Every LandMaskCache
+        # consumer (currents, waves) now shares one GSHHG 'h' geometry -- see
+        # docs/adr/0013 (supersedes docs/adr/0011's Natural Earth precision limitation,
+        # found live via waves' animated bars visibly crossing land on complex
+        # coastlines like Northland NZ/Tasmania during candidate #7).
+        self._land_mask = LandMaskCache("Waves")
 
     def save_waves_key(self, output_path, cmap, norm, threshold=0.0):
         """Generates a standalone Wave Height key image (separate _key.png)."""

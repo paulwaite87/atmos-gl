@@ -269,14 +269,25 @@ void main(){
     // ocean strip (e.g. zoomed into a coastline) needs many more tries to reliably land
     // in that strip than a mostly-ocean view does; a small bounded budget silently
     // degrades exactly there (found live: still spawned on land when zoomed into a
-    // coastline, at a retry count that worked fine for open ocean). Falls back to the
-    // last candidate if none validate within the budget rather than looping unboundedly
-    // (see streamparticles_respawn_land_avoidance.test.js).
+    // coastline, at a retry count that worked fine for open ocean).
+    //
+    // foundValidRespawn tracks whether any candidate actually validated. A view with an
+    // even narrower ocean strip (found live: a real user report of a particle spawning
+    // ~10% of Tasmania's width inland, at a land fraction where the 32-attempt budget
+    // itself measurably exhausts -- 35.9% of respawns in a 96.9%-land view) can still
+    // exhaust all 32 attempts; on exhaustion this used to fall back to the LAST
+    // (unvalidated) candidate -- a uniform-random draw across the ENTIRE bbox, not
+    // "slightly on land" but scattered arbitrarily deep into it (measured live:
+    // averaging 47.5% of the way across the visible land area). See the reset branch
+    // below for what happens instead now, and streamparticles_respawn_land_avoidance
+    // .test.js's 96.9%-land case for the regression coverage.
+    bool foundValidRespawn = true;
     if (u_landReset > 0.5) {
+        foundValidRespawn = validAt(u_vel, randPos);
         const int LAND_RETRY = 32;
-        for (int i = 0; i < LAND_RETRY; i++) {
-            if (validAt(u_vel, randPos)) break;
+        for (int i = 0; i < LAND_RETRY && !foundValidRespawn; i++) {
             randPos = randCandidate(seed + vec2(float(i + 1) * 17.3, float(i + 1) * 31.1), bmin, bmax, lonWrap);
+            foundValidRespawn = validAt(u_vel, randPos);
         }
     }
     // Calm-cell quick respawn (ported from _particles_gl.js's "calm-zone handling"):
@@ -312,11 +323,24 @@ void main(){
     bool reset = (age >= 1.0) || (npos.y <= 0.0) || (npos.y >= 1.0)
                  || (u_landReset > 0.5 && (hasData < 0.5 || hasDataNew < 0.5))
                  || calmReset;
-    if (reset) {
+    if (reset && foundValidRespawn) {
         o_pos = encodePos(randPos);
         // New random lifetime factor + age reset to 0 (born fresh, will fade in).
         float nl = rand(seed + 5.1);
         o_age = vec4(0.0, nl, 0.0, 1.0);
+    } else if (reset) {
+        // Retry budget exhausted (only reachable when u_landReset>0.5, since
+        // foundValidRespawn stays true otherwise): hold at the particle's own current
+        // position instead of accepting the unvalidated last candidate, and try again
+        // next frame with a fresh random draw rather than gambling once. age is pinned
+        // at 1.0 (not advanced further), so reset keeps triggering every subsequent
+        // frame until a retry succeeds -- self-correcting across frames instead of a
+        // single-frame coin flip. Nothing wrong renders in the meantime either way:
+        // both trail vertex shaders (BAR_VS_BODY/STREAMLINE_VS_BODY) independently
+        // re-validate the current head position via sampleVelSmooth before drawing, so
+        // a position that's genuinely on land is never rendered regardless of this.
+        o_pos = encodePos(pos);
+        o_age = vec4(1.0, ageState.g, 0.0, 1.0);
     } else {
         o_pos = encodePos(npos);
         o_age = vec4(clamp(age, 0.0, 1.0), ageState.g, 0.0, 1.0);

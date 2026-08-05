@@ -1,5 +1,19 @@
 # Accept Natural Earth's coastline precision for waves'/currents' land masking
 
+> **Superseded (2026-08-05).** This ADR's own "Revisit if" clause fired: the user
+> explicitly asked to address the coastline-crossing issue this ADR had deferred.
+> `docs/adr/0013-switch-coastline-masking-to-gshhg.md` records the outcome -- GSHHG's
+> 'h' (high) tier replaces Natural Earth for `coastline_land_mask()`/`LandMaskCache`
+> everywhere they're used (waves, currents, sst, greenhouse_gases), fixing real
+> single-cell misclassifications this ADR's investigation diagnosed (confirmed live:
+> a Natural Earth gap at Tasmania's NW coast that GSHHG correctly classifies as land).
+> The investigation and root-cause analysis below are kept for the record -- they're
+> what informed the superseding decision's dataset choice, not stale/wrong. Also see
+> that ADR for two OTHER, independently real and now-fixed mechanisms found during the
+> same debugging session: a particle-engine respawn-fallback bug (unrelated to the
+> coastline dataset), and the regrid-grid-resolution ceiling that neither dataset can
+> fix on its own.
+
 Found live during candidate #7 (particle-engine consolidation)'s waves checkpoint:
 after fixing three real particle-engine bugs (a calm-cell unit mismatch, a coastal
 one-frame advection overshoot, and a respawn land-avoidance retry budget too small for

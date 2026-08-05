@@ -7,11 +7,29 @@ as was the nearest-fill-then-regrid block ahead of each class's land-mask cut. T
 tests lock the shared behavior directly; each caller's own test file only needs to
 confirm it's wired up, not re-test the logic.
 """
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, mock_open, patch, call
 
+import pytest
 import numpy as np
+from shapely.geometry import Point, box
 
-from atmos_gl.lib.coastline import LandMaskCache, nearest_fill_and_regrid_uv
+from atmos_gl.lib import coastline as coastline_mod
+from atmos_gl.lib.coastline import (
+    LandMaskCache,
+    coastline_land_mask,
+    gshhg_land_feature,
+    nearest_fill_and_regrid_uv,
+)
+
+
+@pytest.fixture(autouse=True)
+def _clear_coast_geom_cache():
+    """_COAST_GEOM_CACHE is module-level state, keyed by bbox -- every real caller
+    shares the same global bbox key, so an earlier test's cached entry would otherwise
+    leak into later tests that mock _load_gshhg_land_union differently."""
+    coastline_mod._COAST_GEOM_CACHE.clear()
+    yield
+    coastline_mod._COAST_GEOM_CACHE.clear()
 
 
 # ---------------------------------------------------------------------------
@@ -44,26 +62,15 @@ def test_get_uses_a_separate_cache_entry_per_distinct_shape():
     assert mock_coast.call_count == 2
 
 
-def test_get_passes_the_global_bbox_and_configured_resolution():
-    cache = LandMaskCache("Test", res="10m")
-    with patch(
-        "atmos_gl.lib.coastline.coastline_land_mask", return_value=None
-    ) as mock_coast:
-        cache.get(lat=[0.0], lon=[0.0], shape=(1, 1))
-
-    args, kwargs = mock_coast.call_args
-    assert args[2:] == (-180.0, -90.0, 180.0, 90.0)
-    assert kwargs["res"] == "10m"
-
-
-def test_get_defaults_resolution_to_50m():
+def test_get_passes_the_global_bbox():
     cache = LandMaskCache("Test")
     with patch(
         "atmos_gl.lib.coastline.coastline_land_mask", return_value=None
     ) as mock_coast:
         cache.get(lat=[0.0], lon=[0.0], shape=(1, 1))
 
-    assert mock_coast.call_args.kwargs["res"] == "50m"
+    args = mock_coast.call_args.args
+    assert args[2:] == (-180.0, -90.0, 180.0, 90.0)
 
 
 def test_get_caches_none_too_when_geometry_is_unavailable():
@@ -80,6 +87,128 @@ def test_get_caches_none_too_when_geometry_is_unavailable():
     assert first is None
     assert second is None
     mock_coast.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# coastline_land_mask / gshhg_land_feature (GSHHG -- docs/adr/0013, supersedes
+# docs/adr/0011's Natural Earth precision limitation)
+# ---------------------------------------------------------------------------
+
+def _square_land(lon_min, lat_min, lon_max, lat_max):
+    """A small synthetic 'land' polygon -- stands in for the real (144,749-feature)
+    GSHHG geometry so these tests stay fast and hermetic, exercising the real shapely
+    contains_xy/intersection wiring without touching the network or a real shapefile."""
+    return box(lon_min, lat_min, lon_max, lat_max)
+
+
+def test_coastline_land_mask_classifies_points_against_the_gshhg_union():
+    land = _square_land(0.0, 0.0, 10.0, 10.0)
+    mesh_lon, mesh_lat = np.meshgrid([-5.0, 5.0], [-5.0, 5.0])
+    with patch("atmos_gl.lib.coastline._load_gshhg_land_union", return_value=land):
+        mask = coastline_land_mask(mesh_lon, mesh_lat, -180.0, -90.0, 180.0, 90.0)
+
+    # (5,5) is inside the square (land); the other three corners are outside (water).
+    assert mask.tolist() == [[False, False], [False, True]]
+
+
+def test_coastline_land_mask_caches_the_union_per_bbox():
+    land = _square_land(0.0, 0.0, 1.0, 1.0)
+    mesh_lon, mesh_lat = np.meshgrid([0.5], [0.5])
+    with patch(
+        "atmos_gl.lib.coastline._load_gshhg_land_union", return_value=land
+    ) as mock_load:
+        coastline_land_mask(mesh_lon, mesh_lat, -180.0, -90.0, 180.0, 90.0)
+        coastline_land_mask(mesh_lon, mesh_lat, -180.0, -90.0, 180.0, 90.0)
+
+    mock_load.assert_called_once()
+
+
+def test_coastline_land_mask_skips_intersection_for_the_global_bbox():
+    """Every real caller passes the global bbox -- clipping against it would be a
+    correct no-op, but a wasted intersection against a huge unioned geometry. Confirm
+    the global path never calls .intersection() on the loaded union."""
+    land = MagicMock(wraps=_square_land(0.0, 0.0, 10.0, 10.0))
+    mesh_lon, mesh_lat = np.meshgrid([5.0], [5.0])
+    with patch("atmos_gl.lib.coastline._load_gshhg_land_union", return_value=land):
+        coastline_land_mask(mesh_lon, mesh_lat, -180.0, -90.0, 180.0, 90.0)
+
+    land.intersection.assert_not_called()
+
+
+def test_coastline_land_mask_clips_to_a_non_global_bbox():
+    land = _square_land(-100.0, -100.0, 100.0, 100.0)
+    mesh_lon, mesh_lat = np.meshgrid([5.0], [5.0])
+    with patch("atmos_gl.lib.coastline._load_gshhg_land_union", return_value=land):
+        mask = coastline_land_mask(mesh_lon, mesh_lat, 0.0, 0.0, 10.0, 10.0)
+
+    assert mask.tolist() == [[True]]
+
+
+def test_coastline_land_mask_returns_none_on_load_failure():
+    mesh_lon, mesh_lat = np.meshgrid([0.0], [0.0])
+    with patch(
+        "atmos_gl.lib.coastline._load_gshhg_land_union",
+        side_effect=RuntimeError("no network"),
+    ):
+        result = coastline_land_mask(mesh_lon, mesh_lat, -180.0, -90.0, 180.0, 90.0)
+
+    assert result is None
+
+
+def test_gshhg_land_feature_wraps_the_union_geometry():
+    land = _square_land(0.0, 0.0, 10.0, 10.0)
+    with patch("atmos_gl.lib.coastline._load_gshhg_land_union", return_value=land):
+        feature = gshhg_land_feature()
+
+    assert feature is not None
+    assert list(feature.geometries()) == [land]
+
+
+def test_gshhg_land_feature_returns_none_on_load_failure():
+    with patch(
+        "atmos_gl.lib.coastline._load_gshhg_land_union",
+        side_effect=RuntimeError("no network"),
+    ):
+        assert gshhg_land_feature() is None
+
+
+# ---------------------------------------------------------------------------
+# _load_gshhg_land_union
+# ---------------------------------------------------------------------------
+
+def test_load_gshhg_land_union_reads_from_disk_cache_if_present():
+    cached = _square_land(1.0, 1.0, 2.0, 2.0)
+    with patch("os.path.exists", return_value=True), \
+         patch("builtins.open", mock_open(read_data=b"fake-wkb-bytes")), \
+         patch("shapely.from_wkb", return_value=cached) as mock_from_wkb:
+        result = coastline_mod._load_gshhg_land_union()
+
+    assert result is cached
+    mock_from_wkb.assert_called_once_with(b"fake-wkb-bytes")
+
+
+def test_load_gshhg_land_union_repairs_invalid_geometries_before_union():
+    """GSHHG's raw polygons include some invalid by shapely's strict standards --
+    unary_union raises a TopologyException outright without a make_valid() repair pass
+    first (found live against the real 'h' tier data: 1 of 144,749 polygons)."""
+    mock_reader = MagicMock()
+    mock_reader.geometries.return_value = [
+        _square_land(0.0, 0.0, 1.0, 1.0),
+        _square_land(1.0, 1.0, 2.0, 2.0),
+    ]
+
+    with patch("os.path.exists", return_value=False), \
+         patch(
+             "atmos_gl.lib.coastline._download_gshhg_if_needed",
+             return_value="/fake/GSHHS_h_L1.shp",
+         ), \
+         patch("cartopy.io.shapereader.Reader", return_value=mock_reader), \
+         patch("builtins.open", mock_open()):
+        result = coastline_mod._load_gshhg_land_union()
+
+    # Both squares touch at one corner (0,0)-(1,1)-(2,2) -- the union covers both.
+    assert result.contains(Point(0.5, 0.5))
+    assert result.contains(Point(1.5, 1.5))
 
 
 # ---------------------------------------------------------------------------
