@@ -7,12 +7,10 @@ from unittest.mock import MagicMock, patch
 from atmos_gl.tasks.waves import WavesUpdater
 
 
-def test_init_wires_a_land_mask_cache_labelled_waves_at_10m_resolution():
-    """res="10m", not LandMaskCache's own "50m" default (which currents.py still
-    uses): waves' bars can sit at any precise sub-cell position, so a coarser
-    coastline is visible as bars drifting onshore past the basemap's actual
-    coastline before the data's own (coarser) land boundary catches them -- found
-    live (candidate #7, particle-engine consolidation)."""
+def test_init_wires_a_land_mask_cache_labelled_waves():
+    """Every LandMaskCache consumer (currents, waves) now shares one GSHHG 'h'
+    geometry -- see docs/adr/0013 -- so there's no per-caller resolution to assert
+    here anymore, just that WavesUpdater wires up its own labelled cache."""
     from atmos_gl.lib.coastline import LandMaskCache
 
     def fake_updater_init(self, config, section, map_data):
@@ -24,4 +22,3 @@ def test_init_wires_a_land_mask_cache_labelled_waves_at_10m_resolution():
 
     assert isinstance(u._land_mask, LandMaskCache)
     assert u._land_mask._label == "Waves"
-    assert u._land_mask._res == "10m"

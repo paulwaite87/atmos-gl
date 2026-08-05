@@ -7,12 +7,11 @@ import xarray as xr
 import matplotlib as mpl
 import matplotlib.colors as mcolors
 import cartopy.crs as ccrs
-import cartopy.feature as cfeature
 from scipy.ndimage import distance_transform_edt
 
 # Internal imports
 from atmos_gl.lib.config import AtmosGLConfig
-from atmos_gl.lib.coastline import coastline_land_mask
+from atmos_gl.lib.coastline import coastline_land_mask, gshhg_land_feature
 from .common import Updater, MapData
 from .plotting import Plot, clamp_lats_to_mercator_limit
 
@@ -92,9 +91,7 @@ class SSTUpdater(Updater):
             step_override=_SST_REGRID_STEP_DEG,
         )
         mesh_lon, mesh_lat = np.meshgrid(new_lons, new_lats)
-        land = coastline_land_mask(
-            mesh_lon, mesh_lat, -180.0, -90.0, 180.0, 90.0, res="50m"
-        )
+        land = coastline_land_mask(mesh_lon, mesh_lat, -180.0, -90.0, 180.0, 90.0)
         if land is not None and land.shape == display_data.shape:
             display_data[land] = np.nan
 
@@ -137,13 +134,17 @@ class SSTUpdater(Updater):
 
         # Flat land tint UNDER the data (zorder below the pcolormesh's) so masked
         # (transparent) cells read as clearly "land" regardless of what colour the
-        # nearby ocean data happens to be -- see _LAND_TINT_COLOR.
-        plot.ax.add_feature(
-            cfeature.NaturalEarthFeature("physical", "land", "50m"),
-            facecolor=_LAND_TINT_COLOR,
-            edgecolor="none",
-            zorder=1,
-        )
+        # nearby ocean data happens to be -- see _LAND_TINT_COLOR. None (geometry
+        # unavailable, e.g. no network for the one-time GSHHG download) skips the
+        # tint rather than crashing -- same graceful-fallback contract as the mask above.
+        land_feature = gshhg_land_feature()
+        if land_feature is not None:
+            plot.ax.add_feature(
+                land_feature,
+                facecolor=_LAND_TINT_COLOR,
+                edgecolor="none",
+                zorder=1,
+            )
 
         # Render complete mapped geographic array using exact pixel cell boundaries
         plot.ax.pcolormesh(

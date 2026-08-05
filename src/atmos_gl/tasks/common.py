@@ -410,15 +410,47 @@ class Updater(PlottingMixin):
                 step *= scale
 
         new_lats = np.arange(lats.min(), lats.max() + step, step)
-        new_lons = np.arange(lons.min(), lons.max() + step, step)
 
         if lats[0] > lats[-1]:
             lats_inc, field_inc = lats[::-1], field[::-1, :]
         else:
             lats_inc, field_inc = lats, field
 
+        # Longitude is cyclic once the native data actually spans the whole globe
+        # (renders are always global now -- see this method's docstring above). A
+        # value-derived arange(lons.min(), lons.max()+step, step) leaves a partial-step
+        # gap at the antimeridian seam whenever the native grid's own wrap doesn't
+        # sample a full 360 degrees -- GFS-style grids sample lon 0..359.75 at 0.25
+        # deg, which _standardize_lon wraps to -180..179.75 (359.75 degrees, not 360).
+        # That gap means the output grid's actual column count doesn't equal 360/step,
+        # silently misaligning every column near the seam against the GPU particle
+        # shader's texel math (VEL_SAMPLE), which assumes exactly 360/width degrees per
+        # column -- found live via waves' animated bars reading valid ocean data ~2
+        # columns (~12-14km) west of where the shader thought it was sampling,
+        # producing particles that appeared to cross onto land on west-facing coasts.
+        # Only treated as cyclic for a genuinely global span -- a caller passing a
+        # smaller regional field (this method's own tests do, for speed) keeps the
+        # plain value-derived axis below, since there's no real wraparound to fix there.
+        lon_span = lons.max() - lons.min()
+        if lon_span >= 359.0:
+            n_lon = int(round(360.0 / step))
+            new_lons = lons.min() + np.arange(n_lon) * step
+            # RegularGridInterpolator has no periodic-boundary support, so give it a
+            # real neighbour at the seam: a duplicate of the first column, appended at
+            # lons[0]+360 -- physically the same meridian, wrapped around. Skipped when
+            # the native data already closes the loop itself (lons[-1] already at or
+            # past the wrap point), to avoid a non-ascending duplicate point.
+            if lons[-1] < lons[0] + 360.0 - 1e-9:
+                lons_for_fn = np.concatenate([lons, [lons[0] + 360.0]])
+                field_for_fn = np.concatenate([field_inc, field_inc[:, :1]], axis=1)
+            else:
+                lons_for_fn, field_for_fn = lons, field_inc
+        else:
+            new_lons = np.arange(lons.min(), lons.max() + step, step)
+            lons_for_fn, field_for_fn = lons, field_inc
+
         fn = RegularGridInterpolator(
-            (lats_inc, lons), field_inc, bounds_error=False, fill_value=fill_value
+            (lats_inc, lons_for_fn), field_for_fn, bounds_error=False, fill_value=fill_value
         )
         mesh_lats, mesh_lons = np.meshgrid(new_lats, new_lons, indexing="ij")
         field_smooth = fn((mesh_lats, mesh_lons))

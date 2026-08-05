@@ -9,38 +9,140 @@ _land_mask_for exactly") -- see architecture review candidate "share currents' a
 waves' land-mask/regrid pipeline".
 """
 import logging
+import os
+import zipfile
+from io import BytesIO
 
 import numpy as np
 from scipy.ndimage import distance_transform_edt
 
 logger = logging.getLogger(__name__)
 
-# Cache the unioned Natural Earth land geometry per (resolution, rounded bbox) so we
-# read the shapefile and union it once, then reuse across hours and across layers
-# (currents + sst share this). Module-level so it survives per-hour Updater instances.
+# GSHHG (Global Self-consistent, Hierarchical, High-resolution Geography Database)
+# replaces the previous Natural Earth-based coastline masking -- see docs/adr/0011
+# (superseded) and docs/adr/0013. Natural Earth's "10m" designation is a *cartographic
+# scale* (1:10,000,000), not survey precision, and produced a genuinely noisy "swiss
+# cheese" land mask on complex, convoluted coastlines (Northland NZ, Tasmania) even
+# though it read fine on large, simple landmasses -- see ADR-0011's investigation.
+# GSHHG's 'h' (high) tier is a real ~1:1,000,000-scale coastline dataset, fixing the
+# misclassification.
+#
+# Distributed as a single ZIP bundling all 5 resolution tiers. The University of
+# Hawaii mirror (soest.hawaii.edu, GSHHG's canonical distribution point) throttled to
+# single-digit KB/s when measured from this deployment's network path (~4hr for the
+# full 142MB); the Generic Mapping Tools project's GitHub Releases mirror (identical
+# file, same version) serves it from GitHub's own CDN instead -- ~6MB/s, a ~25s
+# one-time download.
+_GSHHG_VERSION = "2.3.7"
+_GSHHG_TIER = "h"
+_GSHHG_URL = (
+    f"https://github.com/GenericMappingTools/gshhg-gmt/releases/download/"
+    f"{_GSHHG_VERSION}/gshhg-shp-{_GSHHG_VERSION}.zip"
+)
+
+# In-memory cache of the (bbox-clipped) land geometry per rounded bbox, so a render
+# reuses the same clipped geometry across hours and across layers within one worker
+# process's lifetime. Keyed only by bbox now (no more per-resolution tiers -- GSHHG
+# 'h' is the one dataset every caller shares). Separate from, and layered on top of,
+# _load_gshhg_land_union()'s own on-disk cache of the raw global union below.
 _COAST_GEOM_CACHE = {}
 
 
-def coastline_land_mask(mesh_lon, mesh_lat, lon_min, lat_min, lon_max, lat_max, res="10m"):
+def _gshhg_cache_dir() -> str:
+    """Container-local cache dir -- NOT bind-mounted, mirroring how cartopy's own
+    Natural Earth downloads were already cached (~/.local/share/cartopy): ephemeral
+    across container recreation, but persistent across worker-process restarts within
+    one container's lifetime (worker processes share the container filesystem)."""
+    return os.path.join(os.path.expanduser("~"), ".local", "share", "gshhg")
+
+
+def _gshhg_shapefile_path() -> str:
+    return os.path.join(
+        _gshhg_cache_dir(), "GSHHS_shp", _GSHHG_TIER, f"GSHHS_{_GSHHG_TIER}_L1.shp"
+    )
+
+
+def _download_gshhg_if_needed() -> str:
+    """Download + extract just the 'h' tier land layer (L1: coastline, GSHHG's own
+    layer-numbering convention) from the GSHHG bundle, if not already cached on disk.
+    Returns the .shp path. Raises on failure -- callers catch and fall back gracefully,
+    same contract the old Natural Earth path had."""
+    shp_path = _gshhg_shapefile_path()
+    if os.path.exists(shp_path):
+        return shp_path
+
+    from atmos_gl.lib.gfs import download_whole
+
+    cache_dir = _gshhg_cache_dir()
+    os.makedirs(cache_dir, exist_ok=True)
+    logger.info(f"Downloading GSHHG '{_GSHHG_TIER}' coastline data (one-time)...")
+    data = download_whole(_GSHHG_URL, timeout=180)
+    prefix = f"GSHHS_shp/{_GSHHG_TIER}/GSHHS_{_GSHHG_TIER}_L1."
+    with zipfile.ZipFile(BytesIO(data)) as zf:
+        members = [m for m in zf.namelist() if m.startswith(prefix)]
+        zf.extractall(cache_dir, members)
+    return shp_path
+
+
+def _gshhg_land_union_cache_path() -> str:
+    return os.path.join(_gshhg_cache_dir(), f"gshhg_{_GSHHG_TIER}_land_union.wkb")
+
+
+def _load_gshhg_land_union():
+    """The unioned GSHHG land geometry (global), loaded from a disk cache if present.
+
+    The raw load+repair+union pipeline -- 144,749 polygons at 'h' resolution, some of
+    which are invalid by shapely's strict standards and need shapely.make_valid()
+    before unary_union can even succeed -- measured ~227s in this deployment, over 10x
+    Natural Earth's own ~21s equivalent (see docs/adr/0011). Under a per-worker-process
+    in-memory-only cache, every fresh or crash-recycled render worker would pay that
+    cost before rendering any layer needing a land mask. So the FINAL unioned result is
+    additionally cached to disk (WKB) after the first successful build: only the very
+    first worker ever to need it pays the ~227s cost; every worker after that just
+    deserializes the cached geometry, a cheap operation.
+
+    Raises on failure (network/parse/topology) -- callers catch and log, same
+    graceful-fallback contract as coastline_land_mask()'s own try/except.
+    """
+    import shapely
+
+    union_cache_path = _gshhg_land_union_cache_path()
+    if os.path.exists(union_cache_path):
+        with open(union_cache_path, "rb") as f:
+            return shapely.from_wkb(f.read())
+
+    import cartopy.io.shapereader as shpreader
+    from shapely.ops import unary_union
+
+    shp_path = _download_gshhg_if_needed()
+    reader = shpreader.Reader(shp_path)
+    # GSHHG's raw polygons include some that are invalid by shapely's strict standards
+    # (self-intersections/degenerate rings) -- unary_union raises a TopologyException
+    # outright without this repair pass. Natural Earth's much smaller, cleaner feature
+    # set never needed it.
+    geoms = [shapely.make_valid(g) for g in reader.geometries()]
+    land = unary_union(geoms)
+
+    with open(union_cache_path, "wb") as f:
+        f.write(shapely.to_wkb(land))
+    return land
+
+
+def coastline_land_mask(mesh_lon, mesh_lat, lon_min, lat_min, lon_max, lat_max):
     """Boolean land mask (True over land) sampled at the given mesh, cut from true
-    Natural Earth coastline geometry at resolution `res` ('10m' / '50m' / '110m').
+    GSHHG 'h' coastline geometry (see docs/adr/0013).
 
     Shared by any layer that needs to remove land from an ocean field (currents, sst):
     a data-derived NaN mask only knows where the model lacked data, so model values can
     smear up to the interpolation cap onto the coast; cutting against real coastline
     polygons clips the field to the actual shoreline. Returns None if the geometry can't
-    be loaded (e.g. no network for the Natural Earth download) so callers can fall back
+    be loaded (e.g. no network for the one-time GSHHG download) so callers can fall back
     to whatever data-derived mask they have.
-
-    Pick `res` to match the target grid: 10m for fine regional grids, 50m for coarser
-    global grids (cheaper, and finer than the texture can show anyway).
     """
     try:
-        import cartopy.feature as cfeature
-        from shapely.ops import unary_union
+        import shapely
 
         key = (
-            res,
             round(lon_min, 2),
             round(lat_min, 2),
             round(lon_max, 2),
@@ -48,19 +150,18 @@ def coastline_land_mask(mesh_lon, mesh_lat, lon_min, lat_min, lon_max, lat_max, 
         )
         land_geom = _COAST_GEOM_CACHE.get(key)
         if land_geom is None:
-            land = cfeature.NaturalEarthFeature("physical", "land", res)
-            geoms = list(
-                land.intersecting_geometries([lon_min, lon_max, lat_min, lat_max])
-            )
-            if not geoms:
-                # No land in this region -> everything is water.
-                return np.zeros(np.shape(mesh_lon), dtype=bool)
-            land_geom = unary_union(geoms)
+            land_geom = _load_gshhg_land_union()
+            # Every current caller passes the global bbox (-180/-90/180/90), for which
+            # clipping is a no-op -- skip it there rather than pay for an intersection
+            # against a huge unioned geometry for zero benefit. Kept correct for a
+            # hypothetical narrower-bbox caller.
+            if (lon_min, lat_min, lon_max, lat_max) != (-180.0, -90.0, 180.0, 90.0):
+                from shapely.geometry import box
+
+                land_geom = land_geom.intersection(box(lon_min, lat_min, lon_max, lat_max))
             _COAST_GEOM_CACHE[key] = land_geom
 
         try:
-            import shapely
-
             mask = shapely.contains_xy(land_geom, mesh_lon, mesh_lat)
         except (ImportError, AttributeError):
             import shapely.vectorized as shpvec
@@ -74,6 +175,23 @@ def coastline_land_mask(mesh_lon, mesh_lat, lon_min, lat_min, lon_max, lat_max, 
         return None
 
 
+def gshhg_land_feature():
+    """A cartopy Feature wrapping the GSHHG land geometry, for matplotlib's
+    ax.add_feature() -- the add_feature-consuming analogue of coastline_land_mask()
+    above, for callers drawing a land-tint overlay (sst.py/greenhouse_gases.py) rather
+    than masking data. Returns None on failure (same graceful-fallback contract as
+    coastline_land_mask()), so callers skip the tint rather than crash."""
+    try:
+        import cartopy.crs as ccrs
+        from cartopy.feature import ShapelyFeature
+
+        land_geom = _load_gshhg_land_union()
+        return ShapelyFeature([land_geom], ccrs.PlateCarree())
+    except Exception as exc:
+        logger.warning(f"Coastline geometry unavailable ({exc!r}); land tint skipped.")
+        return None
+
+
 class LandMaskCache:
     """Global (-180/-90/180/90) coastline land mask, cached per regridded-grid shape
     for the life of one run -- shared by CurrentsUpdater and WavesUpdater, whose own
@@ -82,18 +200,15 @@ class LandMaskCache:
     fails once (geometry unavailable) is cached as None too, so it doesn't retry every
     call within the same run."""
 
-    def __init__(self, label: str, res: str = "50m"):
+    def __init__(self, label: str):
         self._label = label
-        self._res = res
         self._cache = {}
 
     def get(self, lat, lon, shape):
         if shape in self._cache:
             return self._cache[shape]
         mesh_lon, mesh_lat = np.meshgrid(np.asarray(lon), np.asarray(lat))
-        land = coastline_land_mask(
-            mesh_lon, mesh_lat, -180.0, -90.0, 180.0, 90.0, res=self._res
-        )
+        land = coastline_land_mask(mesh_lon, mesh_lat, -180.0, -90.0, 180.0, 90.0)
         self._cache[shape] = land
         if land is not None:
             logger.info(

@@ -29,7 +29,7 @@ function assert(condition, message) {
   if (!condition) throw new Error("ASSERTION FAILED: " + message);
 }
 
-async function runManyRespawns(landColumns) {
+async function runManyRespawns(landColumns, { W = 8, startX = 0.9 } = {}) {
   const { UPDATE_FS } = extractFromParticlesEngine("ui/modules/_streamparticles_gl.js", ["UPDATE_FS"]);
   const fsSource = UPDATE_FS.replace("#version 300 es\n", "#version 300 es\n#define POS_FLOAT 1\n");
 
@@ -37,7 +37,7 @@ async function runManyRespawns(landColumns) {
   try {
     const page = await browser.newPage();
     return await page.evaluate(
-      ({ fsSource, n, landColumns }) => {
+      ({ fsSource, n, landColumns, W, startX }) => {
         const canvas = document.createElement("canvas");
         canvas.width = 1; canvas.height = 1;
         const gl = canvas.getContext("webgl2");
@@ -79,7 +79,7 @@ void main(){ v_uv = a_pos; gl_Position = vec4(a_pos * 2.0 - 1.0, 0.0, 1.0); }`;
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, 1, 1, 0, gl.RGBA, gl.FLOAT, new Float32Array([0.9, 0.5, 0, 1]));
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, 1, 1, 0, gl.RGBA, gl.FLOAT, new Float32Array([startX, 0.5, 0, 1]));
 
         const ageTex = gl.createTexture();
         gl.bindTexture(gl.TEXTURE_2D, ageTex);
@@ -90,8 +90,7 @@ void main(){ v_uv = a_pos; gl_Position = vec4(a_pos * 2.0 - 1.0, 0.0, 1.0); }`;
         // age=1.0 -> unconditional reset this frame, regardless of position/land.
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([255, 0, 0, 255]));
 
-        // 8x8: the first `landColumns` columns are LAND, rest ocean.
-        const W = 8;
+        // W x W: the first `landColumns` columns are LAND, rest ocean.
         const velData = new Uint8Array(W * W * 4);
         for (let y = 0; y < W; y++) {
           for (let x = 0; x < W; x++) {
@@ -160,7 +159,7 @@ void main(){ v_uv = a_pos; gl_Position = vec4(a_pos * 2.0 - 1.0, 0.0, 1.0); }`;
         for (let i = 0; i < n; i++) xs.push(posOut[i * 4]);
         return xs;
       },
-      { fsSource, n: N, landColumns }
+      { fsSource, n: N, landColumns, W, startX }
     );
   } finally {
     await browser.close();
@@ -188,9 +187,34 @@ async function main() {
       `got ${onLandLandHeavy}/${N} respawns on land`
   );
 
+  // Extreme land fraction (96.9%, a narrow ocean strip -- roughly what a coastline-
+  // hugging view near a real complex coastline can show): found LIVE (diagnosing a
+  // real bug report -- see docs/adr's particle-engine notes) that the 32-attempt
+  // budget's own exhaustion path used to fall back to the LAST candidate UNVALIDATED,
+  // which is a uniform-random draw across the ENTIRE bbox -- not just "sometimes still
+  // on land" but scattered arbitrarily deep into the land region (measured live:
+  // 35.9% of respawns landing on land at this fraction, averaging 47.5% of the way
+  // across the visible land area -- consistent with a real user-reported particle
+  // spawning ~10% of Tasmania's width inland from its west coast). The fix holds the
+  // particle at its own CURRENT position (startX, always in the ocean strip here) on
+  // exhaustion instead of accepting the unvalidated candidate, so EVERY respawn must
+  // land in validated ocean -- 0/N on land, not just "usually" per the two lenient
+  // thresholds above.
+  const oceanFrac31of32 = 1 / 32;
+  const xsExtreme = await runManyRespawns(31, { W: 32, startX: 1 - oceanFrac31of32 / 2 });
+  const onLandExtreme = xsExtreme.filter((x) => x < 31 / 32).length;
+  assert(
+    onLandExtreme === 0,
+    `96.9%-land bbox: expected EVERY respawn to land in validated ocean (retries that ` +
+      `exhaust their budget must hold at the particle's own already-valid position, not ` +
+      `accept an unvalidated fallback scattered across the bbox) -- got ${onLandExtreme}/${N} ` +
+      `respawns on land`
+  );
+
   console.log("PASS: streamparticles_respawn_land_avoidance");
   console.log(`  mostly-ocean bbox: ${onLandOceanHeavy}/${N} respawns landed on land`);
   console.log(`  mostly-land bbox:  ${onLandLandHeavy}/${N} respawns landed on land`);
+  console.log(`  96.9%-land bbox:   ${onLandExtreme}/${N} respawns landed on land`);
 }
 
 main().catch((err) => {

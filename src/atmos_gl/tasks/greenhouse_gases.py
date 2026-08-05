@@ -4,13 +4,12 @@ import logging
 import os
 
 import cartopy.crs as ccrs
-import cartopy.feature as cfeature
 import matplotlib as mpl
 import matplotlib.colors as mcolors
 import numpy as np
 
 from atmos_gl.lib.config import AtmosGLConfig
-from atmos_gl.lib.coastline import coastline_land_mask
+from atmos_gl.lib.coastline import coastline_land_mask, gshhg_land_feature
 from atmos_gl.lib.greenhouse_gases import (
     SPECIES,
     camsforecast_cache_path,
@@ -87,7 +86,7 @@ class GhgUpdater(Updater):
             display_data, lat_raw, lon_norm, fill_value=np.nan, step_override=_REGRID_STEP_DEG,
         )
         mesh_lon, mesh_lat = np.meshgrid(new_lons, new_lats)
-        land = coastline_land_mask(mesh_lon, mesh_lat, -180.0, -90.0, 180.0, 90.0, res="50m")
+        land = coastline_land_mask(mesh_lon, mesh_lat, -180.0, -90.0, 180.0, 90.0)
         if land is not None and land.shape == display_data.shape:
             display_data[land] = np.nan
 
@@ -123,12 +122,16 @@ class GhgUpdater(Updater):
 
         plot = Plot(self.map_data.region)
         plot.get_figure()
-        plot.ax.add_feature(
-            cfeature.NaturalEarthFeature("physical", "land", "50m"),
-            facecolor=_LAND_TINT_COLOR,
-            edgecolor="none",
-            zorder=1,
-        )
+        # None (geometry unavailable) skips the tint rather than crashing -- same
+        # graceful-fallback contract as the mask above.
+        land_feature = gshhg_land_feature()
+        if land_feature is not None:
+            plot.ax.add_feature(
+                land_feature,
+                facecolor=_LAND_TINT_COLOR,
+                edgecolor="none",
+                zorder=1,
+            )
         plot.ax.pcolormesh(
             new_lons,
             clamp_lats_to_mercator_limit(new_lats),
