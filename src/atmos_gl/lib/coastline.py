@@ -128,6 +128,52 @@ def _load_gshhg_land_union():
     return land
 
 
+def _rasterize_land_mask(land_geom, mesh_lon, mesh_lat):
+    """Rasterize land_geom (a GSHHG land union Polygon/MultiPolygon, already
+    bbox-clipped by the caller) directly onto the given regular lon/lat mesh, via
+    GDAL's polygon rasterizer (rasterio.features.rasterize) rather than per-point
+    shapely.contains_xy testing.
+
+    Per-point testing doesn't scale to a fine global grid: walking every one of a
+    full-globe 0.02deg grid's ~162M points individually against the ~145K-feature
+    GSHHG union ran 8+ minutes and 3.4GB+ RSS without finishing, crashing the render
+    worker (BrokenProcessPool) -- confirmed live when _WAVES_REGRID_STEP_DEG was
+    dropped from 0.08 to 0.02. GDAL's rasterizer instead burns the polygon boundary
+    onto the grid directly (cost bound by polygon edge count + grid size, the way a
+    real rasterizer scales), not by grid-point count times polygon complexity.
+
+    rasterize()'s default all_touched=False burns a pixel when its CENTRE falls
+    inside the geometry -- the transform below is built so pixel (0, 0)'s centre
+    lands exactly on (lon_1d[0], lat_1d[0]), reproducing the same per-point sample
+    contains_xy used to test, just computed by an algorithm that scales.
+    """
+    from rasterio import Affine
+    from rasterio.features import rasterize
+
+    if getattr(land_geom, "is_empty", False):
+        return np.zeros(mesh_lon.shape, dtype=bool)
+
+    lon_1d = mesh_lon[0, :]
+    lat_1d = mesh_lat[:, 0]
+    width = lon_1d.size
+    height = lat_1d.size
+
+    dlon = float(lon_1d[1] - lon_1d[0]) if width > 1 else 1.0
+    dlat = float(lat_1d[1] - lat_1d[0]) if height > 1 else 1.0
+    lon0 = float(lon_1d[0])
+    lat0 = float(lat_1d[0])
+    transform = Affine(dlon, 0.0, lon0 - dlon / 2.0, 0.0, dlat, lat0 - dlat / 2.0)
+
+    mask = rasterize(
+        [(land_geom, 1)],
+        out_shape=(int(height), int(width)),
+        transform=transform,
+        fill=0,
+        dtype="uint8",
+    )
+    return mask.astype(bool)
+
+
 def coastline_land_mask(mesh_lon, mesh_lat, lon_min, lat_min, lon_max, lat_max):
     """Boolean land mask (True over land) sampled at the given mesh, cut from true
     GSHHG 'h' coastline geometry (see docs/adr/0013).
@@ -140,8 +186,6 @@ def coastline_land_mask(mesh_lon, mesh_lat, lon_min, lat_min, lon_max, lat_max):
     to whatever data-derived mask they have.
     """
     try:
-        import shapely
-
         key = (
             round(lon_min, 2),
             round(lat_min, 2),
@@ -161,13 +205,7 @@ def coastline_land_mask(mesh_lon, mesh_lat, lon_min, lat_min, lon_max, lat_max):
                 land_geom = land_geom.intersection(box(lon_min, lat_min, lon_max, lat_max))
             _COAST_GEOM_CACHE[key] = land_geom
 
-        try:
-            mask = shapely.contains_xy(land_geom, mesh_lon, mesh_lat)
-        except (ImportError, AttributeError):
-            import shapely.vectorized as shpvec
-
-            mask = shpvec.contains(land_geom, mesh_lon, mesh_lat)
-        return np.asarray(mask, dtype=bool)
+        return _rasterize_land_mask(land_geom, mesh_lon, mesh_lat)
     except Exception as exc:  # network/data/parse failure -> graceful fallback
         logger.warning(
             f"Coastline geometry unavailable ({exc!r}); land mask skipped."

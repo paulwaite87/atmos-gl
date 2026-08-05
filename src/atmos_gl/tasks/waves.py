@@ -23,6 +23,19 @@ VMAX_WAVES = 8.0
 # empirically-timed value as SST's/currents' (see tasks/sst.py, tasks/currents.py):
 # GFS-Wave's native 0.25 deg grid is coarser than this, and the true coastline mask
 # needs a fine enough grid to snap to. Not a user setting, for the same reason.
+#
+# Finer steps were tried and reverted: the coastline mask itself now scales fine
+# (lib/coastline.py's coastline_land_mask rasterizes GSHHG 'h' directly onto the grid,
+# ~19s/~3.8GB even for a full-globe 162M-point 0.02deg grid), but the surrounding
+# regrid pass (scipy RegularGridInterpolator building a full global mesh, for both u
+# and v) does not: memory scales with grid point count, and isolated measurement
+# (WavesUpdater._masked_uv called directly, not through the render pool) showed
+# 0.08deg=(2251,4500) costs ~1.6GB peak RSS, while 0.04deg=(4501,9000) -- only 4x the
+# points -- already climbs past 5GB and gets OOM-killed on this deployment's host
+# (dmesg: `Out of memory: Killed process ... (python) ... anon-rss:5249264kB`; 0.02deg
+# hit the same wall live too). 0.08 is the ceiling this host supports for a
+# full-global regrid; going finer needs a lower-memory regrid path (float32, or tiling
+# the interpolation instead of building one 162M-point mesh), not just a smaller step.
 _WAVES_REGRID_STEP_DEG = 0.08
 
 # Wave-height gradients for the legend key renderer, mirrored client-side in waves.js
