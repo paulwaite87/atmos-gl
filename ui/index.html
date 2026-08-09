@@ -118,7 +118,7 @@
         import { initLegendToggle } from './modules/_legend.js';
         initLegendToggle();
     </script>
-    <a href="http://localhost:9000/config" id="settingsBtn" target="_blank">Configuration Control</a>
+    <a href="/config" id="settingsBtn" target="_blank">Configuration Control</a>
     <div id="basemap-picker-host"></div>
     <div id="zoomDisplay"></div>
 
@@ -128,7 +128,7 @@
         async function bootstrapAtmosGL() {
             try {
                 // 1. Fetch live application configuration block from backend API
-                const response = await fetch('http://localhost:9000/api/config');
+                const response = await fetch('/api/config');
                 const fullConfig = await response.json();
                 const configData = fullConfig.data;
 
@@ -246,8 +246,11 @@
                         rotateGlobe();
                     }
 
-                    window.MAP_UI = "http://localhost:9000";
-                    window.WM_API = "http://localhost:9000/api";
+                    // Relative to whatever origin this page is served from -- map_api
+                    // is reverse-proxied behind the same origin (see config/nginx.conf),
+                    // so no absolute host:port is hardcoded here anymore.
+                    window.MAP_UI = "";
+                    window.WM_API = "/api";
                     reportViewport(); // initial signal, before any user pan/zoom
 
                     try {
