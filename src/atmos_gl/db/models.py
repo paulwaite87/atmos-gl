@@ -13,6 +13,7 @@ from sqlalchemy import (
     REAL,
     String,
     Text,
+    UniqueConstraint,
     func,
     text,
 )
@@ -482,3 +483,65 @@ class ViewportState(Base):
     updated_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+
+
+class User(Base):
+    """A signed-in visitor (issue #303). is_admin is refreshed from ADMIN_EMAILS on
+    every login (UserAdapter.get_or_create_user) -- not re-checked on every request --
+    so revoking admin access takes effect the next time that user logs in again."""
+
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    name: Mapped[str | None] = mapped_column(String(255))
+    is_admin: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class UserIdentity(Base):
+    """One row per (user, sign-in provider) -- kept separate from User itself so a
+    second/third provider (e.g. GitHub, Microsoft) is a new row here, never a schema
+    change or a new column on User. provider_user_id is that provider's own stable
+    subject id (Google's `sub` claim), not the email -- an email can change or be
+    reused, the provider's subject id doesn't."""
+
+    __tablename__ = "user_identities"
+    __table_args__ = (
+        UniqueConstraint(
+            "provider", "provider_user_id", name="uq_user_identities_provider_subject"
+        ),
+        Index("idx_user_identities_user_id", "user_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    provider: Mapped[str] = mapped_column(String(32), nullable=False)
+    provider_user_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    email: Mapped[str | None] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class UserSession(Base):
+    """A signed-in session (issue #303). token is the opaque value stored in the
+    browser's session cookie -- DB-backed (not a signed/stateless token) specifically
+    so a session can be revoked (deleted here) without waiting for client-side expiry,
+    e.g. on logout or a future account ban."""
+
+    __tablename__ = "user_sessions"
+    __table_args__ = (Index("idx_user_sessions_user_id", "user_id"),)
+
+    token: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
