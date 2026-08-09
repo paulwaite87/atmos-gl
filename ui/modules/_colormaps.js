@@ -46,3 +46,35 @@ export function rgbToRgba(rgb) {
 export function twoSlopePos(vmin, vmax) {
     return (v) => (v <= 0 ? 0.5 * (v - vmin) / Math.max(1e-9, -vmin) : 0.5 + 0.5 * v / Math.max(1e-9, vmax));
 }
+
+// Builds a 256-entry RGBA LUT covering a FIXED physical domain [physicalMin,
+// physicalMax] (the raw data texture's own encode_frames() normalisation range,
+// baked at render time -- see e.g. tasks/sst.py's _ABS_ENCODE_VMIN/_ABS_ENCODE_VMAX),
+// sampling `sourceCmap` (a flat Uint8Array(N*3) RGB table, e.g. CMAP_MAGMA) at the
+// position `toPos(physicalValue)` gives for each of the 256 physical values spanning
+// that domain. `toPos` carries all the LIVE, user-adjustable remapping (a plain
+// linear (v-displayMin)/(displayMax-displayMin) for an absolute-mode min/max, or
+// twoSlopePos(displayMin, displayMax) for a zero-centred anomaly range) -- so
+// changing a palette or scale setting only rebuilds this small client-side LUT, never
+// the server-rendered texture. Positions outside [0,1] clamp to the source cmap's
+// nearest edge colour, matching matplotlib's own default over/under-range clipping.
+// Shared by sst.js/greenhouse_gases.js (issue #312), whose data-dependent domain
+// makes a plain fixed t=(value-VMIN)/(VMAX-VMIN) (temperature.js's approach)
+// insufficient -- unlike temperature's fixed [-40,50] range, SST/GHG's user-facing
+// min/max settings must remap WITHIN a wider, non-user-visible encode domain.
+export function buildScaledLUT({ physicalMin, physicalMax, toPos, sourceCmap }) {
+    const span = Math.max(1e-9, physicalMax - physicalMin);
+    const srcStops = sourceCmap.length / 3;
+    const lut = new Uint8Array(256 * 4);
+    for (let i = 0; i < 256; i++) {
+        const value = physicalMin + (i / 255) * span;
+        const t = Math.max(0, Math.min(1, toPos(value)));
+        const srcIdx = Math.min(srcStops - 1, Math.round(t * (srcStops - 1))) * 3;
+        const o = i * 4;
+        lut[o] = sourceCmap[srcIdx];
+        lut[o + 1] = sourceCmap[srcIdx + 1];
+        lut[o + 2] = sourceCmap[srcIdx + 2];
+        lut[o + 3] = 255;
+    }
+    return lut;
+}
