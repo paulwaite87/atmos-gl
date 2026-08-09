@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
 import logging
 import os
+import secrets
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.sessions import SessionMiddleware
 
 # Import the new decoupled router files
 from atmos_gl.routes import (
+    auth,
     satellites,
     storms,
     volcanoes,
@@ -25,6 +28,8 @@ from atmos_gl.routes import (
 )
 from atmos_gl.lib.config import AtmosGLConfig
 
+logger = logging.getLogger(__name__)
+
 app = FastAPI(title="Atmos GL Configuration API")
 
 # uvicorn logs every request at INFO regardless of our own log_level setting -- only
@@ -38,17 +43,39 @@ if os.path.exists(_config_path):
     if _live_config.get_setting("common", "log_level", "INFO") != "DEBUG":
         logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
 
-origins = [
-    "http://localhost:8180",
-]
+# #301 unified map_ui + map_api behind one origin, so browser calls through nginx are
+# same-origin and never hit this middleware at all -- this only governs a legitimate
+# cross-origin caller, and now that /api/auth/me's session cookie carries real identity
+# (issue #303), it must name real origins rather than reflect-any-origin ("*" +
+# allow_credentials=True doesn't literally send "*" -- Starlette reflects the request's
+# actual Origin back instead, which amounts to allowing every origin). PUBLIC_ORIGIN lets
+# a deployment add its real origin(s) (comma-separated); defaults to local dev's origin so
+# `make up` works out of the box.
+origins = [o.strip() for o in os.getenv("PUBLIC_ORIGIN", "http://localhost:8180").split(",") if o.strip()]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Required by authlib's Starlette OAuth client (routes/auth.py) to hold Google
+# sign-in state/nonce across the redirect round-trip -- NOT the app's own session
+# (that's a separate, DB-backed, long-lived cookie; see lib/auth.py). Falls back to a
+# per-process random secret if SESSION_SECRET isn't set, so this is always genuinely
+# signed rather than silently using a predictable/empty key -- the one cost is that an
+# in-flight Google sign-in doesn't survive a container restart, which just means the
+# visitor retries.
+_session_secret = os.getenv("SESSION_SECRET")
+if not _session_secret:
+    logger.warning(
+        "SESSION_SECRET not set; using an ephemeral per-process secret "
+        "(a Google sign-in in progress won't survive a restart)."
+    )
+    _session_secret = secrets.token_urlsafe(32)
+app.add_middleware(SessionMiddleware, secret_key=_session_secret)
 
 # Keep the static asset pipeline mounted at root. Docker's bind mount
 # (./data:/opt/project/data) auto-creates this directory at container start, but a bare
@@ -60,6 +87,7 @@ app.mount("/data", StaticFiles(directory="data"), name="data")
 # -------------------------------------------------------------
 # ROUTER HOOKS - Registering the modular layout blocks
 # -------------------------------------------------------------
+app.include_router(auth.router)
 app.include_router(terminator.router)
 app.include_router(satellites.router)
 app.include_router(storms.router)

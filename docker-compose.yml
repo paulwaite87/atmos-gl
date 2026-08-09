@@ -79,8 +79,15 @@ services:
   map_api:
     image: ghcr.io/paulwaite87/atmos-gl:latest
     # Reverted to a simpler runtime installation since agluser now owns the virtual environment
+    # --proxy-headers/--forwarded-allow-ips: trust map_ui's nginx (the only path in,
+    # see config/nginx.conf) to set X-Forwarded-Proto -- without this, request.url_for()
+    # (used to build the Google OAuth redirect_uri, issue #303) would build it from the
+    # raw internal http connection rather than the public-facing scheme. Scoped to Docker's
+    # default bridge-network range (172.16.0.0/12), not '*' -- port 9000 is also published
+    # straight to the host below, and '*' would let anyone hitting it directly spoof
+    # X-Forwarded-Proto/Host and steer the OAuth redirect_uri.
     command: >
-      bash -c "uv pip install fastapi uvicorn && python -m uvicorn atmos_gl.api:app --host 0.0.0.0 --port 9000"
+      bash -c "uv pip install fastapi uvicorn authlib itsdangerous httpx && python -m uvicorn atmos_gl.api:app --host 0.0.0.0 --port 9000 --proxy-headers --forwarded-allow-ips='172.16.0.0/12'"
     ports:
       - "9000:9000"
     env_file:
@@ -99,6 +106,11 @@ services:
       - MAPTILER_API_KEY=${MAPTILER_API_KEY}
       - FIRMS_API_KEY=${FIRMS_API_KEY}
       - LAYER_BUILDER_ORDER_URL=http://layer_builder:9100
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+      - ADMIN_EMAILS=${ADMIN_EMAILS}
+      - SESSION_SECRET=${SESSION_SECRET}
+      - PUBLIC_ORIGIN=${PUBLIC_ORIGIN:-http://localhost:8180}
     restart: unless-stopped
     depends_on:
       atmos_gl_db:
