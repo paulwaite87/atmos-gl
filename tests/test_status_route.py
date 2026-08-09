@@ -16,6 +16,8 @@ CONFIG_PATH) rather than the real one, since this endpoint writes to disk.
 import json
 from datetime import datetime, timezone
 
+import pytest
+
 from atmos_gl.routes.status import (
     get_collector_classes,
     get_cache_collector_classes,
@@ -30,6 +32,15 @@ from atmos_gl.routes.status import (
 )
 from atmos_gl.api import app
 from atmos_gl.db.process_status_adapter import FakeProcessStatusAdapter
+
+
+@pytest.fixture(autouse=True)
+def _admin_session(admin_client):
+    """Every route here is gated by require_admin (issue #304); these tests exercise
+    the route's own logic, not the gate itself (see tests/test_admin_gated_routes.py
+    for that), so authenticate as admin automatically rather than touching every
+    individual test's client.get/post call."""
+    pass
 
 
 class _StubCollector:

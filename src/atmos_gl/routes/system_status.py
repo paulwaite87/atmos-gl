@@ -24,6 +24,7 @@ from sqlalchemy import text
 
 from atmos_gl.db.engine import Session
 from atmos_gl.db.process_status_adapter import ProcessStatusAdapter
+from atmos_gl.routes.auth import require_admin
 from atmos_gl.routes.config import load_config
 
 logger = logging.getLogger("atmos_gl.routes.system_status")
@@ -142,6 +143,7 @@ def _disk_status() -> dict:
 @router.get("/system_status")
 def get_system_status(
     process_status_adapter: ProcessStatusAdapter = Depends(get_process_status_adapter),
+    admin: dict = Depends(require_admin),
 ):
     services = [
         _service_status(name, meta, process_status_adapter)

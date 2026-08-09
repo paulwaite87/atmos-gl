@@ -7,12 +7,26 @@ See routes/config.py::_build_config_data()/update_config().
 import json
 from unittest.mock import patch
 
+import pytest
 from fastapi.testclient import TestClient
 
 from atmos_gl.api import app
+from atmos_gl.lib.auth import SESSION_COOKIE_NAME
 from atmos_gl.lib.config import AtmosGLConfig
+from atmos_gl.routes.auth import get_user_adapter
+from tests.conftest import make_signed_in_session
 
 client = TestClient(app)
+
+
+# POST /api/config is gated by require_admin (issue #304); see
+# tests/test_config_field_specs.py's identical fixture for why this is autouse +
+# re-applied per test rather than a one-time module-level assignment.
+@pytest.fixture(autouse=True)
+def _admin_session():
+    fake, token = make_signed_in_session(is_admin=True)
+    app.dependency_overrides[get_user_adapter] = lambda: fake
+    client.cookies.set(SESSION_COOKIE_NAME, token)
 
 
 def _with_temp_config(tmp_path, initial: dict):
