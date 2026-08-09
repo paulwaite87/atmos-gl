@@ -179,12 +179,11 @@ describe('createCurrentParticleGLLayer wiring', () => {
         expect(opts.landReset({})).toBe(0.0);
     });
 
-    test('sets onMount/onRefresh/onUnmount/keyUrl -- the only consumer with no accompanying fill layer', async () => {
+    test('sets onMount/onRefresh/onUnmount -- the only consumer with no accompanying fill layer', async () => {
         const opts = await captureParticleControllerOpts('ui/modules/jetstream.js', 'loadLayer');
         expect(typeof opts.onMount).toBe('function');
         expect(typeof opts.onRefresh).toBe('function');
         expect(typeof opts.onUnmount).toBe('function');
-        expect(typeof opts.keyUrl).toBe('function');
     });
 
     test('does not set hourDataUrl/backfillKey -- forecast hours are GFS-timeline-relative 1:1, unlike currents', async () => {

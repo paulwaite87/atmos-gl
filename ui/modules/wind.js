@@ -151,11 +151,14 @@ export async function loadLayer(map, config, fullConfig = {}) {
     } catch (_) { /* use default */ }
     const vmaxMs = heatmapMaxKph / 3.6;
 
-    // Backend-rendered key PNG (tasks/wind.py's save_wind_key), same as every other
-    // layer -- previously this was a hand-built DOM gradient bar, the one layer
-    // visibly inconsistent with the rest (different bar height/length, its own
-    // font-size convention, no shared styling code).
-    const legend = standardLegend('wind-legend-slot', (cfg) => cfg.outfile, 0.6);
+    // Client-drawn key (_keycanvas.js), same as every other layer. heatmapMaxKph is
+    // data-driven (see wind_meta.json fetch above) -- mirrors tasks/wind.py's
+    // save_wind_key, whose ticks/title are built from the SAME VMAX_SPEED value.
+    const windTicks = Array.from({ length: 5 }, (_, i) => (i / 4) * heatmapMaxKph);
+    const legend = standardLegend('wind-legend-slot', () => ({
+        lut: buildLUT(), vmin: 0, vmax: heatmapMaxKph, ticks: windTicks,
+        title: 'Wind speed (km/h)', tickFormat: '%d',
+    }), 0.6);
 
     // Keep the static-raster (non-stepping) heatmap opacity live too. Fill (stepping) mode
     // gets its opacity from u_alpha; static mode is a raster layer, so set raster-opacity
@@ -199,10 +202,6 @@ export async function loadLayer(map, config, fullConfig = {}) {
         onMount: (cfg) => { legend.addLegend(cfg); applyHeatmapOpacity(cfg); },
         onRefresh: (cfg) => { legend.addLegend(cfg); applyHeatmapOpacity(cfg); },
         onUnmount: legend.removeLegend,
-        // Palette changes never touch the heatmap's data texture (colour is applied
-        // entirely client-side), so the default imageUrl regen chase can't detect that
-        // the legend needs re-fetching -- keyUrl gives it its own independent chase.
-        keyUrl: legend.keyUrl,
     });
 
     // 2) Particles, exactly as before EXCEPT a single fixed colour (particle_color), which

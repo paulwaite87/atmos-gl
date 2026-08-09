@@ -3,13 +3,19 @@ import { CMAP_RDYLBU_R, rgbToRgba } from './_colormaps.js';
 import { standardLegend } from './_legend.js';
 import { opacityUniform } from './_opacity.js';
 
-// GPU scrubber layer. Linear RdYlBu_r ramp over [-40, 50] °C, matching the static
-// matplotlib colourbar key (TemperatureUpdater: cmap RdYlBu_r, Normalize -40..50).
+// GPU scrubber layer. Linear RdYlBu_r ramp over [-40, 50] °C -- mirrors
+// tasks/scalar_field.py's SPECS["temperature"] (cmap RdYlBu_r, Normalize -40..50,
+// same ticks/title) so the client-drawn legend key matches exactly.
 const VMIN = -40.0;
 const VMAX = 50.0;
+const TICKS = [-40, -20, 0, 10, 20, 30, 40, 50];
 
 export function loadLayer(map, config, fullConfig = {}) {
-    const legend = standardLegend('temperature-legend-slot', (cfg) => cfg.outfile, 0.85);
+    const legend = standardLegend('temperature-legend-slot', () => ({
+        lut: rgbToRgba(CMAP_RDYLBU_R),
+        vmin: VMIN, vmax: VMAX, ticks: TICKS,
+        title: 'Temperature (°C)', tickFormat: '%d',
+    }), 0.85);
 
     createFillLayer(map, {
         sectionKey: 'temperature',
@@ -34,9 +40,5 @@ export function loadLayer(map, config, fullConfig = {}) {
         onMount: legend.addLegend,
         onRefresh: legend.addLegend,
         onUnmount: legend.removeLegend,
-        // key_fontsize changes never touch the fill's data texture, so the default
-        // imageUrl regen chase can't detect that the legend needs re-fetching --
-        // keyUrl gives it its own independent chase.
-        keyUrl: legend.keyUrl,
     });
 }

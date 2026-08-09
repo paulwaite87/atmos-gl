@@ -90,39 +90,6 @@ class PrecipitationUpdater(SingleHourScalarUpdater):
             ],
         }
 
-    def save_precipitation_key(self, output_path):
-        """Standalone key image. Uses a solid-colour ListedColormap over a coarser
-        tick set than the map render's alpha-blended contourf cmap — alpha would look
-        odd in a legend, and the render's finer BoundaryNorm levels are more detail
-        than a legend needs.
-
-        key_fontsize/labelsize/weight/tick_format match every other layer's key (sst/
-        currents/waves) -- this key used to be smaller/unbolded with no explicit
-        tick_format, which is why it visibly looked different from those (and from
-        Wind's key, now also converted to this same style)."""
-        # Honour the configured palette (matches the map render + the GPU layer),
-        # falling back to 'standard' if an unknown palette is set.
-        palette_name = self.settings.get("palette", "standard")
-        base_colors = self.PALETTES.get(palette_name, self.PALETTES["standard"])
-        key_ticks = [0.1, 1.0, 5.0, 15.0, 50.0, 100.0]
-        cmap = mcolors.ListedColormap(base_colors)
-        norm = mcolors.BoundaryNorm(key_ticks, cmap.N)
-
-        self.save_key_image(
-            output_path,
-            cmap,
-            norm,
-            key_ticks,
-            "Precipitation (mm/hr)",
-            key_fontsize=self.common.get("key_fontsize", 10),
-            labelsize=8,
-            weight="bold",
-            tick_format="%.1f",
-        )
-
-    def _write_key(self):
-        self.save_precipitation_key(self.output_path)
-
     def plot(self, field0, state: ForecastState):
         """Static region render (frame 0) + colourbar key + global N-frame texture.
 

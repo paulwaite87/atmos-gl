@@ -26,7 +26,6 @@ def make_bare_fire_weather_updater():
     u.map_data.region.region_identifier = "global"
     u.regrid_for_lod = MagicMock(return_value=([0], [0], [[0]]))
     u.get_output_path_for_hour = MagicMock(return_value="/tmp/out/fires_f003.png")
-    u.save_key_image = MagicMock()
     return u
 
 
@@ -52,13 +51,12 @@ def test_init_decouples_section_from_fieldstore_product():
 
 
 def test_is_a_scalar_field_updater_and_reuses_its_render_path():
-    """plot()/_resolve_cmap()/_write_legend_key()/run() must all be the inherited
-    ScalarFieldUpdater implementations, unchanged -- this task overrides ONLY __init__."""
+    """plot()/_resolve_cmap()/run() must all be the inherited ScalarFieldUpdater
+    implementations, unchanged -- this task overrides ONLY __init__."""
     assert issubclass(FireWeatherUpdater, ScalarFieldUpdater)
     assert FireWeatherUpdater.plot is ScalarFieldUpdater.plot
     assert FireWeatherUpdater.run is ScalarFieldUpdater.run
     assert FireWeatherUpdater._resolve_cmap is ScalarFieldUpdater._resolve_cmap
-    assert FireWeatherUpdater._write_legend_key is ScalarFieldUpdater._write_legend_key
 
 
 def test_plot_dispatches_the_fire_weather_spec():

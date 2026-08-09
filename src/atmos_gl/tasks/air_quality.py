@@ -87,12 +87,6 @@ _SO2_KG_M2_TO_DU = (1000.0 / _SO2_MOLAR_MASS_G_PER_MOL) * _AVOGADRO_PER_MOL / _D
 _UNIT_SCALE = {
     "pm2_5": 1e9, "pm10": 1e9, "aod": 1.0, "so2": _SO2_KG_M2_TO_DU, "so2_volcanic": _SO2_KG_M2_TO_DU,
 }
-_DISPLAY_UNIT = {"pm2_5": "µg/m³", "pm10": "µg/m³", "aod": "", "so2": "DU", "so2_volcanic": "DU"}
-_DISPLAY_LABEL = {
-    "pm2_5": "PM2.5", "pm10": "PM10", "aod": "Smoke (AOD)",
-    "so2": "SO2 (Sulphur Dioxide)", "so2_volcanic": "SO2 (Volcanic)",
-}
-_TICK_FORMAT = {"pm2_5": "%d", "pm10": "%d", "aod": "%.2f", "so2": "%.1f", "so2_volcanic": "%.1f"}
 
 # Flat, variable-prefixed setting key (pm2_5_min, aod_min, ...) -- same convention
 # greenhouse_gases.py's _SCALE_SETTING_KEYS uses, since FIELD_SPECS/validate_against_specs
@@ -285,9 +279,6 @@ class AirQualityUpdater(Updater):
             fade = np.ones_like(display_data)
         rgba[..., 3] = fade * alpha
 
-        unit = _DISPLAY_UNIT[variable]
-        title_text = f"{_DISPLAY_LABEL[variable]} ({unit})" if unit else _DISPLAY_LABEL[variable]
-
         # Rendered via a hand-rolled Web Mercator pre-warp + a plain, NON-cartopy
         # imshow() rather than pcolormesh/imshow's usual transform=ccrs.PlateCarree()
         # path -- three approaches were tried live and rejected before this one:
@@ -354,18 +345,10 @@ class AirQualityUpdater(Updater):
         # "auto" immediately after imshow() restores the full-canvas viewport.
         plot.ax.set_aspect("auto", adjustable="box")
         plot.save_figure(output_path)
-        calculated_ticks = np.linspace(vmin, vmax, 5)
-        self.save_key_image(
-            output_path,
-            cmap,
-            norm,
-            calculated_ticks,
-            title_text,
-            key_fontsize=self.common.get("key_fontsize", 10),
-            labelsize=8,
-            tick_format=_TICK_FORMAT[variable],
-            weight="bold",
-        )
+        # Legend key renders entirely client-side now (issue #302) -- vmin comes from
+        # settings and vmax from the fixed _FIXED_CEILING, both already visible to the
+        # frontend via /api/config, so no sidecar metadata is needed (unlike SST/
+        # greenhouse gases' anomaly modes).
 
         plt_close = getattr(plot, "close", None)
         if callable(plt_close):

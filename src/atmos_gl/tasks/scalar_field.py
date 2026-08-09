@@ -197,9 +197,6 @@ class ScalarFieldUpdater(SingleHourScalarUpdater):
         super().__init__(config, spec.product, map_data)
         self.spec = spec
 
-    def _write_key(self):
-        self._write_legend_key()
-
     def _resolve_cmap(self):
         """The plain named `spec.cmap` for temperature/stormwatch, or the live
         threshold-built colormap for ozone/pwat (spec.threshold_setting set) --
@@ -216,29 +213,6 @@ class ScalarFieldUpdater(SingleHourScalarUpdater):
         palette_colors = spec.palettes.get(palette_name, spec.palettes[spec.palette_default])
         return _threshold_colormap(
             spec.vmin, spec.vmax, threshold, spec.focus, palette_colors, spec.flat_color
-        )
-
-    def _write_legend_key(self):
-        """Colourbar key depends only on palette/threshold/key_fontsize settings, not
-        forecast data. Refresh it unconditionally every run so config changes take
-        effect without waiting on should_plot_for_hour's data-freshness gate.
-
-        key_fontsize/labelsize/weight/tick_format match every other layer's key (sst/
-        currents/waves) -- precipitation and this shared scalar-field key used to be
-        the odd ones out (smaller, unbolded, no explicit tick_format), which is why the
-        Precipitation key visibly looked different from Wind/SST/Currents/Waves."""
-        cmap = self._resolve_cmap()
-        norm = mcolors.Normalize(vmin=self.spec.vmin, vmax=self.spec.vmax)
-        self.save_key_image(
-            self.output_path,
-            cmap,
-            norm,
-            self.spec.ticks,
-            self.spec.title,
-            key_fontsize=self.common.get("key_fontsize", 10),
-            labelsize=8,
-            weight="bold",
-            tick_format="%d",
         )
 
     def plot(self, field0, state: ForecastState):

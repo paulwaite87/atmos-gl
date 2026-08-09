@@ -28,11 +28,6 @@ class SingleHourScalarUpdater(Updater, MultiHourRenderMixin):
         # other updaters this cycle; render_all_hours resolves its own state from the
         # catalog below, so the return value here is unused.
         self.get_gfs_state()
-        # The legend key is cheap to draw and depends only on palette/threshold/
-        # key_fontsize settings, not forecast data. Refresh it unconditionally every
-        # run, so settings changes apply immediately instead of waiting on
-        # should_plot_for_hour's data-freshness gate below.
-        self._write_key()
         # Render EVERY available forecast hour (gap-filling), so the scrubber has
         # a PNG for each hour. should_plot_for_hour skips hours already fresh.
         # max_hours=1 from layer_builder's round-robin dispatch renders one hour and
@@ -43,9 +38,6 @@ class SingleHourScalarUpdater(Updater, MultiHourRenderMixin):
             field_ready=lambda f: f.get("values") is not None,
             max_hours=max_hours,
         )
-
-    def _write_key(self):
-        raise NotImplementedError
 
     def plot(self, field0, state):
         raise NotImplementedError

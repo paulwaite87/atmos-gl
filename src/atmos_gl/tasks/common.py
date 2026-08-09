@@ -23,7 +23,6 @@ from atmos_gl.lib.data_status import (
     resolve_run_epoch_utc,
     build_status,
 )
-from .plotting import PlottingMixin
 
 logger = logging.getLogger(__name__)
 
@@ -196,7 +195,7 @@ class ForecastState:
         return cls(run_date_str, run_id, f"{int(fhour):03d}")
 
 
-class Updater(PlottingMixin):
+class Updater:
     def __init__(self, config: AtmosGLConfig, section: str, map_data: MapData):
         self.config = config
         self.map_data = map_data
@@ -319,26 +318,41 @@ class Updater(PlottingMixin):
         """Copy a per-variant render (e.g. 'data/sst_anomaly.png', 'data/
         greenhouse_gases_co2_absolute.png', 'data/air_quality_pm2_5.png') to the
         stable, run-agnostic base filename (self.output_path) for anything still
-        reading that name directly -- along with its '_key' companion image, if one
-        exists. Always refreshed each cycle (a cheap file copy), independent of
-        whether that variant's plot needed re-rendering this cycle.
+        reading that name directly. Always refreshed each cycle (a cheap file copy),
+        independent of whether that variant's plot needed re-rendering this cycle.
 
         Shared by every layer that renders several variants per cycle and publishes
         only the currently-configured one (SSTUpdater's mode, GhgUpdater's
         species+mode, AirQualityUpdater's variable) -- lifted here after the third
         near-identical copy appeared, rather than adding a fourth."""
-        base, ext = os.path.splitext(self.output_path)
-        variant_base, variant_ext = os.path.splitext(variant_output_path)
-        pairs = [
-            (variant_output_path, self.output_path),
-            (f"{variant_base}_key{variant_ext}", f"{base}_key{ext}"),
-        ]
-        for src, dst in pairs:
-            if not os.path.exists(src):
-                continue
-            tmp = f"{dst}.tmp"
-            shutil.copy2(src, tmp)
-            os.replace(tmp, dst)
+        if not os.path.exists(variant_output_path):
+            return
+        tmp = f"{self.output_path}.tmp"
+        shutil.copy2(variant_output_path, tmp)
+        os.replace(tmp, self.output_path)
+
+    def _write_meta_sidecar(self, filename: str, entry_key: str, value: dict):
+        """Merge `{entry_key: value}` into a small JSON sidecar next to this task's
+        output (e.g. 'sst_meta.json', 'ghg_meta.json') and write it back -- used by
+        layers whose legend needs a data-dependent scale computed server-side (98th
+        percentile of live data) with no other way to reach the client-side canvas
+        key. Mirrors WindUpdater's original wind_meta.json precedent; shared here
+        after SSTUpdater and GhgUpdater's near-identical versions appeared
+        independently (see issue #302)."""
+        if not self.output_path:
+            return
+        meta_path = os.path.join(os.path.dirname(self.output_path), filename)
+        try:
+            try:
+                with open(meta_path) as f:
+                    meta = json.load(f)
+            except (FileNotFoundError, json.JSONDecodeError):
+                meta = {}
+            meta[entry_key] = value
+            with open(meta_path, "w") as f:
+                json.dump(meta, f)
+        except Exception as e:
+            logger.warning(f"{self.section}: could not write {filename}: {e}")
 
     def get_db_field_at_hour(self, state: "ForecastState", product_name: str) -> dict | None:
         """Fetch a pre-processed field from the fieldstore for a specific forecast run

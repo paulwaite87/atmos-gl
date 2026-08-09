@@ -23,8 +23,22 @@ const PALETTES = {
 };
 const FLAT_COLOR = [0, 0, 0, 0]; // fully transparent -- unremarkable moisture
 
+// Mirrors tasks/scalar_field.py's SPECS["pwat"] ticks/title.
+const TICKS = [0, 20, 40, 50, 60, 80];
+
+const lutFor = (cfg) => buildThresholdLUT({
+    vmin: VMIN, vmax: VMAX,
+    threshold: Number(cfg.critical_pwat) || 50.0,
+    focus: 'above',
+    paletteColors: PALETTES[cfg.palette] || PALETTES.standard,
+    flatColor: FLAT_COLOR,
+});
+
 export function loadLayer(map, config, fullConfig = {}) {
-    const legend = standardLegend('pwat-legend-slot', (cfg) => cfg.outfile, 0.85);
+    const legend = standardLegend('pwat-legend-slot', (cfg) => ({
+        lut: lutFor(cfg), vmin: VMIN, vmax: VMAX, ticks: TICKS,
+        title: 'Precipitable Water (mm)', tickFormat: '%d',
+    }), 0.85);
 
     createFillLayer(map, {
         sectionKey: 'pwat',
@@ -45,19 +59,9 @@ export function loadLayer(map, config, fullConfig = {}) {
         customUniforms: (cfg) => ({
             u_alpha: opacityUniform(cfg, 0.85),
         }),
-        colormap: (cfg) => buildThresholdLUT({
-            vmin: VMIN, vmax: VMAX,
-            threshold: Number(cfg.critical_pwat) || 50.0,
-            focus: 'above',
-            paletteColors: PALETTES[cfg.palette] || PALETTES.standard,
-            flatColor: FLAT_COLOR,
-        }),
+        colormap: (cfg) => lutFor(cfg),
         onMount: legend.addLegend,
         onRefresh: legend.addLegend,
         onUnmount: legend.removeLegend,
-        // Palette changes never touch the fill's data texture (colour is applied
-        // entirely client-side), so the default imageUrl regen chase can't detect that
-        // the legend needs re-fetching -- keyUrl gives it its own independent chase.
-        keyUrl: legend.keyUrl,
     });
 }

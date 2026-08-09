@@ -40,6 +40,11 @@ export function paletteFor(cfg) {
     return (cfg.palette && PALETTES[cfg.palette]) ? cfg.palette : 'thermal_red';
 }
 
+// Mirrors VectorFieldUpdater.save_key's ticks (np.linspace(0, VMAX, 4)) and
+// CurrentsUpdater's KEY_TITLE/KEY_TICK_FORMAT (KEY_SPEED_SCALE is currents' default
+// 1.0, so the key stays in the same m/s units as VMAX).
+const KEY_TICKS = [0, 1, 2, 3].map((i) => (i / 3) * VMAX);
+
 // trail_length (0-100) -> the trail engine's per-segment integration arc (u_H). See the
 // inline comment at this function's call site (below) for why this range specifically
 // -- exported/named (rather than inline) so it's independently testable.
@@ -140,8 +145,11 @@ export async function loadLayer(map, config, fullConfig = {}) {
         return `${window.MAP_UI}/${base}_f${f}_data.png?t=${bust}`;
     };
 
-    // ---- legend (colourbar key PNG written by the backend) ----
-    const legend = standardLegend(slotId, (cfg) => cfg.outfile);
+    // ---- legend (client-drawn key -- _keycanvas.js) ----
+    const legend = standardLegend(slotId, (cfg) => ({
+        lut: buildLUT(paletteFor(cfg)), vmin: 0, vmax: VMAX, ticks: KEY_TICKS,
+        title: 'Current Speed (m/s)', tickFormat: '%.1f',
+    }));
 
     // ---- 1) SPEED FILL (underneath): speed = |decode(u,v)|, coloured via LUT ----
     const stopFill = createFillLayer(map, {
@@ -189,10 +197,6 @@ export async function loadLayer(map, config, fullConfig = {}) {
         onMount: legend.addLegend,
         onRefresh: legend.addLegend,
         onUnmount: legend.removeLegend,
-        // Palette changes never touch the fill's data texture (colour is applied
-        // entirely client-side), so the default imageUrl regen chase can't detect that
-        // the legend needs re-fetching -- keyUrl gives it its own independent chase.
-        keyUrl: legend.keyUrl,
     });
 
     // ---- 2) PARTICLES (on top): flowing trails advected along the u/v texture ----

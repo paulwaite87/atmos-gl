@@ -24,14 +24,6 @@ export function liveLayerSync(map, {
     sectionKey, initialConfig, mount, refresh, unmount, imageUrl,
     onMissing = null,        // optional: called with cfg when the probe HEAD 404s, so the
                              // layer can flag demand-driven backfill for the missing hour
-    // Optional: (cfg) => the backend-rendered legend/colourbar-key PNG's URL, if this
-    // layer has one. Lives at a DIFFERENT path than imageUrl and isn't gated on
-    // forecast-hour freshness, so it needs its own independent regen chase -- a config
-    // change that only affects the key (e.g. a client-side-colormap layer's palette,
-    // which never touches the data image's own mtime) would otherwise go undetected by
-    // the imageUrl-only chase below and sit stale until the slow refreshMs fallback.
-    // null (default): no key image, no extra chase -- existing callers unaffected.
-    keyUrl = null,
     syncMs = 20000, refreshMs = 300000,
     globalKeys = [], initialGlobals = {},
     regenWaitMs = 120000,
@@ -42,9 +34,6 @@ export function liveLayerSync(map, {
     let awaitingRegen = false;
     let regenDeadline = 0;
     let baselineMtime = 0;
-    let awaitingKeyRegen = false;
-    let keyRegenDeadline = 0;
-    let keyBaselineMtime = 0;
 
     // The shared reconcileLoop's initial dispatch only knows this layer's OWN
     // section (it has no concept of globalKeys), so `data` won't carry the other
@@ -85,23 +74,6 @@ export function liveLayerSync(map, {
         } catch { return 0; }
     };
 
-    // Last-Modified of the served key image (0 if unavailable) -- same shape as
-    // imageMtime but never triggers onMissing: a missing legend must never be treated
-    // as "the forecast hour is missing" (that's imageUrl's/onMissing's job, driving
-    // demand-driven backfill), so any non-ok status just means "no evidence yet".
-    const keyMtime = async (cfg) => {
-        if (!keyUrl) return 0;
-        const url = keyUrl(cfg);
-        if (!url) return 0;
-        try {
-            const r = await fetch(withProbe(url), { method: 'HEAD' });
-            if (!r.ok) return 0;
-            const lm = r.headers.get('Last-Modified');
-            const t = lm ? Date.parse(lm) : NaN;
-            return Number.isNaN(t) ? 0 : t;
-        } catch { return 0; }
-    };
-
     const imageExists = async (cfg) => {
         if (!imageUrl) return true;                       // no probe supplied -> assume present
         const url = imageUrl(cfg);
@@ -121,14 +93,13 @@ export function liveLayerSync(map, {
         imageReady = false;
         lastRefresh = Date.now(); lastSig = sigOf(section, globals);
         awaitingRegen = false;
-        awaitingKeyRegen = false;
         console.log(`[${sectionKey}] enabled — mounting; awaiting image.`);
         return true;                                       // readiness handled next tick
     };
 
     const onDisable = () => {
         unmount();
-        imageReady = false; awaitingRegen = false; awaitingKeyRegen = false;
+        imageReady = false; awaitingRegen = false;
         console.log(`[${sectionKey}] disabled — layer removed.`);
     };
 
@@ -148,11 +119,6 @@ export function liveLayerSync(map, {
                 awaitingRegen = true;
                 regenDeadline = Date.now() + regenWaitMs;
                 baselineMtime = await imageMtime(section);
-            }
-            if (keyUrl) {
-                awaitingKeyRegen = true;
-                keyRegenDeadline = Date.now() + regenWaitMs;
-                keyBaselineMtime = await keyMtime(section);
             }
         } else if (!imageReady) {
             const exists = await imageExists(section);
@@ -177,20 +143,6 @@ export function liveLayerSync(map, {
         } else if (Date.now() - lastRefresh >= refreshMs) {
             refresh(section, globals);                // unchanged config: slow cadence
             lastRefresh = Date.now();                 // (picks up regenerated PNGs)
-        }
-
-        // Independent key-image regen chase (opt-in via keyUrl) -- see its docstring
-        // above. Runs alongside (not instead of) the branches above; skipped on the
-        // SAME tick a change just armed it, since keyBaselineMtime was only just set.
-        if (!changed && awaitingKeyRegen) {
-            const km = await keyMtime(section);
-            if (km && km > keyBaselineMtime) {
-                refresh(section, globals);
-                awaitingKeyRegen = false;
-                lastRefresh = Date.now();
-                console.log(`[${sectionKey}] backend key re-render detected — applied.`);
-            }
-            if (Date.now() >= keyRegenDeadline) awaitingKeyRegen = false;
         }
     };
 
