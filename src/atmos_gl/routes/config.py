@@ -8,6 +8,7 @@ from atmos_gl.db.field_catalog_adapter import FieldCatalogAdapter
 from atmos_gl.lib.config import AtmosGLConfig
 from atmos_gl.lib.data_status import resolve_run_epoch_utc
 from atmos_gl.lib.output_files import OUTFILES
+from atmos_gl.routes.auth import require_admin
 from atmos_gl.routes.field_specs import (
     FIELD_SPECS,
     field_label,
@@ -240,20 +241,42 @@ def _build_config_data() -> dict:
     return data
 
 
+def _strip_backend_only_secrets(data: dict) -> dict:
+    """Drops "api_key" from every section except "common" -- _inject_secrets()
+    (lib/config.py) stamps AIS_API_KEY/OPENWEATHER_API_KEY/FIRMS_API_KEY into
+    shipping_collector/lightning_collector/fires so the collectors that read
+    self.settings["api_key"] at runtime keep working, but those are backend-only
+    credentials that must never reach GET /api/config's public, unauthenticated
+    response (issue #304 code review). common.api_key (MAPTILER_API_KEY) is the one
+    genuine exception: the map itself embeds it directly in client-side MapTiler tile
+    requests, so it's already public by design. Builds fresh per-section dicts rather
+    than mutating `data` in place -- `data`'s nested dicts are the same objects as the
+    live AtmosGLConfig.config's (see _build_config_data()'s shallow .copy()), and
+    config_page() (the admin-gated /config page) reuses that same data unfiltered."""
+    return {
+        section: (
+            {k: v for k, v in settings.items() if k != "api_key"}
+            if section != "common" and isinstance(settings, dict)
+            else settings
+        )
+        for section, settings in data.items()
+    }
+
+
 @router.get("/config")
 def get_config():
-    return {"status": "success", "data": _build_config_data()}
+    return {"status": "success", "data": _strip_backend_only_secrets(_build_config_data())}
 
 
 @ui_router.get("/config")
-def config_page(request: Request):
+def config_page(request: Request, admin: dict = Depends(require_admin)):
     return templates.TemplateResponse(
         request, "config.html", {"config_data": _build_config_data()}
     )
 
 
 @ui_router.get("/config/section_defaults/{section}")
-def section_defaults(section: str, request: Request):
+def section_defaults(section: str, request: Request, admin: dict = Depends(require_admin)):
     """Renders one section's field grid sourced from config/atmos-gl.json.tmpl's
     values instead of the live config -- backs the config page's "Set to Defaults"
     button. Returns just the fragment (field_macros.render_field_group's output);
@@ -271,7 +294,7 @@ def section_defaults(section: str, request: Request):
 
 
 @router.post("/config")
-async def update_config(payload: dict):
+async def update_config(payload: dict, admin: dict = Depends(require_admin)):
     errors = validate_against_specs(payload)
     if errors:
         raise HTTPException(status_code=422, detail=errors)

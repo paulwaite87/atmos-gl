@@ -50,6 +50,39 @@ def client():
     app.dependency_overrides.clear()
 
 
+def make_signed_in_session(*, is_admin: bool = True):
+    """(fake_user_adapter, session_token) for a signed-in user -- shared by admin_client
+    below and any test file authenticating the `client` fixture for routes gated by
+    routes.auth.require_admin (issue #304). Sets is_admin directly on the fake rather
+    than going through ADMIN_EMAILS/is_admin_email -- these tests exercise the route
+    gate, not admin recognition itself (see tests/test_lib_auth.py for that). Not a
+    fixture itself (parametrized by is_admin) -- imported directly by test files that
+    need a non-admin session too (e.g. tests/test_admin_gated_routes.py's 403 cases)."""
+    from atmos_gl.db.user_adapter import FakeUserAdapter
+
+    fake = FakeUserAdapter()
+    user = fake.get_or_create_user(
+        email="admin@example.com" if is_admin else "visitor@example.com",
+        name="Admin" if is_admin else "Visitor",
+        provider="google", provider_user_id="sub-1",
+    )
+    fake._users[user["id"]]["is_admin"] = is_admin
+    token = fake.create_session(user["id"], ttl_seconds=3600)
+    return fake, token
+
+
+@pytest.fixture
+def admin_client(client):
+    """`client`, pre-authenticated as an admin user (issue #304's admin-gated routes)."""
+    from atmos_gl.lib.auth import SESSION_COOKIE_NAME
+    from atmos_gl.routes.auth import get_user_adapter
+
+    fake, token = make_signed_in_session(is_admin=True)
+    app.dependency_overrides[get_user_adapter] = lambda: fake
+    client.cookies.set(SESSION_COOKIE_NAME, token)
+    return client
+
+
 @pytest.fixture(scope="session")
 def real_db():
     with PostgresContainer(

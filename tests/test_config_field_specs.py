@@ -9,10 +9,13 @@ consume them.
 import json
 from unittest.mock import patch
 
+import pytest
 from fastapi.testclient import TestClient
 
 from atmos_gl.api import app
+from atmos_gl.lib.auth import SESSION_COOKIE_NAME
 from atmos_gl.lib.config import AtmosGLConfig
+from atmos_gl.routes.auth import get_user_adapter
 from atmos_gl.routes.field_specs import (
     SliderSpec,
     FIELD_SPECS,
@@ -26,8 +29,25 @@ from atmos_gl.routes.field_specs import (
     is_api_key_field,
     validate_against_specs,
 )
+from tests.conftest import make_signed_in_session
 
 client = TestClient(app)
+
+
+# GET /config, GET /config/section_defaults/{section}, and POST /api/config are gated by
+# require_admin (issue #304); this file's `client` is a module-level singleton reused
+# across every test below (never cleared), so authenticate it as admin here rather than
+# at each of the ~25 call sites. autouse + re-applied per test (not a one-time module-
+# level assignment) because another file's `client` fixture teardown
+# (app.dependency_overrides.clear()) can run between collection and these tests actually
+# executing when the whole suite runs together, wiping a one-time override. These tests
+# exercise the config UI/routes' existing behaviour, not the admin gate itself (see
+# tests/test_admin_gated_routes.py for that).
+@pytest.fixture(autouse=True)
+def _admin_session():
+    fake, token = make_signed_in_session(is_admin=True)
+    app.dependency_overrides[get_user_adapter] = lambda: fake
+    client.cookies.set(SESSION_COOKIE_NAME, token)
 
 
 # --- Pure spec helpers ---

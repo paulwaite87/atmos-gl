@@ -34,6 +34,22 @@ def _current_user(request: Request, user_adapter: UserAdapter) -> dict | None:
     return user_adapter.get_session_user(token) if token else None
 
 
+def require_admin(request: Request, user_adapter: UserAdapter = Depends(get_user_adapter)) -> dict:
+    """FastAPI dependency gating admin-only routes (issue #304): 401 with no/invalid
+    session, 403 if signed in but not an admin. Reused via Depends(require_admin) by
+    routes/config.py, routes/status.py, and routes/system_status.py -- every route
+    that views or changes the global configuration or the internal operational status
+    only the config UI shows. GET /api/config and /api/forecast_state stay
+    unauthenticated: the public map depends on them to load (see #304's acceptance
+    criteria)."""
+    user = _current_user(request, user_adapter)
+    if user is None:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    if not user["is_admin"]:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return user
+
+
 @router.get("/login/google")
 async def login_google(request: Request):
     redirect_uri = request.url_for("callback_google")

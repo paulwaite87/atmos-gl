@@ -14,6 +14,7 @@ from atmos_gl.db.field_catalog_adapter import FieldCatalogAdapter
 from atmos_gl.db.process_status_adapter import ProcessStatusAdapter
 from atmos_gl.lib import fieldstore
 from atmos_gl.lib.data_status import RUNS_PER_DAY_CHOICES
+from atmos_gl.routes.auth import require_admin
 from atmos_gl.routes.config import load_config
 
 from atmos_gl.collectors import (
@@ -261,6 +262,7 @@ def get_data_status(
     embeddable_collector_classes=Depends(get_embeddable_collector_classes),
     task_classes=Depends(get_task_classes),
     process_status_adapter=Depends(get_process_status_adapter),
+    admin: dict = Depends(require_admin),
 ):
     try:
         config = load_config()
@@ -353,7 +355,7 @@ def get_data_status(
 
 
 @router.post("/data_status/channel_enabled/{channel_key}")
-def set_channel_enabled(channel_key: str, payload: dict):
+def set_channel_enabled(channel_key: str, payload: dict, admin: dict = Depends(require_admin)):
     """Flip one data_collector.channel_enabled[channel_key] and save immediately --
     deliberately its own tiny endpoint rather than routing through /api/config's POST
     (which replaces the ENTIRE config from the client's masterConfigCache, so a
@@ -373,7 +375,7 @@ def set_channel_enabled(channel_key: str, payload: dict):
 
 
 @router.post("/data_status/runs_per_day/{section}")
-def set_runs_per_day(section: str, payload: dict):
+def set_runs_per_day(section: str, payload: dict, admin: dict = Depends(require_admin)):
     """Set one section's runs_per_day and save immediately -- same rationale as
     set_channel_enabled above: an operational cadence change should take effect the
     instant it's picked, independent of /api/config's whole-config replace. `section`
