@@ -141,6 +141,14 @@ _TRAIL_THICKNESS = SliderSpec(min=0.5, max=5.0, step=0.1, decimals=1, suffix="px
 # frame. Currents never sets this (RTOFS is smooth enough not to need it).
 _FLOW_COHERENCE_RADIUS = SliderSpec(min=0.0, max=10.0, step=0.5, decimals=2)
 _MIN_MAX_C = SliderSpec(min=0, max=36, step=1, suffix=" DegC")
+# Every layer section's Show-tab visibility flag (issue #313) -- registered so
+# `enabled` is a real, validated FIELD_SPECS entry like every other setting
+# (closing a prior gap where any value type was silently accepted), even though
+# render_field_group's own "enabled" exclusion (see _field_macros.html) keeps it
+# out of the generic properties-tab rendering for every section except
+# housekeeper -- the Show tab's own hardcoded checkboxes/radios remain the
+# actual UI for it, unchanged by this promotion.
+_ENABLED = ToggleSpec()
 _CACHE_EXPIRY_DAYS = SliderSpec(
     min=0, max=30, step=1, suffix=" day", zero_label="keep forever", pluralize=True
 )
@@ -357,11 +365,13 @@ FIELD_SPECS = {
     ("animation", "forecast_stepping"): ToggleSpec(),
     ("animation", "stepping_rate"): _PARTICLE_SPEED_LIKE,
     # --- Events (quakes, volcanoes) ---
+    ("quakes", "enabled"): _ENABLED,
     ("quakes", "icon_zoom"): _ICON_ZOOM,
     ("quakes", "recent_activity_hours"): _HOURS,
     ("quakes", "expiry_hours"): _HOURS,
     ("quakes", "label_fontsize"): _FONTSIZE,
     ("quakes", "min_mag"): SliderSpec(min=0, max=10, step=0.1, decimals=1, prefix="M "),
+    ("volcanoes", "enabled"): _ENABLED,
     ("volcanoes", "icon_zoom"): _ICON_ZOOM,
     # "Show Smoke Plume" (issue #254) -- Volcano Properties is the SOLE owner of the
     # volcanic-specific SO2 variable's opacity/threshold settings (so2_volcanic, NOT
@@ -377,6 +387,7 @@ FIELD_SPECS = {
     ("volcanoes", "show_smoke_plume"): ToggleSpec(),
     ("volcanoes", "smoke_opacity"): _OPACITY,
     ("volcanoes", "so2_min"): SliderSpec(min=0, max=20, step=0.5, decimals=1, suffix=" DU"),
+    ("fires", "enabled"): _ENABLED,
     ("fires", "expiry_hours"): _HOURS,
     ("fires", "min_confidence"): _FIRE_CONFIDENCE,
     ("fires", "max_frp"): _FIRE_MAX_FRP,
@@ -387,17 +398,21 @@ FIELD_SPECS = {
     ("fires", "min_risk_display"): SliderSpec(min=0, max=100, step=5, suffix=""),
     ("fires", "min_risk_filter"): SliderSpec(min=0, max=100, step=5, suffix="", zero_label="off"),
     # --- Misc (satellites, terminator, markers, flightradar) ---
+    ("satellites", "enabled"): _ENABLED,
     ("satellites", "sat_names"): _SAT_NAMES,
     ("satellites", "past_minutes"): _MINUTES,
     ("satellites", "future_minutes"): _MINUTES,
     ("satellites", "step_seconds"): SliderSpec(min=5, max=120, step=5, suffix="s"),
     ("satellites", "color"): ColorSpec(),
+    ("terminator", "enabled"): _ENABLED,
     ("terminator", "opacity"): _OPACITY,
     ("terminator", "shade_color"): ColorSpec(named=False),
     ("terminator", "edge_softness"): SliderSpec(min=0, max=50, step=1),
+    ("markers", "enabled"): _ENABLED,
     ("markers", "marker_color"): ColorSpec(),
     ("markers", "marker_fontsize"): _FONTSIZE,
     ("markers", "weather_popup"): ToggleSpec(),
+    ("flightradar", "enabled"): _ENABLED,
     ("flightradar", "icon_zoom"): _ICON_ZOOM,
     # Track shown only while hovering an aircraft (flightradar.js) -- same hover-only
     # shape as shipping's track below, not a persistent overlay.
@@ -407,11 +422,13 @@ FIELD_SPECS = {
     # Coastline/lake-shore outline overlay -- a halo'd pair of stroke colours (main +
     # contrasting halo, see ui/modules/landmass.js) rather than a single colour, so it
     # stays legible over any basemap/data-layer combination underneath.
+    ("landmass", "enabled"): _ENABLED,
     ("landmass", "color"): ColorSpec(),
     ("landmass", "halo_color"): ColorSpec(),
     ("landmass", "linewidth"): SliderSpec(min=0.2, max=5.0, step=0.1, decimals=1, suffix="px"),
     ("landmass", "opacity"): _OPACITY,
     # --- Shipping (shipping) ---
+    ("shipping", "enabled"): _ENABLED,
     ("shipping", "icon_zoom"): _ICON_ZOOM,
     # Track shown only while hovering a ship (shipping.js) -- not a persistent overlay,
     # so there's no opacity/always-on styling to match here, just the three knobs the
@@ -420,6 +437,7 @@ FIELD_SPECS = {
     ("shipping", "track_limit"): SliderSpec(min=5, max=100, step=5),
     ("shipping", "track_color"): ColorSpec(),
     # --- Atmospheric (clouds, isobars, wind, precipitation, pwat, lightning, storms) ---
+    ("clouds", "enabled"): _ENABLED,
     ("clouds", "threshold"): SliderSpec(
         min=0, max=100, step=1, suffix="%",
         byte_to_percent=True, raw_max=255, extra_class="cloud-threshold-slider",
@@ -428,6 +446,7 @@ FIELD_SPECS = {
     ("clouds", "offset_days"): SliderSpec(min=0, max=7, step=1, suffix=" days"),
     ("clouds", "expiry_hours"): _HOURS,
     ("clouds", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
+    ("isobars", "enabled"): _ENABLED,
     ("isobars", "level_of_detail"): _LEVEL_OF_DETAIL,
     ("isobars", "isobar_step"): SliderSpec(min=1, max=10, step=1, suffix=" hPa"),
     ("isobars", "isobar_color"): ColorSpec(),
@@ -438,6 +457,7 @@ FIELD_SPECS = {
     ("isobars", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
     # Ordered to mirror currents' shape below (same shared engine): resolution, colour,
     # opacity, particle tuning, field-quality knobs, trail rendering, playback quality.
+    ("wind", "enabled"): _ENABLED,
     ("wind", "level_of_detail"): _LEVEL_OF_DETAIL,
     ("wind", "vector_color"): ColorSpec(),
     ("wind", "opacity"): _OPACITY,
@@ -458,6 +478,7 @@ FIELD_SPECS = {
     # unlike currents itself. flow_coherence_radius reuses WIND's spec/mechanism
     # though, not currents' (which has none) -- jetstream reads the same noisy
     # 0.25deg GFS grid wind does, unlike currents' smooth RTOFS source.
+    ("jetstream", "enabled"): _ENABLED,
     ("jetstream", "level_of_detail"): _LEVEL_OF_DETAIL,
     ("jetstream", "palette"): SelectSpec([
         ("stratosphere", "Stratosphere"),
@@ -471,6 +492,7 @@ FIELD_SPECS = {
     ("jetstream", "trail_length"): _TRAIL_LENGTH,
     ("jetstream", "trail_thickness"): _TRAIL_THICKNESS,
     ("jetstream", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
+    ("precipitation", "enabled"): _ENABLED,
     ("precipitation", "level_of_detail"): _LEVEL_OF_DETAIL,
     ("precipitation", "min_mm_hr"): SliderSpec(min=0.0, max=10.0, step=0.1, decimals=1),
     ("precipitation", "opacity"): _OPACITY,
@@ -480,6 +502,7 @@ FIELD_SPECS = {
         ("high_contrast", "High contrast"),
     ]),
     ("precipitation", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
+    ("pwat", "enabled"): _ENABLED,
     ("pwat", "level_of_detail"): _LEVEL_OF_DETAIL,
     ("pwat", "palette"): SelectSpec([
         ("standard", "Standard (matches precipitation)"),
@@ -489,13 +512,16 @@ FIELD_SPECS = {
     ("pwat", "critical_pwat"): SliderSpec(min=0.0, max=80.0, step=5.0, decimals=0, suffix="mm"),
     ("pwat", "opacity"): _OPACITY,
     ("pwat", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
+    ("lightning", "enabled"): _ENABLED,
     ("lightning", "icon_zoom"): _ICON_ZOOM,
     ("lightning", "strike_recent_minutes"): _MINUTES,
     ("lightning", "strike_keep_minutes"): _MINUTES,
     ("lightning", "strike_expiry_hours"): _HOURS,
+    ("storms", "enabled"): _ENABLED,
     ("storms", "expiry_days"): SliderSpec(min=0, max=60, step=1, suffix=" days expiry"),
     ("storms", "popup_fontsize"): _FONTSIZE,
     # --- Climate (sst, currents, waves, temperature, ozone, stormwatch) ---
+    ("sst", "enabled"): _ENABLED,
     ("sst", "mode"): _MODE_OPTIONS,
     ("sst", "opacity"): _OPACITY,
     ("sst", "palette"): SelectSpec([
@@ -507,6 +533,7 @@ FIELD_SPECS = {
     ("sst", "min_c"): _MIN_MAX_C,
     ("sst", "max_c"): _MIN_MAX_C,
     ("sst", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
+    ("currents", "enabled"): _ENABLED,
     ("currents", "level_of_detail"): _LEVEL_OF_DETAIL,
     ("currents", "palette"): SelectSpec([
         ("thermal_red", "Thermal red"),
@@ -525,6 +552,7 @@ FIELD_SPECS = {
     ("currents", "fill_floor"): SliderSpec(min=0.0, max=1.0, step=0.05, decimals=2, suffix=" m/s"),
     ("currents", "fill_knee"): SliderSpec(min=0.0, max=2.5, step=0.05, decimals=2, suffix=" m/s"),
     ("currents", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
+    ("waves", "enabled"): _ENABLED,
     ("waves", "level_of_detail"): _LEVEL_OF_DETAIL,
     ("waves", "palette"): SelectSpec([
         ("ocean_storm", "Ocean storm"),
@@ -538,9 +566,11 @@ FIELD_SPECS = {
     ("waves", "bar_length"): SliderSpec(min=1, max=8, step=1),
     ("waves", "particle_opacity"): _PARTICLE_OPACITY,
     ("waves", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
+    ("temperature", "enabled"): _ENABLED,
     ("temperature", "level_of_detail"): _LEVEL_OF_DETAIL,
     ("temperature", "opacity"): _OPACITY,
     ("temperature", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
+    ("ozone", "enabled"): _ENABLED,
     ("ozone", "level_of_detail"): _LEVEL_OF_DETAIL,
     ("ozone", "palette"): SelectSpec([
         ("alert", "Alert (magenta -> yellow)"),
@@ -550,6 +580,7 @@ FIELD_SPECS = {
     ("ozone", "opacity"): _OPACITY,
     ("ozone", "stormwatch"): ToggleSpec(),
     ("ozone", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
+    ("stormwatch", "enabled"): _ENABLED,
     ("stormwatch", "level_of_detail"): _LEVEL_OF_DETAIL,
     ("stormwatch", "min_cape"): SliderSpec(min=0, max=5000, step=100, suffix="J/Kg"),
     ("stormwatch", "opacity"): _OPACITY,
@@ -558,6 +589,7 @@ FIELD_SPECS = {
     # a CAMS EGG4 baseline year). Per-species scale/palette settings are flat,
     # species-prefixed keys (co2_min_ppm, ch4_palette, ...) rather than a nested dict --
     # see tasks/greenhouse_gases.py's _SCALE_SETTING_KEYS for why. ---
+    ("greenhouse_gases", "enabled"): _ENABLED,
     ("greenhouse_gases", "species"): _GHG_SPECIES,
     ("greenhouse_gases", "mode"): _MODE_OPTIONS,
     ("greenhouse_gases", "baseline_year"): _GHG_BASELINE_YEAR,
@@ -568,6 +600,7 @@ FIELD_SPECS = {
     ("greenhouse_gases", "ch4_min_ppb"): SliderSpec(min=1600, max=2100, step=10, suffix=" ppb"),
     ("greenhouse_gases", "ch4_max_ppb"): SliderSpec(min=1600, max=2100, step=10, suffix=" ppb"),
     ("greenhouse_gases", "ch4_palette"): _GHG_PALETTE,
+    ("air_quality", "enabled"): _ENABLED,
     ("air_quality", "variable"): _AQ_VARIABLE,
     ("air_quality", "opacity"): _OPACITY,
     # Only a MINIMUM ("highlight above this") is user-configurable, not a max --
@@ -585,10 +618,12 @@ FIELD_SPECS = {
     ("air_quality", "so2_min"): SliderSpec(min=0, max=20, step=0.5, decimals=1, suffix=" DU"),
     # --- Background (shipping_collector, lightning_collector, satellites_collector,
     # data_collector, housekeeper) ---
+    ("shipping_collector", "enabled"): _ENABLED,
     ("shipping_collector", "listen_duration"): _LISTEN_DURATION_MINUTES,
     ("shipping_collector", "sleep_interval"): _SLEEP_INTERVAL_MINUTES,
     ("shipping_collector", "vessel_track_expiry_days"): _VESSEL_TRACK_EXPIRY_DAYS,
     ("shipping_collector", "log_level"): _LOG_LEVEL,
+    ("lightning_collector", "enabled"): _ENABLED,
     ("lightning_collector", "sleep_interval"): _SLEEP_INTERVAL_MINUTES,
     ("lightning_collector", "expiry_hours"): _HOURS,
     ("lightning_collector", "log_level"): _LOG_LEVEL,
@@ -605,6 +640,7 @@ FIELD_SPECS = {
         min=0, max=72, step=1, suffix=" hour", zero_label="Never", pluralize=True
     ),
     ("flightradar_collector", "log_level"): _LOG_LEVEL,
+    ("satellites_collector", "enabled"): _ENABLED,
     ("satellites_collector", "groups"): _CELESTRAK_GROUPS,
     ("satellites_collector", "log_level"): _LOG_LEVEL,
     # data_collector.datasources is deliberately NOT here -- see
@@ -612,6 +648,7 @@ FIELD_SPECS = {
     # data_collector.channel_enabled is deliberately NOT here either -- it's a per-source
     # data-acquisition opt-out (independent of any layer's frontend `enabled`), rendered
     # on the Data Status page rather than as a generic config-tab field.
+    ("data_collector", "enabled"): _ENABLED,
     ("data_collector", "backfill_poll_seconds"): SliderSpec(min=10, max=600, step=10, suffix="s"),
     ("data_collector", "cache_hours"): _HOURS,
     ("data_collector", "log_level"): _LOG_LEVEL,
