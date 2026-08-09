@@ -35,7 +35,6 @@ def make_bare_updater(spec):
     # Methods that touch IO / heavy libs are exercised elsewhere; stub them here.
     u.regrid_for_lod = MagicMock(return_value=([0], [0], [[0]]))
     u.get_output_path_for_hour = MagicMock(return_value="/tmp/out/layer_f003.png")
-    u.save_key_image = MagicMock()
     return u
 
 
@@ -57,10 +56,6 @@ def test_plot_dispatches_spec_to_render(key):
     assert contourf.call_args.kwargs["extend"] == spec.extend
     assert contourf.call_args.kwargs["levels"] == 20
     assert contourf.call_args.kwargs["zorder"] == 2
-
-    # The colourbar key is written separately by _write_legend_key (see below),
-    # not from plot() -- it must not be gated by per-hour data freshness.
-    u.save_key_image.assert_not_called()
 
     # The data texture is scaled to this spec's value range.
     assert mock_encode.call_args.args[2] == spec.vmin
@@ -98,49 +93,6 @@ def test_plot_skips_when_field_missing():
     ):
         u.plot({"lat": [0], "lon": [0], "values": None}, state)
     MockPlot.assert_not_called()
-    u.save_key_image.assert_not_called()
-
-
-@pytest.mark.parametrize("key", ["temperature", "ozone", "stormwatch", "pwat"])
-def test_write_legend_key_uses_resolved_cmap_and_spec_ticks_title(key):
-    """Regression test: key_fontsize (and palette/threshold) previously only took
-    effect when should_plot_for_hour's data-freshness gate let plot() run, so a
-    settings-only change could leave a stale key on screen indefinitely.
-    _write_legend_key must be independently callable (run() invokes it every cycle,
-    unconditionally) and must reflect the live settings. key_fontsize is a shared
-    common.key_fontsize setting, not this layer's own section (issue: consolidate
-    the 11 per-layer key_fontsize settings)."""
-    spec = SPECS[key]
-    u = make_bare_updater(spec)
-    u.common = {"key_fontsize": 8}
-
-    u._write_legend_key()
-
-    u.save_key_image.assert_called_once()
-    key_args = u.save_key_image.call_args
-    assert key_args.args[0] == u.output_path
-    assert key_args.args[3] == spec.ticks
-    assert key_args.args[4] == spec.title
-    assert key_args.kwargs["key_fontsize"] == 8
-
-
-@pytest.mark.parametrize("key", ["temperature", "ozone", "stormwatch", "pwat"])
-def test_write_legend_key_matches_the_shared_key_style(key):
-    """Regression test: this key used to be smaller/unbolded with no explicit
-    tick_format, unlike sst/currents/waves' keys -- visibly different from them (and
-    from precipitation's, which had the same gap) even though every one of these keys
-    renders through the same save_key_image() helper."""
-    spec = SPECS[key]
-    u = make_bare_updater(spec)
-    u.settings = {}
-
-    u._write_legend_key()
-
-    key_args = u.save_key_image.call_args
-    assert key_args.kwargs["key_fontsize"] == 10
-    assert key_args.kwargs["labelsize"] == 8
-    assert key_args.kwargs["weight"] == "bold"
-    assert key_args.kwargs["tick_format"] == "%d"
 
 
 def test_specs_cover_the_four_scalar_fields():

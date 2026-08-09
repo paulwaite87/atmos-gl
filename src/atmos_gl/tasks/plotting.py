@@ -2,17 +2,11 @@
 """Matplotlib figure lifecycle, split out of tasks/common.py (architecture review
 candidate "tasks/common.py bundles six unrelated concerns"): the render-task-specific
 plotting machinery, as opposed to lib/coastline.py's plain geometry function.
-
-PlottingMixin is mixed into Updater (see common.py) the same way MultiHourRenderMixin
-is -- save_key_image only ever used self.section for its debug log, so moving it here
-as a mixin method keeps every existing self.save_key_image(...) call site unchanged.
 """
 import os
 import logging
 from typing import TYPE_CHECKING, cast
 
-import matplotlib as mpl
-import matplotlib.colors as mcolors
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 import cartopy.crs as ccrs
@@ -42,15 +36,6 @@ def clamp_lats_to_mercator_limit(lats):
     import numpy as np
 
     return np.clip(lats, -MERCATOR_LAT_LIMIT, MERCATOR_LAT_LIMIT)
-
-
-def opaque_cmap(cmap, n=256):
-    """Return an opaque copy of a colormap (alpha forced to 1.0)."""
-    import numpy as np
-
-    colors = cmap(np.linspace(0, 1, n))  # (n, 4) RGBA
-    colors[:, 3] = 1.0
-    return mcolors.ListedColormap(colors)
 
 
 class Plot:
@@ -89,56 +74,3 @@ class Plot:
 
         # No global figure registry to close; just release the artists.
         self.fig.clear()
-
-
-class PlottingMixin:
-    """save_key_image, mixed into Updater. Assumes self.section (for its debug log)."""
-
-    def save_key_image(
-        self,
-        output_path,
-        cmap,
-        norm,
-        ticks,
-        title,
-        *,
-        key_fontsize=8,
-        labelsize=6,
-        tick_format=None,
-        weight=None,
-        decorate=None,
-    ):
-        """Render a standalone horizontal colourbar key PNG at `<base>_key<ext>`.
-
-        Shared scaffold absorbed from the near-identical save_*_key methods every
-        legend-bearing layer (ozone/temperature/stormwatch/precipitation/currents/sst/
-        waves) built independently. Callers supply their own cmap/norm (often reused
-        from their contourf() call) plus the layer-specific ticks and title.
-        `decorate`, if given, is called with the built colourbar before its title/
-        ticks are styled, for callers that annotate the bar itself (e.g. waves'
-        below-threshold shading).
-        """
-        base, ext = os.path.splitext(output_path)
-        key_path = f"{base}_key{ext}"
-
-        fig = Figure(figsize=(4, 0.3))
-        FigureCanvasAgg(fig)
-        ax = fig.subplots()
-        cbar = fig.colorbar(
-            mpl.cm.ScalarMappable(norm=norm, cmap=cmap),
-            cax=ax,
-            orientation="horizontal",
-            ticks=ticks,
-        )
-        if tick_format is not None:
-            from matplotlib.ticker import FormatStrFormatter
-
-            cbar.ax.xaxis.set_major_formatter(FormatStrFormatter(tick_format))
-        if decorate is not None:
-            decorate(cbar)
-        cbar.ax.set_title(title, color="white", fontsize=key_fontsize, pad=2, weight=weight)
-        cbar.ax.tick_params(colors="white", labelsize=labelsize)
-
-        fig.savefig(key_path, transparent=True, bbox_inches="tight")
-        fig.clear()
-        logger.debug(f"{self.section}: saved key to {key_path}")

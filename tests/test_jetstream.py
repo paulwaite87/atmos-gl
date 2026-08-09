@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Tests for JetStreamUpdater (#182). Mirrors test_wind.py/test_currents.py's
 bare-updater pattern (bypass Updater.__init__, wire only what the method under test
-reads)."""
+reads). The palette + legend key are entirely client-side now (issue #302, see
+ui/modules/jetstream.js's own PALETTES/buildLUT) -- VectorFieldUpdater no longer
+knows about palettes at all."""
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -13,49 +15,9 @@ def make_bare_updater(settings=None, common=None):
     u = JetStreamUpdater.__new__(JetStreamUpdater)
     u.settings = settings or {}
     u.common = common or {}
-    u.save_key_image = MagicMock()
     u.status_product = "jetstream"
     u.output_path = "/tmp/out/jetstream.png"
     return u
-
-
-# ---- _palette -----------------------------------------------------------------
-
-def test_palette_defaults_to_stratosphere_when_unset():
-    u = make_bare_updater()
-    assert u._palette() == "stratosphere"
-
-
-def test_palette_falls_back_for_an_unknown_name():
-    u = make_bare_updater(settings={"palette": "not-a-real-palette"})
-    assert u._palette() == "stratosphere"
-
-
-# ---- save_key (inherited from VectorFieldUpdater) -------------------------------
-
-def test_save_key_uses_a_km_h_range_despite_the_120_ms_vmax():
-    """VMAX (120 m/s) drives encode_uv/particle physics, but the key displays km/h
-    (matching wind's key convention) via KEY_SPEED_SCALE=3.6 -- 120 m/s = 432 km/h."""
-    u = make_bare_updater()
-    u.save_key("/tmp/out/jetstream.png")
-    key_args = u.save_key_image.call_args
-    assert key_args.args[0] == "/tmp/out/jetstream.png"
-    assert list(key_args.args[3]) == [0.0, 144.0, 288.0, 432.0]
-    assert key_args.args[4] == "Jet Stream Speed (km/h)"
-
-
-def test_save_key_uses_whole_number_ticks():
-    u = make_bare_updater()
-    u.save_key("/tmp/out/jetstream.png")
-    assert u.save_key_image.call_args.kwargs["tick_format"] == "%.0f"
-
-
-def test_save_key_honours_a_configured_key_fontsize():
-    """key_fontsize is a shared common.key_fontsize setting (issue: consolidate the
-    11 per-layer key_fontsize settings), not this layer's own section."""
-    u = make_bare_updater(common={"key_fontsize": 16})
-    u.save_key("/tmp/out/jetstream.png")
-    assert u.save_key_image.call_args.kwargs["key_fontsize"] == 16
 
 
 # ---- _warm_baseline_cache -------------------------------------------------------

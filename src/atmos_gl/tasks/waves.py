@@ -9,7 +9,6 @@ from atmos_gl.lib.config import AtmosGLConfig
 from atmos_gl.lib.texture import encode_uv
 from atmos_gl.lib.coastline import LandMaskCache, nearest_fill_and_regrid_uv
 from .common import Updater, MapData, MultiHourRenderMixin, ForecastState
-from .plotting import opaque_cmap
 
 warnings.filterwarnings("ignore")
 logger = logging.getLogger(__name__)
@@ -38,42 +37,10 @@ VMAX_WAVES = 8.0
 # the interpolation instead of building one 162M-point mesh), not just a smaller step.
 _WAVES_REGRID_STEP_DEG = 0.08
 
-# Wave-height gradients for the legend key renderer, mirrored client-side in waves.js
-# for the createFillLayer palette (see docs/adr/0005-retire-raster-tile-engine.md).
-PALETTES = {
-    "ocean_storm": [
-        (0.0, 0.2, 0.4),
-        (0.0, 0.6, 0.3),
-        (0.9, 0.7, 0.0),
-        (0.8, 0.2, 0.0),
-        (0.9, 0.9, 0.9),
-    ],
-    "neon_surge": [
-        (0.0, 0.8, 1.0),
-        (0.0, 0.95, 0.4),
-        (1.0, 0.9, 0.0),
-        (1.0, 0.3, 0.0),
-        (0.9, 0.0, 0.5),
-        (0.6, 0.0, 0.7),
-    ],
-    "solar_flare": [
-        (0.6, 1.0, 0.9),
-        (0.0, 1.0, 0.0),
-        (1.0, 1.0, 0.0),
-        (1.0, 0.65, 0.0),
-        (1.0, 0.2, 0.1),
-        (1.0, 0.0, 1.0),
-    ],
-}
-
-
 
 class WavesUpdater(Updater, MultiHourRenderMixin):
     def __init__(self, config: AtmosGLConfig, map_data: MapData):
         super().__init__(config, "Waves", map_data)
-
-        # DESIGNED GRADIENTS FOR WAVE HEIGHT INTENSITY
-        self.PALETTES = PALETTES
 
         # Per-hour velocity texture for the animated swell bars AND (via the frontend's
         # in-shader valueDecode) the heat fill -- both now read the SAME texture. The
@@ -89,31 +56,6 @@ class WavesUpdater(Updater, MultiHourRenderMixin):
         # found live via waves' animated bars visibly crossing land on complex
         # coastlines like Northland NZ/Tasmania during candidate #7).
         self._land_mask = LandMaskCache("Waves")
-
-    def save_waves_key(self, output_path, cmap, norm, threshold=0.0):
-        """Generates a standalone Wave Height key image (separate _key.png)."""
-        title = "Wave Height (m)"
-        if threshold > 0.0:
-            title = f"Wave Height (m) \u2265 {threshold:g}"
-
-        def _mark_threshold(cbar):
-            # Mark the transparent (below-threshold) zone on the key so the ramp's
-            # visible start matches what's actually rendered on the map.
-            if threshold > 0.0:
-                cbar.ax.axvspan(norm.vmin, threshold, color="black", alpha=0.55)
-                cbar.ax.axvline(threshold, color="white", linewidth=1.2)
-
-        self.save_key_image(
-            output_path,
-            opaque_cmap(cmap),
-            norm,
-            [0, 2, 4, 6, 8],
-            title,
-            key_fontsize=self.common.get("key_fontsize", 10),
-            labelsize=8,
-            weight="bold",
-            decorate=_mark_threshold,
-        )
 
     def _masked_uv(self, field0):
         """Regrid + true-coastline-mask u/v once, shared by BOTH the per-hour swell
@@ -172,29 +114,6 @@ class WavesUpdater(Updater, MultiHourRenderMixin):
         encode_uv(u, v, f"{base}_data.png", VMAX_WAVES, lat=new_lats)
         logger.info("Waves: wrote swell velocity texture for the animated layer.")
 
-    def _write_legend_key(self):
-        """Regenerate just the colourbar key (palette/threshold may have changed),
-        independent of the per-hour texture writes above."""
-        import matplotlib.colors as mcolors
-
-        palette_name = self.settings.get("palette", "ocean_storm")
-        if palette_name not in self.PALETTES:
-            palette_name = "ocean_storm"
-        alpha_setting = float(
-            np.clip(float(self.settings.get("opacity", 75) / 100), 0.1, 1.0)
-        )
-        try:
-            threshold = max(0.0, float(self.settings.get("min_wave_height", 0) or 0))
-        except (TypeError, ValueError):
-            threshold = 0.0
-        cmap = mcolors.LinearSegmentedColormap.from_list(
-            "wave_height",
-            [(r, g, b, alpha_setting) for (r, g, b) in self.PALETTES[palette_name]],
-            N=256,
-        )
-        norm = mcolors.Normalize(vmin=0.0, vmax=8.0)
-        self.save_waves_key(self.output_path, cmap, norm, threshold=threshold)
-
     def run(self, max_hours=None):
         # Warms the shared per-cycle GFS baseline cache (map_data.shared_state) for
         # other updaters this cycle; both sections below resolve their own state from
@@ -233,11 +152,8 @@ class WavesUpdater(Updater, MultiHourRenderMixin):
             )
             return plotted
 
-        # The legend key is cheap to draw and depends on palette/alpha/threshold AND
-        # key_fontsize. Refresh it whenever the task runs, so settings apply immediately.
-        self._write_legend_key()
         # No version-gate needed now (that existed to skip the expensive tile pyramid
         # warm-up) -- _write_velocity_texture is just one more encode_uv call, cheap
-        # enough to run unconditionally every cycle, same as the legend key above.
+        # enough to run unconditionally every cycle.
         self._write_velocity_texture(field0)
         return plotted

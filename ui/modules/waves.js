@@ -97,8 +97,31 @@ export function thicknessFromConfig(cfg) {
     return isFinite(v) ? Math.min(5, Math.max(0.5, v)) : 1.5;
 }
 
+// Mirrors WavesUpdater.save_waves_key's threshold shading (_mark_threshold): the
+// below-threshold zone is dimmed and marked with a vertical line on the key, so the
+// ramp's visible start matches what's actually rendered on the map (min_wave_height).
+const decorateThreshold = (threshold) => (threshold > 0 ? (ctx, { barX, barY, barW, barH, toX }) => {
+    const x1 = toX(threshold);
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillRect(barX, barY, x1 - barX, barH);
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(x1, barY);
+    ctx.lineTo(x1, barY + barH);
+    ctx.stroke();
+} : undefined);
+
 export function loadLayer(map, config, fullConfig = {}) {
-    const legend = standardLegend('waves-legend-slot', (cfg) => cfg.outfile, 0.7);
+    const legend = standardLegend('waves-legend-slot', (cfg) => {
+        const threshold = Math.max(0, Number(cfg.min_wave_height) || 0);
+        return {
+            lut: buildLUT(cfg.palette || 'ocean_storm'),
+            vmin: 0.0, vmax: VMAX_WAVES, ticks: [0, 2, 4, 6, 8],
+            title: threshold > 0 ? `Wave Height (m) ≥ ${threshold}` : 'Wave Height (m)',
+            decorate: decorateThreshold(threshold),
+        };
+    }, 0.7);
 
     // Heat fill: decode swell magnitude from the per-hour swell texture (already
     // regridded + true-coastline-masked server-side -- tasks/waves.py's _masked_uv),
@@ -136,10 +159,6 @@ export function loadLayer(map, config, fullConfig = {}) {
         onMount: legend.addLegend,
         onRefresh: legend.addLegend,
         onUnmount: legend.removeLegend,
-        // Palette changes never touch the heatmap's data texture (colour is applied
-        // entirely client-side), so the default imageUrl regen chase can't detect that
-        // the legend needs re-fetching -- keyUrl gives it its own independent chase.
-        keyUrl: legend.keyUrl,
     });
 
     // Animated swell bars (GPU custom layer). Uses the shared stream particle engine

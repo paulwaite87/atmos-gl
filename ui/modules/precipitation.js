@@ -1,5 +1,5 @@
 import { createFillLayer } from './_webglfill.js';
-import { keyFilename, showLegend, removeLegend } from './_legend.js';
+import { standardLegend } from './_legend.js';
 import { opacityUniform } from './_opacity.js';
 import { buildSteppedLUT } from './_thresholdpalette.js';
 
@@ -45,12 +45,25 @@ const FLAT_COLOR = [0, 0, 0, 0]; // fully transparent -- below threshold / no ra
 const toSqrtPos = (mmPerHour) => Math.sqrt(Math.max(0, mmPerHour) / VMAX);
 const LEVELS_SQRT = LEVELS.map(toSqrtPos);
 
-export function loadLayer(map, config, fullConfig = {}) {
-    const slotId = 'precipitation-legend-slot';
+// Legend key ticks -- a coarser subset of LEVELS (matches the pre-migration server
+// key's own deliberately-simplified tick set; the full 11-band LEVELS is more detail
+// than a legend needs). toPos places them via the SAME sqrt-position domain the LUT
+// itself is built in (see lutFor/LEVELS_SQRT above) -- ticks and bar always agree.
+const KEY_TICKS = [0.1, 1.0, 5.0, 15.0, 50.0, 100.0];
 
-    const addLegend = (cfg) => {
-        showLegend(slotId, `${window.MAP_UI}/${keyFilename(cfg.outfile)}?t=${Date.now()}`, opacityUniform(cfg, 0.9));
-    };
+const lutFor = (cfg) => buildSteppedLUT({
+    vmin: 0.0, vmax: 1.0,
+    minValue: toSqrtPos(Number(cfg.min_mm_hr) >= 0 ? Number(cfg.min_mm_hr) : 0.1),
+    levels: LEVELS_SQRT,
+    paletteColors: PALETTES[cfg.palette] || PALETTES.standard,
+    flatColor: FLAT_COLOR,
+});
+
+export function loadLayer(map, config, fullConfig = {}) {
+    const legend = standardLegend('precipitation-legend-slot', (cfg) => ({
+        lut: lutFor(cfg), toPos: toSqrtPos, ticks: KEY_TICKS,
+        title: 'Precipitation (mm/hr)', tickFormat: '%.1f',
+    }), 0.9);
 
     createFillLayer(map, {
         sectionKey: 'precipitation',
@@ -82,19 +95,9 @@ export function loadLayer(map, config, fullConfig = {}) {
         customUniforms: (cfg) => ({
             u_alpha: opacityUniform(cfg, 0.9),
         }),
-        colormap: (cfg) => buildSteppedLUT({
-            vmin: 0.0, vmax: 1.0,
-            minValue: toSqrtPos(Number(cfg.min_mm_hr) >= 0 ? Number(cfg.min_mm_hr) : 0.1),
-            levels: LEVELS_SQRT,
-            paletteColors: PALETTES[cfg.palette] || PALETTES.standard,
-            flatColor: FLAT_COLOR,
-        }),
-        onMount: addLegend,
-        onRefresh: addLegend,                  // re-stamp the key image
-        onUnmount: () => removeLegend(slotId),
-        // key_fontsize changes never touch the fill's data texture, so the default
-        // imageUrl regen chase can't detect that the legend needs re-fetching --
-        // keyUrl gives it its own independent chase.
-        keyUrl: (cfg) => `${window.MAP_UI}/${keyFilename(cfg.outfile)}`,
+        colormap: (cfg) => lutFor(cfg),
+        onMount: legend.addLegend,
+        onRefresh: legend.addLegend,
+        onUnmount: legend.removeLegend,
     });
 }

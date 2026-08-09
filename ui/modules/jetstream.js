@@ -20,6 +20,12 @@ const PALETTES = {
 // own dedicated, lower LOD_COUNT) -- halved here as a first pass, per that live call.
 export const LOD_COUNT = { 1: 2000, 2: 4500, 3: 9000 };
 
+// Mirrors JetStreamUpdater's key: vmax_display = VMAX * KEY_SPEED_SCALE (3.6, m/s ->
+// km/h), ticks = np.linspace(0, vmax_display, 4), KEY_TITLE/KEY_TICK_FORMAT.
+const KEY_SPEED_SCALE = 3.6;
+const KEY_VMAX = VMAX * KEY_SPEED_SCALE;
+const KEY_TICKS = [0, 1, 2, 3].map((i) => (i / 3) * KEY_VMAX);
+
 export function buildLUT(paletteName) {
     const pal = PALETTES[paletteName] || PALETTES.stratosphere;
     const lut = new Uint8Array(256 * 4);
@@ -80,7 +86,10 @@ export function paletteFor(cfg) {
 }
 
 export function loadLayer(map, config, fullConfig = {}) {
-    const legend = standardLegend('jetstream-legend-slot', (cfg) => cfg.outfile);
+    const legend = standardLegend('jetstream-legend-slot', (cfg) => ({
+        lut: buildLUT(paletteFor(cfg)), vmin: 0, vmax: KEY_VMAX, ticks: KEY_TICKS,
+        title: 'Jet Stream Speed (km/h)', tickFormat: '%.0f',
+    }));
 
     // Particle-only, speed-colored (no heatmap -- see tasks/jetstream.py's docstring),
     // via the same shared engine wind and currents already use. No custom hourDataUrl/
@@ -106,10 +115,6 @@ export function loadLayer(map, config, fullConfig = {}) {
         onMount: legend.addLegend,
         onRefresh: legend.addLegend,
         onUnmount: legend.removeLegend,
-        // Palette changes never touch the velocity texture (colour is applied entirely
-        // client-side), so the default imageUrl regen chase can't detect that the
-        // legend needs re-fetching -- keyUrl gives it its own independent chase.
-        keyUrl: legend.keyUrl,
     });
 
     return () => {

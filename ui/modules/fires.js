@@ -17,6 +17,16 @@ const FWI_VMIN = 0.0;
 const FWI_VMAX = 100.0;
 const FWI_PALETTE = [[1.0, 0.95, 0.6], [1.0, 0.55, 0.1], [0.6, 0.0, 0.0]];
 const FWI_FLAT = [0.0, 0.0, 0.0, 0.0];
+// Mirrors tasks/fire_weather.py's FIRE_WEATHER_SPEC ticks/title.
+const FWI_TICKS = [0, 20, 40, 60, 80, 100];
+
+const fwiLutFor = (cfg) => buildThresholdLUT({
+    vmin: FWI_VMIN, vmax: FWI_VMAX,
+    threshold: Number(cfg.min_risk_display) || 25.0,
+    focus: 'above',
+    paletteColors: FWI_PALETTE,
+    flatColor: FWI_FLAT,
+});
 
 export function loadLayer(map, config, fullConfig = {}) {
     // Renders as TWO GPU sub-layers under one "fires" config section/toggle -- the risk
@@ -104,7 +114,10 @@ export function loadLayer(map, config, fullConfig = {}) {
     // in lockstep with the hotspots above via its own independent liveLayerSync
     // subscription (createFillLayer's internal machinery). beforeId inserts it BENEATH
     // the hotspot circle layer, so dots always render on top of the risk shading.
-    const legend = standardLegend('fires-legend-slot', (cfg) => cfg.outfile, 0.7);
+    const legend = standardLegend('fires-legend-slot', (cfg) => ({
+        lut: fwiLutFor(cfg), vmin: FWI_VMIN, vmax: FWI_VMAX, ticks: FWI_TICKS,
+        title: 'Fire Risk', tickFormat: '%d',
+    }), 0.7);
 
     const stopHeatmap = createFillLayer(map, {
         sectionKey: 'fires',
@@ -126,13 +139,7 @@ export function loadLayer(map, config, fullConfig = {}) {
         customUniforms: (cfg) => ({
             u_alpha: opacityUniform(cfg, 0.7),
         }),
-        colormap: (cfg) => buildThresholdLUT({
-            vmin: FWI_VMIN, vmax: FWI_VMAX,
-            threshold: Number(cfg.min_risk_display) || 25.0,
-            focus: 'above',
-            paletteColors: FWI_PALETTE,
-            flatColor: FWI_FLAT,
-        }),
+        colormap: (cfg) => fwiLutFor(cfg),
         onMount: legend.addLegend,
         onRefresh: legend.addLegend,
         onUnmount: legend.removeLegend,

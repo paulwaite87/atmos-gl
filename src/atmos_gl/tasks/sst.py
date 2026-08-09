@@ -109,8 +109,6 @@ class SSTUpdater(Updater):
             vmin, vmax = -anomaly_range, anomaly_range
             norm = mcolors.TwoSlopeNorm(vmin=vmin, vcenter=0, vmax=vmax)
             cmap = mpl.cm.get_cmap("coolwarm")
-            title_text = "SST Climatological Anomaly (°C)"
-            tick_format = "%.1f"
         else:
             # Absolute Mode Configurations
             vmin = self.settings.get("min_c", 0)
@@ -125,8 +123,6 @@ class SSTUpdater(Updater):
                 "ocean": "inferno",
             }
             cmap = mpl.cm.get_cmap(palettes.get(palette_key, "magma"))
-            title_text = "Sea Surface Temp (°C)"
-            tick_format = "%d"
 
         # --- Canvas Initialization ---
         plot = Plot(self.map_data.region)
@@ -161,18 +157,14 @@ class SSTUpdater(Updater):
         )
 
         plot.save_figure(output_path)
-        calculated_ticks = np.linspace(vmin, vmax, 5)
-        self.save_key_image(
-            output_path,
-            cmap,
-            norm,
-            calculated_ticks,
-            title_text,
-            key_fontsize=self.common.get("key_fontsize", 10),
-            labelsize=8,
-            tick_format=tick_format,
-            weight="bold",
-        )
+        # Legend key renders entirely client-side now (issue #302). Absolute mode's
+        # vmin/vmax come straight from settings (min_c/max_c, already visible to the
+        # frontend via /api/config); anomaly mode's are auto-scaled from live data
+        # (98th percentile, above) and have no other way to reach the frontend, so
+        # only anomaly is written -- mirrors GhgUpdater's identical sst_meta.json ->
+        # ghg_meta.json sidecar for the same "data-dependent range" problem.
+        if mode == "anomaly":
+            self._write_meta_sidecar("sst_meta.json", mode, {"vmin": vmin, "vmax": vmax})
 
         plt_close = getattr(plot, "close", None)
         if callable(plt_close):

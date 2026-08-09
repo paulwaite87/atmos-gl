@@ -3,30 +3,27 @@
  * Shared colourbar-key legend plumbing behind sst.js, waves.js, currents.js, ozone.js,
  * precipitation.js, temperature.js, and wind.js -- architecture review candidate "a
  * home for copy-pasted legend/hover-popup plumbing". All of them independently
- * rebuilt the same create/replace/remove-a-slot-inside-#legend-stack mechanic; most
- * also rebuilt the same "_key" filename transform for an <img>-based key. This owns
- * the slot mechanic once via replaceSlot() (callers supply the content, e.g. wind's
- * gradient bar), with showLegend() as the <img>-specific convenience wrapper most
- * callers use.
+ * rebuilt the same create/replace/remove-a-slot-inside-#legend-stack mechanic. This
+ * owns the slot mechanic once via replaceSlot(), with standardLegend() as the
+ * <canvas>-key convenience wrapper most callers use (see _keycanvas.js's drawKey()).
+ *
+ * Legend keys render entirely client-side now (issue #302) -- the backend no longer
+ * writes a "_key.png" companion image at all, so there is nothing left to fetch.
  */
 
 import { opacityUniform } from './_opacity.js';
+import { drawKey } from './_keycanvas.js';
 
 // Insert `suffix` immediately before a filename's extension: ("sst.png", "_anomaly")
-// -> "sst_anomaly.png". Shared by keyFilename below and by callers that insert their
-// own variant suffix (sst.js's mode, air_quality.js's variable, greenhouse_gases.js's
-// species+mode) ahead of it -- those used to each re-derive this exact split.
+// -> "sst_anomaly.png". Used by callers that insert their own variant suffix into
+// their LAYER IMAGE's filename (sst.js's mode, air_quality.js's variable,
+// greenhouse_gases.js's species+mode) -- those layers still fetch a server-rendered
+// PNG for the image itself; only the legend key moved client-side.
 export function insertBeforeExtension(filename, suffix) {
     const i = filename.lastIndexOf('.');
     const base = i !== -1 ? filename.slice(0, i) : filename;
     const ext  = i !== -1 ? filename.slice(i)    : '';
     return `${base}${suffix}${ext}`;
-}
-
-// The backend writes a colourbar-key image alongside each layer's outfile, named by
-// inserting "_key" before the extension (e.g. "sst.png" -> "sst_key.png").
-export function keyFilename(outfile) {
-    return insertBeforeExtension(outfile, '_key');
 }
 
 export function replaceSlot(slotId, populate) {
@@ -39,48 +36,35 @@ export function replaceSlot(slotId, populate) {
     stack.appendChild(slot);
 }
 
-// `opacity` (0-1, matching _opacity.js's opacityUniform convention) is the SAME value
-// driving the layer's own on-map visibility. A zeroed-out layer's key is pointless
-// clutter -- especially with two heatmaps active and one silenced via its opacity
-// slider (the motivating case: Fire Risk + Air Quality both in the legend stack) --
-// so an explicit 0 hides the slot instead of drawing an orphaned key for nothing.
-// Defaults to always-shown for callers that don't have a single opacity value
-// governing the whole layer's visibility (e.g. currents/jetstream, where particles
-// driven by the same colour scale can stay visible independent of a fill's opacity).
-export function showLegend(slotId, url, opacity = 1) {
-    if (opacity <= 0) { removeLegend(slotId); return; }
-    replaceSlot(slotId, (slot) => {
-        const img = document.createElement('img');
-        img.src = url;
-        img.style.display = 'block'; img.style.width = '100%';
-        slot.appendChild(img);
-    });
-}
-
 export function removeLegend(slotId) {
     document.getElementById(slotId)?.remove();
 }
 
-// The showLegend+opacityUniform wiring every layer module rebuilt independently
+// The replaceSlot+opacityUniform wiring every layer module rebuilt independently
 // (architecture review candidate "promote a standardLegend() helper" -- 12 near-
-// identical copies, plus every one of them computing keyFilename(outfile) a SECOND
-// time for their own separate keyUrl chase property). `outfileFor(cfg)` lets a caller
-// insert its own variant suffix first (sst.js's mode, air_quality.js's variable,
-// greenhouse_gases.js's species+mode) via insertBeforeExtension above.
+// identical copies). `renderKeyFor(cfg)` returns the drawKey() options (lut/vmin/
+// vmax/ticks/title/...) for the current config -- see _keycanvas.js.
 //
-// `opacityFallback` mirrors showLegend's own opacity contract: pass a number and the
-// key hides when cfg.opacity resolves to 0 (opacityUniform's honour-explicit-0
-// behaviour); omit it entirely (undefined) for currents.js/jetstream.js's documented
-// exception -- particles stay visible independent of the fill's own opacity, so the
-// key must never hide on opacity=0 either.
-export function standardLegend(slotId, outfileFor, opacityFallback) {
-    const urlFor = (cfg) => `${window.MAP_UI}/${keyFilename(outfileFor(cfg))}`;
+// `opacityFallback`: pass a number and the key hides when cfg.opacity resolves to 0
+// (opacityUniform's honour-explicit-0 behaviour) -- the SAME value driving the
+// layer's own on-map visibility, so a zeroed-out layer's key doesn't clutter the
+// stack (motivating case: Fire Risk + Air Quality both in the legend stack, one
+// silenced via its opacity slider). Omit it entirely (undefined) for currents.js/
+// jetstream.js's documented exception -- particles stay visible independent of the
+// fill's own opacity, so the key must never hide on opacity=0 either.
+export function standardLegend(slotId, renderKeyFor, opacityFallback) {
     const addLegend = (cfg) => {
-        const url = `${urlFor(cfg)}?t=${Date.now()}`;
-        if (opacityFallback === undefined) { showLegend(slotId, url); return; }
-        showLegend(slotId, url, opacityUniform(cfg, opacityFallback));
+        if (opacityFallback !== undefined && opacityUniform(cfg, opacityFallback) <= 0) {
+            removeLegend(slotId);
+            return;
+        }
+        replaceSlot(slotId, (slot) => {
+            const canvas = document.createElement('canvas');
+            slot.appendChild(canvas);
+            drawKey(canvas, renderKeyFor(cfg));
+        });
     };
-    return { addLegend, removeLegend: () => removeLegend(slotId), keyUrl: urlFor };
+    return { addLegend, removeLegend: () => removeLegend(slotId) };
 }
 
 const LEGENDS_HIDDEN_KEY = 'atmosgl.legendsHidden';

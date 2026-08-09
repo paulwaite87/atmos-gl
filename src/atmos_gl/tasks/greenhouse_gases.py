@@ -44,7 +44,6 @@ _LAND_TINT_COLOR = "#5a5a5a"
 # confirmed directly from the files' own `units` attribute: ppm/ppb, exactly the
 # display units this layer wants, so no conversion factor is needed.
 _CAMS_VARS = {"co2": "tcco2", "ch4": "tcch4"}
-_DISPLAY_UNIT = {"co2": "ppm", "ch4": "ppb"}
 _PALETTES = {"thermal": "magma", "vivid": "turbo", "deep": "viridis", "ocean": "inferno"}
 # Flat, species-prefixed setting keys (co2_min_ppm, ch4_palette, ...) rather than a
 # nested co2/ch4 sub-dict -- FIELD_SPECS/validate_against_specs (routes/field_specs.py)
@@ -70,7 +69,6 @@ class GhgUpdater(Updater):
 
     def plot(self, species: str, mode: str, current_nc: str, egg4_nc: str | None, output_path: str):
         alpha = float(self.settings.get("opacity", 60) / 100)
-        title_species = "CO2" if species == "co2" else "CH4"
 
         display_data, lat_raw, lon_norm = load_field(current_nc, _CAMS_VARS[species])
 
@@ -105,11 +103,6 @@ class GhgUpdater(Updater):
             vmin, vmax = -anomaly_range, anomaly_range
             norm = mcolors.TwoSlopeNorm(vmin=vmin, vcenter=0, vmax=vmax)
             cmap = mpl.cm.get_cmap("coolwarm")
-            title_text = (
-                f"{title_species} Anomaly vs {resolve_baseline_year(self.settings)} "
-                f"({_DISPLAY_UNIT[species]})"
-            )
-            tick_format = "%.1f"
         else:
             min_key, max_key = _SCALE_SETTING_KEYS[species]
             vmin = self.settings.get(min_key, 0)
@@ -117,8 +110,6 @@ class GhgUpdater(Updater):
             norm = mcolors.Normalize(vmin=vmin, vmax=vmax)
             palette_key = self.settings.get(f"{species}_palette", "thermal").lower()
             cmap = mpl.cm.get_cmap(_PALETTES.get(palette_key, "magma"))
-            title_text = f"{title_species} Concentration ({_DISPLAY_UNIT[species]})"
-            tick_format = "%d"
 
         plot = Plot(self.map_data.region)
         plot.get_figure()
@@ -145,18 +136,16 @@ class GhgUpdater(Updater):
             zorder=2,
         )
         plot.save_figure(output_path)
-        calculated_ticks = np.linspace(vmin, vmax, 5)
-        self.save_key_image(
-            output_path,
-            cmap,
-            norm,
-            calculated_ticks,
-            title_text,
-            key_fontsize=self.common.get("key_fontsize", 10),
-            labelsize=8,
-            tick_format=tick_format,
-            weight="bold",
-        )
+        # Legend key renders entirely client-side now (issue #302). Absolute mode's
+        # vmin/vmax come straight from settings (co2_min_ppm/co2_max_ppm etc, already
+        # visible to the frontend via /api/config); anomaly mode's are auto-scaled from
+        # live data (98th percentile, above) and have no other way to reach the
+        # frontend, so only anomaly is written -- mirrors SSTUpdater's identical
+        # sst_meta.json sidecar for the same "data-dependent range" problem.
+        if mode == "anomaly":
+            self._write_meta_sidecar(
+                "ghg_meta.json", species, {"anomaly": {"vmin": vmin, "vmax": vmax}}
+            )
 
         plt_close = getattr(plot, "close", None)
         if callable(plt_close):

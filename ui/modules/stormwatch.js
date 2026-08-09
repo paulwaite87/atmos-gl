@@ -3,14 +3,20 @@ import { CMAP_YLORRD, rgbToRgba } from './_colormaps.js';
 import { standardLegend } from './_legend.js';
 import { opacityUniform } from './_opacity.js';
 
-// GPU scrubber layer (CAPE). Linear YlOrRd ramp over [0, 5000] J/kg, matching the
-// static matplotlib key (StormwatchUpdater: cmap YlOrRd, Normalize 0..5000).
+// GPU scrubber layer (CAPE). Linear YlOrRd ramp over [0, 5000] J/kg -- mirrors
+// tasks/scalar_field.py's SPECS["stormwatch"] (cmap YlOrRd, Normalize 0..5000, same
+// ticks/title) so the client-drawn legend key matches exactly.
 // Low CAPE is rendered transparent so the layer doesn't wash the whole globe yellow.
 const VMIN = 0.0;
 const VMAX = 5000.0;
+const TICKS = [0, 1000, 2000, 3000, 4000, 5000];
 
 export function loadLayer(map, config, fullConfig = {}) {
-    const legend = standardLegend('stormwatch-legend-slot', (cfg) => cfg.outfile, 0.85);
+    const legend = standardLegend('stormwatch-legend-slot', () => ({
+        lut: rgbToRgba(CMAP_YLORRD),
+        vmin: VMIN, vmax: VMAX, ticks: TICKS,
+        title: 'CAPE (J/kg)', tickFormat: '%d',
+    }), 0.85);
 
     createFillLayer(map, {
         sectionKey: 'stormwatch',
@@ -41,9 +47,5 @@ export function loadLayer(map, config, fullConfig = {}) {
         onMount: legend.addLegend,
         onRefresh: legend.addLegend,
         onUnmount: legend.removeLegend,
-        // key_fontsize changes never touch the fill's data texture, so the default
-        // imageUrl regen chase can't detect that the legend needs re-fetching --
-        // keyUrl gives it its own independent chase.
-        keyUrl: legend.keyUrl,
     });
 }

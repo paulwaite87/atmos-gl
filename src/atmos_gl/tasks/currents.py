@@ -34,22 +34,6 @@ class CurrentsUpdater(VectorFieldUpdater):
     """
 
     VMAX = 2.5  # m/s; clips the strongest currents (Gulf Stream/Kuroshio ~2.5)
-    # Speed-ramp palettes for the colourbar KEY + the fill layer's colour stops.
-    # (The frontend fill reads these same stops; keep names in sync with config.)
-    PALETTES = {
-        "thermal_red": [
-            (0.65, 0.0, 0.0),
-            (1.0, 0.25, 0.0),
-            (1.0, 0.85, 0.0),
-            (1.0, 1.0, 1.0),
-        ],
-        "electric_blue": [(0.0, 0.35, 0.55), (0.0, 0.85, 1.0), (0.75, 1.0, 1.0)],
-        "toxic_neon": [(0.0, 0.45, 0.15), (0.25, 1.0, 0.0), (0.95, 1.0, 0.3)],
-        "cyberpunk": [(0.45, 0.0, 0.45), (1.0, 0.0, 0.55), (0.0, 1.0, 0.75)],
-    }
-    DEFAULT_PALETTE = "thermal_red"
-    KEY_TITLE = "Current Speed (m/s)"
-    KEY_TICK_FORMAT = "%.1f"
 
     def __init__(self, config: AtmosGLConfig, map_data: MapData):
         super().__init__(config, "Currents", map_data)

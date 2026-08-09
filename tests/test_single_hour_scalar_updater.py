@@ -6,9 +6,9 @@ subclasses' plot() bodies diverge too much to share (different regrid fill_value
 color models, and precipitation's extra smoothing/floor/sqrt-transform pipeline), so
 only the genuinely-identical constructor fields and run() wiring were lifted here --
 plot() stays a full per-subclass override, not hook-split. This locks run()'s call
-order (get_gfs_state -> _write_key -> render_all_hours) and hook dispatch, since
-neither ScalarFieldUpdater.run() nor PrecipitationUpdater.run() had direct coverage
-before this extraction.
+order (get_gfs_state -> render_all_hours) and hook dispatch, since neither
+ScalarFieldUpdater.run() nor PrecipitationUpdater.run() had direct coverage before
+this extraction.
 """
 from unittest.mock import MagicMock, patch
 
@@ -24,11 +24,7 @@ class _StubUpdater(SingleHourScalarUpdater):
         self.per_hour_outputs = [".png", "_data.png"]
         self.level_of_detail = 2
         self.lod_desc = None
-        self.write_key_calls = 0
         self.plot_calls = []
-
-    def _write_key(self):
-        self.write_key_calls += 1
 
     def plot(self, field0, state):
         self.plot_calls.append((field0, state))
@@ -41,20 +37,16 @@ def make_stub():
     return u
 
 
-def test_run_calls_get_gfs_state_then_write_key_then_render_all_hours_in_order():
+def test_run_calls_get_gfs_state_then_render_all_hours_in_order():
     u = make_stub()
     manager = MagicMock()
     manager.attach_mock(u.get_gfs_state, "get_gfs_state")
-    write_key_mock = MagicMock(wraps=u._write_key)
-    u._write_key = write_key_mock
-    manager.attach_mock(write_key_mock, "_write_key")
     manager.attach_mock(u.render_all_hours, "render_all_hours")
 
     u.run()
 
     assert [c[0] for c in manager.mock_calls] == [
         "get_gfs_state",
-        "_write_key",
         "render_all_hours",
     ]
 
@@ -81,15 +73,8 @@ def test_run_returns_render_all_hours_result():
     assert u.run() == "sentinel"
 
 
-def test_write_key_and_plot_raise_not_implemented_on_the_bare_base():
+def test_plot_raises_not_implemented_on_the_bare_base():
     bare = SingleHourScalarUpdater.__new__(SingleHourScalarUpdater)
-
-    try:
-        bare._write_key()
-    except NotImplementedError:
-        pass
-    else:
-        raise AssertionError("expected NotImplementedError from _write_key")
 
     try:
         bare.plot(None, None)
