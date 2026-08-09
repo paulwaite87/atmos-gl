@@ -4,16 +4,13 @@ import logging
 import gc
 import numpy as np
 import xarray as xr
-import matplotlib as mpl
-import matplotlib.colors as mcolors
-import cartopy.crs as ccrs
 from scipy.ndimage import distance_transform_edt
 
 # Internal imports
 from atmos_gl.lib.config import AtmosGLConfig
-from atmos_gl.lib.coastline import coastline_land_mask, gshhg_land_feature
+from atmos_gl.lib.coastline import coastline_land_mask
+from atmos_gl.lib.texture import encode_frames
 from .common import Updater, MapData
-from .plotting import Plot, clamp_lats_to_mercator_limit
 
 logger = logging.getLogger(__name__)
 
@@ -22,16 +19,21 @@ logger = logging.getLogger(__name__)
 # other fields), not a user setting (SST's raw data doesn't warrant detail control).
 # Chosen empirically: at world scale 0.05 deg (~5.6km) took ~4 minutes for regrid+mask
 # alone (25.9M points) -- impractical for a periodic render. 0.08 deg (~8.9km) completes
-# a full render (regrid+mask+pcolormesh+savefig) in ~45s, comparable to the old 0.15 deg
+# a full render (regrid+mask+encode) in well under that, comparable to the old 0.15 deg
 # tier's production timing, while resolving roughly twice as fine.
 _SST_REGRID_STEP_DEG = 0.08
 
-# Land tint drawn beneath the data (see plot()) so the coastline reads clearly
-# regardless of the active colormap -- anomaly mode's coolwarm renders near-zero
-# values close to white, which is visually indistinguishable from bare (transparent)
-# land without this. A neutral, unsaturated gray reads as "land" against both magma
-# (absolute) and coolwarm (anomaly).
-_LAND_TINT_COLOR = "#5a5a5a"
+# Fixed physical domains encode_frames normalises into, for the raw client-LUT texture
+# (issue #312) -- deliberately NOT the user's live min_c/max_c (those are applied
+# entirely client-side now, see ui/modules/sst.js's buildScaledLUT, so a palette/scale
+# change never needs a server re-render). Absolute mode's domain matches the min_c/
+# max_c slider's own hard bounds (routes/field_specs.py's _MIN_MAX_C: 0-36 DegC)
+# exactly, so no realistic user-chosen display range can fall outside it. Anomaly's
+# domain has no such natural bound (it's auto-scaled from live data, floored at 0.5 --
+# see plot() below); -10..10 DegC is a generous margin over that in practice, so only
+# a genuinely extreme anomaly would clip.
+_ABS_ENCODE_VMIN, _ABS_ENCODE_VMAX = 0.0, 36.0
+_ANOMALY_ENCODE_VMIN, _ANOMALY_ENCODE_VMAX = -10.0, 10.0
 
 
 class SSTUpdater(Updater):
@@ -43,13 +45,13 @@ class SSTUpdater(Updater):
         """Per-mode, ALWAYS-kept-fresh output path: 'data/sst.png' -> e.g.
         'data/sst_anomaly.png'. Both modes render here every cycle (independent of
         the configured `mode`) so the frontend can switch between them instantly --
-        see ui/modules/sst.js."""
+        see ui/modules/sst.js. Since #312, this path holds a raw, un-colored data
+        texture (encode_frames), not a colored image -- the palette/LUT is applied
+        entirely client-side, reading the same path."""
         base, ext = os.path.splitext(self.output_path)
         return f"{base}_{mode}{ext}"
 
     def plot(self, mode: str, nc_path: str, output_path: str):
-        alpha = float(self.settings.get("opacity", 40) / 100)
-
         # --- Data Loading ---
         ds = xr.open_dataset(nc_path, chunks={"time": 1})
         latest_slice = ds.isel(time=-1)
@@ -95,9 +97,10 @@ class SSTUpdater(Updater):
         if land is not None and land.shape == display_data.shape:
             display_data[land] = np.nan
 
-        # --- Dynamic Mode Styling Pipeline ---
         if mode == "anomaly":
-            # Isolates 98th percentile of absolute variance on screen for stable scale bounds
+            # Isolates 98th percentile of absolute variance for stable scale bounds --
+            # the LIVE display range a signed-in user's anomaly legend/LUT remaps onto,
+            # written to sst_meta.json below (not the fixed encode domain above).
             abs_anomalies = np.abs(display_data)
             calculated_range = (
                 float(np.nanpercentile(abs_anomalies, 98))
@@ -105,59 +108,22 @@ class SSTUpdater(Updater):
                 else 4.0
             )
             anomaly_range = max(0.5, calculated_range)
-
             vmin, vmax = -anomaly_range, anomaly_range
-            norm = mcolors.TwoSlopeNorm(vmin=vmin, vcenter=0, vmax=vmax)
-            cmap = mpl.cm.get_cmap("coolwarm")
+            encode_vmin, encode_vmax = _ANOMALY_ENCODE_VMIN, _ANOMALY_ENCODE_VMAX
         else:
-            # Absolute Mode Configurations
             vmin = self.settings.get("min_c", 0)
             vmax = self.settings.get("max_c", 32)
-            norm = mcolors.Normalize(vmin=vmin, vmax=vmax)
+            encode_vmin, encode_vmax = _ABS_ENCODE_VMIN, _ABS_ENCODE_VMAX
 
-            palette_key = self.settings.get("palette", "thermal").lower()
-            palettes = {
-                "thermal": "magma",
-                "vivid": "turbo",
-                "deep": "viridis",
-                "ocean": "inferno",
-            }
-            cmap = mpl.cm.get_cmap(palettes.get(palette_key, "magma"))
+        # Raw, un-colored data texture (issue #312) -- land cells stay NaN (encoded as
+        # alpha=0, discarded by the fragment shader), same convention currents.py/
+        # waves.py's land masking already relies on. The palette/LUT and the live
+        # min_c/max_c (or anomaly vmin/vmax) display range are applied entirely
+        # client-side (ui/modules/sst.js), reading this fixed, generous physical
+        # domain -- so a palette or scale change never needs a server re-render.
+        encode_frames([display_data], output_path, encode_vmin, encode_vmax)
 
-        # --- Canvas Initialization ---
-        plot = Plot(self.map_data.region)
-        plot.get_figure()
-
-        # Flat land tint UNDER the data (zorder below the pcolormesh's) so masked
-        # (transparent) cells read as clearly "land" regardless of what colour the
-        # nearby ocean data happens to be -- see _LAND_TINT_COLOR. None (geometry
-        # unavailable, e.g. no network for the one-time GSHHG download) skips the
-        # tint rather than crashing -- same graceful-fallback contract as the mask above.
-        land_feature = gshhg_land_feature()
-        if land_feature is not None:
-            plot.ax.add_feature(
-                land_feature,
-                facecolor=_LAND_TINT_COLOR,
-                edgecolor="none",
-                zorder=1,
-            )
-
-        # Render complete mapped geographic array using exact pixel cell boundaries
-        plot.ax.pcolormesh(
-            new_lons,
-            clamp_lats_to_mercator_limit(new_lats),
-            display_data,
-            transform=ccrs.PlateCarree(),
-            cmap=cmap,
-            norm=norm,
-            alpha=alpha,
-            shading="nearest",
-            rasterized=True,
-            zorder=2,
-        )
-
-        plot.save_figure(output_path)
-        # Legend key renders entirely client-side now (issue #302). Absolute mode's
+        # Legend key renders entirely client-side too (issue #302). Absolute mode's
         # vmin/vmax come straight from settings (min_c/max_c, already visible to the
         # frontend via /api/config); anomaly mode's are auto-scaled from live data
         # (98th percentile, above) and have no other way to reach the frontend, so
@@ -166,29 +132,17 @@ class SSTUpdater(Updater):
         if mode == "anomaly":
             self._write_meta_sidecar("sst_meta.json", mode, {"vmin": vmin, "vmax": vmax})
 
-        plt_close = getattr(plot, "close", None)
-        if callable(plt_close):
-            plt_close()
-
-        logger.debug(f"Successfully rendered raw NOAA OISST map in {mode} mode.")
+        logger.debug(f"Successfully rendered raw NOAA OISST texture in {mode} mode.")
 
     def _mode_settings_signature(self, mode: str) -> str:
-        """Render-relevant settings for `mode`, for _is_render_fresh -- opacity and
-        key_fontsize are baked into the rendered pixels for both modes (see plot()'s
-        alpha and save_key_image's key_fontsize); min_c/max_c/palette only apply to
-        absolute (anomaly is auto-scaled from the data, no user-facing scale/palette
-        settings)."""
-        values = {
-            "opacity": self.settings.get("opacity", 40),
-            "key_fontsize": self.common.get("key_fontsize", 10),
-        }
-        if mode == "absolute":
-            values.update({
-                "min_c": self.settings.get("min_c", 0),
-                "max_c": self.settings.get("max_c", 32),
-                "palette": self.settings.get("palette", "thermal"),
-            })
-        return self._settings_signature(values)
+        """Render-relevant settings for `mode`, for _is_render_fresh. Since #312,
+        opacity/palette/min_c/max_c apply entirely client-side (the encoded texture's
+        domain is a fixed constant -- see plot()), so none of them change the encoded
+        pixels anymore; this is deliberately empty and freshness is governed by
+        source-data mtime alone (_is_render_fresh's other check). Kept as a real call
+        (not inlined `""`) so a future setting that DOES need to force a re-render has
+        somewhere to add itself."""
+        return self._settings_signature({})
 
     def run(self, max_hours=None):
         # max_hours is a no-op here -- SST renders once per cycle, not per forecast
@@ -214,7 +168,7 @@ class SSTUpdater(Updater):
             sig = self._mode_settings_signature(mode)
             fresh = self._is_render_fresh(out, [nc_path], sig)
             if not fresh:
-                logger.info(f"Generating SST {mode} plot...")
+                logger.info(f"Generating SST {mode} texture...")
                 self.plot(mode, nc_path, out)
                 self._write_render_signature(out, sig)
 

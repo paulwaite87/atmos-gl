@@ -32,6 +32,33 @@ const MESH_COLS = 256;     // lon divisions of the globe fill mesh
 const MESH_ROWS = 128;     // lat divisions (Mercator-clamped range)
 const LAT_MAX = 85.051129; // Web Mercator limit (matches data texture extent)
 
+// Vertex shader: a lon/lat mesh vertex -> normalised mercator [0,1] -> projectTile.
+// v_uv carries the equirectangular sample coord (x in [0,1] lon, y in [0,1] lat
+// north->south) for the fragment shader to look up the data texture. No per-call
+// template interpolation (unlike FS_BODY below), so it's a plain shared constant --
+// used by both createFillLayer (hour-animated) and createStaticFillLayer (single,
+// poll-refreshed texture).
+const VS_BODY = `
+precision highp float;
+layout(location=0) in vec2 a_lonlat;   // degrees
+out vec2 v_uv;
+const float WF_PI = 3.141592653589793;
+const float WF_LATMAX = 1.4844222297453324;   // mercator lat limit (rad)
+vec2 toMerc(vec2 p){   // p = normalised lon[0..1], lat-fraction[0..1] (north->south)
+    float lat = clamp((0.5 - p.y) * WF_PI, -WF_LATMAX, WF_LATMAX);
+    float my = log(tan(WF_PI*0.25 + lat*0.5));
+    return vec2(p.x, 0.5 - my/(2.0*WF_PI));
+}
+void main(){
+    float nx = (a_lonlat.x + 180.0) / 360.0;          // 0..1 lon
+    float latr = radians(a_lonlat.y);
+    // normalised lat-fraction (north->south) from latitude
+    float ny = 0.5 - (a_lonlat.y / 180.0);            // linear in degrees -> matches equirect data rows
+    v_uv = vec2(nx, ny);
+    vec4 clip = projectTile(toMerc(vec2(nx, ny)));
+    gl_Position = clip;
+}`;
+
 /** Resolve any CSS colour string ("White", "#07f", "rgb(...)") to [r,g,b] in 0..1. */
 export function cssToRgb(str) {
     try {
@@ -150,30 +177,6 @@ export function createFillLayer(map, opts) {
     };
 
     // ---------- shaders ----------
-    // Vertex: a lon/lat mesh vertex -> normalised mercator [0,1] -> projectTile.
-    // v_uv carries the equirectangular sample coord (x in [0,1] lon, y in [0,1] lat
-    // north->south) for the fragment shader to look up the data texture.
-    const VS_BODY = `
-precision highp float;
-layout(location=0) in vec2 a_lonlat;   // degrees
-out vec2 v_uv;
-const float WF_PI = 3.141592653589793;
-const float WF_LATMAX = 1.4844222297453324;   // mercator lat limit (rad)
-vec2 toMerc(vec2 p){   // p = normalised lon[0..1], lat-fraction[0..1] (north->south)
-    float lat = clamp((0.5 - p.y) * WF_PI, -WF_LATMAX, WF_LATMAX);
-    float my = log(tan(WF_PI*0.25 + lat*0.5));
-    return vec2(p.x, 0.5 - my/(2.0*WF_PI));
-}
-void main(){
-    float nx = (a_lonlat.x + 180.0) / 360.0;          // 0..1 lon
-    float latr = radians(a_lonlat.y);
-    // normalised lat-fraction (north->south) from latitude
-    float ny = 0.5 - (a_lonlat.y / 180.0);            // linear in degrees -> matches equirect data rows
-    v_uv = vec2(nx, ny);
-    vec4 clip = projectTile(toMerc(vec2(nx, ny)));
-    gl_Position = clip;
-}`;
-
     const FS_BODY = `
 precision highp float;
 in vec2 v_uv;
@@ -500,6 +503,257 @@ void main(){
         imageUrl: (cfg) => (forecastStepping(curAnim) && !webglFailed)
             ? hourDataUrl(cfg, timeline.get().hour, bustKey) : staticUrl(cfg),
         onMissing: () => flagBackfill(sectionKey, timeline.get(), backfillKey),
+        refreshMs, syncMs,
+    });
+}
+
+/**
+ * GPU scalar-field fill for a layer with no forecast-hour dimension to animate --
+ * SST/greenhouse_gases (issue #312) render once per cycle from their own independent
+ * data sources (OISST/CAMS), not per GFS forecast hour, unlike every createFillLayer
+ * consumer above. Forcing them through createFillLayer's per-hour texture cache and
+ * shared animation timeline would couple them to a scrubber concept that doesn't
+ * apply to them (the same frame would show for every hour) and would cost real,
+ * pointless GPU/network churn (repainting on every animation tick of an unrelated
+ * playing layer). This is deliberately a separate, smaller function rather than a
+ * mode grafted onto createFillLayer -- see VS_BODY above for the one piece (the
+ * projection vertex shader) that genuinely doesn't vary between the two and is
+ * shared; the rest (mesh build, shader compile, projection-uniform wiring) is small
+ * enough, and different enough in its surrounding lifecycle (single texture, no
+ * prefetch/evict/interpolation, refreshed by liveLayerSync's plain poll instead of
+ * timeline hour-changes), that extracting it too would cost more clarity than it
+ * saves for two consumers. Revisit if a third non-hour-based raw-texture layer shows
+ * up (this codebase's own "wait for a third occurrence" convention for shared code).
+ *
+ * Same shading contract as createFillLayer: fragmentBody defines `vec4 shade(float
+ * value, vec2 uv)`, customUniforms/colormap are re-evaluated on every refresh (so a
+ * palette or scale setting change never needs a server round-trip), physicalMin/
+ * physicalSpan are the FIXED server-side encode_frames() domain (not the user's live
+ * display range -- see e.g. tasks/sst.py's _ABS_ENCODE_VMIN/_ABS_ENCODE_VMAX).
+ *
+ * Land: `d.a < 0.5 -> discard` below (the same NaN-masked-cell convention every
+ * texture-based layer uses) lets the basemap show through over land, rather than
+ * painting a tint like the old matplotlib pipeline did. Live-verified (issue #312)
+ * this reads clearly as land against the satellite basemap; deliberately not adding
+ * a client-side land tint on top.
+ */
+export function createStaticFillLayer(map, opts) {
+    const {
+        sectionKey,
+        initialConfig,
+        // (cfg) => [physicalMin, physicalMax] -- a FUNCTION, not a fixed pair, unlike
+        // createFillLayer's constant vmin/vspan: SST/greenhouse_gases' encode domain
+        // depends on the live `mode` setting (absolute vs anomaly are two different
+        // fixed domains -- see tasks/sst.py's _ABS_ENCODE_*/_ANOMALY_ENCODE_*), so it
+        // must be resolved fresh against curCfg on every render, not captured once.
+        physicalDomain,
+        fragmentBody,
+        valueDecode = null,
+        customUniforms = () => ({}),
+        colormap = null,
+        beforeId = null,
+        onMount = () => {}, onRefresh = () => {}, onUnmount = () => {},
+        dataUrl,
+        refreshMs, syncMs,
+    } = opts;
+
+    const S_LYR = `${sectionKey}-static-fill-layer`;
+    const addBelow = (layerDef) =>
+        map.addLayer(layerDef, (beforeId && map.getLayer(beforeId)) ? beforeId : undefined);
+
+    let glRef = null;
+    let progCache = new Map();   // keyed by MapLibre shader variant, same as createFillLayer
+    let progFailed = false;
+    let meshBuf = null, meshVertCount = 0;
+    let dataTex = null, dataReady = false, loadSeq = 0;
+    let cmapTex = null;
+    let curCfg = initialConfig || {};
+    let layerAdded = false;
+
+    const FS_BODY = `
+precision highp float;
+in vec2 v_uv;
+out vec4 fragColor;
+uniform sampler2D u_tex;
+uniform float u_vmin;
+uniform float u_span;
+uniform sampler2D u_cmap;
+float decodeNorm(vec4 d){ return ${valueDecode || '(d.r * 65280.0 + d.g * 255.0) / 65535.0'}; }
+${fragmentBody}
+void main(){
+    vec4 d = texture(u_tex, v_uv);
+    if (d.a < 0.5) discard;
+    float value = decodeNorm(d) * u_span + u_vmin;
+    fragColor = shade(value, v_uv);
+}`;
+
+    const compile = (gl, type, src) => {
+        const sh = gl.createShader(type);
+        gl.shaderSource(sh, src); gl.compileShader(sh);
+        if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) {
+            console.warn(`[${sectionKey}] shader compile:`, gl.getShaderInfoLog(sh));
+            return null;
+        }
+        return sh;
+    };
+    // shaderData supplies MapLibre's projectTile() prelude (globe/mercator variant) --
+    // without it the VS_BODY call to projectTile() has nothing defining it. Cached per
+    // variantName like createFillLayer.getProg, since MapLibre swaps variants across a
+    // globe/mercator projection transition.
+    const getProg = (gl, shaderData) => {
+        const key = shaderData.variantName || '__default__';
+        if (progCache.has(key)) return progCache.get(key);
+        if (progFailed) return null;
+        const vs = `#version 300 es\n${shaderData.vertexShaderPrelude}\n${shaderData.define}\n${VS_BODY}`;
+        const fs = `#version 300 es\n${FS_BODY}`;
+        const v = compile(gl, gl.VERTEX_SHADER, vs), f = compile(gl, gl.FRAGMENT_SHADER, fs);
+        if (!v || !f) { progFailed = true; return null; }
+        const p = gl.createProgram();
+        gl.attachShader(p, v); gl.attachShader(p, f); gl.linkProgram(p);
+        gl.deleteShader(v); gl.deleteShader(f);
+        if (!gl.getProgramParameter(p, gl.LINK_STATUS)) {
+            console.warn(`[${sectionKey}] link:`, gl.getProgramInfoLog(p));
+            progFailed = true; return null;
+        }
+        progCache.set(key, p);
+        return p;
+    };
+
+    const buildMesh = (gl) => {
+        const verts = [];
+        const dLon = 360 / MESH_COLS, dLat = (2 * LAT_MAX) / MESH_ROWS;
+        for (let r = 0; r < MESH_ROWS; r++) {
+            const lat0 = LAT_MAX - r * dLat, lat1 = LAT_MAX - (r + 1) * dLat;
+            for (let c = 0; c < MESH_COLS; c++) {
+                const lon0 = -180 + c * dLon, lon1 = -180 + (c + 1) * dLon;
+                verts.push(lon0, lat0, lon1, lat0, lon0, lat1,
+                           lon0, lat1, lon1, lat0, lon1, lat1);
+            }
+        }
+        meshVertCount = verts.length / 2;
+        meshBuf = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, meshBuf);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(verts), gl.STATIC_DRAW);
+    };
+
+    const uploadCmap = (gl, lut) => {
+        if (!cmapTex) {
+            cmapTex = gl.createTexture();
+            gl.bindTexture(gl.TEXTURE_2D, cmapTex);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        }
+        gl.bindTexture(gl.TEXTURE_2D, cmapTex);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 256, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, lut);
+    };
+
+    // seq guards against an in-flight image load from a SUPERSEDED refresh() call
+    // finishing after a newer one and overwriting fresher data with stale bytes.
+    const loadDataTexture = (gl, url) => {
+        if (!dataTex) {
+            dataTex = gl.createTexture();
+            gl.bindTexture(gl.TEXTURE_2D, dataTex);
+            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([0, 0, 0, 0]));
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        }
+        const seq = ++loadSeq;
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => {
+            if (!glRef || seq !== loadSeq) return;
+            glRef.bindTexture(glRef.TEXTURE_2D, dataTex);
+            glRef.texImage2D(glRef.TEXTURE_2D, 0, glRef.RGBA, glRef.RGBA, glRef.UNSIGNED_BYTE, img);
+            dataReady = true;
+            map.triggerRepaint();
+        };
+        img.onerror = () => {};
+        img.src = url;
+    };
+
+    const layer = () => ({
+        id: S_LYR, type: 'custom', renderingMode: '2d',
+        onAdd(m, gl) {
+            glRef = gl;
+            progCache = new Map(); progFailed = false;
+            buildMesh(gl);
+            if (colormap) { const lut = colormap(curCfg); if (lut) uploadCmap(gl, lut); }
+            loadDataTexture(gl, `${dataUrl(curCfg)}?t=${Date.now()}`);
+        },
+        render(gl, args) {
+            const p = getProg(gl, args.shaderData);
+            if (!p || !dataReady) return;
+            gl.useProgram(p);
+            const pd = args.defaultProjectionData;
+            const U = (n) => gl.getUniformLocation(p, n);
+            gl.uniformMatrix4fv(U('u_projection_matrix'), false, pd.mainMatrix);
+            gl.uniformMatrix4fv(U('u_projection_fallback_matrix'), false, pd.fallbackMatrix);
+            gl.uniform4f(U('u_projection_clipping_plane'), pd.clippingPlane[0], pd.clippingPlane[1], pd.clippingPlane[2], pd.clippingPlane[3]);
+            gl.uniform1f(U('u_projection_transition'), pd.projectionTransition);
+            gl.uniform4f(U('u_projection_tile_mercator_coords'), pd.tileMercatorCoords[0], pd.tileMercatorCoords[1], pd.tileMercatorCoords[2], pd.tileMercatorCoords[3]);
+
+            gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, dataTex); gl.uniform1i(U('u_tex'), 0);
+            if (cmapTex) { gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, cmapTex); gl.uniform1i(U('u_cmap'), 1); }
+            const [domMin, domMax] = physicalDomain(curCfg);
+            gl.uniform1f(U('u_vmin'), domMin);
+            gl.uniform1f(U('u_span'), domMax - domMin);
+            const cu = customUniforms(curCfg) || {};
+            for (const [name, val] of Object.entries(cu)) {
+                const loc = U(name);
+                if (loc == null) continue;
+                if (Array.isArray(val)) {
+                    if (val.length === 2) gl.uniform2fv(loc, val);
+                    else if (val.length === 3) gl.uniform3fv(loc, val);
+                    else if (val.length === 4) gl.uniform4fv(loc, val);
+                } else gl.uniform1f(loc, val);
+            }
+
+            gl.bindBuffer(gl.ARRAY_BUFFER, meshBuf);
+            gl.enableVertexAttribArray(0);
+            gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+            gl.disable(gl.DEPTH_TEST);
+            gl.enable(gl.BLEND);
+            gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+            gl.drawArrays(gl.TRIANGLES, 0, meshVertCount);
+        },
+        onRemove(m, gl) {
+            if (dataTex) gl.deleteTexture(dataTex);
+            if (cmapTex) gl.deleteTexture(cmapTex);
+            if (meshBuf) gl.deleteBuffer(meshBuf);
+            progCache.forEach((p) => gl.deleteProgram(p)); progCache.clear();
+            dataTex = cmapTex = meshBuf = null;
+            dataReady = false; glRef = null;
+        },
+    });
+
+    const mount = (cfg) => {
+        curCfg = cfg;
+        if (layerAdded || map.getLayer(S_LYR)) return;
+        addBelow(layer());
+        layerAdded = true;
+        onMount(cfg);
+    };
+    const refresh = (cfg) => {
+        curCfg = cfg;
+        if (glRef) {
+            if (colormap) { const lut = colormap(cfg); if (lut) uploadCmap(glRef, lut); }
+            loadDataTexture(glRef, `${dataUrl(cfg)}?t=${Date.now()}`);
+        }
+        onRefresh(cfg);
+    };
+    const unmount = () => {
+        if (layerAdded && map.getLayer(S_LYR)) map.removeLayer(S_LYR);   // fires onRemove cleanup
+        layerAdded = false;
+        onUnmount();
+    };
+
+    return liveLayerSync(map, {
+        sectionKey, initialConfig, mount, refresh, unmount,
+        imageUrl: (cfg) => dataUrl(cfg),
         refreshMs, syncMs,
     });
 }

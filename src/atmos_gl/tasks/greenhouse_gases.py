@@ -3,13 +3,10 @@ import gc
 import logging
 import os
 
-import cartopy.crs as ccrs
-import matplotlib as mpl
-import matplotlib.colors as mcolors
 import numpy as np
 
 from atmos_gl.lib.config import AtmosGLConfig
-from atmos_gl.lib.coastline import coastline_land_mask, gshhg_land_feature
+from atmos_gl.lib.coastline import coastline_land_mask
 from atmos_gl.lib.greenhouse_gases import (
     SPECIES,
     camsforecast_cache_path,
@@ -18,21 +15,19 @@ from atmos_gl.lib.greenhouse_gases import (
     resolve_baseline_year,
 )
 from atmos_gl.lib.netcdf_field import load_field
+from atmos_gl.lib.texture import encode_frames
 from .common import Updater, MapData
-from .plotting import Plot, clamp_lats_to_mercator_limit
 
 logger = logging.getLogger(__name__)
 
 # CAMS's high-resolution forecast is ~9km (~0.1 deg) native, but rendering AT that
-# resolution is far too slow to be practical: live timing found pcolormesh alone
-# taking >80s per render at the native 6.5M-point grid (regrid+coastline-mask
-# together are a comparatively cheap ~7s) -- with 4 species x mode combinations
+# resolution is far too slow to be practical: live timing found the old pcolormesh
+# render alone taking >80s per render at the native 6.5M-point grid (regrid+coastline-
+# mask together are a comparatively cheap ~7s) -- with 4 species x mode combinations
 # rendered every cycle, that's minutes per cycle just for this one layer. 0.25 deg
 # (matching this codebase's "low" LOD tier default) cuts the point count by ~6x,
-# bringing pcolormesh back into the same ballpark as every other layer.
+# bringing regrid+encode back into the same ballpark as every other layer.
 _REGRID_STEP_DEG = 0.25
-
-_LAND_TINT_COLOR = "#5a5a5a"
 
 # Both CAMS datasets (the current forecast and the EGG4 baseline) use the same
 # in-file netCDF variable names for these two species -- confirmed by downloading and
@@ -44,7 +39,21 @@ _LAND_TINT_COLOR = "#5a5a5a"
 # confirmed directly from the files' own `units` attribute: ppm/ppb, exactly the
 # display units this layer wants, so no conversion factor is needed.
 _CAMS_VARS = {"co2": "tcco2", "ch4": "tcch4"}
-_PALETTES = {"thermal": "magma", "vivid": "turbo", "deep": "viridis", "ocean": "inferno"}
+
+# Fixed physical domains encode_frames normalises into, for the raw client-LUT texture
+# (issue #312) -- deliberately NOT the user's live co2/ch4 min/max settings (those are
+# applied entirely client-side now, see ui/modules/greenhouse_gases.js's
+# buildScaledLUT, so a palette/scale change never needs a server re-render). Absolute
+# mode's domains match each species' own min/max slider's hard bounds
+# (routes/field_specs.py: co2 380-450ppm, ch4 1600-2100ppb) exactly, so no realistic
+# user-chosen display range can fall outside them. Anomaly's domains have no such
+# natural bound (auto-scaled from live data, floored below) -- both gases are well
+# mixed, so an old baseline_year (as far back as 2003, ~23 years of rise) shows up as a
+# near-globally-uniform offset rather than a small localised anomaly the way SST's
+# weather-driven anomaly does; these margins are generous over that worst case.
+_ABS_ENCODE_DOMAIN = {"co2": (380.0, 450.0), "ch4": (1600.0, 2100.0)}
+_ANOMALY_ENCODE_DOMAIN = {"co2": (-100.0, 100.0), "ch4": (-300.0, 300.0)}
+
 # Flat, species-prefixed setting keys (co2_min_ppm, ch4_palette, ...) rather than a
 # nested co2/ch4 sub-dict -- FIELD_SPECS/validate_against_specs (routes/field_specs.py)
 # only understands flat (section, option) keys, matching every other section's
@@ -63,13 +72,13 @@ class GhgUpdater(Updater):
         """Per-(species, mode), ALWAYS-kept-fresh output path: 'data/greenhouse_gases.png'
         -> e.g. 'data/greenhouse_gases_co2_anomaly.png'. All 4 combinations render here
         every cycle (independent of the configured species/mode) so the frontend can
-        switch between them instantly -- see ui/modules/greenhouse_gases.js."""
+        switch between them instantly -- see ui/modules/greenhouse_gases.js. Since #312,
+        this path holds a raw, un-colored data texture (encode_frames), not a colored
+        image -- the palette/LUT is applied entirely client-side, reading this path."""
         base, ext = os.path.splitext(self.output_path)
         return f"{base}_{species}_{mode}{ext}"
 
     def plot(self, species: str, mode: str, current_nc: str, egg4_nc: str | None, output_path: str):
-        alpha = float(self.settings.get("opacity", 60) / 100)
-
         display_data, lat_raw, lon_norm = load_field(current_nc, _CAMS_VARS[species])
 
         if mode == "anomaly":
@@ -92,7 +101,9 @@ class GhgUpdater(Updater):
             # Auto-scaled from the data (98th percentile of |anomaly|) rather than a
             # manual setting -- anomaly ranges are small and data-dependent enough
             # that a fixed scale would need constant retuning. Same technique
-            # SSTUpdater.plot() uses for SST's anomaly mode.
+            # SSTUpdater.plot() uses for SST's anomaly mode. This is the LIVE display
+            # range a signed-in user's anomaly legend/LUT remaps onto, written to
+            # ghg_meta.json below (not the fixed encode domain above).
             abs_anomalies = np.abs(display_data)
             calculated_range = (
                 float(np.nanpercentile(abs_anomalies, 98))
@@ -101,42 +112,23 @@ class GhgUpdater(Updater):
             )
             anomaly_range = max(0.1, calculated_range)
             vmin, vmax = -anomaly_range, anomaly_range
-            norm = mcolors.TwoSlopeNorm(vmin=vmin, vcenter=0, vmax=vmax)
-            cmap = mpl.cm.get_cmap("coolwarm")
+            encode_vmin, encode_vmax = _ANOMALY_ENCODE_DOMAIN[species]
         else:
             min_key, max_key = _SCALE_SETTING_KEYS[species]
             vmin = self.settings.get(min_key, 0)
             vmax = self.settings.get(max_key, 1)
-            norm = mcolors.Normalize(vmin=vmin, vmax=vmax)
-            palette_key = self.settings.get(f"{species}_palette", "thermal").lower()
-            cmap = mpl.cm.get_cmap(_PALETTES.get(palette_key, "magma"))
+            encode_vmin, encode_vmax = _ABS_ENCODE_DOMAIN[species]
 
-        plot = Plot(self.map_data.region)
-        plot.get_figure()
-        # None (geometry unavailable) skips the tint rather than crashing -- same
-        # graceful-fallback contract as the mask above.
-        land_feature = gshhg_land_feature()
-        if land_feature is not None:
-            plot.ax.add_feature(
-                land_feature,
-                facecolor=_LAND_TINT_COLOR,
-                edgecolor="none",
-                zorder=1,
-            )
-        plot.ax.pcolormesh(
-            new_lons,
-            clamp_lats_to_mercator_limit(new_lats),
-            display_data,
-            transform=ccrs.PlateCarree(),
-            cmap=cmap,
-            norm=norm,
-            alpha=alpha,
-            shading="nearest",
-            rasterized=True,
-            zorder=2,
-        )
-        plot.save_figure(output_path)
-        # Legend key renders entirely client-side now (issue #302). Absolute mode's
+        # Raw, un-colored data texture (issue #312) -- land cells stay NaN (encoded as
+        # alpha=0, discarded by the fragment shader), same convention currents.py/
+        # waves.py's land masking already relies on. The palette/LUT and the live
+        # min/max (or anomaly vmin/vmax) display range are applied entirely
+        # client-side (ui/modules/greenhouse_gases.js), reading this fixed, generous
+        # physical domain -- so a palette or scale change never needs a server
+        # re-render.
+        encode_frames([display_data], output_path, encode_vmin, encode_vmax)
+
+        # Legend key renders entirely client-side too (issue #302). Absolute mode's
         # vmin/vmax come straight from settings (co2_min_ppm/co2_max_ppm etc, already
         # visible to the frontend via /api/config); anomaly mode's are auto-scaled from
         # live data (98th percentile, above) and have no other way to reach the
@@ -147,35 +139,23 @@ class GhgUpdater(Updater):
                 "ghg_meta.json", species, {"anomaly": {"vmin": vmin, "vmax": vmax}}
             )
 
-        plt_close = getattr(plot, "close", None)
-        if callable(plt_close):
-            plt_close()
         gc.collect()
 
-        logger.debug(f"Successfully rendered {species} {mode} greenhouse gas map.")
+        logger.debug(f"Successfully rendered {species} {mode} greenhouse gas texture.")
 
     def _mode_settings_signature(self, species: str, mode: str) -> str:
-        """Render-relevant settings for (species, mode), for _is_render_fresh --
-        opacity and key_fontsize are baked into the rendered pixels for both modes
-        (see plot()'s alpha and save_key_image's key_fontsize); min/max/palette only
-        apply to absolute (anomaly is auto-scaled from the data). baseline_year is
-        included for anomaly even though it also selects a different egg4_nc source
-        path -- belt and suspenders, and it's what actually changed from the user's
-        perspective if they edit it."""
-        values = {
-            "opacity": self.settings.get("opacity", 60),
-            "key_fontsize": self.common.get("key_fontsize", 10),
-        }
+        """Render-relevant settings for (species, mode), for _is_render_fresh. Since
+        #312, opacity/palette/min/max apply entirely client-side (the encoded
+        texture's domain is a fixed constant per species -- see plot()), so none of
+        them change the encoded pixels anymore for either mode. baseline_year is kept
+        for anomaly: it's not a colour/scale setting -- it selects which EGG4 source
+        file gets diffed against, so a baseline_year change genuinely changes the
+        computed VALUES even though the source netCDF paths' mtimes alone wouldn't
+        reliably signal that (an older baseline file can have an older mtime than the
+        currently-published render)."""
         if mode == "absolute":
-            min_key, max_key = _SCALE_SETTING_KEYS[species]
-            values.update({
-                "min": self.settings.get(min_key, 0),
-                "max": self.settings.get(max_key, 1),
-                "palette": self.settings.get(f"{species}_palette", "thermal"),
-            })
-        else:
-            values["baseline_year"] = resolve_baseline_year(self.settings)
-        return self._settings_signature(values)
+            return self._settings_signature({})
+        return self._settings_signature({"baseline_year": resolve_baseline_year(self.settings)})
 
     def run(self, max_hours=None):
         # max_hours is a no-op here -- GHG renders once per cycle per (species, mode),
@@ -207,7 +187,7 @@ class GhgUpdater(Updater):
                 sig = self._mode_settings_signature(species, mode)
                 fresh = self._is_render_fresh(out, sources, sig)
                 if not fresh:
-                    logger.info(f"Generating greenhouse gases {species} {mode} plot...")
+                    logger.info(f"Generating greenhouse gases {species} {mode} texture...")
                     self.plot(
                         species, mode, current_nc, egg4_nc if mode == "anomaly" else None, out
                     )

@@ -213,23 +213,6 @@ def coastline_land_mask(mesh_lon, mesh_lat, lon_min, lat_min, lon_max, lat_max):
         return None
 
 
-def gshhg_land_feature():
-    """A cartopy Feature wrapping the GSHHG land geometry, for matplotlib's
-    ax.add_feature() -- the add_feature-consuming analogue of coastline_land_mask()
-    above, for callers drawing a land-tint overlay (sst.py/greenhouse_gases.py) rather
-    than masking data. Returns None on failure (same graceful-fallback contract as
-    coastline_land_mask()), so callers skip the tint rather than crash."""
-    try:
-        import cartopy.crs as ccrs
-        from cartopy.feature import ShapelyFeature
-
-        land_geom = _load_gshhg_land_union()
-        return ShapelyFeature([land_geom], ccrs.PlateCarree())
-    except Exception as exc:
-        logger.warning(f"Coastline geometry unavailable ({exc!r}); land tint skipped.")
-        return None
-
-
 class LandMaskCache:
     """Global (-180/-90/180/90) coastline land mask, cached per regridded-grid shape
     for the life of one run -- shared by CurrentsUpdater and WavesUpdater, whose own

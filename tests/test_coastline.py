@@ -17,7 +17,6 @@ from atmos_gl.lib import coastline as coastline_mod
 from atmos_gl.lib.coastline import (
     LandMaskCache,
     coastline_land_mask,
-    gshhg_land_feature,
     nearest_fill_and_regrid_uv,
 )
 
@@ -90,8 +89,8 @@ def test_get_caches_none_too_when_geometry_is_unavailable():
 
 
 # ---------------------------------------------------------------------------
-# coastline_land_mask / gshhg_land_feature (GSHHG -- docs/adr/0013, supersedes
-# docs/adr/0011's Natural Earth precision limitation)
+# coastline_land_mask (GSHHG -- docs/adr/0013, supersedes docs/adr/0011's Natural
+# Earth precision limitation)
 # ---------------------------------------------------------------------------
 
 def _square_land(lon_min, lat_min, lon_max, lat_max):
@@ -153,23 +152,6 @@ def test_coastline_land_mask_returns_none_on_load_failure():
         result = coastline_land_mask(mesh_lon, mesh_lat, -180.0, -90.0, 180.0, 90.0)
 
     assert result is None
-
-
-def test_gshhg_land_feature_wraps_the_union_geometry():
-    land = _square_land(0.0, 0.0, 10.0, 10.0)
-    with patch("atmos_gl.lib.coastline._load_gshhg_land_union", return_value=land):
-        feature = gshhg_land_feature()
-
-    assert feature is not None
-    assert list(feature.geometries()) == [land]
-
-
-def test_gshhg_land_feature_returns_none_on_load_failure():
-    with patch(
-        "atmos_gl.lib.coastline._load_gshhg_land_union",
-        side_effect=RuntimeError("no network"),
-    ):
-        assert gshhg_land_feature() is None
 
 
 # ---------------------------------------------------------------------------
