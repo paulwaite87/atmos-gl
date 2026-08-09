@@ -43,13 +43,19 @@ if os.path.exists(_config_path):
     if _live_config.get_setting("common", "log_level", "INFO") != "DEBUG":
         logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
 
-origins = [
-    "http://localhost:8180",
-]
+# #301 unified map_ui + map_api behind one origin, so browser calls through nginx are
+# same-origin and never hit this middleware at all -- this only governs a legitimate
+# cross-origin caller, and now that /api/auth/me's session cookie carries real identity
+# (issue #303), it must name real origins rather than reflect-any-origin ("*" +
+# allow_credentials=True doesn't literally send "*" -- Starlette reflects the request's
+# actual Origin back instead, which amounts to allowing every origin). PUBLIC_ORIGIN lets
+# a deployment add its real origin(s) (comma-separated); defaults to local dev's origin so
+# `make up` works out of the box.
+origins = [o.strip() for o in os.getenv("PUBLIC_ORIGIN", "http://localhost:8180").split(",") if o.strip()]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

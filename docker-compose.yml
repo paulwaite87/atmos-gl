@@ -110,6 +110,7 @@ services:
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
       - ADMIN_EMAILS=${ADMIN_EMAILS}
       - SESSION_SECRET=${SESSION_SECRET}
+      - PUBLIC_ORIGIN=${PUBLIC_ORIGIN:-http://localhost:8180}
     restart: unless-stopped
     depends_on:
       atmos_gl_db:
