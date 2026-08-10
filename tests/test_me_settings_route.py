@@ -127,9 +127,8 @@ def test_patch_rejects_an_out_of_range_value(client, tmp_path):
 def test_patch_on_one_section_does_not_clobber_a_previously_saved_section(client, tmp_path):
     """The exact near-miss #313's implementation hit and fixed with POST /api/config's
     whole-tree replace semantics -- PATCH must never wipe another section's overrides.
-    Only Precipitation has any personalizable keys yet (#315 curates the rest), so a
-    second section's pre-existing override is seeded directly via the adapter here,
-    standing in for "some other section this user already personalized"."""
+    sst's own override is seeded directly via the adapter here, standing in for "some
+    other section this user already personalized"."""
     fake_settings = FakeUserSettingsAdapter()
     user_id = _sign_in(client, fake_settings)
     fake_settings.merge_section(user_id, "sst", {"opacity": 20})
@@ -141,6 +140,67 @@ def test_patch_on_one_section_does_not_clobber_a_previously_saved_section(client
         "precipitation": {"opacity": 85},
         "sst": {"opacity": 20},
     }
+
+
+def test_me_settings_page_covers_sections_curated_by_315(client, tmp_path):
+    """#315 curates personalization far beyond precipitation -- spot-checks a slider
+    (sst.opacity), a post-#312 client-side palette (sst.palette), a palette-less
+    layer's visibility flag (markers.enabled, issue #315's own acceptance criterion),
+    and a named ColorSpec (markers.marker_color, exercising the color-kind render
+    path a personalizable field had never hit before this ticket)."""
+    _sign_in(client, FakeUserSettingsAdapter())
+    with _with_temp_config_for_me_settings(
+        tmp_path,
+        {
+            "sst": {
+                "enabled": True, "opacity": 60, "palette": "thermal", "min_c": 0, "max_c": 32,
+                "cache_expiry_days": 3,
+            },
+            "markers": {"enabled": True, "marker_color": "white", "marker_fontsize": 10, "weather_popup": True},
+        },
+    ):
+        resp = client.get("/me/settings")
+
+    assert resp.status_code == 200
+    assert 'id="sst__opacity"' in resp.text
+    assert 'id="sst__palette"' in resp.text
+    assert 'id="markers__enabled"' in resp.text
+    assert 'id="markers__marker_color"' in resp.text
+    # cache_expiry_days is a collector-cost concern (cache retention), never
+    # personalizable anywhere -- stays admin-only, like precipitation.level_of_detail
+    # above.
+    assert 'id="sst__cache_expiry_days"' not in resp.text
+
+
+def test_me_settings_page_renders_a_multiselect_field(client, tmp_path):
+    """satellites.sat_names is the one personalizable MultiSelectSpec #315 adds --
+    confirms the multiselect-kind render path (array-select markup) doesn't crash
+    when reached from a personalizable field for the first time."""
+    _sign_in(client, FakeUserSettingsAdapter())
+    with _with_temp_config_for_me_settings(
+        tmp_path, {"satellites": {"enabled": True, "sat_names": ["ISS (ZARYA)"]}}
+    ):
+        resp = client.get("/me/settings")
+
+    assert resp.status_code == 200
+    assert 'id="satellites__sat_names"' in resp.text
+    assert 'class="form-select bg-dark text-light border-secondary dynamic-input array-select"' in resp.text
+
+
+def test_patch_accepts_a_personalizable_named_color(client, tmp_path):
+    """markers.marker_color is a named ColorSpec (named=True, the default) --
+    validate_against_specs is permissive on color values (any string), same as the
+    legacy JS, so a plain colour name PATCHes through like any other kind."""
+    fake_settings = FakeUserSettingsAdapter()
+    user_id = _sign_in(client, fake_settings)
+
+    with _with_temp_config_for_me_settings(
+        tmp_path, {"markers": {"enabled": True, "marker_color": "white"}}
+    ):
+        resp = client.patch("/api/me/settings", json={"markers": {"marker_color": "Red"}})
+
+    assert resp.status_code == 200
+    assert fake_settings.get_overrides(user_id) == {"markers": {"marker_color": "Red"}}
 
 
 # --- DELETE /api/me/settings/{section} ---
