@@ -16,10 +16,23 @@ from fastapi.responses import RedirectResponse
 
 from atmos_gl.db.user_adapter import UserAdapter
 from atmos_gl.lib.auth import SESSION_COOKIE_NAME, SESSION_TTL_SECONDS
+from atmos_gl.lib.rate_limit import RateLimiter, rate_limiter_dependency
 
 logger = logging.getLogger("atmos_gl.routes.auth")
 
 router = APIRouter(prefix="/api/auth", tags=["Auth"])
+
+# Shared by /login/{provider} and /callback/{provider} (issue #307) -- an attacker
+# hammering either counts against the same per-IP budget, since both are part of the
+# same sign-in flow. Keyed by IP, not user, since there's no session yet at this point.
+# 20 requests / 5 minutes: generous for legitimate retries/multiple tabs, tight enough
+# to block a scripted hammering loop.
+get_login_rate_limiter = rate_limiter_dependency(max_requests=20, window_seconds=300)
+
+
+def _enforce_login_rate_limit(request: Request, limiter: RateLimiter = Depends(get_login_rate_limiter)) -> None:
+    ip = request.client.host if request.client else "unknown"
+    limiter.enforce(ip)
 
 # Display names for error messages -- "github".title() would render "Github", not
 # "GitHub", so this can't just be provider.title().
@@ -131,7 +144,7 @@ _PROVIDERS = ("google", "github")
 
 
 @router.get("/login/{provider}")
-async def login(provider: str, request: Request):
+async def login(provider: str, request: Request, _: None = Depends(_enforce_login_rate_limit)):
     if provider not in _PROVIDERS:
         raise HTTPException(status_code=404, detail="Unknown sign-in provider")
     client = oauth.create_client(provider)
@@ -141,7 +154,10 @@ async def login(provider: str, request: Request):
 
 @router.get("/callback/{provider}")
 async def callback(
-    provider: str, request: Request, user_adapter: UserAdapter = Depends(get_user_adapter),
+    provider: str,
+    request: Request,
+    user_adapter: UserAdapter = Depends(get_user_adapter),
+    _: None = Depends(_enforce_login_rate_limit),
 ):
     if provider not in _PROVIDERS:
         raise HTTPException(status_code=404, detail="Unknown sign-in provider")

@@ -142,3 +142,42 @@ def test_delete_session_revokes_it(kind, real_db):
 
         adapter.delete_session(token)
         assert adapter.get_session_user(token) is None
+
+
+@pytest.mark.parametrize("kind", ["real", "fake"])
+def test_delete_user_revokes_their_sessions(kind, real_db):
+    """issue #307's hard account-delete: the real adapter relies on user_sessions'
+    ondelete="CASCADE" FK (db/models.py), FakeUserAdapter mirrors it explicitly."""
+    adapter, ctx = _make_adapter(kind, real_db)
+    with ctx, patch.dict("os.environ", {}, clear=True):
+        user = adapter.get_or_create_user(
+            email="deleteme@example.com", name="Delete Me",
+            provider="google", provider_user_id="google-sub-9",
+        )
+        token = adapter.create_session(user["id"], ttl_seconds=3600)
+
+        adapter.delete_user(user["id"])
+
+        assert adapter.get_session_user(token) is None
+
+
+@pytest.mark.parametrize("kind", ["real", "fake"])
+def test_delete_user_lets_the_same_identity_create_a_brand_new_account(kind, real_db):
+    """Proves the old user_identities row was truly removed (via CASCADE for the real
+    adapter, the mirrored cleanup in FakeUserAdapter.delete_user) rather than merely
+    orphaned -- a second get_or_create_user call for the same (provider,
+    provider_user_id) after deletion must mint a fresh account, not resurrect or
+    collide with the deleted one."""
+    adapter, ctx = _make_adapter(kind, real_db)
+    with ctx, patch.dict("os.environ", {}, clear=True):
+        first = adapter.get_or_create_user(
+            email="reborn@example.com", name="Reborn",
+            provider="google", provider_user_id="google-sub-10",
+        )
+        adapter.delete_user(first["id"])
+
+        second = adapter.get_or_create_user(
+            email="reborn@example.com", name="Reborn Again",
+            provider="google", provider_user_id="google-sub-10",
+        )
+        assert second["id"] != first["id"]

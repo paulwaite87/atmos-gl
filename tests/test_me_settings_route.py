@@ -10,8 +10,10 @@ from atmos_gl.api import app
 from atmos_gl.db.user_settings_adapter import FakeUserSettingsAdapter
 from atmos_gl.lib.auth import SESSION_COOKIE_NAME
 from atmos_gl.lib.config import AtmosGLConfig
+from atmos_gl.lib.rate_limit import RateLimiter
 from atmos_gl.routes.auth import get_user_adapter
 from atmos_gl.routes.config import get_user_settings_adapter as config_get_user_settings_adapter
+from atmos_gl.routes.me_settings import get_settings_rate_limiter
 from atmos_gl.routes.me_settings import get_user_settings_adapter as me_get_user_settings_adapter
 from tests.conftest import make_signed_in_session
 
@@ -221,6 +223,81 @@ def test_delete_clears_the_users_override_for_that_section(client, tmp_path):
 
     assert resp.status_code == 200
     assert fake_settings.get_overrides(user_id) == {}
+
+
+# --- Settings write rate limiting (issue #307) ---
+
+
+def test_patch_429s_after_the_per_user_rate_limit_is_exceeded(client, tmp_path):
+    fake_settings = FakeUserSettingsAdapter()
+    _sign_in(client, fake_settings)
+    limiter = RateLimiter(max_requests=1, window_seconds=60)
+    app.dependency_overrides[get_settings_rate_limiter] = lambda: limiter
+
+    with _with_temp_config_for_me_settings(tmp_path, {"precipitation": {"opacity": 60}}):
+        first = client.patch("/api/me/settings", json={"precipitation": {"opacity": 61}})
+        second = client.patch("/api/me/settings", json={"precipitation": {"opacity": 62}})
+
+    assert first.status_code == 200
+    assert second.status_code == 429
+    assert "Retry-After" in second.headers
+
+
+def test_patch_and_delete_settings_share_the_same_per_user_rate_limit_budget(client, tmp_path):
+    fake_settings = FakeUserSettingsAdapter()
+    _sign_in(client, fake_settings)
+    limiter = RateLimiter(max_requests=1, window_seconds=60)
+    app.dependency_overrides[get_settings_rate_limiter] = lambda: limiter
+
+    with _with_temp_config_for_me_settings(tmp_path, {"precipitation": {"opacity": 60}}):
+        first = client.patch("/api/me/settings", json={"precipitation": {"opacity": 61}})
+        second = client.delete("/api/me/settings/precipitation")
+
+    assert first.status_code == 200
+    assert second.status_code == 429
+
+
+# --- DELETE /api/me (account deletion, issue #307) ---
+
+
+def test_delete_account_requires_sign_in(client):
+    resp = client.delete("/api/me")
+    assert resp.status_code == 401
+
+
+def test_delete_account_removes_the_user_and_revokes_their_session(client):
+    from atmos_gl.db.user_adapter import FakeUserAdapter
+
+    fake_users = FakeUserAdapter()
+    fake_settings = FakeUserSettingsAdapter()
+    app.dependency_overrides[get_user_adapter] = lambda: fake_users
+    app.dependency_overrides[config_get_user_settings_adapter] = lambda: fake_settings
+    app.dependency_overrides[me_get_user_settings_adapter] = lambda: fake_settings
+
+    user = fake_users.get_or_create_user(
+        email="visitor@example.com", name="Visitor", provider="google", provider_user_id="sub-1",
+    )
+    token = fake_users.create_session(user["id"], ttl_seconds=3600)
+    client.cookies.set(SESSION_COOKIE_NAME, token)
+
+    resp = client.delete("/api/me")
+
+    assert resp.status_code == 200
+    assert fake_users.get_session_user(token) is None
+
+
+def test_delete_account_shares_the_settings_rate_limit_budget(client, tmp_path):
+    fake_settings = FakeUserSettingsAdapter()
+    _sign_in(client, fake_settings)
+    limiter = RateLimiter(max_requests=1, window_seconds=60)
+    app.dependency_overrides[get_settings_rate_limiter] = lambda: limiter
+
+    with _with_temp_config_for_me_settings(tmp_path, {"precipitation": {"opacity": 60}}):
+        first = client.patch("/api/me/settings", json={"precipitation": {"opacity": 61}})
+        second = client.delete("/api/me")
+
+    assert first.status_code == 200
+    assert second.status_code == 429
 
 
 # --- GET /api/config merges a signed-in user's overrides ---

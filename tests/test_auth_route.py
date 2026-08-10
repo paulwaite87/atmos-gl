@@ -11,6 +11,7 @@ require_login (issue #305/#314) is exercised via its real consumers instead
 only tested via test_admin_gated_routes.py's real gated routes, not in isolation."""
 from atmos_gl.db.user_adapter import FakeUserAdapter
 from atmos_gl.lib.auth import SESSION_COOKIE_NAME
+from atmos_gl.lib.rate_limit import RateLimiter
 from atmos_gl.routes.auth import get_user_adapter
 from atmos_gl.api import app
 
@@ -92,3 +93,37 @@ def test_callback_404s_for_an_unregistered_provider(client):
     resp = client.get("/api/auth/callback/facebook", follow_redirects=False)
 
     assert resp.status_code == 404
+
+
+# --- /login/{provider}, /callback/{provider} rate limiting (issue #307) ---
+
+
+def test_login_429s_after_the_ip_rate_limit_is_exceeded(client):
+    """Exercised via the unregistered-provider 404 path (same reasoning as the
+    whitelist tests above -- the only part of these routes testable without a live
+    OAuth round-trip): the rate-limit dependency runs before the route body's own
+    provider check, so this still proves the wiring without touching the network."""
+    from atmos_gl.routes.auth import get_login_rate_limiter
+
+    limiter = RateLimiter(max_requests=1, window_seconds=60)
+    app.dependency_overrides[get_login_rate_limiter] = lambda: limiter
+
+    first = client.get("/api/auth/login/facebook", follow_redirects=False)
+    second = client.get("/api/auth/login/facebook", follow_redirects=False)
+
+    assert first.status_code == 404
+    assert second.status_code == 429
+    assert "Retry-After" in second.headers
+
+
+def test_login_and_callback_share_the_same_ip_rate_limit_budget(client):
+    from atmos_gl.routes.auth import get_login_rate_limiter
+
+    limiter = RateLimiter(max_requests=1, window_seconds=60)
+    app.dependency_overrides[get_login_rate_limiter] = lambda: limiter
+
+    first = client.get("/api/auth/login/facebook", follow_redirects=False)
+    second = client.get("/api/auth/callback/facebook", follow_redirects=False)
+
+    assert first.status_code == 404
+    assert second.status_code == 429

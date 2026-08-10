@@ -90,3 +90,24 @@ def test_clear_section_on_a_user_with_no_row_is_a_no_op(kind, real_db):
     with ctx:
         user_id = _make_user_id(kind, TestSession, "clear2@example.com")
         assert adapter.clear_section(user_id, "precipitation") == {}
+
+
+def test_deleting_the_user_cascades_to_their_user_settings_row(real_db):
+    """End-to-end proof that issue #307's hard account-delete needs no manual cleanup
+    of user_settings specifically -- UserSettings.user_id's ondelete="CASCADE" FK
+    (db/models.py) does the work when UserAdapter.delete_user removes the User row.
+    Real-DB only: FakeUserAdapter/FakeUserSettingsAdapter are separate objects with no
+    shared cascade to prove."""
+    TestSession = sessionmaker(bind=real_db)
+    with patch("atmos_gl.db.user_adapter.Session", TestSession), \
+            patch("atmos_gl.db.user_settings_adapter.Session", TestSession):
+        user_adapter = UserAdapter()
+        settings_adapter = UserSettingsAdapter()
+        user = user_adapter.get_or_create_user(
+            email="cascade@example.com", name="Cascade", provider="google", provider_user_id="cascade-sub",
+        )
+        settings_adapter.merge_section(user["id"], "precipitation", {"opacity": 42})
+
+        user_adapter.delete_user(user["id"])
+
+        assert settings_adapter.get_overrides(user["id"]) == {}

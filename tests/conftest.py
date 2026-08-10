@@ -46,6 +46,23 @@ def make_netcdf_zip_bytes():
 
 @pytest.fixture
 def client():
+    """Each test gets its own fresh RateLimiter instances (issue #307) rather than
+    sharing the app's process-wide singletons -- TestClient's IP is always
+    "testclient" and FakeUserAdapter ids restart at 1 per test, so without this two
+    unrelated tests could trip each other's rate limit. Kept at the real production
+    limits (not disabled outright) so a test that deliberately wants to exercise the
+    429 path can just re-override with a tighter one afterward."""
+    from atmos_gl.lib.rate_limit import RateLimiter
+    from atmos_gl.routes.auth import get_login_rate_limiter
+    from atmos_gl.routes.me_settings import get_settings_rate_limiter
+
+    # Constructed once and captured by reference -- FastAPI calls an override callable
+    # fresh on every request, so a lambda that builds a new RateLimiter() inline would
+    # reset its window on every single call and never actually accumulate hits.
+    login_limiter = RateLimiter(max_requests=20, window_seconds=300)
+    settings_limiter = RateLimiter(max_requests=30, window_seconds=60)
+    app.dependency_overrides[get_login_rate_limiter] = lambda: login_limiter
+    app.dependency_overrides[get_settings_rate_limiter] = lambda: settings_limiter
     yield TestClient(app)
     app.dependency_overrides.clear()
 
