@@ -16,7 +16,7 @@ from fastapi.responses import RedirectResponse
 
 from atmos_gl.db.user_adapter import UserAdapter
 from atmos_gl.lib.auth import SESSION_COOKIE_NAME, SESSION_TTL_SECONDS
-from atmos_gl.lib.rate_limit import RateLimiter
+from atmos_gl.lib.rate_limit import RateLimiter, rate_limiter_dependency
 
 logger = logging.getLogger("atmos_gl.routes.auth")
 
@@ -27,11 +27,7 @@ router = APIRouter(prefix="/api/auth", tags=["Auth"])
 # same sign-in flow. Keyed by IP, not user, since there's no session yet at this point.
 # 20 requests / 5 minutes: generous for legitimate retries/multiple tabs, tight enough
 # to block a scripted hammering loop.
-_login_rate_limiter = RateLimiter(max_requests=20, window_seconds=300)
-
-
-def get_login_rate_limiter() -> RateLimiter:
-    return _login_rate_limiter
+get_login_rate_limiter = rate_limiter_dependency(max_requests=20, window_seconds=300)
 
 
 def _enforce_login_rate_limit(request: Request, limiter: RateLimiter = Depends(get_login_rate_limiter)) -> None:

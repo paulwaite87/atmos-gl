@@ -49,3 +49,20 @@ class RateLimiter:
                 headers={"Retry-After": str(max(1, int(retry_after) + 1))},
             )
         hits.append(now)
+
+
+def rate_limiter_dependency(max_requests: int, window_seconds: float) -> Callable[[], RateLimiter]:
+    """Builds one process-wide RateLimiter and returns a FastAPI dependency-factory
+    function for it -- Depends(the returned function) always resolves to the SAME
+    instance (so hits actually accumulate across requests), and the function itself
+    is overridable per-test via app.dependency_overrides[the returned function]. Each
+    router that needs rate limiting still writes its own thin wrapper on top of this
+    (deriving the key differs genuinely by endpoint class -- IP pre-auth, user id
+    post-auth -- so that part isn't shared), but the "one shared limiter instance
+    behind a stable DI seam" part is."""
+    limiter = RateLimiter(max_requests, window_seconds)
+
+    def get_limiter() -> RateLimiter:
+        return limiter
+
+    return get_limiter

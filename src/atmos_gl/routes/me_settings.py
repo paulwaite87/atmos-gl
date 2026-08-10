@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""Personal settings for signed-in users (issue #305/#314): a settings page scoped to
-just the FIELD_SPECS entries flagged `personalizable=True`, backed by a per-user sparse
-{section: {option: value}} override stored in user_settings and merged on top of the
-site's global config by routes/config.py's GET /api/config. Anonymous visitors never
-see this page or touch this table at all."""
+"""Everything under the caller's own /api/me: personal settings (issue #305/#314) --
+a settings page scoped to just the FIELD_SPECS entries flagged `personalizable=True`,
+backed by a per-user sparse {section: {option: value}} override stored in
+user_settings and merged on top of the site's global config by routes/config.py's GET
+/api/config -- plus account deletion (issue #307), the one other self-service action
+that lives at this same prefix. Anonymous visitors never see this page or touch these
+tables at all."""
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
@@ -12,7 +14,7 @@ from fastapi.templating import Jinja2Templates
 from atmos_gl.db.user_adapter import UserAdapter
 from atmos_gl.db.user_settings_adapter import UserSettingsAdapter
 from atmos_gl.lib.auth import SESSION_COOKIE_NAME
-from atmos_gl.lib.rate_limit import RateLimiter
+from atmos_gl.lib.rate_limit import RateLimiter, rate_limiter_dependency
 from atmos_gl.routes.auth import get_user_adapter, require_login
 from atmos_gl.routes.config import load_config
 from atmos_gl.routes.field_specs import (
@@ -50,11 +52,7 @@ def get_user_settings_adapter() -> UserSettingsAdapter:
 # 30 requests / minute: comfortably covers the debounced-autosave bursts this page's
 # own script already limits legitimate traffic to, only catches a runaway client or
 # deliberate abuse.
-_settings_rate_limiter = RateLimiter(max_requests=30, window_seconds=60)
-
-
-def get_settings_rate_limiter() -> RateLimiter:
-    return _settings_rate_limiter
+get_settings_rate_limiter = rate_limiter_dependency(max_requests=30, window_seconds=60)
 
 
 def require_login_rate_limited(
