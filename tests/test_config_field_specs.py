@@ -196,6 +196,26 @@ def test_satellites_collector_and_data_collector_lost_their_bespoke_cadence_spec
     assert ("data_collector", "update_minutes") not in FIELD_SPECS
 
 
+def test_no_backend_collector_section_has_a_personalizable_key():
+    """Regression guard for issue #305/#315: personalizable=True is only ever safe on a
+    setting that's pure client-side display (see _merge_personal_overrides's docstring
+    in routes/config.py) -- a collector/housekeeper section's keys gate backend
+    data-acquisition cost, not anything rendered on the map, so none of them may ever be
+    personalizable. Without this test, someone could flip one True in field_specs.py and
+    every other test would still pass -- config_field_specs.py has no other check tying
+    "collector section" to "never personalizable"."""
+    collector_sections = {
+        "shipping_collector", "lightning_collector", "flightradar_collector",
+        "satellites_collector", "data_collector", "housekeeper",
+    }
+    offending = [
+        (section, option)
+        for (section, option), spec in FIELD_SPECS.items()
+        if section in collector_sections and getattr(spec, "personalizable", False)
+    ]
+    assert offending == []
+
+
 def test_initial_color_render_resolves_named_color_to_hex():
     assert initial_color_render("Violet") == ("#ee82ee", "Violet")
 
