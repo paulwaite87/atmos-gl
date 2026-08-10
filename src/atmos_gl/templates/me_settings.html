@@ -51,6 +51,42 @@
     </div>
 
     <script>
+        // Mirrors config.html's own copy verbatim (routes/field_specs.py's COLOR_MAP) --
+        // render_field's color-kind markup (_field_macros.html) inline-calls
+        // findNearestNamedColor() on every drag regardless of which page rendered it, so
+        // this page needs the same two definitions #315 found were missing here (a
+        // ReferenceError on any personalizable named-color field, e.g. markers.marker_color).
+        const COLOR_MAP = {
+            "white": "#ffffff", "black": "#000000", "gray": "#808080", "silver": "#c0c0c0",
+            "red": "#ff0000", "maroon": "#800000", "pink": "#ffc0cb",
+            "green": "#00ff00", "lime": "#00ff00", "olive": "#808000", "teal": "#008080",
+            "blue": "#0000ff", "navy": "#000080", "cyan": "#00ffff", "aqua": "#00ffff",
+            "yellow": "#ffff00", "orange": "#ffa500", "gold": "#ffd700",
+            "purple": "#800080", "magenta": "#ff00ff", "violet": "#ee82ee"
+        };
+
+        function findNearestNamedColor(hex) {
+            hex = hex.toLowerCase();
+            let closestName = "White";
+            let minDistance = Number.MAX_VALUE;
+            const hexToRgb = (h) => {
+                const num = parseInt(h.replace("#", ""), 16);
+                return { r: (num >> 16) & 255, g: (num >> 8) & 255, b: num & 255 };
+            };
+            const target = hexToRgb(hex);
+            for (const [name, namedHex] of Object.entries(COLOR_MAP)) {
+                const current = hexToRgb(namedHex);
+                const distance = Math.sqrt(
+                    Math.pow(target.r - current.r, 2) + Math.pow(target.g - current.g, 2) + Math.pow(target.b - current.b, 2)
+                );
+                if (distance < minDistance) {
+                    minDistance = distance;
+                    closestName = name.charAt(0).toUpperCase() + name.slice(1);
+                }
+            }
+            return closestName;
+        }
+
         // Live badge reformatting for render_field's sliders -- mirrors
         // format_slider_badge (routes/field_specs.py), same function config.html defines
         // for the admin page's identical slider markup.
@@ -70,16 +106,17 @@
         // Reads every .dynamic-input under this section's field grid into a plain
         // {option: value} object -- same per-kind extraction config.html's
         // saveActiveConfig() uses for the admin page's whole-config payload, scoped to
-        // one section here. No color/multiselect/grouped_transfer field is
-        // personalizable yet (#314 proves the mechanism on Precipitation's slider/select
-        // fields only), so those branches aren't needed here yet -- #315 should add them
-        // back in when it curates a section that does.
+        // one section here. No grouped_transfer field is personalizable (satellites'
+        // groups picker stays admin-only), so that branch isn't needed here -- color
+        // (named and raw-hex) and multiselect (array-select) both are, as of #315.
         function readSectionValues(section) {
             const values = {};
             document.querySelectorAll(`#ps-fields-${section} .dynamic-input`).forEach((input) => {
                 const option = input.id.split('__')[1];
                 if (input.type === 'checkbox') {
                     values[option] = input.checked;
+                } else if (input.classList.contains('structured-color-name-picker')) {
+                    values[option] = findNearestNamedColor(input.value);
                 } else if (input.classList.contains('array-select')) {
                     values[option] = Array.from(input.selectedOptions).map((opt) => opt.value);
                 } else if (input.type === 'number' || input.type === 'range') {

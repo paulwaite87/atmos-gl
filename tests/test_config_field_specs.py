@@ -147,18 +147,27 @@ def test_precipitations_opacity_palette_and_min_mm_hr_are_personalizable():
 
 
 def test_precipitations_non_personalizable_keys_stay_false():
-    assert FIELD_SPECS[("precipitation", "enabled")].personalizable is False
+    """enabled became personalizable under #315 (every layer's visibility flag did,
+    via _ENABLED_PERSONALIZABLE) -- level_of_detail/cache_expiry_days are genuine
+    collector-cost concerns and stay non-personalizable everywhere."""
+    assert FIELD_SPECS[("precipitation", "enabled")].personalizable is True
     assert FIELD_SPECS[("precipitation", "level_of_detail")].personalizable is False
     assert FIELD_SPECS[("precipitation", "cache_expiry_days")].personalizable is False
 
 
-def test_almost_every_other_sections_opacity_is_not_personalizable_yet():
-    """Precipitation's opacity was deliberately given its own dedicated SliderSpec
-    rather than the shared _OPACITY constant specifically so flagging it personalizable
-    couldn't silently flip every other section reusing that same shared object too."""
-    assert FIELD_SPECS[("sst", "opacity")].personalizable is False
-    assert FIELD_SPECS[("currents", "opacity")].personalizable is False
-    assert FIELD_SPECS[("temperature", "opacity")].personalizable is False
+def test_most_other_sections_opacity_is_personalizable_after_315():
+    """#314 deliberately gave precipitation.opacity its own dedicated SliderSpec so
+    flagging it personalizable couldn't silently flip every section sharing _OPACITY.
+    #315 then flipped the shared _OPACITY constant itself, so every section reusing it
+    (sst/currents/temperature among them) is personalizable too -- EXCEPT isobars,
+    volcanoes and air_quality, whose opacity is baked server-side or has no live
+    effect, so those three get their own dedicated, non-personalizable instances
+    instead of the shared one (see field_specs.py's own comments)."""
+    assert FIELD_SPECS[("sst", "opacity")].personalizable is True
+    assert FIELD_SPECS[("currents", "opacity")].personalizable is True
+    assert FIELD_SPECS[("temperature", "opacity")].personalizable is True
+    assert FIELD_SPECS[("isobars", "opacity")].personalizable is False
+    assert FIELD_SPECS[("air_quality", "opacity")].personalizable is False
 
 
 # --- Events / Misc / Shipping batch: prefix badges, shared shapes, new kinds ---
@@ -513,8 +522,11 @@ def test_validate_against_specs_uses_raw_max_for_byte_to_percent_field():
 
 def test_shared_constants_reused_across_many_sections():
     """_ALPHA, _LEVEL_OF_DETAIL etc. are declared once and referenced under every
-    field that needs them -- not redeclared per section."""
-    assert FIELD_SPECS[("isobars", "opacity")] is FIELD_SPECS[("sst", "opacity")]
+    field that needs them -- not redeclared per section. isobars.opacity is
+    deliberately EXCLUDED from this (see field_specs.py's own comment): it has no
+    live effect on the WebGL fill-mode render, so #315 gave it its own dedicated,
+    non-personalizable instance rather than the shared, now-personalizable _OPACITY."""
+    assert FIELD_SPECS[("wind", "opacity")] is FIELD_SPECS[("sst", "opacity")]
     assert (
         FIELD_SPECS[("isobars", "level_of_detail")]
         is FIELD_SPECS[("stormwatch", "level_of_detail")]
@@ -869,7 +881,7 @@ def test_config_page_renders_jetstream_palette_select_with_stratosphere_option()
 
 
 def test_landmass_reuses_the_shared_opacity_spec():
-    assert FIELD_SPECS[("landmass", "opacity")] is FIELD_SPECS[("isobars", "opacity")]
+    assert FIELD_SPECS[("landmass", "opacity")] is FIELD_SPECS[("sst", "opacity")]
 
 
 def test_landmass_has_two_independent_color_fields():

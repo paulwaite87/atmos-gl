@@ -136,24 +136,34 @@ def initial_color_render(value) -> tuple[str, str]:
 # regardless of section, so one instance is registered under every field that
 # uses it (see FIELD_SPECS below). ---
 
-_ICON_ZOOM = SliderSpec(min=0.1, max=5.0, step=0.1, decimals=1, suffix="x")
+# Every one of its 5 call sites (quakes, volcanoes, flightradar, shipping, lightning)
+# is a personalizable layer's own marker-icon scale -- unlike _OPACITY/_ICON_ZOOM's
+# sibling constants below, none of its usages are baked server-side, so the shared
+# instance itself is safely personalizable rather than needing per-site overrides.
+_ICON_ZOOM = SliderSpec(min=0.1, max=5.0, step=0.1, decimals=1, suffix="x", personalizable=True)
 _HOURS = SliderSpec(min=0, max=96, step=1, suffix="h")
-_MINUTES = SliderSpec(min=0, max=120, step=1, suffix="mins")
-_FONTSIZE = SliderSpec(min=6, max=24, step=1, suffix="px")
-_OPACITY = SliderSpec(min=0, max=100, step=1)
-_PARTICLE_OPACITY = SliderSpec(min=0, max=100, step=5)
-_PARTICLE_SPEED_LIKE = SliderSpec(min=0, max=100, step=1)
-_PARTICLE_SIZE = SliderSpec(min=0.1, max=5.0, step=0.05, decimals=2)
-_TRAIL_LENGTH = SliderSpec(min=0, max=100, step=1)
+_MINUTES = SliderSpec(min=0, max=120, step=1, suffix="mins", personalizable=True)
+_FONTSIZE = SliderSpec(min=6, max=24, step=1, suffix="px", personalizable=True)
+# Mixed personalizability: volcanoes.smoke_opacity and air_quality.opacity are baked
+# server-side into a shared render (so2_volcanic's/every air_quality variable's alpha
+# feathering -- see tasks/air_quality.py's plot()) and isobars.opacity currently has no
+# live effect on the WebGL fill-mode render at all (only isobars.py's own separate
+# static-PNG label alpha, out of #315's scope) -- those three sites get their own
+# dedicated, non-personalizable SliderSpec instead of this shared one. See issue #315.
+_OPACITY = SliderSpec(min=0, max=100, step=1, personalizable=True)
+_PARTICLE_OPACITY = SliderSpec(min=0, max=100, step=5, personalizable=True)
+_PARTICLE_SPEED_LIKE = SliderSpec(min=0, max=100, step=1, personalizable=True)
+_PARTICLE_SIZE = SliderSpec(min=0.1, max=5.0, step=0.05, decimals=2, personalizable=True)
+_TRAIL_LENGTH = SliderSpec(min=0, max=100, step=1, personalizable=True)
 # Streamline-ribbon half-thickness (_currentparticles_gl.js's curThick, shared by wind
 # and currents -- the unified engine both now render through).
-_TRAIL_THICKNESS = SliderSpec(min=0.5, max=5.0, step=0.1, decimals=1, suffix="px")
+_TRAIL_THICKNESS = SliderSpec(min=0.5, max=5.0, step=0.1, decimals=1, suffix="px", personalizable=True)
 # Direction-coherence smoothing radius (_currentparticles_gl.js's coherenceRadius) --
 # needed by any consumer reading a raw 0.25deg GFS field (wind, jetstream), whose
 # small-scale grid noise otherwise reads as trails jittering between paths frame to
 # frame. Currents never sets this (RTOFS is smooth enough not to need it).
-_FLOW_COHERENCE_RADIUS = SliderSpec(min=0.0, max=10.0, step=0.5, decimals=2)
-_MIN_MAX_C = SliderSpec(min=0, max=36, step=1, suffix=" DegC")
+_FLOW_COHERENCE_RADIUS = SliderSpec(min=0.0, max=10.0, step=0.5, decimals=2, personalizable=True)
+_MIN_MAX_C = SliderSpec(min=0, max=36, step=1, suffix=" DegC", personalizable=True)
 # Every layer section's Show-tab visibility flag (issue #313) -- registered so
 # `enabled` is a real, validated FIELD_SPECS entry like every other setting
 # (closing a prior gap where any value type was silently accepted), even though
@@ -162,6 +172,13 @@ _MIN_MAX_C = SliderSpec(min=0, max=36, step=1, suffix=" DegC")
 # housekeeper -- the Show tab's own hardcoded checkboxes/radios remain the
 # actual UI for it, unchanged by this promotion.
 _ENABLED = ToggleSpec()
+# Same shape, personalizable (issue #315) -- layer visibility never affects backend
+# rendering cost (the backend renders unconditionally of any frontend enabled flag,
+# see Updater.layer_status()'s docstring), so every layer EXCEPT the backend
+# collector/housekeeper sections (which have no visible "layer" of their own -- their
+# enabled flag gates a data-acquisition loop, not something shown on the map) uses
+# this personalizable variant instead of _ENABLED above.
+_ENABLED_PERSONALIZABLE = ToggleSpec(personalizable=True)
 _CACHE_EXPIRY_DAYS = SliderSpec(
     min=0, max=30, step=1, suffix=" day", zero_label="keep forever", pluralize=True
 )
@@ -200,12 +217,12 @@ _PERFORMANCE_TIER = SelectSpec([
 _MODE_OPTIONS = SelectSpec([
     ("absolute", "Absolute"),
     ("anomaly", "Anomaly"),
-])
+], personalizable=True)
 
 _GHG_SPECIES = SelectSpec([
     ("co2", "CO2"),
     ("ch4", "CH4 (Methane)"),
-])
+], personalizable=True)
 
 # CAMS EGG4 reanalysis (the anomaly baseline source) was never extended past 2020, so
 # the picker only offers years it actually has gridded data for -- see
@@ -219,7 +236,7 @@ _GHG_PALETTE = SelectSpec([
     ("vivid", "Vivid"),
     ("deep", "Deep"),
     ("ocean", "Ocean"),
-])
+], personalizable=True)
 
 # Thresholds are the US EPA AQI "Unhealthy for Sensitive Groups" 24-hr breakpoints
 # (PM2.5 35.5 ug/m3, PM10 155 ug/m3; both rounded here) -- the same AQI framing
@@ -231,7 +248,7 @@ _AQ_VARIABLE = SelectSpec([
     ("pm10", "PM10 (Unhealthy above 150 µg/m³)"),
     ("aod", "Smoke (AOD)"),
     ("so2", "SO2 (Sulphur Dioxide)"),
-])
+], personalizable=True)
 
 _LOG_LEVEL = SelectSpec([
     ("DEBUG", "DEBUG"),
@@ -245,12 +262,12 @@ _FIRE_CONFIDENCE = SelectSpec([
     ("low", "Low - include all detections"),
     ("nominal", "Nominal - filter out low-confidence noise"),
     ("high", "High - saturated pixels only"),
-])
+], personalizable=True)
 
 # Real wildfire fronts, even the most extreme recorded, top out in the low-thousands of
 # MW per pixel -- readings far above that are far more likely a gas flare/industrial
 # source than an actual fire (see FireAdapter.get_fires_as_geojson's docstring).
-_FIRE_MAX_FRP = SliderSpec(min=500, max=20000, step=100, suffix=" MW")
+_FIRE_MAX_FRP = SliderSpec(min=500, max=20000, step=100, suffix=" MW", personalizable=True)
 
 _SAT_NAMES = MultiSelectSpec([
     ("ISS (ZARYA)", "ISS (ZARYA) - International Space Station"),
@@ -273,7 +290,7 @@ _SAT_NAMES = MultiSelectSpec([
     ("METEOSAT-9", "METEOSAT-9 - Geostationary (Indian Ocean)"),
     ("METEOSAT-10", "METEOSAT-10 - Geostationary (Europe/Africa)"),
     ("METEOSAT-11", "METEOSAT-11 - Geostationary (Prime Meridian)"),
-])
+], personalizable=True)
 
 # CelesTrak's own catalog groupings (https://celestrak.org/NORAD/elements/) -- these
 # section headings and group slugs are exactly as CelesTrak organizes/names them; the
@@ -346,6 +363,12 @@ _CELESTRAK_GROUPS = GroupedTransferSpec([
 
 FIELD_SPECS = {
     # --- Global (common, animation) ---
+    # basemap/atmosphere/auto_rotate*/starting_lat*/key_fontsize are pure client-side
+    # viewport/display preferences -- none of them are backend-render-cost-affecting
+    # (a basemap swap and camera position never touch the render pipeline), so they're
+    # personalizable "camera/viewport default" settings (issue #305/#315). log_level
+    # and performance_tier stay admin-only -- both are genuine backend operational
+    # controls, not display preferences.
     ("common", "basemap"): SelectSpec([
         ("satellite", "Satellite"),
         ("hybrid", "Satellite + Labels"),
@@ -355,17 +378,17 @@ FIELD_SPECS = {
         ("dataviz-dark", "Dataviz Dark"),
         ("winter", "Winter"),
         ("basic-v2", "Basic"),
-    ]),
-    ("common", "atmosphere"): ToggleSpec(),
-    ("common", "auto_rotate"): ToggleSpec(),
-    ("common", "auto_rotate_speed"): SliderSpec(min=0.01, max=1.0, step=0.01),
+    ], personalizable=True),
+    ("common", "atmosphere"): ToggleSpec(personalizable=True),
+    ("common", "auto_rotate"): ToggleSpec(personalizable=True),
+    ("common", "auto_rotate_speed"): SliderSpec(min=0.01, max=1.0, step=0.01, personalizable=True),
     # Fixes a pre-existing bug in the legacy JS, which swapped these two ranges
     # (latitude got +/-180, longitude got +/-90).
     ("common", "starting_latitude"): SliderSpec(
-        min=-90.0, max=90.0, step=1.0, decimals=1, suffix=" deg"
+        min=-90.0, max=90.0, step=1.0, decimals=1, suffix=" deg", personalizable=True
     ),
     ("common", "starting_longitude"): SliderSpec(
-        min=-180.0, max=180.0, step=1.0, decimals=1, suffix=" deg"
+        min=-180.0, max=180.0, step=1.0, decimals=1, suffix=" deg", personalizable=True
     ),
     ("common", "log_level"): _LOG_LEVEL,
     ("common", "performance_tier"): _PERFORMANCE_TIER,
@@ -375,16 +398,19 @@ FIELD_SPECS = {
     # since every layer already defaulted to the same value (10) and there was no
     # actual per-layer customization to preserve.
     ("common", "key_fontsize"): _FONTSIZE,
-    ("animation", "forecast_stepping"): ToggleSpec(),
+    ("animation", "forecast_stepping"): ToggleSpec(personalizable=True),
     ("animation", "stepping_rate"): _PARTICLE_SPEED_LIKE,
     # --- Events (quakes, volcanoes) ---
-    ("quakes", "enabled"): _ENABLED,
+    ("quakes", "enabled"): _ENABLED_PERSONALIZABLE,
     ("quakes", "icon_zoom"): _ICON_ZOOM,
-    ("quakes", "recent_activity_hours"): _HOURS,
-    ("quakes", "expiry_hours"): _HOURS,
+    # _HOURS itself stays non-personalizable (mixed usage elsewhere -- see its own
+    # comment); quakes' two hour sliders are pure client-side marker-recency filters,
+    # so they get their own dedicated, personalizable instances.
+    ("quakes", "recent_activity_hours"): SliderSpec(min=0, max=96, step=1, suffix="h", personalizable=True),
+    ("quakes", "expiry_hours"): SliderSpec(min=0, max=96, step=1, suffix="h", personalizable=True),
     ("quakes", "label_fontsize"): _FONTSIZE,
-    ("quakes", "min_mag"): SliderSpec(min=0, max=10, step=0.1, decimals=1, prefix="M "),
-    ("volcanoes", "enabled"): _ENABLED,
+    ("quakes", "min_mag"): SliderSpec(min=0, max=10, step=0.1, decimals=1, prefix="M ", personalizable=True),
+    ("volcanoes", "enabled"): _ENABLED_PERSONALIZABLE,
     ("volcanoes", "icon_zoom"): _ICON_ZOOM,
     # "Show Smoke Plume" (issue #254) -- Volcano Properties is the SOLE owner of the
     # volcanic-specific SO2 variable's opacity/threshold settings (so2_volcanic, NOT
@@ -397,60 +423,71 @@ FIELD_SPECS = {
     # magnitude confirmed live (tasks/air_quality.py's _DEFAULT_MIN comment) despite
     # being a different physical quantity -- but kept as a genuinely separate slider,
     # not the same one, since the two variables can still legitimately diverge.
-    ("volcanoes", "show_smoke_plume"): ToggleSpec(),
-    ("volcanoes", "smoke_opacity"): _OPACITY,
+    ("volcanoes", "show_smoke_plume"): ToggleSpec(personalizable=True),
+    # NOT personalizable, unlike every other opacity/threshold in this app: these two
+    # are read server-side by AirQualityUpdater.plot() (via _SETTINGS_SECTION_OVERRIDE)
+    # and baked into the shared so2_volcanic render's alpha feathering -- personalizing
+    # them would need a per-user server re-render, which this architecture doesn't do.
+    # A dedicated instance (not the shared, now-personalizable _OPACITY) for that reason.
+    ("volcanoes", "smoke_opacity"): SliderSpec(min=0, max=100, step=1),
     ("volcanoes", "so2_min"): SliderSpec(min=0, max=20, step=0.5, decimals=1, suffix=" DU"),
-    ("fires", "enabled"): _ENABLED,
-    ("fires", "expiry_hours"): _HOURS,
+    ("fires", "enabled"): _ENABLED_PERSONALIZABLE,
+    ("fires", "expiry_hours"): SliderSpec(min=0, max=96, step=1, suffix="h", personalizable=True),
     ("fires", "min_confidence"): _FIRE_CONFIDENCE,
     ("fires", "max_frp"): _FIRE_MAX_FRP,
     # Fire Weather Index heatmap (tasks/fire_weather.py) -- same "fires" section as the
     # FIRMS hotspot settings above, so the Show tab needs only one "Wildfires" toggle.
     ("fires", "level_of_detail"): _LEVEL_OF_DETAIL,
     ("fires", "opacity"): _OPACITY,
-    ("fires", "min_risk_display"): SliderSpec(min=0, max=100, step=5, suffix=""),
-    ("fires", "min_risk_filter"): SliderSpec(min=0, max=100, step=5, suffix="", zero_label="off"),
+    ("fires", "min_risk_display"): SliderSpec(min=0, max=100, step=5, suffix="", personalizable=True),
+    ("fires", "min_risk_filter"): SliderSpec(
+        min=0, max=100, step=5, suffix="", zero_label="off", personalizable=True
+    ),
     # --- Misc (satellites, terminator, markers, flightradar) ---
-    ("satellites", "enabled"): _ENABLED,
+    ("satellites", "enabled"): _ENABLED_PERSONALIZABLE,
     ("satellites", "sat_names"): _SAT_NAMES,
     ("satellites", "past_minutes"): _MINUTES,
     ("satellites", "future_minutes"): _MINUTES,
-    ("satellites", "step_seconds"): SliderSpec(min=5, max=120, step=5, suffix="s"),
-    ("satellites", "color"): ColorSpec(),
-    ("terminator", "enabled"): _ENABLED,
+    ("satellites", "step_seconds"): SliderSpec(min=5, max=120, step=5, suffix="s", personalizable=True),
+    ("satellites", "color"): ColorSpec(personalizable=True),
+    ("terminator", "enabled"): _ENABLED_PERSONALIZABLE,
     ("terminator", "opacity"): _OPACITY,
-    ("terminator", "shade_color"): ColorSpec(named=False),
-    ("terminator", "edge_softness"): SliderSpec(min=0, max=50, step=1),
-    ("markers", "enabled"): _ENABLED,
-    ("markers", "marker_color"): ColorSpec(),
+    ("terminator", "shade_color"): ColorSpec(named=False, personalizable=True),
+    ("terminator", "edge_softness"): SliderSpec(min=0, max=50, step=1, personalizable=True),
+    ("markers", "enabled"): _ENABLED_PERSONALIZABLE,
+    ("markers", "marker_color"): ColorSpec(personalizable=True),
     ("markers", "marker_fontsize"): _FONTSIZE,
-    ("markers", "weather_popup"): ToggleSpec(),
-    ("flightradar", "enabled"): _ENABLED,
+    ("markers", "weather_popup"): ToggleSpec(personalizable=True),
+    ("flightradar", "enabled"): _ENABLED_PERSONALIZABLE,
     ("flightradar", "icon_zoom"): _ICON_ZOOM,
     # Track shown only while hovering an aircraft (flightradar.js) -- same hover-only
     # shape as shipping's track below, not a persistent overlay.
-    ("flightradar", "view_tracks"): ToggleSpec(),
-    ("flightradar", "track_limit"): SliderSpec(min=5, max=100, step=5),
-    ("flightradar", "track_color"): ColorSpec(),
+    ("flightradar", "view_tracks"): ToggleSpec(personalizable=True),
+    ("flightradar", "track_limit"): SliderSpec(min=5, max=100, step=5, personalizable=True),
+    ("flightradar", "track_color"): ColorSpec(personalizable=True),
     # Coastline/lake-shore outline overlay -- a halo'd pair of stroke colours (main +
     # contrasting halo, see ui/modules/landmass.js) rather than a single colour, so it
     # stays legible over any basemap/data-layer combination underneath.
-    ("landmass", "enabled"): _ENABLED,
-    ("landmass", "color"): ColorSpec(),
-    ("landmass", "halo_color"): ColorSpec(),
-    ("landmass", "linewidth"): SliderSpec(min=0.2, max=5.0, step=0.1, decimals=1, suffix="px"),
+    ("landmass", "enabled"): _ENABLED_PERSONALIZABLE,
+    ("landmass", "color"): ColorSpec(personalizable=True),
+    ("landmass", "halo_color"): ColorSpec(personalizable=True),
+    ("landmass", "linewidth"): SliderSpec(min=0.2, max=5.0, step=0.1, decimals=1, suffix="px", personalizable=True),
     ("landmass", "opacity"): _OPACITY,
     # --- Shipping (shipping) ---
-    ("shipping", "enabled"): _ENABLED,
+    ("shipping", "enabled"): _ENABLED_PERSONALIZABLE,
     ("shipping", "icon_zoom"): _ICON_ZOOM,
     # Track shown only while hovering a ship (shipping.js) -- not a persistent overlay,
     # so there's no opacity/always-on styling to match here, just the three knobs the
     # hover-track itself needs.
-    ("shipping", "view_tracks"): ToggleSpec(),
-    ("shipping", "track_limit"): SliderSpec(min=5, max=100, step=5),
-    ("shipping", "track_color"): ColorSpec(),
+    ("shipping", "view_tracks"): ToggleSpec(personalizable=True),
+    ("shipping", "track_limit"): SliderSpec(min=5, max=100, step=5, personalizable=True),
+    ("shipping", "track_color"): ColorSpec(personalizable=True),
     # --- Atmospheric (clouds, isobars, wind, precipitation, pwat, lightning, storms) ---
-    ("clouds", "enabled"): _ENABLED,
+    # Only `enabled` is personalizable for clouds: threshold/gamma are baked
+    # server-side into the shared transparent overlay (CloudUpdater.
+    # save_cache_as_transparent), and offset_days/expiry_hours/cache_expiry_days are
+    # collector-cost concerns (which day's GIBS imagery gets fetched, cache retention).
+    ("clouds", "enabled"): _ENABLED_PERSONALIZABLE,
     ("clouds", "threshold"): SliderSpec(
         min=0, max=100, step=1, suffix="%",
         byte_to_percent=True, raw_max=255, extra_class="cloud-threshold-slider",
@@ -459,30 +496,37 @@ FIELD_SPECS = {
     ("clouds", "offset_days"): SliderSpec(min=0, max=7, step=1, suffix=" days"),
     ("clouds", "expiry_hours"): _HOURS,
     ("clouds", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
-    ("isobars", "enabled"): _ENABLED,
+    ("isobars", "enabled"): _ENABLED_PERSONALIZABLE,
     ("isobars", "level_of_detail"): _LEVEL_OF_DETAIL,
-    ("isobars", "isobar_step"): SliderSpec(min=1, max=10, step=1, suffix=" hPa"),
-    ("isobars", "isobar_color"): ColorSpec(),
-    ("isobars", "linewidth"): SliderSpec(min=0.1, max=5.0, step=0.1, decimals=1, suffix="px"),
-    ("isobars", "opacity"): _OPACITY,
+    ("isobars", "isobar_step"): SliderSpec(min=1, max=10, step=1, suffix=" hPa", personalizable=True),
+    ("isobars", "isobar_color"): ColorSpec(personalizable=True),
+    ("isobars", "linewidth"): SliderSpec(min=0.1, max=5.0, step=0.1, decimals=1, suffix="px", personalizable=True),
+    # NOT personalizable, unlike every other layer's opacity: isobars.js's WebGL fill
+    # mode never wires this into its shader (no u_alpha/opacityUniform customUniform --
+    # only u_interval/u_linewidth/u_linecolor) -- it currently only affects isobars.py's
+    # own separate static-PNG label alpha (out of #315's scope), so it has zero visible
+    # effect in the common (WebGL) rendering path. A dedicated instance rather than the
+    # shared, now-personalizable _OPACITY -- exposing a control with no live effect
+    # would be misleading, not just an edge case.
+    ("isobars", "opacity"): SliderSpec(min=0, max=100, step=1),
     ("isobars", "label_fontsize"): _FONTSIZE,
     ("isobars", "label_outline"): ToggleSpec(),
     ("isobars", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
     # Ordered to mirror currents' shape below (same shared engine): resolution, colour,
     # opacity, particle tuning, field-quality knobs, trail rendering, playback quality.
-    ("wind", "enabled"): _ENABLED,
+    ("wind", "enabled"): _ENABLED_PERSONALIZABLE,
     ("wind", "level_of_detail"): _LEVEL_OF_DETAIL,
-    ("wind", "vector_color"): ColorSpec(),
+    ("wind", "vector_color"): ColorSpec(personalizable=True),
     ("wind", "opacity"): _OPACITY,
     # particle_speed/trail_length/trail_thickness use wind-specific ranges (not the
     # shared _PARTICLE_SPEED_LIKE/_TRAIL_LENGTH/_TRAIL_THICKNESS specs currents also
     # uses) -- live tuning found wind's useful values sitting in a much narrower band,
     # so its sliders were rescaled to give that band the full 0-100 (or 1-5) resolution.
-    ("wind", "particle_speed"): SliderSpec(min=10, max=100, step=1),
+    ("wind", "particle_speed"): SliderSpec(min=10, max=100, step=1, personalizable=True),
     ("wind", "particle_opacity"): _PARTICLE_OPACITY,
     ("wind", "flow_coherence_radius"): _FLOW_COHERENCE_RADIUS,
-    ("wind", "trail_length"): SliderSpec(min=10, max=100, step=1),
-    ("wind", "trail_thickness"): SliderSpec(min=1, max=5, step=1),
+    ("wind", "trail_length"): SliderSpec(min=10, max=100, step=1, personalizable=True),
+    ("wind", "trail_thickness"): SliderSpec(min=1, max=5, step=1, personalizable=True),
     ("wind", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
     # Jet stream is speed-colored particles with no heatmap, like currents (not
     # wind's flat-colored particles + separate heatmap) -- shares currents' particle
@@ -491,13 +535,13 @@ FIELD_SPECS = {
     # unlike currents itself. flow_coherence_radius reuses WIND's spec/mechanism
     # though, not currents' (which has none) -- jetstream reads the same noisy
     # 0.25deg GFS grid wind does, unlike currents' smooth RTOFS source.
-    ("jetstream", "enabled"): _ENABLED,
+    ("jetstream", "enabled"): _ENABLED_PERSONALIZABLE,
     ("jetstream", "level_of_detail"): _LEVEL_OF_DETAIL,
     ("jetstream", "palette"): SelectSpec([
         ("stratosphere", "Stratosphere"),
         ("aurora", "Aurora (green -> violet)"),
         ("inferno", "Inferno (orange -> yellow)"),
-    ]),
+    ], personalizable=True),
     ("jetstream", "opacity"): _OPACITY,
     ("jetstream", "particle_speed"): _PARTICLE_SPEED_LIKE,
     ("jetstream", "particle_opacity"): _PARTICLE_OPACITY,
@@ -505,7 +549,7 @@ FIELD_SPECS = {
     ("jetstream", "trail_length"): _TRAIL_LENGTH,
     ("jetstream", "trail_thickness"): _TRAIL_THICKNESS,
     ("jetstream", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
-    ("precipitation", "enabled"): _ENABLED,
+    ("precipitation", "enabled"): _ENABLED_PERSONALIZABLE,
     ("precipitation", "level_of_detail"): _LEVEL_OF_DETAIL,
     ("precipitation", "min_mm_hr"): SliderSpec(
         min=0.0, max=10.0, step=0.1, decimals=1, personalizable=True
@@ -521,26 +565,30 @@ FIELD_SPECS = {
         ("high_contrast", "High contrast"),
     ], personalizable=True),
     ("precipitation", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
-    ("pwat", "enabled"): _ENABLED,
+    ("pwat", "enabled"): _ENABLED_PERSONALIZABLE,
     ("pwat", "level_of_detail"): _LEVEL_OF_DETAIL,
     ("pwat", "palette"): SelectSpec([
         ("standard", "Standard (matches precipitation)"),
         ("atmospheric_river", "Atmospheric river (blue -> violet)"),
         ("deep_teal", "Deep teal (cyan -> teal)"),
-    ]),
-    ("pwat", "critical_pwat"): SliderSpec(min=0.0, max=80.0, step=5.0, decimals=0, suffix="mm"),
+    ], personalizable=True),
+    ("pwat", "critical_pwat"): SliderSpec(min=0.0, max=80.0, step=5.0, decimals=0, suffix="mm", personalizable=True),
     ("pwat", "opacity"): _OPACITY,
     ("pwat", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
-    ("lightning", "enabled"): _ENABLED,
+    ("lightning", "enabled"): _ENABLED_PERSONALIZABLE,
     ("lightning", "icon_zoom"): _ICON_ZOOM,
     ("lightning", "strike_recent_minutes"): _MINUTES,
     ("lightning", "strike_keep_minutes"): _MINUTES,
-    ("lightning", "strike_expiry_hours"): _HOURS,
-    ("storms", "enabled"): _ENABLED,
-    ("storms", "expiry_days"): SliderSpec(min=0, max=60, step=1, suffix=" days expiry"),
+    ("lightning", "strike_expiry_hours"): SliderSpec(min=0, max=96, step=1, suffix="h", personalizable=True),
+    ("storms", "enabled"): _ENABLED_PERSONALIZABLE,
+    ("storms", "expiry_days"): SliderSpec(min=0, max=60, step=1, suffix=" days expiry", personalizable=True),
     ("storms", "popup_fontsize"): _FONTSIZE,
     # --- Climate (sst, currents, waves, temperature, ozone, stormwatch) ---
-    ("sst", "enabled"): _ENABLED,
+    # Since #312, sst's palette/min_c/max_c/opacity all apply entirely client-side (see
+    # tasks/sst.py's _mode_settings_signature docstring) -- personalizable across the
+    # board. mode is safe too: both modes render every cycle regardless of which is
+    # configured (SSTUpdater.run()), so switching is instant, same as species/mode below.
+    ("sst", "enabled"): _ENABLED_PERSONALIZABLE,
     ("sst", "mode"): _MODE_OPTIONS,
     ("sst", "opacity"): _OPACITY,
     ("sst", "palette"): SelectSpec([
@@ -548,80 +596,96 @@ FIELD_SPECS = {
         ("vivid", "Vivid"),
         ("deep", "Deep"),
         ("ocean", "Ocean"),
-    ]),
+    ], personalizable=True),
     ("sst", "min_c"): _MIN_MAX_C,
     ("sst", "max_c"): _MIN_MAX_C,
     ("sst", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
-    ("currents", "enabled"): _ENABLED,
+    ("currents", "enabled"): _ENABLED_PERSONALIZABLE,
     ("currents", "level_of_detail"): _LEVEL_OF_DETAIL,
     ("currents", "palette"): SelectSpec([
         ("thermal_red", "Thermal red"),
         ("electric_blue", "Electric blue"),
         ("toxic_neon", "Toxic neon"),
         ("cyberpunk", "Cyberpunk"),
-    ]),
+    ], personalizable=True),
     ("currents", "opacity"): _OPACITY,
     ("currents", "particle_speed"): _PARTICLE_SPEED_LIKE,
     ("currents", "particle_opacity"): _PARTICLE_OPACITY,
+    # NOT personalizable, unlike this section's other settings: CurrentsUpdater.plot()
+    # reads this server-side to mask out slow-water cells (NaN -> alpha 0) BEFORE
+    # encoding the shared velocity texture -- personalizing it would need a per-user
+    # server re-render, which this architecture doesn't do (unlike palette/opacity/
+    # fill_floor/fill_knee, which only remap the SAME shared texture client-side).
     ("currents", "current_speed_minimum"): SliderSpec(
         min=0.0, max=5.0, step=0.1, decimals=2, suffix=" m/s"
     ),
     ("currents", "trail_length"): _TRAIL_LENGTH,
     ("currents", "trail_thickness"): _TRAIL_THICKNESS,
-    ("currents", "fill_floor"): SliderSpec(min=0.0, max=1.0, step=0.05, decimals=2, suffix=" m/s"),
-    ("currents", "fill_knee"): SliderSpec(min=0.0, max=2.5, step=0.05, decimals=2, suffix=" m/s"),
+    ("currents", "fill_floor"): SliderSpec(min=0.0, max=1.0, step=0.05, decimals=2, suffix=" m/s", personalizable=True),
+    ("currents", "fill_knee"): SliderSpec(min=0.0, max=2.5, step=0.05, decimals=2, suffix=" m/s", personalizable=True),
     ("currents", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
-    ("waves", "enabled"): _ENABLED,
+    ("waves", "enabled"): _ENABLED_PERSONALIZABLE,
     ("waves", "level_of_detail"): _LEVEL_OF_DETAIL,
     ("waves", "palette"): SelectSpec([
         ("ocean_storm", "Ocean storm"),
         ("neon_surge", "Neon surge"),
         ("solar_flare", "Solar flare"),
-    ]),
+    ], personalizable=True),
     ("waves", "opacity"): _OPACITY,
-    ("waves", "min_wave_height"): SliderSpec(min=0, max=5, step=0.25, suffix=" m", zero_label="off"),
+    ("waves", "min_wave_height"): SliderSpec(
+        min=0, max=5, step=0.25, suffix=" m", zero_label="off", personalizable=True
+    ),
     ("waves", "particle_speed"): _PARTICLE_SPEED_LIKE,
     ("waves", "particle_size"): _PARTICLE_SIZE,
-    ("waves", "bar_length"): SliderSpec(min=1, max=8, step=1),
+    ("waves", "bar_length"): SliderSpec(min=1, max=8, step=1, personalizable=True),
     ("waves", "particle_opacity"): _PARTICLE_OPACITY,
     ("waves", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
-    ("temperature", "enabled"): _ENABLED,
+    ("temperature", "enabled"): _ENABLED_PERSONALIZABLE,
     ("temperature", "level_of_detail"): _LEVEL_OF_DETAIL,
     ("temperature", "opacity"): _OPACITY,
     ("temperature", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
-    ("ozone", "enabled"): _ENABLED,
+    ("ozone", "enabled"): _ENABLED_PERSONALIZABLE,
     ("ozone", "level_of_detail"): _LEVEL_OF_DETAIL,
     ("ozone", "palette"): SelectSpec([
         ("alert", "Alert (magenta -> yellow)"),
         ("high_contrast", "High contrast (red -> pale yellow)"),
-    ]),
-    ("ozone", "critical_du"): SliderSpec(min=150.0, max=500.0, step=10.0, decimals=1, suffix="du"),
+    ], personalizable=True),
+    ("ozone", "critical_du"): SliderSpec(min=150.0, max=500.0, step=10.0, decimals=1, suffix="du", personalizable=True),
     ("ozone", "opacity"): _OPACITY,
-    ("ozone", "stormwatch"): ToggleSpec(),
+    ("ozone", "stormwatch"): ToggleSpec(personalizable=True),
     ("ozone", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
-    ("stormwatch", "enabled"): _ENABLED,
+    ("stormwatch", "enabled"): _ENABLED_PERSONALIZABLE,
     ("stormwatch", "level_of_detail"): _LEVEL_OF_DETAIL,
-    ("stormwatch", "min_cape"): SliderSpec(min=0, max=5000, step=100, suffix="J/Kg"),
+    ("stormwatch", "min_cape"): SliderSpec(min=0, max=5000, step=100, suffix="J/Kg", personalizable=True),
     ("stormwatch", "opacity"): _OPACITY,
     ("stormwatch", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
     # --- Greenhouse gases (CO2/CH4 -- Absolute from GEOS-CF, Anomaly computed against
     # a CAMS EGG4 baseline year). Per-species scale/palette settings are flat,
     # species-prefixed keys (co2_min_ppm, ch4_palette, ...) rather than a nested dict --
-    # see tasks/greenhouse_gases.py's _SCALE_SETTING_KEYS for why. ---
-    ("greenhouse_gases", "enabled"): _ENABLED,
+    # see tasks/greenhouse_gases.py's _SCALE_SETTING_KEYS for why. Since #312, all of
+    # species/mode/opacity/min/max/palette apply entirely client-side (see
+    # tasks/greenhouse_gases.py's plot() docstring) -- personalizable across the board,
+    # EXCEPT baseline_year, which selects which EGG4 baseline file gets fetched/diffed
+    # server-side (a genuine backend behaviour change, not just display). ---
+    ("greenhouse_gases", "enabled"): _ENABLED_PERSONALIZABLE,
     ("greenhouse_gases", "species"): _GHG_SPECIES,
     ("greenhouse_gases", "mode"): _MODE_OPTIONS,
     ("greenhouse_gases", "baseline_year"): _GHG_BASELINE_YEAR,
     ("greenhouse_gases", "opacity"): _OPACITY,
-    ("greenhouse_gases", "co2_min_ppm"): SliderSpec(min=380, max=450, step=1, suffix=" ppm"),
-    ("greenhouse_gases", "co2_max_ppm"): SliderSpec(min=380, max=450, step=1, suffix=" ppm"),
+    ("greenhouse_gases", "co2_min_ppm"): SliderSpec(min=380, max=450, step=1, suffix=" ppm", personalizable=True),
+    ("greenhouse_gases", "co2_max_ppm"): SliderSpec(min=380, max=450, step=1, suffix=" ppm", personalizable=True),
     ("greenhouse_gases", "co2_palette"): _GHG_PALETTE,
-    ("greenhouse_gases", "ch4_min_ppb"): SliderSpec(min=1600, max=2100, step=10, suffix=" ppb"),
-    ("greenhouse_gases", "ch4_max_ppb"): SliderSpec(min=1600, max=2100, step=10, suffix=" ppb"),
+    ("greenhouse_gases", "ch4_min_ppb"): SliderSpec(min=1600, max=2100, step=10, suffix=" ppb", personalizable=True),
+    ("greenhouse_gases", "ch4_max_ppb"): SliderSpec(min=1600, max=2100, step=10, suffix=" ppb", personalizable=True),
     ("greenhouse_gases", "ch4_palette"): _GHG_PALETTE,
-    ("air_quality", "enabled"): _ENABLED,
+    # Only `enabled`/`variable` are personalizable for air_quality: every variable
+    # always renders every cycle (AirQualityUpdater.run()), so switching which one is
+    # DISPLAYED is instant -- but opacity and every *_min threshold ARE baked
+    # server-side into the shared render's alpha feathering (AirQualityUpdater.plot()),
+    # so personalizing them would need a per-user re-render, unlike SST/GHG post-#312.
+    ("air_quality", "enabled"): _ENABLED_PERSONALIZABLE,
     ("air_quality", "variable"): _AQ_VARIABLE,
-    ("air_quality", "opacity"): _OPACITY,
+    ("air_quality", "opacity"): SliderSpec(min=0, max=100, step=1),
     # Only a MINIMUM ("highlight above this") is user-configurable, not a max --
     # tasks/air_quality.py's _FIXED_CEILING holds each variable's non-configurable
     # gradient top. An independent min+max pair used to invite a scale (e.g. min=1,
