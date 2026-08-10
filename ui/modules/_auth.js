@@ -1,6 +1,8 @@
 // ui/modules/_auth.js
-// Google sign-in widget (issue #303): renders "Sign in with Google" or the signed-in
-// user's email + "Sign out" into #authWidget, based on GET /api/auth/me.
+// Google + GitHub sign-in widget (issues #303, #306): renders one link per provider,
+// or the signed-in user's email + "Sign out", into #authWidget, based on GET
+// /api/auth/me. Just two plain links -- no dropdown/picker, not worth it for two
+// options (see the routes/auth.py docstring for the shared backend route).
 
 export async function initAuthWidget() {
     const host = document.getElementById('authWidget');
@@ -31,10 +33,15 @@ export async function initAuthWidget() {
             });
             host.appendChild(signOut);
         } else {
-            const signIn = document.createElement('a');
-            signIn.href = '/api/auth/login/google';
-            signIn.textContent = 'Sign in with Google';
-            host.appendChild(signIn);
+            const signInGoogle = document.createElement('a');
+            signInGoogle.href = '/api/auth/login/google';
+            signInGoogle.textContent = 'Sign in with Google';
+            host.appendChild(signInGoogle);
+
+            const signInGithub = document.createElement('a');
+            signInGithub.href = '/api/auth/login/github';
+            signInGithub.textContent = 'Sign in with GitHub';
+            host.appendChild(signInGithub);
         }
     };
 

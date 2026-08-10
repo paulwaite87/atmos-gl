@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 """Route-level tests for GET /api/auth/me and POST /api/auth/logout (issue #303).
-/login/google and /callback/google aren't covered here -- they're thin glue around a
-live Google OAuth round-trip, not meaningfully unit-testable without mocking an
-external network call this repo doesn't otherwise mock for third-party integrations.
+The actual /login/{provider} and /callback/{provider} OAuth round-trips (issues #303,
+#306) aren't covered here -- they're thin glue around a live provider round-trip, not
+meaningfully unit-testable without mocking an external network call this repo doesn't
+otherwise mock for third-party integrations (their pure, provider-specific parsing
+logic IS unit tested, see test_auth_identity_resolution.py). The provider whitelist
+check IS covered here, since it 404s before any client/network interaction happens.
 require_login (issue #305/#314) is exercised via its real consumers instead
 (tests/test_me_settings_route.py's 401 cases), matching how require_admin itself is
 only tested via test_admin_gated_routes.py's real gated routes, not in isolation."""
@@ -74,3 +77,18 @@ def test_logout_with_no_cookie_is_a_no_op_success(client):
 
     assert resp.status_code == 200
     assert resp.json() == {"status": "success"}
+
+
+# --- /login/{provider}, /callback/{provider} provider whitelist (issue #306) ---
+
+
+def test_login_404s_for_an_unregistered_provider(client):
+    resp = client.get("/api/auth/login/facebook", follow_redirects=False)
+
+    assert resp.status_code == 404
+
+
+def test_callback_404s_for_an_unregistered_provider(client):
+    resp = client.get("/api/auth/callback/facebook", follow_redirects=False)
+
+    assert resp.status_code == 404
