@@ -78,6 +78,17 @@ class UserAdapter:
                 session.delete(sess)
                 session.commit()
 
+    def delete_user(self, user_id: int) -> None:
+        """Hard-deletes a user's account (issue #307): removing the User row cascades
+        to user_identities, user_sessions, and user_settings via their existing
+        ondelete="CASCADE" foreign keys (db/models.py) -- deliberately no manual
+        per-table cleanup here, since the DB already guarantees it."""
+        with Session() as session:
+            user = session.get(User, user_id)
+            if user is not None:
+                session.delete(user)
+                session.commit()
+
 
 class FakeUserAdapter:
     """In-memory fake for users/user_identities/user_sessions, matching UserAdapter's
@@ -126,3 +137,10 @@ class FakeUserAdapter:
 
     def delete_session(self, token: str) -> None:
         self._sessions.pop(token, None)
+
+    def delete_user(self, user_id: int) -> None:
+        """Mirrors the real adapter's CASCADE by also dropping this user's identities
+        and sessions -- not just the user itself."""
+        self._users.pop(user_id, None)
+        self._identities = {k: v for k, v in self._identities.items() if v != user_id}
+        self._sessions = {t: s for t, s in self._sessions.items() if s["user_id"] != user_id}

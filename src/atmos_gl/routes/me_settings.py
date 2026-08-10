@@ -6,11 +6,14 @@ site's global config by routes/config.py's GET /api/config. Anonymous visitors n
 see this page or touch this table at all."""
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.templating import Jinja2Templates
 
+from atmos_gl.db.user_adapter import UserAdapter
 from atmos_gl.db.user_settings_adapter import UserSettingsAdapter
-from atmos_gl.routes.auth import require_login
+from atmos_gl.lib.auth import SESSION_COOKIE_NAME
+from atmos_gl.lib.rate_limit import RateLimiter
+from atmos_gl.routes.auth import get_user_adapter, require_login
 from atmos_gl.routes.config import load_config
 from atmos_gl.routes.field_specs import (
     FIELD_SPECS,
@@ -38,6 +41,27 @@ templates.env.globals["initial_color_render"] = initial_color_render
 
 def get_user_settings_adapter() -> UserSettingsAdapter:
     return UserSettingsAdapter()
+
+
+# Shared by every signed-in-only route below (issue #307) -- settings writes and
+# account deletion draw from the same per-user budget, since both are self-service
+# actions on the caller's own row. Keyed by user id (there's always a resolved session
+# by this point, unlike the pre-auth /login/{provider} rate limiter in routes/auth.py).
+# 30 requests / minute: comfortably covers the debounced-autosave bursts this page's
+# own script already limits legitimate traffic to, only catches a runaway client or
+# deliberate abuse.
+_settings_rate_limiter = RateLimiter(max_requests=30, window_seconds=60)
+
+
+def get_settings_rate_limiter() -> RateLimiter:
+    return _settings_rate_limiter
+
+
+def require_login_rate_limited(
+    user: dict = Depends(require_login), limiter: RateLimiter = Depends(get_settings_rate_limiter),
+) -> dict:
+    limiter.enforce(str(user["id"]))
+    return user
 
 
 def _personalizable_sections(overrides: dict) -> dict:
@@ -96,7 +120,7 @@ def me_settings_page(
 @router.patch("/settings")
 async def update_my_settings(
     payload: dict,
-    user: dict = Depends(require_login),
+    user: dict = Depends(require_login_rate_limited),
     settings_adapter: UserSettingsAdapter = Depends(get_user_settings_adapter),
 ):
     """Merges one (or more) section's changed keys into the caller's stored overrides.
@@ -116,8 +140,23 @@ async def update_my_settings(
 @router.delete("/settings/{section}")
 def reset_my_settings_section(
     section: str,
-    user: dict = Depends(require_login),
+    user: dict = Depends(require_login_rate_limited),
     settings_adapter: UserSettingsAdapter = Depends(get_user_settings_adapter),
 ):
     settings_adapter.clear_section(user["id"], section)
+    return {"status": "success"}
+
+
+@router.delete("")
+def delete_my_account(
+    response: Response,
+    user: dict = Depends(require_login_rate_limited),
+    user_adapter: UserAdapter = Depends(get_user_adapter),
+):
+    """Permanently deletes the caller's own account (issue #307): a hard delete of
+    the User row, which cascades to user_identities/user_sessions/user_settings via
+    their existing ondelete="CASCADE" foreign keys (db/models.py) -- no manual
+    cross-table cleanup needed here."""
+    user_adapter.delete_user(user["id"])
+    response.delete_cookie(SESSION_COOKIE_NAME)
     return {"status": "success"}

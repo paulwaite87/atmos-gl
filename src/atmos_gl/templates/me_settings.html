@@ -48,6 +48,17 @@
                 </div>
             {% endfor %}
         </div>
+
+        <div class="card bg-secondary text-light p-4 shadow mt-4 border border-danger">
+            <h5 class="text-danger">⚠️ Danger Zone</h5>
+            <p class="text-white-50 mb-3">
+                Permanently deletes your account and all personal settings. This cannot be undone.
+            </p>
+            <button type="button" class="btn btn-sm btn-outline-danger" style="width: fit-content;"
+                    onclick="deleteAccount()">
+                Delete my account
+            </button>
+        </div>
     </div>
 
     <script>
@@ -157,6 +168,12 @@
             if (!confirm(`Clear your personal overrides for ${title}? This reverts to the site's current default.`)) return;
             const resp = await fetch(`/api/me/settings/${section}`, { method: 'DELETE' });
             if (resp.ok) window.location.reload();
+        }
+
+        async function deleteAccount() {
+            if (!confirm('Permanently delete your account? This cannot be undone.')) return;
+            const resp = await fetch('/api/me', { method: 'DELETE' });
+            if (resp.ok) window.location.href = '/';
         }
 
         document.addEventListener('input', (e) => {
