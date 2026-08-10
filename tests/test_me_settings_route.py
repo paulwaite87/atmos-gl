@@ -249,6 +249,44 @@ def test_get_config_merges_the_signed_in_users_override(client, tmp_path):
     assert data["palette"] == "standard"
 
 
+def test_get_config_isolates_two_different_signed_in_users_overrides(client, tmp_path):
+    """Two distinct users sharing one FakeUserAdapter/FakeUserSettingsAdapter (matching
+    how the real DB-backed adapters are genuinely shared across every request) -- proves
+    _merge_personal_overrides is scoped correctly per user_id and one user's saved
+    override can never leak into a different signed-in user's GET /api/config response.
+    _sign_in isn't reused here since it only ever creates one user per call against a
+    fresh adapter -- this test needs both users resolvable through the SAME adapter
+    instance, the way two real concurrent visitors would be."""
+    from atmos_gl.db.user_adapter import FakeUserAdapter
+
+    fake_users = FakeUserAdapter()
+    fake_settings = FakeUserSettingsAdapter()
+    app.dependency_overrides[get_user_adapter] = lambda: fake_users
+    app.dependency_overrides[config_get_user_settings_adapter] = lambda: fake_settings
+
+    alice = fake_users.get_or_create_user(
+        email="alice@example.com", name="Alice", provider="google", provider_user_id="alice-sub"
+    )
+    alice_token = fake_users.create_session(alice["id"], ttl_seconds=3600)
+    bob = fake_users.get_or_create_user(
+        email="bob@example.com", name="Bob", provider="google", provider_user_id="bob-sub"
+    )
+    bob_token = fake_users.create_session(bob["id"], ttl_seconds=3600)
+
+    fake_settings.merge_section(alice["id"], "precipitation", {"opacity": 11})
+    fake_settings.merge_section(bob["id"], "precipitation", {"opacity": 22})
+
+    with _with_temp_config(tmp_path, {"precipitation": {"opacity": 60, "palette": "standard"}}):
+        client.cookies.set(SESSION_COOKIE_NAME, alice_token)
+        alice_resp = client.get("/api/config")
+
+        client.cookies.set(SESSION_COOKIE_NAME, bob_token)
+        bob_resp = client.get("/api/config")
+
+    assert alice_resp.json()["data"]["precipitation"]["opacity"] == 11
+    assert bob_resp.json()["data"]["precipitation"]["opacity"] == 22
+
+
 def test_get_config_never_lets_a_stale_override_of_a_non_personalizable_key_leak_through(client, tmp_path):
     """A key stored as an override that isn't (or is no longer) personalizable must
     never reach the response -- routes/config.py's _merge_personal_overrides re-checks
