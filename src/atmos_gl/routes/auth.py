@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
-"""Google sign-in (issue #303): OAuth redirect/callback, logout, and a /me endpoint
-the frontend polls to know whether -- and as whom -- the visitor is signed in."""
+"""Google + GitHub sign-in (issues #303, #306): OAuth redirect/callback, logout, and a
+/me endpoint the frontend polls to know whether -- and as whom -- the visitor is signed
+in. /login/{provider} and /callback/{provider} are shared, parameterized routes rather
+than one route pair per provider -- the account-linking safety logic (the unverified-
+email gate below) lives once, not once per provider, so it can't drift between them.
+Only "how do I get (email, verified, name, subject) out of this provider's response" is
+genuinely provider-specific: Google is OIDC (one ID-token claim set via authlib's
+`userinfo`), GitHub is not (a separate REST profile + email-list fetch)."""
 import logging
 import os
 
@@ -15,6 +21,10 @@ logger = logging.getLogger("atmos_gl.routes.auth")
 
 router = APIRouter(prefix="/api/auth", tags=["Auth"])
 
+# Display names for error messages -- "github".title() would render "Github", not
+# "GitHub", so this can't just be provider.title().
+_DISPLAY_NAMES = {"google": "Google", "github": "GitHub"}
+
 oauth = OAuth()
 oauth.register(
     name="google",
@@ -22,6 +32,20 @@ oauth.register(
     client_id=os.getenv("GOOGLE_CLIENT_ID"),
     client_secret=os.getenv("GOOGLE_CLIENT_SECRET"),
     client_kwargs={"scope": "openid email profile"},
+)
+oauth.register(
+    name="github",
+    # GitHub isn't OIDC -- no discovery document, no userinfo/ID-token claims. Profile
+    # and email come from separate REST calls below (see _github_identity).
+    access_token_url="https://github.com/login/oauth/access_token",
+    authorize_url="https://github.com/login/oauth/authorize",
+    api_base_url="https://api.github.com/",
+    client_id=os.getenv("GITHUB_CLIENT_ID"),
+    client_secret=os.getenv("GITHUB_CLIENT_SECRET"),
+    # user:email is needed on top of the implicit read:user profile access -- a
+    # GitHub user's email can be private and is omitted from /user entirely in that
+    # case, only reachable via /user/emails with this scope granted.
+    client_kwargs={"scope": "read:user user:email"},
 )
 
 
@@ -65,35 +89,89 @@ def require_login(request: Request, user_adapter: UserAdapter = Depends(get_user
     return user
 
 
-@router.get("/login/google")
-async def login_google(request: Request):
-    redirect_uri = request.url_for("callback_google")
-    return await oauth.google.authorize_redirect(request, redirect_uri)
+def _google_identity(userinfo: dict) -> tuple[str | None, bool, str | None, str | None]:
+    return (
+        userinfo.get("email"),
+        bool(userinfo.get("email_verified")),
+        userinfo.get("name"),
+        userinfo.get("sub"),
+    )
 
 
-@router.get("/callback/google")
-async def callback_google(
-    request: Request, user_adapter: UserAdapter = Depends(get_user_adapter),
+def _primary_github_email(emails: list[dict]) -> dict | None:
+    """GitHub's GET /user/emails always includes exactly one primary=true entry (once
+    the account has any verified email) -- picked here without pre-filtering on
+    `verified`, so the caller can distinguish "no email at all" from "an email exists
+    but isn't verified", the same two cases _google_identity's email_verified claim
+    already distinguishes."""
+    return next((e for e in emails if e.get("primary")), None)
+
+
+def _github_identity(profile: dict, emails: list[dict]) -> tuple[str | None, bool, str | None, str | None]:
+    subject = str(profile["id"]) if profile.get("id") is not None else None
+    # login is always present; name is an optional profile field a user can leave blank.
+    name = profile.get("name") or profile.get("login")
+    primary = _primary_github_email(emails)
+    if primary is None:
+        return None, False, name, subject
+    return primary.get("email"), bool(primary.get("verified")), name, subject
+
+
+async def _resolve_github_identity(client, token) -> tuple[str | None, bool, str | None, str | None]:
+    profile_resp = await client.get("user", token=token)
+    profile_resp.raise_for_status()
+    emails_resp = await client.get("user/emails", token=token)
+    # A 403 here means the user granted sign-in but not the user:email scope (or
+    # revoked it) -- treated the same as "no verified email", not a hard failure.
+    emails = emails_resp.json() if emails_resp.status_code == 200 else []
+    return _github_identity(profile_resp.json(), emails)
+
+
+_PROVIDERS = ("google", "github")
+
+
+@router.get("/login/{provider}")
+async def login(provider: str, request: Request):
+    if provider not in _PROVIDERS:
+        raise HTTPException(status_code=404, detail="Unknown sign-in provider")
+    client = oauth.create_client(provider)
+    redirect_uri = request.url_for("callback", provider=provider)
+    return await client.authorize_redirect(request, redirect_uri)
+
+
+@router.get("/callback/{provider}")
+async def callback(
+    provider: str, request: Request, user_adapter: UserAdapter = Depends(get_user_adapter),
 ):
-    try:
-        token = await oauth.google.authorize_access_token(request)
-    except Exception as e:
-        logger.warning(f"Google OAuth callback failed: {e}")
-        raise HTTPException(status_code=400, detail="Google sign-in failed")
+    if provider not in _PROVIDERS:
+        raise HTTPException(status_code=404, detail="Unknown sign-in provider")
+    display_name = _DISPLAY_NAMES[provider]
+    client = oauth.create_client(provider)
 
-    userinfo = token.get("userinfo") or {}
-    email = userinfo.get("email")
-    subject = userinfo.get("sub")
+    try:
+        token = await client.authorize_access_token(request)
+        if provider == "google":
+            email, verified, name, subject = _google_identity(token.get("userinfo") or {})
+        else:
+            # GitHub's identity fetch is a live REST call (see _resolve_github_identity),
+            # unlike Google's claims already sitting in `token` -- a hiccup here (an
+            # expired token, a GitHub 5xx, a rate limit) must fail the same clean way as
+            # a token-exchange failure above, not surface as an unhandled 500.
+            email, verified, name, subject = await _resolve_github_identity(client, token)
+    except Exception as e:
+        logger.warning(f"{display_name} OAuth callback failed: {e}")
+        raise HTTPException(status_code=400, detail=f"{display_name} sign-in failed")
+
     if not email or not subject:
-        raise HTTPException(status_code=400, detail="Google did not provide an email")
-    if not userinfo.get("email_verified"):
-        # Google-side unverified addresses must never reach get_or_create_user: it links
-        # accounts across providers by email match, so an unverified address could hijack
-        # an existing user's identity (and any admin recognition tied to that email).
-        raise HTTPException(status_code=400, detail="Google email is not verified")
+        raise HTTPException(status_code=400, detail=f"{display_name} did not provide an email")
+    if not verified:
+        # An unverified address must never reach get_or_create_user: it links accounts
+        # across providers by email match, so an unverified address could hijack an
+        # existing user's identity (and any admin recognition tied to that email).
+        raise HTTPException(status_code=400, detail=f"{display_name} email is not verified")
 
     user = user_adapter.get_or_create_user(
-        email=email, name=userinfo.get("name"), provider="google", provider_user_id=subject,
+        email=email, name=name, provider=provider, provider_user_id=subject,
     )
     session_token = user_adapter.create_session(user["id"], ttl_seconds=SESSION_TTL_SECONDS)
 
