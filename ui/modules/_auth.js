@@ -14,6 +14,14 @@ export async function initAuthWidget() {
             label.textContent = state.email;
             host.appendChild(label);
 
+            // Only shown once signed in (issue #305/#314) -- unlike the always-visible
+            // admin "Configuration Control" link, a personal settings page is a dead
+            // end for an anonymous visitor, so it's not worth showing at all.
+            const settingsLink = document.createElement('a');
+            settingsLink.href = '/me/settings';
+            settingsLink.textContent = 'My Settings';
+            host.appendChild(settingsLink);
+
             const signOut = document.createElement('button');
             signOut.type = 'button';
             signOut.textContent = 'Sign out';

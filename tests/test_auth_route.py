@@ -2,7 +2,10 @@
 """Route-level tests for GET /api/auth/me and POST /api/auth/logout (issue #303).
 /login/google and /callback/google aren't covered here -- they're thin glue around a
 live Google OAuth round-trip, not meaningfully unit-testable without mocking an
-external network call this repo doesn't otherwise mock for third-party integrations."""
+external network call this repo doesn't otherwise mock for third-party integrations.
+require_login (issue #305/#314) is exercised via its real consumers instead
+(tests/test_me_settings_route.py's 401 cases), matching how require_admin itself is
+only tested via test_admin_gated_routes.py's real gated routes, not in isolation."""
 from atmos_gl.db.user_adapter import FakeUserAdapter
 from atmos_gl.lib.auth import SESSION_COOKIE_NAME
 from atmos_gl.routes.auth import get_user_adapter
