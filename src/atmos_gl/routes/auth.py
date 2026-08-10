@@ -29,7 +29,12 @@ def get_user_adapter() -> UserAdapter:
     return UserAdapter()
 
 
-def _current_user(request: Request, user_adapter: UserAdapter) -> dict | None:
+def current_user_optional(request: Request, user_adapter: UserAdapter) -> dict | None:
+    """None if not signed in (no cookie or an expired/unknown session), the user dict
+    otherwise -- the shared primitive require_admin/require_login build their 401s on
+    top of, and also used directly (not as a Depends) by GET /api/config (routes/
+    config.py) to merge a signed-in user's personal overrides in when present, while
+    staying fully unauthenticated (no 401) for anyone else."""
     token = request.cookies.get(SESSION_COOKIE_NAME)
     return user_adapter.get_session_user(token) if token else None
 
@@ -42,11 +47,21 @@ def require_admin(request: Request, user_adapter: UserAdapter = Depends(get_user
     only the config UI shows. GET /api/config and /api/forecast_state stay
     unauthenticated: the public map depends on them to load (see #304's acceptance
     criteria)."""
-    user = _current_user(request, user_adapter)
+    user = current_user_optional(request, user_adapter)
     if user is None:
         raise HTTPException(status_code=401, detail="Authentication required")
     if not user["is_admin"]:
         raise HTTPException(status_code=403, detail="Admin access required")
+    return user
+
+
+def require_login(request: Request, user_adapter: UserAdapter = Depends(get_user_adapter)) -> dict:
+    """FastAPI dependency gating signed-in-only routes (issue #305/#314): 401 with
+    no/invalid session, no admin check -- lighter than require_admin, for routes any
+    signed-in visitor may use (e.g. their own personal settings), not just admins."""
+    user = current_user_optional(request, user_adapter)
+    if user is None:
+        raise HTTPException(status_code=401, detail="Authentication required")
     return user
 
 
@@ -109,7 +124,7 @@ async def logout(
 
 @router.get("/me")
 async def me(request: Request, user_adapter: UserAdapter = Depends(get_user_adapter)):
-    user = _current_user(request, user_adapter)
+    user = current_user_optional(request, user_adapter)
     if user is None:
         return {"authenticated": False}
     return {

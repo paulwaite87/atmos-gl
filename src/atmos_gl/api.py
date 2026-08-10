@@ -18,6 +18,7 @@ from atmos_gl.routes import (
     lightning,
     shipping,
     config,
+    me_settings,
     terminator,
     backfill,
     markers,
@@ -98,6 +99,8 @@ app.include_router(lightning.router)
 app.include_router(shipping.router)
 app.include_router(config.router)
 app.include_router(config.ui_router)
+app.include_router(me_settings.router)
+app.include_router(me_settings.ui_router)
 app.include_router(markers.router)
 app.include_router(backfill.router)
 app.include_router(status.router)

@@ -130,6 +130,37 @@ def test_validate_against_specs_ignores_missing_sections():
     assert validate_against_specs({"quakes": {"min_mag": 4.5}}) == []
 
 
+# --- personalizable (issue #305/#314): opt-in per key, default False ---
+
+
+def test_personalizable_defaults_false_on_a_fresh_spec():
+    assert SliderSpec(min=0, max=100, step=1).personalizable is False
+
+
+def test_precipitations_opacity_palette_and_min_mm_hr_are_personalizable():
+    """The three keys #314 proves the personalization mechanism on -- #315 curates the
+    rest of the app's fields, including precipitation's own enabled/level_of_detail/
+    cache_expiry_days, which stay non-personalizable here."""
+    assert FIELD_SPECS[("precipitation", "opacity")].personalizable is True
+    assert FIELD_SPECS[("precipitation", "palette")].personalizable is True
+    assert FIELD_SPECS[("precipitation", "min_mm_hr")].personalizable is True
+
+
+def test_precipitations_non_personalizable_keys_stay_false():
+    assert FIELD_SPECS[("precipitation", "enabled")].personalizable is False
+    assert FIELD_SPECS[("precipitation", "level_of_detail")].personalizable is False
+    assert FIELD_SPECS[("precipitation", "cache_expiry_days")].personalizable is False
+
+
+def test_almost_every_other_sections_opacity_is_not_personalizable_yet():
+    """Precipitation's opacity was deliberately given its own dedicated SliderSpec
+    rather than the shared _OPACITY constant specifically so flagging it personalizable
+    couldn't silently flip every other section reusing that same shared object too."""
+    assert FIELD_SPECS[("sst", "opacity")].personalizable is False
+    assert FIELD_SPECS[("currents", "opacity")].personalizable is False
+    assert FIELD_SPECS[("temperature", "opacity")].personalizable is False
+
+
 # --- Events / Misc / Shipping batch: prefix badges, shared shapes, new kinds ---
 
 

@@ -5,10 +5,12 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException, Request, Depends
 from fastapi.templating import Jinja2Templates
 from atmos_gl.db.field_catalog_adapter import FieldCatalogAdapter
+from atmos_gl.db.user_adapter import UserAdapter
+from atmos_gl.db.user_settings_adapter import UserSettingsAdapter
 from atmos_gl.lib.config import AtmosGLConfig
 from atmos_gl.lib.data_status import resolve_run_epoch_utc
 from atmos_gl.lib.output_files import OUTFILES
-from atmos_gl.routes.auth import require_admin
+from atmos_gl.routes.auth import current_user_optional, get_user_adapter, require_admin
 from atmos_gl.routes.field_specs import (
     FIELD_SPECS,
     field_label,
@@ -97,6 +99,10 @@ def _load_defaults_config() -> dict:
 
 def get_field_catalog_adapter() -> FieldCatalogAdapter:
     return FieldCatalogAdapter()
+
+
+def get_user_settings_adapter() -> UserSettingsAdapter:
+    return UserSettingsAdapter()
 
 
 @router.get("/forecast_state")
@@ -263,9 +269,46 @@ def _strip_backend_only_secrets(data: dict) -> dict:
     }
 
 
+def _merge_personal_overrides(data: dict, overrides: dict) -> dict:
+    """Applies a signed-in user's sparse {section: {option: value}} overrides on top
+    of `data` -- issue #305/#314. Only touches a key when it's both present in
+    `overrides` AND currently flagged personalizable=True, so a stale override for a
+    key that's since been un-flagged (or removed from FIELD_SPECS entirely) can never
+    leak into the response. Builds fresh per-section dicts rather than mutating `data`
+    in place, matching _strip_backend_only_secrets' own precaution (data's nested
+    dicts are the same objects as the live AtmosGLConfig.config's)."""
+    if not overrides:
+        return data
+    merged = dict(data)
+    for section, section_overrides in overrides.items():
+        if section not in merged or not isinstance(merged[section], dict):
+            continue
+        personalizable_values = {
+            option: value
+            for option, value in section_overrides.items()
+            if getattr(FIELD_SPECS.get((section, option)), "personalizable", False)
+        }
+        if personalizable_values:
+            merged[section] = {**merged[section], **personalizable_values}
+    return merged
+
+
 @router.get("/config")
-def get_config():
-    return {"status": "success", "data": _strip_backend_only_secrets(_build_config_data())}
+def get_config(
+    request: Request,
+    user_adapter: UserAdapter = Depends(get_user_adapter),
+    settings_adapter: UserSettingsAdapter = Depends(get_user_settings_adapter),
+):
+    data = _strip_backend_only_secrets(_build_config_data())
+    # Unauthenticated by design (see require_admin's docstring) -- current_user_optional
+    # called directly rather than as a Depends, so an anonymous request is byte-for-byte
+    # identical to before this merge existed, not just "no override values happen to
+    # apply" -- no session, no adapter round-trip, no behaviour change at all.
+    user = current_user_optional(request, user_adapter)
+    if user is not None:
+        overrides = settings_adapter.get_overrides(user["id"])
+        data = _merge_personal_overrides(data, overrides)
+    return {"status": "success", "data": data}
 
 
 @ui_router.get("/config")

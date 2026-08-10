@@ -13,7 +13,9 @@ from fastapi.testclient import TestClient
 from atmos_gl.api import app
 from atmos_gl.lib.auth import SESSION_COOKIE_NAME
 from atmos_gl.lib.config import AtmosGLConfig
+from atmos_gl.db.user_settings_adapter import FakeUserSettingsAdapter
 from atmos_gl.routes.auth import get_user_adapter
+from atmos_gl.routes.config import get_user_settings_adapter
 from tests.conftest import make_signed_in_session
 
 client = TestClient(app)
@@ -21,11 +23,16 @@ client = TestClient(app)
 
 # POST /api/config is gated by require_admin (issue #304); see
 # tests/test_config_field_specs.py's identical fixture for why this is autouse +
-# re-applied per test rather than a one-time module-level assignment.
+# re-applied per test rather than a one-time module-level assignment. GET /api/config
+# now also reads a user_settings adapter for any signed-in caller (issue #305/#314,
+# routes/config.py's get_config) -- faked here too so an admin session set up purely
+# to satisfy require_admin elsewhere in this file doesn't make GET /api/config reach
+# for a real database connection this test suite has none of.
 @pytest.fixture(autouse=True)
 def _admin_session():
     fake, token = make_signed_in_session(is_admin=True)
     app.dependency_overrides[get_user_adapter] = lambda: fake
+    app.dependency_overrides[get_user_settings_adapter] = lambda: FakeUserSettingsAdapter()
     client.cookies.set(SESSION_COOKIE_NAME, token)
 
 

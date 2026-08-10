@@ -31,6 +31,14 @@ from atmos_gl.lib.greenhouse_gases import BASELINE_YEAR_MAX, BASELINE_YEAR_MIN
 
 @dataclass(frozen=True)
 class ToggleSpec:
+    # Issue #305/#314: whether a signed-in user may personally override this setting
+    # (persisted per-account, merged on top of the site's global default). Opt-in,
+    # defaulting False, curated field-spec by field-spec -- never a setting that
+    # changes backend rendering cost/resource use (collector-only settings are never
+    # frontend-exposed at all, so they're never even a candidate). Added individually
+    # to each of the 6 FieldSpec dataclasses rather than via a shared base class, since
+    # this is the first cross-cutting flag any of them has needed.
+    personalizable: bool = False
     kind: str = field(default="toggle", init=False)
 
 
@@ -58,18 +66,21 @@ class SliderSpec:
     # CSS hook for the legacy saveActiveConfig() JS's per-class save dispatch (e.g.
     # "cloud-threshold-slider" triggers its percent -> byte reverse conversion).
     extra_class: str = ""
+    personalizable: bool = False
     kind: str = field(default="slider", init=False)
 
 
 @dataclass(frozen=True)
 class SelectSpec:
     options: list  # [(value, label), ...]
+    personalizable: bool = False
     kind: str = field(default="select", init=False)
 
 
 @dataclass(frozen=True)
 class MultiSelectSpec:
     options: list  # [(value, label), ...]
+    personalizable: bool = False
     kind: str = field(default="multiselect", init=False)
 
 
@@ -81,6 +92,7 @@ class GroupedTransferSpec:
     buttons move selected options between the two, keeping each option under its own
     heading either side."""
     groups: list
+    personalizable: bool = False
     kind: str = field(default="grouped_transfer", init=False)
 
 
@@ -92,6 +104,7 @@ class ColorSpec:
     # pickerClass distinction (option.includes('_default_') or section == 'terminator'
     # got the raw-hex behaviour; everything else got the named-colour behaviour).
     named: bool = True
+    personalizable: bool = False
     kind: str = field(default="color", init=False)
 
 
@@ -494,13 +507,19 @@ FIELD_SPECS = {
     ("jetstream", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
     ("precipitation", "enabled"): _ENABLED,
     ("precipitation", "level_of_detail"): _LEVEL_OF_DETAIL,
-    ("precipitation", "min_mm_hr"): SliderSpec(min=0.0, max=10.0, step=0.1, decimals=1),
-    ("precipitation", "opacity"): _OPACITY,
+    ("precipitation", "min_mm_hr"): SliderSpec(
+        min=0.0, max=10.0, step=0.1, decimals=1, personalizable=True
+    ),
+    # A dedicated SliderSpec rather than the shared _OPACITY constant (frozen, so it
+    # can't be flipped in place) -- deliberately scoped to Precipitation alone for
+    # #314, the personalization mechanism's proof-of-concept layer. #315 curates the
+    # rest of the app's fields, including every other section's opacity.
+    ("precipitation", "opacity"): SliderSpec(min=0, max=100, step=1, personalizable=True),
     ("precipitation", "palette"): SelectSpec([
         ("standard", "Standard"),
         ("ocean_blue", "Ocean blue"),
         ("high_contrast", "High contrast"),
-    ]),
+    ], personalizable=True),
     ("precipitation", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
     ("pwat", "enabled"): _ENABLED,
     ("pwat", "level_of_detail"): _LEVEL_OF_DETAIL,

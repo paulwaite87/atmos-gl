@@ -545,3 +545,23 @@ class UserSession(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class UserSettings(Base):
+    """Per-user personalized view-settings overrides (issue #305/#314) -- one row per
+    user, `overrides` a sparse {section: {option: value}} map of only what that user
+    has explicitly changed from the site's global default. Merged on top of
+    AtmosGLConfig's own settings by routes/config.py's GET /api/config whenever a
+    valid session is present; an anonymous request never touches this table at all."""
+
+    __tablename__ = "user_settings"
+
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    overrides: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'::jsonb")
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
