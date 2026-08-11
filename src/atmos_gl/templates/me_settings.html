@@ -1,4 +1,10 @@
 {%- import "_field_macros.html" as field_macros -%}
+{%- set categories = [
+    ("Atmospheric", "atmospheric", ["clouds", "isobars", "wind", "jetstream", "precipitation", "pwat", "lightning", "storms"], false),
+    ("Climate", "climate", ["sst", "currents", "waves", "temperature", "ozone", "stormwatch", "greenhouse_gases"], true),
+    ("Events", "events", ["quakes", "volcanoes", "fires", "air_quality"], false),
+    ("Miscellaneous", "misc", ["satellites", "terminator", "markers", "flightradar", "landmass", "shipping"], false),
+] -%}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -6,7 +12,11 @@
     <title>My Settings — Atmos GL</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
+        .nav-tabs .nav-link { color: #aaa; border: none; }
+        .nav-tabs .nav-link.active { background-color: #495057 !important; color: #fff !important; font-weight: bold; }
         .section-block { background-color: #2b3035; border-radius: 8px; padding: 15px; margin-bottom: 20px; }
+        .grouping-box { background-color: #ffffff; color: #212529; border-radius: 8px; padding: 20px; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .grouping-box h5 { color: #0d6efd; border-bottom: 2px solid #dee2e6; padding-bottom: 8px; margin-bottom: 15px; font-weight: bold; }
         .ps-status { font-size: 0.8rem; color: #adb5bd; }
     </style>
 </head>
@@ -14,39 +24,78 @@
     <div class="container my-5" style="max-width: 950px;">
         <div class="d-flex justify-content-between align-items-center mb-4">
             <h2>⚙️ My Settings</h2>
-            <a href="/" class="btn btn-outline-info btn-sm">🔙 View Live Globe</a>
+            <div class="d-flex align-items-center gap-3">
+                <span class="ps-status" id="ps-global-status"></span>
+                <a href="/" class="btn btn-outline-info btn-sm">🔙 View Live Globe</a>
+            </div>
         </div>
 
         <div class="card bg-secondary text-light p-4 shadow">
             <p class="text-white-50">
                 Changes here save automatically and apply only to your own signed-in view --
-                nobody else sees them, and they follow you across devices. "Clear my overrides"
-                reverts a section back to the site's current default.
+                nobody else sees them, and they follow you across devices.
             </p>
 
             {% if not sections %}
                 <p class="text-white-50">Nothing is personalizable yet.</p>
-            {% endif %}
+            {% else %}
+                <ul class="nav nav-tabs mb-3" id="psTabs" role="tablist">
+                    <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#show-pane" type="button">Show</button></li>
+                    {% for label, slug, category_sections, is_exclusive in categories %}
+                        {% if category_sections | select("in", sections) | list %}
+                            <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#{{ slug }}-pane" type="button">{{ label }}</button></li>
+                        {% endif %}
+                    {% endfor %}
+                </ul>
 
-            {% for section, section_data in sections.items() %}
-                <div class="section-block" id="wrapper-section-{{ section }}">
-                    <div class="d-flex justify-content-between align-items-center border-bottom border-secondary pb-2 mb-3">
-                        <h5 class="text-info mb-0">{{ section_label(section) }}</h5>
-                        <div class="d-flex align-items-center gap-3">
-                            <span class="ps-status" id="ps-status-{{ section }}"></span>
-                            <button type="button" class="btn btn-sm btn-outline-warning"
-                                    onclick="resetSection('{{ section }}', '{{ section_label(section) }}')">
-                                ↺ Clear my overrides
-                            </button>
-                        </div>
-                    </div>
-                    <div class="row g-3" id="ps-fields-{{ section }}" data-section="{{ section }}">
-                        {% for option, value in section_data.items() %}
-                            {{ field_macros.render_field(section, option, value, field_specs.get((section, option)), field_label(section, option)) }}
+                <div class="tab-content">
+                    {# --- Show tab: one checkbox (or, for Climate, one radio) per layer --
+                       the ONLY place `enabled` is edited; render_tab_group's per-category
+                       panes below exclude it entirely (see _field_macros.html's
+                       render_field_group), matching config.html's own Show/category split. #}
+                    <div class="tab-pane fade show active" id="show-pane">
+                        {% for label, slug, category_sections, is_exclusive in categories %}
+                            {% set present = category_sections | select("in", sections) | list %}
+                            {% if present %}
+                                <div class="grouping-box">
+                                    <h5>{{ label }}</h5>
+                                    {% if is_exclusive %}
+                                        <p class="text-muted small mb-3">Select a climate base layer to render across the globe -- only one shows at a time.</p>
+                                    {% endif %}
+                                    <div class="row g-3">
+                                        {% for section in present %}
+                                            {% if "enabled" in sections[section] %}
+                                                <div class="col-md-4">
+                                                    <div class="form-check {{ '' if is_exclusive else 'form-switch' }}">
+                                                        <input class="form-check-input section-enable-toggle" data-section="{{ section }}"
+                                                               type="{{ 'radio' if is_exclusive else 'checkbox' }}"
+                                                               {% if is_exclusive %}name="exclusive_climate"{% endif %}
+                                                               id="{{ section }}__enabled"
+                                                               {% if sections[section]['enabled'] %}checked{% endif %}>
+                                                        <label class="form-check-label fw-bold ms-2" for="{{ section }}__enabled">{{ section_label(section) }}</label>
+                                                    </div>
+                                                </div>
+                                            {% endif %}
+                                        {% endfor %}
+                                    </div>
+                                    {% if is_exclusive %}
+                                        <div class="mt-2"><button type="button" class="btn btn-sm btn-outline-secondary" onclick="clearClimateRadio()">None / Disable Climate Base Layer</button></div>
+                                    {% endif %}
+                                </div>
+                            {% endif %}
                         {% endfor %}
                     </div>
+
+                    {% for label, slug, category_sections, is_exclusive in categories %}
+                        {% set present = category_sections | select("in", sections) | list %}
+                        {% if present %}
+                            <div class="tab-pane fade" id="{{ slug }}-pane">
+                                {{ field_macros.render_tab_group(present, sections) }}
+                            </div>
+                        {% endif %}
+                    {% endfor %}
                 </div>
-            {% endfor %}
+            {% endif %}
         </div>
 
         <div class="card bg-secondary text-light p-4 shadow mt-4 border border-danger">
@@ -61,12 +110,11 @@
         </div>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         // Mirrors config.html's own copy verbatim (routes/field_specs.py's COLOR_MAP) --
         // render_field's color-kind markup (_field_macros.html) inline-calls
-        // findNearestNamedColor() on every drag regardless of which page rendered it, so
-        // this page needs the same two definitions #315 found were missing here (a
-        // ReferenceError on any personalizable named-color field, e.g. markers.marker_color).
+        // findNearestNamedColor() on every drag regardless of which page rendered it.
         const COLOR_MAP = {
             "white": "#ffffff", "black": "#000000", "gray": "#808080", "silver": "#c0c0c0",
             "red": "#ff0000", "maroon": "#800000", "pink": "#ffc0cb",
@@ -114,15 +162,13 @@
             document.getElementById(badgeId).innerText = text;
         }
 
-        // Reads every .dynamic-input under this section's field grid into a plain
-        // {option: value} object -- same per-kind extraction config.html's
-        // saveActiveConfig() uses for the admin page's whole-config payload, scoped to
-        // one section here. No grouped_transfer field is personalizable (satellites'
-        // groups picker stays admin-only), so that branch isn't needed here -- color
-        // (named and raw-hex) and multiselect (array-select) both are, as of #315.
+        // Reads every .dynamic-input under a section's field grid (render_tab_group's
+        // own fields-section-{section} container) into a plain {option: value} object --
+        // same per-kind extraction config.html's saveActiveConfig() uses for the admin
+        // page's whole-config payload, scoped to one section here.
         function readSectionValues(section) {
             const values = {};
-            document.querySelectorAll(`#ps-fields-${section} .dynamic-input`).forEach((input) => {
+            document.querySelectorAll(`#fields-section-${section} .dynamic-input`).forEach((input) => {
                 const option = input.id.split('__')[1];
                 if (input.type === 'checkbox') {
                     values[option] = input.checked;
@@ -139,14 +185,14 @@
             return values;
         }
 
-        function setStatus(section, text) {
-            const el = document.getElementById(`ps-status-${section}`);
+        function setStatus(text) {
+            const el = document.getElementById('ps-global-status');
             if (el) el.textContent = text;
         }
 
         const saveTimers = {};
         function scheduleSave(section) {
-            setStatus(section, 'Saving…');
+            setStatus('Saving…');
             clearTimeout(saveTimers[section]);
             saveTimers[section] = setTimeout(() => saveSection(section), 600);
         }
@@ -158,13 +204,35 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ [section]: readSectionValues(section) }),
                 });
-                setStatus(section, resp.ok ? 'Saved' : 'Save failed');
+                setStatus(resp.ok ? 'Saved' : 'Save failed');
             } catch (err) {
-                setStatus(section, 'Save failed');
+                setStatus('Save failed');
             }
         }
 
-        async function resetSection(section, title) {
+        // Fire-and-forget PATCH for a single {section}.enabled write -- used both for the
+        // toggle the visitor directly clicked and, for the climate radio group, the
+        // sibling(s) the browser silently unchecked as a side effect (see the 'change'
+        // listener below).
+        async function saveSectionEnabled(section, enabled) {
+            setStatus('Saving…');
+            try {
+                const resp = await fetch('/api/me/settings', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ [section]: { enabled } }),
+                });
+                setStatus(resp.ok ? 'Saved' : 'Save failed');
+            } catch (err) {
+                setStatus('Save failed');
+            }
+        }
+
+        // render_tab_group's own "↺ Set to Defaults" button (_field_macros.html), shared
+        // verbatim with config.html -- on this page it means "clear my personal override
+        // for this section", not the admin page's "load config/atmos-gl.json.tmpl" reset,
+        // so it's redefined here rather than reusing config.html's own copy.
+        async function resetSectionToDefaults(section, title) {
             if (!confirm(`Clear your personal overrides for ${title}? This reverts to the site's current default.`)) return;
             const resp = await fetch(`/api/me/settings/${section}`, { method: 'DELETE' });
             if (resp.ok) window.location.reload();
@@ -176,9 +244,63 @@
             if (resp.ok) window.location.href = '/';
         }
 
+        // Shows/hides each layer's fields-section-{section} vs. its fallback-section-
+        // {section} (both rendered by render_tab_group) based on the Show tab's current
+        // toggle state -- driven entirely by data-section attributes already on the
+        // page, not a hardcoded section list (see config.html's toggleSectionVisibility
+        // for the admin page's equivalent, hardcoded because its own Show tab spans
+        // every config section, not just the personalizable ones this page has).
+        function toggleSectionVisibility() {
+            document.querySelectorAll('.section-enable-toggle').forEach((el) => {
+                const section = el.dataset.section;
+                const fieldsDiv = document.getElementById(`fields-section-${section}`);
+                const fallbackDiv = document.getElementById(`fallback-section-${section}`);
+                const resetBtn = document.getElementById(`reset-btn-${section}`);
+                if (!fieldsDiv || !fallbackDiv) return;
+                if (el.checked) {
+                    fieldsDiv.classList.remove('d-none'); fallbackDiv.classList.add('d-none');
+                    if (resetBtn) resetBtn.classList.remove('d-none');
+                } else {
+                    fieldsDiv.classList.add('d-none'); fallbackDiv.classList.remove('d-none');
+                    if (resetBtn) resetBtn.classList.add('d-none');
+                }
+            });
+        }
+
+        function clearClimateRadio() {
+            document.querySelectorAll('input[name="exclusive_climate"]').forEach((r) => {
+                if (r.checked) {
+                    r.checked = false;
+                    saveSectionEnabled(r.dataset.section, false);
+                }
+            });
+            toggleSectionVisibility();
+        }
+
+        document.addEventListener('DOMContentLoaded', toggleSectionVisibility);
+
+        document.addEventListener('change', (e) => {
+            if (!e.target.classList.contains('section-enable-toggle')) return;
+            const section = e.target.dataset.section;
+
+            // A native <input type="radio"> auto-unchecks its siblings in the same
+            // name= group without firing THEIR 'change' event -- persist "now off" for
+            // whichever climate layer this one just replaced, or its stale
+            // enabled:true override would resurrect it (both would show enabled again)
+            // on the next page load.
+            if (e.target.type === 'radio' && e.target.checked) {
+                document.querySelectorAll(`input[name="${e.target.name}"]`).forEach((sibling) => {
+                    if (sibling !== e.target) saveSectionEnabled(sibling.dataset.section, false);
+                });
+            }
+
+            saveSectionEnabled(section, e.target.checked);
+            toggleSectionVisibility();
+        });
+
         document.addEventListener('input', (e) => {
             if (!e.target.classList || !e.target.classList.contains('dynamic-input')) return;
-            const section = e.target.closest('[data-section]')?.dataset.section;
+            const section = e.target.id.split('__')[0];
             if (section) scheduleSave(section);
         });
     </script>

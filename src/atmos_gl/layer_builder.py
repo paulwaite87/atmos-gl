@@ -8,6 +8,7 @@ import signal
 import asyncio
 import multiprocessing
 import threading
+import time
 from functools import partial
 from concurrent.futures import ProcessPoolExecutor
 from concurrent.futures.process import BrokenProcessPool
@@ -45,6 +46,14 @@ logger = logging.getLogger("atmos_gl.layer_builder")
 # is tasks.common.LAYER_CYCLE_SECONDS (Updater.layer_status() needs it too, and
 # tasks/common.py can't import this module without a cycle).
 CYCLE_SECONDS = LAYER_CYCLE_SECONDS
+
+# Watchdog threshold (see LayerBuilder._check_watchdog for the incident this guards
+# against). Hardcoded, not config-driven -- this is an internal safety net, not
+# something an admin should routinely retune (matches CYCLE_SECONDS's own
+# precedent). 20 minutes comfortably clears worst-case sequential dispatch on
+# performance_tier="low" (one worker, up to 11 multi-hour sections) plus a real
+# backlog.
+WATCHDOG_STALE_SECONDS = 20 * 60
 
 # section -> updater class. The parent dispatches one task per entry; each worker process
 # looks up the class it must build by section name. Order is informational only now —
@@ -318,6 +327,14 @@ class LayerBuilder:
         self.order = RoundRobinOrder(MULTI_HOUR_SECTIONS)
         self._order_server = None
 
+        # Watchdog state: section -> time.time() of its last dispatch RESULT (success,
+        # failure, or broken pool -- "returned a result at all" is the liveness signal,
+        # not "rendered successfully"). Only multi-hour sections are tracked; see
+        # _handle_results/_check_watchdog. Starts empty, so a freshly-started process
+        # gives every section a free grace period until it's actually been dispatched
+        # once.
+        self._last_dispatch_ts: dict[str, float] = {}
+
         # Static (derived from the collector class registries, not config), so computed
         # once here rather than every dispatch cycle -- see dispatchable_sections().
         self._layer_channel_keys = build_layer_channel_keys(
@@ -410,6 +427,14 @@ class LayerBuilder:
         broken = False
         plotted_by_section = {}
         for section, r in zip(sections, results):
+            if section in MULTI_HOUR_SECTIONS:
+                # Watchdog liveness signal (_check_watchdog): a result coming back at
+                # all -- success, failure, or a broken pool -- proves the round-robin
+                # loop is still actively dispatching this section. This is exactly the
+                # signal that silently stopped for `isobars` for ~27h in the incident
+                # this guards against: nothing crashed, no error was ever logged, it
+                # just quietly stopped being included in dispatch.
+                self._last_dispatch_ts[section] = time.time()
             if isinstance(r, BrokenProcessPool):
                 broken = True
                 self.process_status_adapter.record_process_run(
@@ -432,6 +457,49 @@ class LayerBuilder:
         if broken:
             logger.error("Render worker died (BrokenProcessPool); recreating pool")
         return broken, plotted_by_section
+
+    def _check_watchdog(self):
+        """Force a restart if a multi-hour section has silently stopped being
+        dispatched -- the failure mode found live 2026-08-10/11, where isobars
+        dropped out of round-robin rotation for ~27h with no error, no crash, and no
+        effect on any other section, while every other multi-hour section kept
+        rendering normally. Comparing rendered forecast RUN across layers (e.g.
+        isobars vs wind) was considered and rejected: GfsAtmosCollector ingests every
+        atmos product from one shared grib2 download per hour, so their CATALOG data
+        is never out of sync with each other -- only isobars' RENDER of that data
+        fell behind, which per-section dispatch-liveness (this check) catches
+        directly and a cross-layer run comparison would not have.
+
+        _last_dispatch_ts (updated in _handle_results the instant a section's future
+        resolves, success or failure) only gains an entry once a section has actually
+        been dispatched -- so a section absent from it (freshly restarted process, or
+        one still waiting its turn behind a large backlog) is never flagged, only one
+        that WAS seen and then stopped updating.
+
+        Deliberately no backoff/loop-guard: always self-heals via os._exit(1) --
+        Docker's `restart: unless-stopped` on this service brings it back up, no
+        Docker-socket access or cross-container call needed. If this recurs rapidly,
+        the restart loop itself is loud and visible enough (docker compose ps, these
+        very log lines) to investigate as its own problem, rather than something
+        worth pre-emptively engineering backoff for before it's ever been observed.
+        """
+        now = time.time()
+        stale = {
+            s: now - ts for s, ts in self._last_dispatch_ts.items()
+            if now - ts > WATCHDOG_STALE_SECONDS
+        }
+        if not stale:
+            return
+        ages = ", ".join(
+            f"{s}={(now - ts) / 60:.1f}m"
+            for s, ts in sorted(self._last_dispatch_ts.items())
+        )
+        logger.error(
+            f"Watchdog: {sorted(stale)} not dispatched in over "
+            f"{WATCHDOG_STALE_SECONDS / 60:.0f} minutes -- forcing a restart to "
+            f"recover. All tracked section ages: {ages}"
+        )
+        os._exit(1)
 
     async def _dispatch_round(self, loop, sections, baseline, max_hours_by_section):
         """Dispatch one future per section in `sections` (each capped to
@@ -555,6 +623,7 @@ class LayerBuilder:
                     # this file's per-hour round-robin dispatch existed.
                     baseline = self._resolve_baselines()
                     await self._run_dispatch_cycle(loop, baseline)
+                    self._check_watchdog()
                 else:
                     logger.info("Layer-builder scheduler disabled: skipping")
 

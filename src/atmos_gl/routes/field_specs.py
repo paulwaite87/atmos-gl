@@ -806,7 +806,7 @@ SECTION_LABELS = {
     "markers": "Place Markers",
     "flightradar": "Flight Radar",
     "landmass": "Landmass Outlines",
-    "shipping": "Shipping Overlay",
+    "shipping": "Shipping",
     "shipping_collector": "Shipping Collector (AIS Loop)",
     "lightning_collector": "Lightning Collector Daemon",
     "satellites_collector": "Satellites Collector",
