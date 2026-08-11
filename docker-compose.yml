@@ -165,6 +165,16 @@ services:
     volumes:
       - agl-pgdata:/var/lib/postgresql/data
       - postgres_logs:/var/log/postgresql
+    # log_statement=all (every statement, unconditionally) plus a static log_filename
+    # (no strftime escapes -- log_rotation_size can't actually roll to a new file
+    # against a fixed name, so the logging collector just keeps appending to the same
+    # one forever) together grew a single postgresql.log to ~70GB with no bound.
+    # log_statement=none + log_min_duration_statement only logs genuinely slow queries
+    # (>1s); log_filename's %a (day-of-week) plus log_truncate_on_rotation=on caps
+    # total log volume at ~7 days of daily files, self-bounding with no external
+    # cleanup job needed. log_rotation_size stays as a same-day backstop in case of a
+    # runaway logging burst -- worst case it truncates and restarts that day's file
+    # early, which is an acceptable tradeoff against genuinely unbounded growth.
     command: >
       postgres
       -c max_wal_size=512MB
@@ -173,10 +183,13 @@ services:
       -c log_checkpoints=off
       -c logging_collector=on
       -c log_destination=stderr
-      -c log_statement=all
+      -c log_statement=none
+      -c log_min_duration_statement=1000
       -c log_directory=/var/log/postgresql
-      -c log_filename='postgresql.log'
-      -c log_rotation_size=10MB
+      -c log_filename='postgresql-%a.log'
+      -c log_rotation_age=1440
+      -c log_rotation_size=500MB
+      -c log_truncate_on_rotation=on
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 30s
