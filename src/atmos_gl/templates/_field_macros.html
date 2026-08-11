@@ -212,7 +212,7 @@
              since Jinja has no client-side dialog to hook into. Only replaces this
              section's own FORM fields; the user still needs the page's own Save button
              to persist the change, same as any other edit here. #}
-          <button type="button" class="btn btn-sm btn-outline-warning" onclick="resetSectionToDefaults('{{ section }}', '{{ section_title }}')">↺ Set to Defaults</button>
+          <button type="button" class="btn btn-sm btn-outline-warning" id="reset-btn-{{ section }}" onclick="resetSectionToDefaults('{{ section }}', '{{ section_title }}')">↺ Set to Defaults</button>
         </div>
         <div id="fields-section-{{ section }}">
           {{ render_field_group(section, section_data) }}

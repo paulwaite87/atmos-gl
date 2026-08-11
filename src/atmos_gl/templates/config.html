@@ -103,7 +103,6 @@
             <li class="nav-item"><button class="nav-link" id="climate-tab" data-bs-toggle="tab" data-bs-target="#climate-pane" type="button">Climate</button></li>
             <li class="nav-item"><button class="nav-link" id="events-tab" data-bs-toggle="tab" data-bs-target="#events-pane" type="button">Events</button></li>
             <li class="nav-item"><button class="nav-link" id="misc-tab" data-bs-toggle="tab" data-bs-target="#misc-pane" type="button">Miscellaneous</button></li>
-            <li class="nav-item"><button class="nav-link" id="shipping-tab" data-bs-toggle="tab" data-bs-target="#shipping-pane" type="button">Shipping</button></li>
             <li class="nav-item"><button class="nav-link" id="background-tab" data-bs-toggle="tab" data-bs-target="#background-pane" type="button">Background</button></li>
             <li class="nav-item"><button class="nav-link" id="data-status-tab" data-bs-toggle="tab" data-bs-target="#data-status-pane" type="button">Data Status</button></li>
         </ul>
@@ -187,13 +186,7 @@
                                 <div class="col-md-6"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="markers__enabled"><label class="form-check-label fw-bold ms-2">Place Markers</label></div></div>
                                 <div class="col-md-6"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="flightradar__enabled"><label class="form-check-label fw-bold ms-2">Flight Radar</label></div></div>
                                 <div class="col-md-6"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="landmass__enabled"><label class="form-check-label fw-bold ms-2">Landmass Outlines</label></div></div>
-                            </div>
-                        </div>
-
-                        <div class="grouping-box">
-                            <h5>Shipping</h5>
-                            <div class="row g-3">
-                                <div class="col-12"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="shipping__enabled"><label class="form-check-label fw-bold ms-2">Shipping Overlay</label></div></div>
+                                <div class="col-md-6"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="shipping__enabled"><label class="form-check-label fw-bold ms-2">Shipping</label></div></div>
                             </div>
                         </div>
 
@@ -202,8 +195,7 @@
                     <div class="tab-pane fade" id="atmospheric-pane"><div id="container-atmospheric">{{ field_macros.render_tab_group(["clouds", "isobars", "wind", "jetstream", "precipitation", "pwat", "lightning", "storms"], config_data) }}</div></div>
                     <div class="tab-pane fade" id="climate-pane"><div id="container-climate">{{ field_macros.render_tab_group(["sst", "currents", "waves", "temperature", "ozone", "stormwatch", "greenhouse_gases"], config_data) }}</div></div>
                     <div class="tab-pane fade" id="events-pane"><div id="container-events">{{ field_macros.render_tab_group(["quakes", "volcanoes", "fires", "air_quality"], config_data) }}</div></div>
-                    <div class="tab-pane fade" id="misc-pane"><div id="container-misc">{{ field_macros.render_tab_group(["satellites", "terminator", "markers", "flightradar", "landmass"], config_data) }}</div></div>
-                    <div class="tab-pane fade" id="shipping-pane"><div id="container-shipping">{{ field_macros.render_tab_group(["shipping"], config_data) }}</div></div>
+                    <div class="tab-pane fade" id="misc-pane"><div id="container-misc">{{ field_macros.render_tab_group(["satellites", "terminator", "markers", "flightradar", "landmass", "shipping"], config_data) }}</div></div>
                     <div class="tab-pane fade" id="background-pane">
                         <div class="grouping-box">
                             <h5>Background Processes</h5>
@@ -467,11 +459,14 @@
             for (const [section, isEnabled] of Object.entries(statusMap)) {
                 const fieldsDiv = document.getElementById(`fields-section-${section}`);
                 const fallbackDiv = document.getElementById(`fallback-section-${section}`);
+                const resetBtn = document.getElementById(`reset-btn-${section}`);
                 if (!fieldsDiv || !fallbackDiv) continue;
                 if (isEnabled) {
                     fieldsDiv.classList.remove('d-none'); fallbackDiv.classList.add('d-none');
+                    if (resetBtn) resetBtn.classList.remove('d-none');
                 } else {
                     fieldsDiv.classList.add('d-none'); fallbackDiv.classList.remove('d-none');
+                    if (resetBtn) resetBtn.classList.add('d-none');
                 }
             }
         }
