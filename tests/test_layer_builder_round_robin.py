@@ -263,6 +263,7 @@ def make_bare_layer_builder():
     lb.config.get_setting.return_value = {}
     lb._layer_channel_keys = {}
     lb.order = RoundRobinOrder(MULTI_HOUR_SECTIONS)
+    lb._last_dispatch_ts = {}
     return lb
 
 
@@ -488,3 +489,103 @@ async def test_run_dispatch_cycle_stops_once_nothing_reports_progress():
     await lb._run_dispatch_cycle(loop=MagicMock(), baseline={})
 
     lb._dispatch_round.assert_called_once()  # round 1 only -- nothing had a backlog
+
+
+# --- Watchdog: a multi-hour section silently dropping out of round-robin dispatch
+# (found live 2026-08-10/11 -- isobars stopped being dispatched for ~27h with no
+# error, no crash, while every other multi-hour section kept rendering normally) ---
+
+
+def test_handle_results_records_dispatch_timestamp_on_success():
+    lb = make_bare_layer_builder()
+
+    with patch("atmos_gl.layer_builder.time.time", return_value=1000.0):
+        lb._handle_results(["isobars"], [("isobars", None, 1)])
+
+    assert lb._last_dispatch_ts == {"isobars": 1000.0}
+
+
+def test_handle_results_records_dispatch_timestamp_on_a_failed_task():
+    """A section erroring is still proof the round-robin loop is actively dispatching
+    it -- the failure mode this guards against is a section going silently MISSING
+    from dispatch entirely, not one that dispatches and fails."""
+    lb = make_bare_layer_builder()
+
+    with patch("atmos_gl.layer_builder.time.time", return_value=1000.0):
+        lb._handle_results(["isobars"], [("isobars", "RuntimeError('boom')", 0)])
+
+    assert lb._last_dispatch_ts == {"isobars": 1000.0}
+
+
+def test_handle_results_records_dispatch_timestamp_on_a_broken_pool():
+    from concurrent.futures.process import BrokenProcessPool
+
+    lb = make_bare_layer_builder()
+
+    with patch("atmos_gl.layer_builder.time.time", return_value=1000.0):
+        lb._handle_results(["isobars"], [BrokenProcessPool("worker died")])
+
+    assert lb._last_dispatch_ts == {"isobars": 1000.0}
+
+
+def test_handle_results_does_not_track_single_shot_sections():
+    """Single-shot sections (sst, clouds, ...) have no per-hour dispatch concept and
+    aren't part of the round-robin this watchdog protects -- must never appear in
+    _last_dispatch_ts at all, not even as a harmless extra entry."""
+    lb = make_bare_layer_builder()
+
+    with patch("atmos_gl.layer_builder.time.time", return_value=1000.0):
+        lb._handle_results(["sst", "isobars"], [("sst", None, 0), ("isobars", None, 1)])
+
+    assert lb._last_dispatch_ts == {"isobars": 1000.0}
+
+
+def test_check_watchdog_does_nothing_when_every_section_is_recent():
+    lb = make_bare_layer_builder()
+    lb._last_dispatch_ts = {"isobars": 1000.0, "wind": 1000.0}
+
+    with patch("atmos_gl.layer_builder.time.time", return_value=1000.0 + 60), \
+         patch("atmos_gl.layer_builder.os._exit") as exit_mock:
+        lb._check_watchdog()
+
+    exit_mock.assert_not_called()
+
+
+def test_check_watchdog_ignores_a_section_never_dispatched_yet():
+    """A section absent from _last_dispatch_ts (e.g. right after a fresh restart, or
+    one still waiting its turn in a large backlog) must never be flagged -- only a
+    section that WAS seen and then stopped updating counts as stale."""
+    lb = make_bare_layer_builder()
+    lb._last_dispatch_ts = {}
+
+    with patch("atmos_gl.layer_builder.time.time", return_value=1_000_000.0), \
+         patch("atmos_gl.layer_builder.os._exit") as exit_mock:
+        lb._check_watchdog()
+
+    exit_mock.assert_not_called()
+
+
+def test_check_watchdog_does_not_fire_just_under_the_threshold():
+    from atmos_gl.layer_builder import WATCHDOG_STALE_SECONDS
+
+    lb = make_bare_layer_builder()
+    lb._last_dispatch_ts = {"isobars": 1000.0}
+
+    with patch("atmos_gl.layer_builder.time.time", return_value=1000.0 + WATCHDOG_STALE_SECONDS - 1), \
+         patch("atmos_gl.layer_builder.os._exit") as exit_mock:
+        lb._check_watchdog()
+
+    exit_mock.assert_not_called()
+
+
+def test_check_watchdog_forces_exit_once_a_section_exceeds_the_threshold():
+    from atmos_gl.layer_builder import WATCHDOG_STALE_SECONDS
+
+    lb = make_bare_layer_builder()
+    lb._last_dispatch_ts = {"isobars": 1000.0, "wind": 1000.0 + WATCHDOG_STALE_SECONDS}
+
+    with patch("atmos_gl.layer_builder.time.time", return_value=1000.0 + WATCHDOG_STALE_SECONDS + 1), \
+         patch("atmos_gl.layer_builder.os._exit") as exit_mock:
+        lb._check_watchdog()
+
+    exit_mock.assert_called_once_with(1)
