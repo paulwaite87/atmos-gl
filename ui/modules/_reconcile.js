@@ -11,6 +11,14 @@
  * Deliberately does NOT know about globals/globalKeys (a liveLayerSync-only concept)
  * -- hooks receive the raw fetched config blob and pick out whatever extra keys they
  * need themselves, so this stays honestly just "poll + dispatch + guard".
+ *
+ * Every poll also re-checks GET /api/layer_availability (lib/layer_availability.py) --
+ * a section's stored `enabled` is AND-ed with whether its data is actually being
+ * collected right now, same signal config.html/me_settings.html gray their Show-tab
+ * checkboxes with, so a layer stops rendering within one poll of an admin flipping the
+ * relevant collector off, with no page reload needed. A section absent from
+ * layer_availability has no collector dependency at all (e.g. terminator, landmass)
+ * and is always treated as collecting.
  */
 export function reconcileLoop(map, {
     sectionKey, initialConfig, syncMs = 20000,
@@ -22,12 +30,24 @@ export function reconcileLoop(map, {
 
     const fetchConfig = async () => {
         try {
-            const res = await fetch(`${window.WM_API}/config?t=${Date.now()}`);
-            return { ok: true, data: (await res.json()).data || {} };
+            const [configRes, availRes] = await Promise.all([
+                fetch(`${window.WM_API}/config?t=${Date.now()}`),
+                fetch(`${window.WM_API}/layer_availability?t=${Date.now()}`),
+            ]);
+            const data = (await configRes.json()).data || {};
+            const availability = (await availRes.json()).data || {};
+            return { ok: true, data, availability };
         } catch (err) {
             console.warn(`[${sectionKey}] config check failed`, err);
-            return { ok: false, data: null };
+            return { ok: false, data: null, availability: null };
         }
+    };
+
+    const withAvailability = (section, availability) => {
+        if (!section) return section;
+        const avail = availability && availability[sectionKey];
+        if (!avail || avail.collecting) return section;
+        return { ...section, enabled: false };
     };
 
     const dispatch = async (section, data) => {
@@ -49,9 +69,9 @@ export function reconcileLoop(map, {
     };
 
     const tick = async () => {
-        const { ok, data } = await fetchConfig();
+        const { ok, data, availability } = await fetchConfig();
         if (!ok) return;                                  // network blip: leave as-is
-        await dispatch(data[sectionKey] || null, data);
+        await dispatch(withAvailability(data[sectionKey] || null, availability), data);
     };
 
     // Fast first paint from snapshot: routes through the SAME busy-locked onEnable

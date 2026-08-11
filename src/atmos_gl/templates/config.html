@@ -347,6 +347,7 @@
 
                 parseExplicitElements(masterConfigCache);
                 toggleSectionVisibility();
+                applyLayerAvailability();
 
                 document.getElementById('loading').remove();
                 document.getElementById('configForm').classList.remove('d-none');
@@ -415,6 +416,43 @@
             if (dataCollectorEnabled && data.data_collector) {
                 dataCollectorEnabled.checked = !!data.data_collector.enabled;
                 dataCollectorEnabled.addEventListener('change', toggleSectionVisibility);
+            }
+        }
+
+        // Grays out any layer whose data collection is actually off right now (GET
+        // /api/layer_availability -- lib/layer_availability.py), independent of and
+        // in addition to toggleSectionVisibility() above: a layer can be "enabled"
+        // (this checkbox checked) while its collector is paused by an admin setting
+        // elsewhere (the master data_collector switch, a channel_enabled opt-out, or
+        // one of shipping/lightning/flightradar's own kill-switch) -- see the grilled
+        // design. The checkbox's checked state is left exactly as saved; only its
+        // `disabled` attribute and an explanatory note are added, so re-enabling
+        // collection makes it work again with no re-toggle needed. Section names
+        // double as both `{section}__enabled` checkbox ids and, for the Climate
+        // group's mutually-exclusive layers, `radio__{section}` ids.
+        async function applyLayerAvailability() {
+            let availability = {};
+            try {
+                const resp = await fetch('/api/layer_availability');
+                const json = await resp.json();
+                if (json.status === "success") availability = json.data;
+            } catch (err) {
+                console.warn("Could not load layer availability", err);
+                return;
+            }
+
+            for (const [section, info] of Object.entries(availability)) {
+                if (info.collecting) continue;
+                const el = document.getElementById(`${section}__enabled`) || document.getElementById(`radio__${section}`);
+                if (!el) continue;
+                el.disabled = true;
+                const wrap = el.closest('.form-check');
+                if (wrap && !wrap.querySelector('.layer-availability-note')) {
+                    const note = document.createElement('div');
+                    note.className = 'layer-availability-note text-danger small mt-1';
+                    note.textContent = `⚠ ${info.reason}`;
+                    wrap.appendChild(note);
+                }
             }
         }
 

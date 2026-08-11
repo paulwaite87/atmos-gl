@@ -9,9 +9,15 @@ import { reconcileLoop } from './_reconcile.js';
 
 const SECTION_KEY = 'testlayer';
 
-function mockConfig(section) {
-    globalThis.fetch = vi.fn(async () => ({
-        json: async () => ({ data: { [SECTION_KEY]: section } }),
+// availability defaults to {} (no entry for SECTION_KEY -> always collecting), matching
+// a section with no collector dependency at all.
+function mockConfig(section, availability = {}) {
+    globalThis.fetch = vi.fn(async (url) => ({
+        json: async () => (
+            String(url).includes('/layer_availability')
+                ? { data: availability }
+                : { data: { [SECTION_KEY]: section } }
+        ),
     }));
 }
 
@@ -168,6 +174,66 @@ describe('busy-lock', () => {
 
         expect(onTick).toHaveBeenCalledTimes(1);
         resolveTick();
+    });
+});
+
+describe('layer availability gating', () => {
+    test('a section with enabled:true is not mounted when its collector is not collecting', async () => {
+        const onEnable = vi.fn(async () => true);
+        mockConfig({ enabled: true }, { [SECTION_KEY]: { collecting: false, reason: 'paused' } });
+
+        reconcileLoop({}, {
+            sectionKey: SECTION_KEY, initialConfig: null, syncMs: 1000,
+            onEnable, onDisable: vi.fn(), onTick: vi.fn(),
+        });
+        await vi.advanceTimersByTimeAsync(1000);
+
+        expect(onEnable).not.toHaveBeenCalled();
+    });
+
+    test('an already-mounted section unmounts the poll after its collector stops collecting', async () => {
+        const onDisable = vi.fn();
+        mockConfig({ enabled: true });
+
+        reconcileLoop({}, {
+            sectionKey: SECTION_KEY, initialConfig: null, syncMs: 1000,
+            onEnable: vi.fn(async () => true), onDisable, onTick: vi.fn(),
+        });
+        await vi.advanceTimersByTimeAsync(1000);  // mounts (collecting -- no entry yet)
+
+        mockConfig({ enabled: true }, { [SECTION_KEY]: { collecting: false, reason: 'paused' } });
+        await vi.advanceTimersByTimeAsync(1000);  // still enabled=true, but no longer collecting
+
+        expect(onDisable).toHaveBeenCalledTimes(1);
+    });
+
+    test('a section absent from availability is treated as always collecting', async () => {
+        const onEnable = vi.fn(async () => true);
+        mockConfig({ enabled: true }, { otherLayer: { collecting: false, reason: 'paused' } });
+
+        reconcileLoop({}, {
+            sectionKey: SECTION_KEY, initialConfig: null, syncMs: 1000,
+            onEnable, onDisable: vi.fn(), onTick: vi.fn(),
+        });
+        await vi.advanceTimersByTimeAsync(1000);
+
+        expect(onEnable).toHaveBeenCalledTimes(1);
+    });
+
+    test('a layer_availability fetch failure leaves state as-is, same as a config fetch failure', async () => {
+        globalThis.fetch = vi.fn(async (url) => {
+            if (String(url).includes('/layer_availability')) throw new Error('network down');
+            return { json: async () => ({ data: { [SECTION_KEY]: { enabled: true } } }) };
+        });
+        const onEnable = vi.fn(async () => true);
+
+        reconcileLoop({}, {
+            sectionKey: SECTION_KEY, initialConfig: null, syncMs: 1000,
+            onEnable, onDisable: vi.fn(), onTick: vi.fn(),
+        });
+        await vi.advanceTimersByTimeAsync(1000);
+
+        expect(onEnable).not.toHaveBeenCalled();
     });
 });
 
