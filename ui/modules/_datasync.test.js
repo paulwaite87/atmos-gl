@@ -8,6 +8,20 @@ import { liveDataSync } from './_datasync.js';
 
 const SECTION_KEY = 'quakes';
 
+// reconcileLoop now polls GET /api/layer_availability alongside /api/config every
+// tick (see _reconcile.js) -- these tests aren't about that gating (covered directly
+// in _reconcile.test.js), so this always answers "no entry -> always collecting",
+// leaving the mount/refresh policy under test here driven purely by `section`.
+function mockFetch(sectionOf) {
+    globalThis.fetch = vi.fn(async (url) => ({
+        json: async () => (
+            String(url).includes('/layer_availability')
+                ? { data: {} }
+                : { data: { [SECTION_KEY]: sectionOf() } }
+        ),
+    }));
+}
+
 beforeEach(() => {
     vi.useFakeTimers();
     globalThis.window = { WM_API: 'http://test' };
@@ -22,9 +36,7 @@ afterEach(() => {
 
 describe('mount-then-recheck', () => {
     test('stays mounted when still enabled at recheck time', async () => {
-        globalThis.fetch = vi.fn(async () => ({
-            json: async () => ({ data: { [SECTION_KEY]: { enabled: true, minMag: 4 } } }),
-        }));
+        mockFetch(() => ({ enabled: true, minMag: 4 }));
         const mount = vi.fn(async () => {});
         const unmount = vi.fn();
 
@@ -39,13 +51,16 @@ describe('mount-then-recheck', () => {
     });
 
     test('backs out if disabled during the async mount', async () => {
-        let callCount = 0;
-        globalThis.fetch = vi.fn(async () => {
-            callCount += 1;
-            // First fetch (the tick itself) sees enabled=true; the SECOND fetch
+        let configCallCount = 0;
+        globalThis.fetch = vi.fn(async (url) => {
+            if (String(url).includes('/layer_availability')) {
+                return { json: async () => ({ data: {} }) };
+            }
+            configCallCount += 1;
+            // First config fetch (the tick itself) sees enabled=true; the SECOND
             // (onEnable's own recheck, fired after `mount` resolves) sees it flipped
             // to disabled -- simulating a config change that landed mid-mount.
-            const enabled = callCount === 1;
+            const enabled = configCallCount === 1;
             return { json: async () => ({ data: { [SECTION_KEY]: { enabled } } }) };
         });
         const mount = vi.fn(async () => {});
@@ -64,9 +79,7 @@ describe('mount-then-recheck', () => {
 
 describe('steady-state refresh policy', () => {
     async function mountedSync(section, refresh, refreshMs = 60000) {
-        globalThis.fetch = vi.fn(async () => ({
-            json: async () => ({ data: { [SECTION_KEY]: section } }),
-        }));
+        mockFetch(() => section);
         liveDataSync({}, {
             sectionKey: SECTION_KEY, initialConfig: null,
             mount: vi.fn(async () => {}), refresh, unmount: vi.fn(),
@@ -80,9 +93,7 @@ describe('steady-state refresh policy', () => {
         const refresh = vi.fn(async () => {});
         await mountedSync({ enabled: true, minMag: 4 }, refresh);
 
-        globalThis.fetch = vi.fn(async () => ({
-            json: async () => ({ data: { [SECTION_KEY]: { enabled: true, minMag: 5 } } }),
-        }));
+        mockFetch(() => ({ enabled: true, minMag: 5 }));
         await vi.advanceTimersByTimeAsync(1000);
 
         expect(refresh).toHaveBeenCalledTimes(1);
@@ -94,9 +105,7 @@ describe('steady-state refresh policy', () => {
         const section = { enabled: true, minMag: 4 };
         await mountedSync(section, refresh, 5000);
 
-        globalThis.fetch = vi.fn(async () => ({
-            json: async () => ({ data: { [SECTION_KEY]: section } }),
-        }));
+        mockFetch(() => section);
         await vi.advanceTimersByTimeAsync(5000);  // past refreshMs, unchanged config
 
         expect(refresh).toHaveBeenCalledTimes(1);
@@ -107,9 +116,7 @@ describe('steady-state refresh policy', () => {
         const section = { enabled: true, minMag: 4 };
         await mountedSync(section, refresh, 60000);
 
-        globalThis.fetch = vi.fn(async () => ({
-            json: async () => ({ data: { [SECTION_KEY]: section } }),
-        }));
+        mockFetch(() => section);
         await vi.advanceTimersByTimeAsync(1000);  // well under refreshMs
 
         expect(refresh).not.toHaveBeenCalled();

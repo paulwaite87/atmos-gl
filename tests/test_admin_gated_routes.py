@@ -129,3 +129,14 @@ def test_public_config_endpoint_stays_unauthenticated(client, tmp_path):
     with patch("atmos_gl.routes.config.load_config", return_value=AtmosGLConfig(str(tmp_config))):
         resp = client.get("/api/config")
     assert resp.status_code == 200
+
+
+def test_public_layer_availability_endpoint_stays_unauthenticated(client, tmp_path):
+    """Same "must not regress" contract as GET /api/config above: the live globe's
+    _reconcile.js poll and both settings pages' Show-tab graying all depend on this
+    staying public, unauthenticated (see lib/layer_availability.py's docstring)."""
+    tmp_config = tmp_path / "atmos-gl.json"
+    tmp_config.write_text(json.dumps({"data_collector": {"enabled": True}}))
+    with patch("atmos_gl.routes.layer_availability.load_config", return_value=AtmosGLConfig(str(tmp_config))):
+        resp = client.get("/api/layer_availability")
+    assert resp.status_code == 200

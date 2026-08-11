@@ -7,6 +7,9 @@ import { liveLayerSync } from './_refresh.js';
 
 const SECTION_KEY = 'sst';
 
+// reconcileLoop now polls GET /api/layer_availability alongside /api/config every
+// tick (see _reconcile.js) -- these tests aren't about that gating (covered directly
+// in _reconcile.test.js), so this always answers "no entry -> always collecting".
 function mockFetch({ section, imageStatus = 200, lastModified = null }) {
     globalThis.fetch = vi.fn(async (url, opts) => {
         if (opts && opts.method === 'HEAD') {
@@ -17,6 +20,9 @@ function mockFetch({ section, imageStatus = 200, lastModified = null }) {
                 ok: true, status: 200,
                 headers: { get: (h) => (h === 'Last-Modified' ? lastModified : null) },
             };
+        }
+        if (String(url).includes('/layer_availability')) {
+            return { json: async () => ({ data: {} }) };
         }
         return { json: async () => ({ data: { [SECTION_KEY]: section } }) };
     });

@@ -242,10 +242,21 @@
     <script type="module">
         async function bootstrapAtmosGL() {
             try {
-                // 1. Fetch live application configuration block from backend API
-                const response = await fetch('/api/config');
+                // 1. Fetch live application configuration block from backend API, plus
+                // (in parallel) which layers are actually collecting data right now --
+                // GET /api/layer_availability (lib/layer_availability.py), same public
+                // tier as /api/config. A layer's stored `enabled` is meaningless if its
+                // collector is off (e.g. an admin's flightradar_collector kill-switch);
+                // ANDing this in below at mount time keeps that consistent from frame
+                // one, matching what config.html/me_settings.html show on their Show
+                // tab and what _reconcile.js's live poll enforces from here on.
+                const [response, availabilityResponse] = await Promise.all([
+                    fetch('/api/config'),
+                    fetch('/api/layer_availability'),
+                ]);
                 const fullConfig = await response.json();
                 const configData = fullConfig.data;
+                const layerAvailability = (await availabilityResponse.json()).data || {};
 
                 // 2. Extract dynamically injected key
                 const maptilerKey = configData.common?.api_key || '';
@@ -299,13 +310,25 @@
                 let mountInFlight = false;
                 let oneTimeDone = false;
 
+                // A layer whose collector isn't currently collecting mounts as if it
+                // were disabled, regardless of its own stored `enabled` -- the stored
+                // value itself is never touched (see grilled design: the settings
+                // pages must keep showing the user's real preference, just grayed
+                // out), only what gets passed to loadLayer() here.
+                const withAvailability = (moduleName, cfg) => {
+                    const avail = layerAvailability[moduleName];
+                    if (!avail || avail.collecting) return cfg;
+                    return { ...cfg, enabled: false };
+                };
+
                 const mountAllLayers = async () => {
                     // Promise.allSettled prevents one broken layer module from stopping the rest
                     await Promise.allSettled(ALL_LAYERS.map(async (moduleName) => {
                         try {
                             // Removed ?t=${Date.now()} to prevent memory leaks on style swaps
                             const module = await import(`/modules/${moduleName}.js`);
-                            const cleanup = await module.loadLayer(map, configData[moduleName] || {}, configData);
+                            const cfg = withAvailability(moduleName, configData[moduleName] || {});
+                            const cleanup = await module.loadLayer(map, cfg, configData);
                             if (typeof cleanup === 'function') layerCleanups.push(cleanup);
                         } catch (err) {
                             console.warn(`Could not load layer /modules/${moduleName}.js`, err);
