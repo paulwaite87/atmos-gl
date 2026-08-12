@@ -64,12 +64,14 @@ build: stop
 rebuild:
 	docker compose build --no-cache
 
+# pull's -q/--quiet: several services share one image, and compose's default progress
+# renderer assumes a redrawable terminal -- without one (e.g. running non-interactively)
+# it can't overwrite the "already being pulled by..." line per service and just
+# reprints it instead, spamming the same message repeatedly. (A recipe-body comment
+# would work the same but make echoes it like any other recipe line unless prefixed
+# with @, so it lives up here instead.)
 ## prod: Run EXACTLY as a package consumer would
 prod: bootstrap-config
-	# -q/--quiet: several services share one image, and compose's default progress
-	# renderer assumes a redrawable terminal -- without one (e.g. running
-	# non-interactively) it can't overwrite the "already being pulled by..." line per
-	# service and just reprints it instead, spamming the same message repeatedly.
 	docker compose -f docker-compose.yml pull -q
 	docker compose -f docker-compose.yml up -d
 
