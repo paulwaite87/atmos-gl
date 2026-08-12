@@ -1,11 +1,15 @@
 name: Publish Docker Images to GHCR
 
-# Triggers the workflow when a pull request targeting master is closed,
-# or when you manually trigger it from the GitHub Actions tab
+# Triggers the workflow when a pull request targeting master is closed, when a
+# vX.Y.Z release tag is pushed, or when you manually trigger it from the GitHub
+# Actions tab.
 on:
   pull_request:
     branches: [ "master" ]
     types: [ "closed" ]
+  push:
+    tags:
+      - 'v*.*.*'
   workflow_dispatch:
 
 env:
@@ -15,8 +19,12 @@ env:
 
 jobs:
   build-and-push:
-    # Only execute if the pull request was closed due to a successful merge
-    if: github.event.pull_request.merged == true
+    # Runs for a real tag push or a manual dispatch unconditionally, and for a
+    # pull_request event only if it closed via a successful merge (not just closed).
+    if: |
+      github.event_name == 'push' ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' && github.event.pull_request.merged == true)
     runs-on: ubuntu-latest
 
     # Grants the workflow permission to write to your Packages registry
@@ -27,6 +35,18 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      # A tag push publishes a pinned, versioned image (e.g. :v1.2.0) instead of
+      # touching :latest -- :latest keeps tracking master merges as it always has,
+      # release tags are a separate, deliberate "cut a release" action.
+      - name: Determine image tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            echo "value=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=latest" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Log in to the Container registry
         uses: docker/login-action@v3
@@ -42,7 +62,7 @@ jobs:
           context: .
           file: ./Dockerfile
           push: true
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.value }}
 
       # Build and Push UI
       - name: Build and push UI image
@@ -51,4 +71,4 @@ jobs:
           context: .
           file: ./Dockerfile.ui
           push: true
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-ui:latest
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-ui:${{ steps.tag.outputs.value }}
