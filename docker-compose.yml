@@ -164,7 +164,11 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
       PGTZ: Pacific/Auckland
     ports:
-      - "15432:5432"
+      # Loopback-only: this only needs to be reachable from the host itself (e.g.
+      # `make psql`-style local debugging), never from the tailnet or beyond -- binding
+      # 0.0.0.0 would let any tailnet peer (including future "shared" friend devices)
+      # reach Postgres directly.
+      - "127.0.0.1:15432:5432"
     restart: unless-stopped
     volumes:
       - agl-pgdata:/var/lib/postgresql/data
