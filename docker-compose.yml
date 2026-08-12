@@ -2,6 +2,11 @@ name: atmos-gl
 services:
   data_collector:
     image: ghcr.io/paulwaite87/atmos-gl:latest
+    # Matches the host's real user, same reasoning as atmos_gl_db's `user:` below --
+    # ./data and ./config are host bind-mounts, not container-owned volumes, so this
+    # container needs to write as whoever owns them on the host, not the image's
+    # baked-in agluser (UID 1000, fixed at CI build time -- see Dockerfile).
+    user: "${DOCKER_UID:-1000}:${DOCKER_GID:-1000}"
     command: python -m atmos_gl.collectors.service --config /opt/project/config/atmos-gl.json
     env_file:
       - .env
@@ -14,6 +19,10 @@ services:
       - TZ=Pacific/Auckland
       - PYTHONPATH=/opt/project/src
       - PYTHONUNBUFFERED=1
+      # /tmp instead of agluser's own home dir -- writable by any UID regardless of
+      # whether DOCKER_UID/GID happens to match the image's baked-in agluser, unlike
+      # /home/agluser which is owned by (and only writable by) the image's fixed UID.
+      - HOME=/tmp
       - POSTGRES_HOST=atmos_gl_db
       - POSTGRES_PORT=5432
       - POSTGRES_DB=${POSTGRES_DB}
@@ -33,6 +42,8 @@ services:
 
   layer_builder:
     image: ghcr.io/paulwaite87/atmos-gl:latest
+    # See data_collector's user: comment above -- same host bind-mount ownership reasoning.
+    user: "${DOCKER_UID:-1000}:${DOCKER_GID:-1000}"
     command: python -m atmos_gl.layer_builder --config /opt/project/config/atmos-gl.json
     env_file:
       - .env
@@ -41,6 +52,7 @@ services:
       - TZ=Pacific/Auckland
       - PYTHONPATH=/opt/project/src
       - PYTHONUNBUFFERED=1
+      - HOME=/tmp
       - POSTGRES_HOST=atmos_gl_db
       - POSTGRES_PORT=5432
       - POSTGRES_DB=${POSTGRES_DB}
@@ -61,6 +73,8 @@ services:
 
   housekeeper:
     image: ghcr.io/paulwaite87/atmos-gl:latest
+    # See data_collector's user: comment above -- same host bind-mount ownership reasoning.
+    user: "${DOCKER_UID:-1000}:${DOCKER_GID:-1000}"
     command: python -m atmos_gl.housekeeper --config /opt/project/config/atmos-gl.json
     env_file:
       - .env
@@ -69,6 +83,7 @@ services:
       - TZ=Pacific/Auckland
       - PYTHONPATH=/opt/project/src
       - PYTHONUNBUFFERED=1
+      - HOME=/tmp
     restart: unless-stopped
     volumes:
       - ./data:/opt/project/data
@@ -78,6 +93,8 @@ services:
 
   map_api:
     image: ghcr.io/paulwaite87/atmos-gl:latest
+    # See data_collector's user: comment above -- same host bind-mount ownership reasoning.
+    user: "${DOCKER_UID:-1000}:${DOCKER_GID:-1000}"
     # Reverted to a simpler runtime installation since agluser now owns the virtual environment
     # --proxy-headers/--forwarded-allow-ips: trust map_ui's nginx (the only path in,
     # see config/nginx.conf) to set X-Forwarded-Proto -- without this, request.url_for()
@@ -97,6 +114,7 @@ services:
       - TZ=Pacific/Auckland
       - PYTHONPATH=/opt/project/src
       - PYTHONUNBUFFERED=1
+      - HOME=/tmp
       - POSTGRES_HOST=atmos_gl_db
       - POSTGRES_PORT=5432
       - POSTGRES_DB=${POSTGRES_DB}

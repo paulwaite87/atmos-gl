@@ -60,6 +60,15 @@ RUN uv sync --frozen --no-dev --editable \
 # Grant the non-root user ownership of both the project and the virtual environment
 RUN chown -R agluser:aglgroup /opt/project /opt/venv
 
+# map_api installs a few extra packages into /opt/venv at container startup (see its
+# command in docker-compose.yml). In prod, that container may run as an arbitrary host
+# UID/GID (docker-compose.yml's `user:` override, matching bind-mounted ./data and
+# ./config's real host ownership) rather than agluser's build-time UID -- so /opt/venv
+# needs to stay writable regardless of which UID ends up owning the process. Directories
+# get +x (traversable/writable), files just +w (X only applies execute to dirs/already-
+# executable files, never turns a data file executable).
+RUN chmod -R o+wX /opt/venv
+
 # Switch to the non-root user
 USER agluser
 
