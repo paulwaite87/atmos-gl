@@ -112,10 +112,33 @@ function renderSignedOut(panel) {
     panel.appendChild(signInGithub);
 }
 
+// Shown regardless of sign-in state (appended after renderSignedIn/renderSignedOut),
+// so it's always the last thing in the panel -- an "About" footer, not a menu item.
+function renderVersionFooter(panel, version) {
+    const divider = document.createElement('hr');
+    divider.className = 'auth-menu__divider';
+    panel.appendChild(divider);
+
+    const footer = document.createElement('div');
+    footer.className = 'auth-menu__version';
+    footer.textContent = `atmos-gl ${version}`;
+    panel.appendChild(footer);
+}
+
 export async function initAuthWidget() {
     const host = document.getElementById('authWidget');
     const settingsBtn = document.getElementById('settingsBtn');
     if (!host) return;
+
+    // Failure here shouldn't block rendering the auth menu itself -- falls back to
+    // 'unknown', same as the backend's own GET /api/version default.
+    let version = 'unknown';
+    try {
+        const resp = await fetch('/api/version');
+        version = (await resp.json()).version;
+    } catch (err) {
+        console.warn('[auth] could not load app version', err);
+    }
 
     const render = (state) => {
         // 'inline-block', not '' -- #settingsBtn's own CSS rule sets display:none as
@@ -129,6 +152,7 @@ export async function initAuthWidget() {
         } else {
             renderSignedOut(panel);
         }
+        renderVersionFooter(panel, version);
     };
 
     try {
