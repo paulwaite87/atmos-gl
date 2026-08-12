@@ -66,7 +66,11 @@ rebuild:
 
 ## prod: Run EXACTLY as a package consumer would
 prod: bootstrap-config
-	docker compose -f docker-compose.yml pull
+	# -q/--quiet: several services share one image, and compose's default progress
+	# renderer assumes a redrawable terminal -- without one (e.g. running
+	# non-interactively) it can't overwrite the "already being pulled by..." line per
+	# service and just reprints it instead, spamming the same message repeatedly.
+	docker compose -f docker-compose.yml pull -q
 	docker compose -f docker-compose.yml up -d
 
 ## prod-down: Stop the consumer-style stack
