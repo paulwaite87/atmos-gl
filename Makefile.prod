@@ -1,19 +1,4 @@
 # Makefile.prod -- bespoke consumer/production Makefile for atmos-gl.
-#
-# The main Makefile is dev-oriented: most of its targets run plain `docker compose`
-# with no `-f`, which auto-merges docker-compose.override.yml if one happens to exist
-# in the directory -- fine for dev (where that override IS the point), a footgun on a
-# prod host (it would silently rebuild services locally from source instead of running
-# the published GHCR images prod is actually meant to run). This file only ever targets
-# `-f docker-compose.yml` explicitly, and only carries the handful of targets a prod
-# host actually needs -- no build/test/lint/bash, which assume dev tooling (uv, a
-# source checkout meant to be edited) that a pure consumer host may not even have.
-#
-# Usage: `make -f Makefile.prod` (equivalent to `make -f Makefile.prod prod`) or
-# `make -f Makefile.prod <target>`. `bootstrap-config` installs a `make` shell function
-# into ~/.bashrc (see install-shell-alias below) scoped to this exact directory, so
-# after the first run bare `make` here means `make -f Makefile.prod` -- everywhere
-# else, and in any other directory, plain `make` behaves exactly as it always has.
 .PHONY: prod prod-down logs psql backup restore status help bootstrap-config install-shell-alias
 .DEFAULT_GOAL := prod
 
@@ -23,11 +8,6 @@ DB_NAME = atmos_gl
 DB_SERVICE = atmos_gl_db
 DUMP_FILE = atmos_gl_dump.sql
 
-# Host UID/GID so containers writing to bind-mounted volumes (./data, ./config,
-# ./markers, atmos_gl_db's data dir) match your user instead of the image's fixed
-# build-time UID -- see docker-compose.yml's `user:` on each service for why this
-# matters. Named DOCKER_UID/DOCKER_GID, not UID/GID, because UID is a bash readonly
-# builtin and can't be exported.
 export DOCKER_UID := $(shell id -u)
 export DOCKER_GID := $(shell id -g)
 
@@ -62,12 +42,6 @@ install-shell-alias:
 		echo "Added a 'make' shell function to ~/.bashrc, scoped to $$(pwd) -- open a new shell (or run 'source ~/.bashrc') for bare 'make' to pick it up here. Every other directory is unaffected."; \
 	fi
 
-# pull's -q/--quiet: several services share one image, and compose's default progress
-# renderer assumes a redrawable terminal -- without one (e.g. running non-interactively)
-# it can't overwrite the "already being pulled by..." line per service and just
-# reprints it instead, spamming the same message repeatedly. (A recipe-body comment
-# would work the same but make echoes it like any other recipe line unless prefixed
-# with @, so it lives up here instead.)
 ## prod: Pull the published images and (re)start the stack -- the default target
 prod: bootstrap-config
 	docker compose -f docker-compose.yml pull -q
