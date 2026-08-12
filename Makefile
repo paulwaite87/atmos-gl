@@ -1,9 +1,4 @@
 # Makefile for Atmos GL Project Suite
-# The source is bind-mounted into the dev containers (see docker-compose.override.yml),
-# so a CODE edit is already on disk inside the container. You only need to RESTART
-# the service's process for Python to re-import it — NOT rebuild the image. `make build`
-# is now only for dependency or Dockerfile changes.
-# =============================================================================
 .PHONY: run stop build rebuild start-desktop-fg stop-desktop psql logs clean purge backup restore refresh-map test bash status help bootstrap-config migrate
 
 # Variables
@@ -15,14 +10,9 @@ DB_PORT = 15432
 BUILDER_SERVICE = layer_builder
 DUMP_FILE = atmos_gl_dump.sql
 
-# Host UID/GID so containers writing to bind-mounted volumes (e.g. atmos_gl_db's
-# data dir) match your user instead of drifting per-machine via a hand-edited .env.
-# Named DOCKER_UID/DOCKER_GID, not UID/GID, because UID is a bash readonly builtin
-# and can't be exported.
 export DOCKER_UID := $(shell id -u)
 export DOCKER_GID := $(shell id -g)
 
-# Backend services that run your mounted Python code (everything except UI/DB).
 BACKEND_SERVICES = data_collector layer_builder housekeeper map_api
 
 ## reload: Apply CODE changes live — just restart (no rebuild)
@@ -64,12 +54,6 @@ build: stop
 rebuild:
 	docker compose build --no-cache
 
-# pull's -q/--quiet: several services share one image, and compose's default progress
-# renderer assumes a redrawable terminal -- without one (e.g. running non-interactively)
-# it can't overwrite the "already being pulled by..." line per service and just
-# reprints it instead, spamming the same message repeatedly. (A recipe-body comment
-# would work the same but make echoes it like any other recipe line unless prefixed
-# with @, so it lives up here instead.)
 ## prod: Run EXACTLY as a package consumer would
 prod: bootstrap-config
 	docker compose -f docker-compose.yml pull -q
