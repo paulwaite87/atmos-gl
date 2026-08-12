@@ -128,7 +128,11 @@ services:
   map_ui:
     image: ghcr.io/paulwaite87/atmos-gl-ui:latest
     ports:
-      - "8180:8080"
+      # Loopback-only: OAuth sign-in (routes/auth.py) sets a Secure session cookie, which
+      # only survives over HTTPS, so external access needs a TLS-terminating reverse
+      # proxy in front of this port (e.g. `tailscale serve`, or nginx/Caddy + a cert) --
+      # binding 0.0.0.0 here would just serve a plain-HTTP origin sign-in can't work on.
+      - "127.0.0.1:8180:8080"
     restart: unless-stopped
     depends_on:
       - map_api

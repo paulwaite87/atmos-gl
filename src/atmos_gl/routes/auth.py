@@ -198,9 +198,9 @@ async def callback(
         max_age=SESSION_TTL_SECONDS,
         httponly=True,
         samesite="lax",
-        # TODO: flip to True once TLS is terminated in front of this deployment --
-        # there's no HTTPS anywhere in this stack yet (see config/nginx.conf).
-        secure=False,
+        # TLS is terminated in front of this deployment (tailscale serve, or any other
+        # reverse proxy setting X-Forwarded-Proto) -- see nginx.conf's $forwarded_proto.
+        secure=True,
     )
     return response
 
