@@ -1,5 +1,5 @@
 # Makefile.prod -- bespoke consumer/production Makefile for atmos-gl.
-.PHONY: prod prod-down logs psql backup restore status help bootstrap-config install-shell-alias check-git
+.PHONY: prod prod-down release logs psql backup restore status help bootstrap-config install-shell-alias check-git
 .DEFAULT_GOAL := prod
 
 # Variables
@@ -64,6 +64,15 @@ prod: check-git bootstrap-config
 ## prod-down: Stop the stack
 prod-down:
 	docker compose -f docker-compose.yml down
+
+## release: Pull and run a specific release (version=vX.Y.Z)
+release: bootstrap-config
+	@if [ -z "$(version)" ]; then \
+		echo "Error: version not set -- usage: make release version=vX.Y.Z"; \
+		exit 1; \
+	fi
+	IMAGE_TAG=$(version) docker compose -f docker-compose.yml pull -q
+	IMAGE_TAG=$(version) docker compose -f docker-compose.yml up -d
 
 ## logs: Tail all logs; service=name for specific service
 logs:
