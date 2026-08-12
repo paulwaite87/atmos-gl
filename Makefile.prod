@@ -11,7 +11,6 @@ DUMP_FILE = atmos_gl_dump.sql
 export DOCKER_UID := $(shell id -u)
 export DOCKER_GID := $(shell id -g)
 
-## bootstrap-config: Ensure live config/atmos-gl.json, .env, and the shell alias exist (never overwrites any if already there)
 bootstrap-config: install-shell-alias
 	@if [ ! -f config/atmos-gl.json ]; then \
 		cp config/atmos-gl.json.tmpl config/atmos-gl.json; \
@@ -22,7 +21,6 @@ bootstrap-config: install-shell-alias
 		echo "Created .env from .env.tmpl -- edit this to add your API keys"; \
 	fi
 
-## install-shell-alias: One-time setup -- adds a ~/.bashrc `make` function scoped to this exact directory
 install-shell-alias:
 	@marker="# atmos-gl: bare 'make' here runs 'make -f Makefile.prod' (added by install-shell-alias)"; \
 	if [ -f ~/.bashrc ] && grep -qF "$$marker" ~/.bashrc 2>/dev/null; then \
@@ -42,7 +40,7 @@ install-shell-alias:
 		echo "Added a 'make' shell function to ~/.bashrc, scoped to $$(pwd) -- open a new shell (or run 'source ~/.bashrc') for bare 'make' to pick it up here. Every other directory is unaffected."; \
 	fi
 
-## prod: Pull the published images and (re)start the stack -- the default target
+## prod: (default) Pull images and restart
 prod: bootstrap-config
 	docker compose -f docker-compose.yml pull -q
 	docker compose -f docker-compose.yml up -d
