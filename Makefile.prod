@@ -1,5 +1,5 @@
 # Makefile.prod -- bespoke consumer/production Makefile for atmos-gl.
-.PHONY: prod prod-down logs psql backup restore status help bootstrap-config install-shell-alias
+.PHONY: prod prod-down logs psql backup restore status help bootstrap-config install-shell-alias check-git
 .DEFAULT_GOAL := prod
 
 # Variables
@@ -10,6 +10,22 @@ DUMP_FILE = atmos_gl_dump.sql
 
 export DOCKER_UID := $(shell id -u)
 export DOCKER_GID := $(shell id -g)
+
+check-git:
+	@branch=$$(git rev-parse --abbrev-ref HEAD); \
+	if [ "$$branch" != "master" ]; then \
+		echo "Error: not on master (currently on '$$branch') -- checkout master before running prod."; \
+		exit 1; \
+	fi; \
+	if [ -n "$$(git status --porcelain)" ]; then \
+		echo "Error: uncommitted local changes present -- commit, stash, or discard them before running prod."; \
+		exit 1; \
+	fi; \
+	git fetch -q origin master; \
+	if [ -n "$$(git log HEAD..origin/master --oneline)" ]; then \
+		echo "Error: local master is behind origin/master -- run 'git pull' before running prod."; \
+		exit 1; \
+	fi
 
 bootstrap-config: install-shell-alias
 	@if [ ! -f config/atmos-gl.json ]; then \
@@ -41,7 +57,7 @@ install-shell-alias:
 	fi
 
 ## prod: (default) Pull images and restart
-prod: bootstrap-config
+prod: check-git bootstrap-config
 	docker compose -f docker-compose.yml pull -q
 	docker compose -f docker-compose.yml up -d
 
