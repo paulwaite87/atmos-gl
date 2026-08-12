@@ -75,5 +75,10 @@ USER agluser
 # 7. Runtime Configuration
 ENV PYTHONPATH="/opt/project/src"
 
+# Baked in at build time by CI (docker-publish.yml) from the git tag or commit used for
+# this build -- exposed via GET /api/version so the running app can report what it is.
+ARG APP_VERSION=unknown
+ENV APP_VERSION=$APP_VERSION
+
 # Updated fallback command to use the new 'builder' script entry point
 CMD ["builder", "--config", "config/atmos-gl.json"]

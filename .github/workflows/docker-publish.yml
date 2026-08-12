@@ -38,14 +38,20 @@ jobs:
 
       # A tag push publishes a pinned, versioned image (e.g. :v1.2.0) instead of
       # touching :latest -- :latest keeps tracking master merges as it always has,
-      # release tags are a separate, deliberate "cut a release" action.
+      # release tags are a separate, deliberate "cut a release" action. `version` is
+      # separate from `value` (the docker tag): it's baked into the app image itself
+      # (see Dockerfile's APP_VERSION) so a running container can report exactly what
+      # it is via GET /api/version, even when it was pulled via the floating :latest
+      # tag rather than a release tag.
       - name: Determine image tag
         id: tag
         run: |
           if [ "${{ github.event_name }}" = "push" ]; then
             echo "value=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+            echo "version=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
           else
             echo "value=latest" >> "$GITHUB_OUTPUT"
+            echo "version=latest@${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Log in to the Container registry
@@ -63,6 +69,7 @@ jobs:
           file: ./Dockerfile
           push: true
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.value }}
+          build-args: APP_VERSION=${{ steps.tag.outputs.version }}
 
       # Build and Push UI
       - name: Build and push UI image

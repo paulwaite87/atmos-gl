@@ -27,6 +27,7 @@ from atmos_gl.routes import (
     flightradar,
     layer_builder,
     layer_availability,
+    version,
 )
 from atmos_gl.lib.config import AtmosGLConfig
 
@@ -109,6 +110,7 @@ app.include_router(system_status.router)
 app.include_router(flightradar.router)
 app.include_router(layer_builder.router)
 app.include_router(layer_availability.router)
+app.include_router(version.router)
 
 
 @app.get("/")
