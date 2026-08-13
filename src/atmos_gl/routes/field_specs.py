@@ -19,8 +19,8 @@ constants below capture those shapes once and get registered under every
 
 Migrated so far: Global (common, animation), Events (quakes, volcanoes),
 Misc (satellites, terminator, markers), Shipping (shipping),
-Atmospheric (clouds, isobars, wind, jetstream, precipitation, pwat, lightning, storms),
-Climate (sst, currents, waves, temperature, ozone, stormwatch).
+Weather (clouds, isobars, wind, jetstream, precipitation, pwat, lightning, storms, waves),
+Climate (sst, currents, temperature, ozone, stormwatch).
 
 Validated with ast.parse.
 """
@@ -482,7 +482,7 @@ FIELD_SPECS = {
     ("shipping", "view_tracks"): ToggleSpec(personalizable=True),
     ("shipping", "track_limit"): SliderSpec(min=5, max=100, step=5, personalizable=True),
     ("shipping", "track_color"): ColorSpec(personalizable=True),
-    # --- Atmospheric (clouds, isobars, wind, precipitation, pwat, lightning, storms) ---
+    # --- Weather (clouds, isobars, wind, jetstream, precipitation, pwat, lightning, storms, waves) ---
     # Only `enabled` is personalizable for clouds: threshold/gamma are baked
     # server-side into the shared transparent overlay (CloudUpdater.
     # save_cache_as_transparent), and offset_days/expiry_hours/cache_expiry_days are
@@ -531,10 +531,12 @@ FIELD_SPECS = {
     # Jet stream is speed-colored particles with no heatmap, like currents (not
     # wind's flat-colored particles + separate heatmap) -- shares currents' particle
     # tuning ranges (_PARTICLE_SPEED_LIKE/_TRAIL_LENGTH/_TRAIL_THICKNESS) rather than
-    # wind's rescaled ones. Lives on the Atmospheric tab (it's GFS wind, not ocean),
-    # unlike currents itself. flow_coherence_radius reuses WIND's spec/mechanism
-    # though, not currents' (which has none) -- jetstream reads the same noisy
-    # 0.25deg GFS grid wind does, unlike currents' smooth RTOFS source.
+    # wind's rescaled ones. Lives on the Weather tab alongside wind, not Climate
+    # alongside currents: wind/jetstream/waves are all part of the same GFS forecast
+    # cycle (GfsAtmosCollector/GfsWavesCollector, datasource_key "gfs"), unlike
+    # currents' separate RTOFS ocean-circulation model. flow_coherence_radius reuses
+    # WIND's spec/mechanism though, not currents' (which has none) -- jetstream reads
+    # the same noisy 0.25deg GFS grid wind does, unlike currents' smooth RTOFS source.
     ("jetstream", "enabled"): _ENABLED_PERSONALIZABLE,
     ("jetstream", "level_of_detail"): _LEVEL_OF_DETAIL,
     ("jetstream", "palette"): SelectSpec([
@@ -583,7 +585,27 @@ FIELD_SPECS = {
     ("storms", "enabled"): _ENABLED_PERSONALIZABLE,
     ("storms", "expiry_days"): SliderSpec(min=0, max=60, step=1, suffix=" days expiry", personalizable=True),
     ("storms", "popup_fontsize"): _FONTSIZE,
-    # --- Climate (sst, currents, waves, temperature, ozone, stormwatch) ---
+    # Waves is a Weather-tab checkbox, not a Climate radio: it's GFS-sourced (like
+    # wind/jetstream, same forecast cycle) rather than RTOFS like currents, and unlike
+    # currents/sst/temperature/ozone/stormwatch it doesn't cover landmasses, so it has
+    # much less potential to visually clash with another base layer shown alongside it.
+    ("waves", "enabled"): _ENABLED_PERSONALIZABLE,
+    ("waves", "level_of_detail"): _LEVEL_OF_DETAIL,
+    ("waves", "palette"): SelectSpec([
+        ("ocean_storm", "Ocean storm"),
+        ("neon_surge", "Neon surge"),
+        ("solar_flare", "Solar flare"),
+    ], personalizable=True),
+    ("waves", "opacity"): _OPACITY,
+    ("waves", "min_wave_height"): SliderSpec(
+        min=0, max=5, step=0.25, suffix=" m", zero_label="off", personalizable=True
+    ),
+    ("waves", "particle_speed"): _PARTICLE_SPEED_LIKE,
+    ("waves", "particle_size"): _PARTICLE_SIZE,
+    ("waves", "bar_length"): SliderSpec(min=1, max=8, step=1, personalizable=True),
+    ("waves", "particle_opacity"): _PARTICLE_OPACITY,
+    ("waves", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
+    # --- Climate (sst, currents, temperature, ozone, stormwatch) ---
     # Since #312, sst's palette/min_c/max_c/opacity all apply entirely client-side (see
     # tasks/sst.py's _mode_settings_signature docstring) -- personalizable across the
     # board. mode is safe too: both modes render every cycle regardless of which is
@@ -624,22 +646,6 @@ FIELD_SPECS = {
     ("currents", "fill_floor"): SliderSpec(min=0.0, max=1.0, step=0.05, decimals=2, suffix=" m/s", personalizable=True),
     ("currents", "fill_knee"): SliderSpec(min=0.0, max=2.5, step=0.05, decimals=2, suffix=" m/s", personalizable=True),
     ("currents", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
-    ("waves", "enabled"): _ENABLED_PERSONALIZABLE,
-    ("waves", "level_of_detail"): _LEVEL_OF_DETAIL,
-    ("waves", "palette"): SelectSpec([
-        ("ocean_storm", "Ocean storm"),
-        ("neon_surge", "Neon surge"),
-        ("solar_flare", "Solar flare"),
-    ], personalizable=True),
-    ("waves", "opacity"): _OPACITY,
-    ("waves", "min_wave_height"): SliderSpec(
-        min=0, max=5, step=0.25, suffix=" m", zero_label="off", personalizable=True
-    ),
-    ("waves", "particle_speed"): _PARTICLE_SPEED_LIKE,
-    ("waves", "particle_size"): _PARTICLE_SIZE,
-    ("waves", "bar_length"): SliderSpec(min=1, max=8, step=1, personalizable=True),
-    ("waves", "particle_opacity"): _PARTICLE_OPACITY,
-    ("waves", "cache_expiry_days"): _CACHE_EXPIRY_DAYS,
     ("temperature", "enabled"): _ENABLED_PERSONALIZABLE,
     ("temperature", "level_of_detail"): _LEVEL_OF_DETAIL,
     ("temperature", "opacity"): _OPACITY,
@@ -794,7 +800,7 @@ SECTION_LABELS = {
     "air_quality": "Air Quality",
     "currents": "Ocean Currents",
     "jetstream": "Jet Stream",
-    "waves": "Wave Heights",
+    "waves": "Waves",
     "temperature": "Air Temperature",
     "ozone": "Ozone",
     "stormwatch": "Storm Watch",

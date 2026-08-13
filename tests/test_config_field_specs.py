@@ -481,7 +481,7 @@ def test_update_config_strips_outfile_before_saving(tmp_path):
     assert "outfile" not in saved["isobars"]
 
 
-# --- Atmospheric / Climate batch: whole-step int display, sentinel badges,
+# --- Weather / Climate batch: whole-step int display, sentinel badges,
 # byte<->percent transform, unspecced-boolean fallback, section-conditional selects ---
 
 
@@ -570,7 +570,7 @@ def test_section_conditional_palette_options_differ_per_section():
     assert sst_values.isdisjoint(pwat_values)
 
 
-# --- GET /config: Atmospheric / Climate tabs render correctly ---
+# --- GET /config: Weather / Climate tabs render correctly ---
 
 
 def test_config_page_renders_byte_to_percent_slider_with_extra_class():
@@ -735,6 +735,7 @@ def test_section_label_matches_the_show_tab_wording():
     assert section_label("sst") == "Sea Surface Temp"
     assert section_label("storms") == "Storm Track"
     assert section_label("temperature") == "Air Temperature"
+    assert section_label("waves") == "Waves"
 
 
 def test_section_label_falls_back_to_title_case_for_sections_without_a_show_tab_entry():
@@ -755,13 +756,24 @@ def test_config_page_renders_friendly_section_headings_not_raw_bracket_keys():
 
 
 def test_config_page_renders_pwat_as_a_plain_toggle_not_a_climate_radio():
-    """pwat isn't mutually exclusive with the sst/currents/waves/temperature/ozone/
+    """pwat isn't mutually exclusive with the sst/currents/temperature/ozone/
     stormwatch climate base layer -- it must get its own Show-tab checkbox (like
     precipitation), never a radio__pwat entry in the exclusive_climate group."""
     resp = client.get("/config")
     html = resp.text
     assert 'type="checkbox" id="pwat__enabled"' in html
     assert 'id="radio__pwat"' not in html
+
+
+def test_config_page_renders_waves_as_a_plain_toggle_not_a_climate_radio():
+    """waves moved off the Climate radio group onto the Weather tab as a plain
+    checkbox (like wind) -- it doesn't cover landmasses the way wind's heatmap does,
+    so it has much less potential to visually clash with another base layer, and it's
+    GFS-sourced (like wind/jetstream) rather than the RTOFS source currents uses."""
+    resp = client.get("/config")
+    html = resp.text
+    assert 'type="checkbox" id="waves__enabled"' in html
+    assert 'id="radio__waves"' not in html
 
 
 def test_config_page_renders_pwat_fields_section_and_gated_fallback():
