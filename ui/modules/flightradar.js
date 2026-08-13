@@ -143,6 +143,23 @@ const SMOOTH_TAU_S = 0.6;
 const MAX_CORRECTION_KTS = 800;
 const MAX_ALT_CORRECTION_FPM = 6000;
 
+// icon_track's own correction-rate cap (see smoothedAngle below), the rotational
+// counterpart to MAX_CORRECTION_KTS/MAX_ALT_CORRECTION_FPM. Set well above a real
+// "standard rate turn" (3deg/s, the aviation-standard reference for a normal turn) so
+// it never visibly lags a genuine turn (a sustained 3deg/s turn lags well under 2deg
+// behind the true heading at this cap) -- it only limits the much faster, spurious
+// swings bearingDeg's position-delta-derived rotation can otherwise produce right
+// after a real update lands, when a modest, realistic position correction (well
+// within normal ADS-B/GPS noise) is squeezed into a single ~16ms animation frame: a
+// correction distance utterly dwarfing that frame's own genuine dead-reckoned
+// movement dominates the computed bearing, briefly pointing the icon somewhere far
+// from its real heading before easing back over the following ~1s (caught live: a
+// twitch/snap-then-reset, worse the smaller and more frequent the underlying
+// correction). Capping the RATE the icon is allowed to visibly rotate, independent of
+// where the raw signal briefly points, suppresses that without needing to first
+// classify which bearing readings are trustworthy.
+const MAX_ICON_TURN_RATE_DEG_S = 10;
+
 // Exponential smoothing of the DISPLAYED position toward a (possibly moving) target,
 // framerate-independent via the elapsed-time-based alpha below, with the per-frame
 // movement capped to MAX_CORRECTION_KTS worth of real distance (same flat-earth
@@ -213,6 +230,27 @@ export function smoothedScalar(display, target, dtS, tauS, maxRatePerSecond) {
     const maxDelta = maxRatePerSecond * dtS;
     if (Math.abs(delta) > maxDelta) delta = Math.sign(delta) * maxDelta;
     return display + delta;
+}
+
+// Angular counterpart of smoothedScalar -- same exponential-smoothing-with-a-rate-cap
+// shape, but closing via the SHORTEST signed angular distance (so e.g. display=350,
+// target=10 eases through 360/0, a 20deg turn, never the long way round through 180)
+// and wrapped back into [0, 360) rather than left to drift outside that range.
+// maxRateDegPerSecond is in degrees per second (pass MAX_ICON_TURN_RATE_DEG_S).
+// See buildFeatureCollection's icon_track derivation for why this exists: bearingDeg's
+// raw position-delta-derived rotation can briefly swing far from the true heading
+// right after a real update lands (see MAX_ICON_TURN_RATE_DEG_S's own comment) --
+// capping the icon's visible turn rate suppresses that without ever meaningfully
+// lagging a genuine turn, which is much slower.
+export function smoothedAngle(display, target, dtS, tauS, maxRateDegPerSecond) {
+    if (display == null) return target;
+    if (target == null || !dtS || dtS <= 0) return display;
+    let delta = ((target - display + 540) % 360) - 180;
+    const alpha = 1 - Math.exp(-dtS / tauS);
+    delta *= alpha;
+    const maxDelta = maxRateDegPerSecond * dtS;
+    if (Math.abs(delta) > maxDelta) delta = Math.sign(delta) * maxDelta;
+    return ((display + delta) % 360 + 360) % 360;
 }
 
 // Vertical counterpart to interpolatedPosition -- projects baro_rate (ft/min) forward
@@ -491,7 +529,13 @@ export function buildFeatureCollection(aircraftByHex, now, displayByHex = null, 
                 // No movement this frame (held, or genuinely stationary) -- keep
                 // pointing the way it was already pointing rather than snapping to
                 // an arbitrary angle for a zero-length vector.
-                iconTrack = bearing != null ? bearing : (prevDisplay.track ?? rec.track);
+                const rawIconTrack = bearing != null ? bearing : (prevDisplay.track ?? rec.track);
+                // Rate-capped (see MAX_ICON_TURN_RATE_DEG_S) -- no lag if track just
+                // became known, same "nothing to ease from yet" rule smoothedAlt below
+                // uses for altitude.
+                iconTrack = typeof prevDisplay.track === 'number'
+                    ? smoothedAngle(prevDisplay.track, rawIconTrack, dtS, tauS, MAX_ICON_TURN_RATE_DEG_S)
+                    : rawIconTrack;
             }
 
             let smoothedAlt;
