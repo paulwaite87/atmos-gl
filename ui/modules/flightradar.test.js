@@ -802,6 +802,43 @@ describe('buildFeatureCollection position smoothing', () => {
         expect(fc.features[0].properties.icon_track).toBe(137);
     });
 
+    // The actual bug this closes (found by replaying real captured adsb.lol data:
+    // ICAO 781a53/c81e2c, live-reported as "the aircraft rendered sideways through its
+    // takeoff roll, straightening only once airborne"). adsb.lol's `track` is null for
+    // essentially an entire ground phase in real data (ADS-B ground track is
+    // undefined/unbroadcast while near-stationary) -- with the old rule ("skip
+    // smoothing when there's no prior NUMBER to ease from"), an aircraft could sit
+    // with a null stored track for the whole taxi phase (nothing to derive a bearing
+    // from either, no movement yet), then the FIRST real bearing reading once it
+    // finally starts moving -- exactly the noisy, first-movement reading the earlier
+    // twitch fix targeted -- rendered instantly, fully unsmoothed, because that "first
+    // known" branch treated a null-so-far track as indistinguishable from a genuine
+    // first sighting.
+    test('a null raw track on first sighting stores a real number (0), not null, so a later bearing eases in rather than snapping', () => {
+        const aircraftByHex = new Map([['a1b2c3', movingRec({ lat: 0, lon: 0, gs: 0, track: null })]]);
+        const displayByHex = new Map();
+
+        // First sighting: no raw track, no movement to derive a bearing from either --
+        // must still store a real number so every later frame has something to ease
+        // from (the actual fix -- previously this stored track: null).
+        const fc1 = buildFeatureCollection(aircraftByHex, 1000, displayByHex, 0.6, 0.6);
+        expect(fc1.features[0].properties.icon_track).toBe(0);
+        expect(displayByHex.get('a1b2c3').track).toBe(0);
+
+        // A later real sample: the aircraft has moved (track is STILL null, matching
+        // real ground-phase data) -- icon_track can only come from bearingDeg's
+        // position-delta, due east (90deg) here.
+        aircraftByHex.set('a1b2c3', movingRec({
+            lat: 0, lon: 0.001, gs: 3600, track: null, receivedAt: 2000,
+        }));
+        const fc2 = buildFeatureCollection(aircraftByHex, 2600, displayByHex, 0.6, 0.6);
+
+        // Rate-capped from the held 0, same as any other correction -- at most
+        // 10deg/s * 0.6s = 6deg this frame, nowhere near the raw 90deg bearing. The
+        // bug this replaces: icon_track jumping straight to ~90 in one frame.
+        expect(fc2.features[0].properties.icon_track).toBeCloseTo(6, 6);
+    });
+
     test('icon_track holds its previous value when there is no movement this frame (e.g. a hold, or a stationary aircraft)', () => {
         const aircraftByHex = new Map([['a1b2c3', movingRec({ lat: 0, lon: 0, gs: 0, track: 45 })]]);
         // Already displayed exactly at the target (gs=0 means the target never
