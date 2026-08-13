@@ -529,13 +529,31 @@ export function buildFeatureCollection(aircraftByHex, now, displayByHex = null, 
                 // No movement this frame (held, or genuinely stationary) -- keep
                 // pointing the way it was already pointing rather than snapping to
                 // an arbitrary angle for a zero-length vector.
-                const rawIconTrack = bearing != null ? bearing : (prevDisplay.track ?? rec.track);
-                // Rate-capped (see MAX_ICON_TURN_RATE_DEG_S) -- no lag if track just
-                // became known, same "nothing to ease from yet" rule smoothedAlt below
-                // uses for altitude.
-                iconTrack = typeof prevDisplay.track === 'number'
-                    ? smoothedAngle(prevDisplay.track, rawIconTrack, dtS, tauS, MAX_ICON_TURN_RATE_DEG_S)
-                    : rawIconTrack;
+                const rawIconTrack = bearing != null ? bearing : (prevDisplay.track ?? rec.track ?? 0);
+                // Always rate-capped (see MAX_ICON_TURN_RATE_DEG_S) once there's a
+                // PRIOR FRAME to ease from at all -- deliberately NOT gated on whether
+                // prevDisplay.track happens to already be a number. adsb.lol's `track`
+                // is null for essentially an entire ground phase in real captured data
+                // (ADS-B ground track is undefined/unbroadcast near-stationary, e.g.
+                // at the gate or early taxi) -- with the old "no prior number, skip
+                // smoothing" rule, an aircraft could sit at track=null (nothing to
+                // derive a bearing from either, no movement yet) for the whole taxi
+                // phase, then the FIRST real bearing/track reading once it finally
+                // starts moving -- exactly the noisy, unreliable one the original
+                // twitch fix targeted -- rendered instantly, fully unsmoothed, because
+                // that "first known" branch treated it as indistinguishable from a
+                // genuine first sighting. Caught live: an aircraft rendering "sideways"
+                // through its takeoff roll, straightening only once airborne. Below,
+                // the true first-sighting default (0, not null) guarantees every
+                // subsequent frame always has a real prior to ease from, so this
+                // branch can never be bypassed again after the first frame.
+                iconTrack = smoothedAngle(prevDisplay.track ?? 0, rawIconTrack, dtS, tauS, MAX_ICON_TURN_RATE_DEG_S);
+            } else {
+                // Genuine first-ever sighting (no prevDisplay at all) -- nothing to
+                // ease from yet, render directly. Defaults to 0 (north), not null/
+                // undefined, specifically so every later frame (which WILL have a
+                // prevDisplay) always finds a real number in prevDisplay.track above.
+                iconTrack = rec.track ?? 0;
             }
 
             let smoothedAlt;
