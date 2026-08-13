@@ -3,7 +3,7 @@
 // for 1 hour = 60 nautical miles = exactly 1 degree of latitude), not recomputed the
 // way the code does, so a broken formula can actually disagree with the test.
 import { describe, test, expect } from 'vitest';
-import { interpolatedPosition, smoothedPosition, smoothedScalar, isBackwardCorrection, bearingDeg, recordFromFeature, extrapolatedAltitude, boundedElapsedSeconds, isFrozen, flightStatus, targetAltitudeLabel, aircraftClass, aircraftGroup, aircraftGroupColor, airlineForFlight, stopCode, routePathHtml, plausibleWarningHtml, parseRouteStops, buildFeatureCollection } from './flightradar.js';
+import { interpolatedPosition, smoothedPosition, smoothedScalar, smoothedAngle, isBackwardCorrection, bearingDeg, recordFromFeature, extrapolatedAltitude, boundedElapsedSeconds, isFrozen, flightStatus, targetAltitudeLabel, aircraftClass, aircraftGroup, aircraftGroupColor, airlineForFlight, stopCode, routePathHtml, plausibleWarningHtml, parseRouteStops, buildFeatureCollection } from './flightradar.js';
 
 describe('interpolatedPosition', () => {
     test('due-north flight for 1 hour at 60kts moves exactly 1 degree of latitude', () => {
@@ -341,6 +341,58 @@ describe('smoothedScalar', () => {
         const value = smoothedScalar(10000, 15000, 0.6, 0.6, 100);
         expect(value).toBeGreaterThan(10000);
         expect(value).toBeLessThan(15000);
+    });
+});
+
+describe('smoothedAngle', () => {
+    test('zero elapsed time leaves the displayed value unchanged', () => {
+        expect(smoothedAngle(10, 20, 0, 0.6, 10)).toBe(10);
+    });
+
+    test('negative elapsed time (defensive; should not occur) leaves the value unchanged', () => {
+        expect(smoothedAngle(10, 20, -1, 0.6, 10)).toBe(10);
+    });
+
+    test('no prior display (first known track) returns the target directly, unsmoothed', () => {
+        expect(smoothedAngle(null, 137, 0.6, 0.6, 10)).toBe(137);
+    });
+
+    test('no target (defensive; should not occur) returns the display unchanged', () => {
+        expect(smoothedAngle(90, null, 0.6, 0.6, 10)).toBe(90);
+    });
+
+    test('a small correction (well under the rate cap) eases by the exponential-smoothing fraction', () => {
+        // alpha = 1 - exp(-1) = 0.6321206; a 5deg gap needs nowhere near a 10deg/s*0.6s=6deg cap.
+        expect(smoothedAngle(10, 15, 0.6, 0.6, 10)).toBeCloseTo(10 + 5 * 0.6321206, 4);
+    });
+
+    test('a large correction is capped to maxRateDegPerSecond*dtS worth of change for this frame', () => {
+        // 90deg away; uncapped alpha would close ~56.9deg in one 0.6s step; a
+        // 10deg/s cap instead limits real movement to 10*0.6=6deg.
+        expect(smoothedAngle(0, 90, 0.6, 0.6, 10)).toBeCloseTo(6, 6);
+    });
+
+    test('capping applies symmetrically to a decreasing correction', () => {
+        expect(smoothedAngle(90, 0, 0.6, 0.6, 10)).toBeCloseTo(84, 6);
+    });
+
+    // The actual bug this closes: bearingDeg-derived rotation can briefly point far
+    // from the true heading right after a real update lands (see
+    // MAX_ICON_TURN_RATE_DEG_S's own comment) -- without wraparound-aware easing, a
+    // correction crossing north (e.g. 350 -> 10, actually a 20deg turn) would instead
+    // be read as a 340deg gap and eased the LONG way round through 180.
+    test('eases through the north wraparound the short way, not the long way round through 180', () => {
+        const value = smoothedAngle(350, 10, 0.6, 0.6, 100);   // generous cap -- isolates the wraparound math itself
+        // Moving from 350 toward 10 the short way passes through 360/0, landing
+        // somewhere in (350, 360] union [0, 10) -- never near 180.
+        const distanceFrom0 = Math.min(value, 360 - value);
+        expect(distanceFrom0).toBeLessThan(10);
+    });
+
+    test('the wraparound case still respects the rate cap', () => {
+        const value = smoothedAngle(350, 10, 0.6, 0.6, 10);   // 10deg/s*0.6s = 6deg max
+        // 350 + 6 = 356 -- short way round, capped.
+        expect(value).toBeCloseTo(356, 6);
     });
 });
 
@@ -774,6 +826,51 @@ describe('buildFeatureCollection position smoothing', () => {
 
         expect(fc.features[0].geometry.coordinates).toEqual([5, 5]);   // unchanged from the raw reported position
         expect(fc.features[0].properties.gs).toBe(200);   // popup still shows the real reported speed
+    });
+
+    // The actual bug this closes (reported live: the icon "twitches", snapping to a
+    // direction 45+ degrees off before resetting back, around a real update landing).
+    // Root cause: icon_track is derived from the tiny per-FRAME displayed movement
+    // vector (~16ms worth of real motion at 60fps), but right after a real update
+    // lands, that vector is dominated by the position-CORRECTION component instead --
+    // a gap that accumulated over the whole ~11-13s poll interval, squeezed into one
+    // frame's worth of easing. Even a modest, realistic position discrepancy (well
+    // within normal ADS-B/GPS noise -- nowhere near a data-quality outlier) makes the
+    // correction's direction swamp the aircraft's true heading in the computed
+    // bearing for over a second. Simulated here at real requestAnimationFrame cadence
+    // (dtS ~= 1/60s per frame), not the rest of this file's exaggerated 0.6s steps.
+    test('icon_track does not swing wildly off the true heading in the seconds after a real update lands', () => {
+        const trueTrack = 0;   // due north
+        const gs = 450;   // typical jet cruise speed, knots
+        const startLat = 40.0, startLon = -74.0;
+        // 0.05nm (~90m) lateral discrepancy between the prior smoothed display and the
+        // freshly-landed real sample -- realistic ADS-B/extrapolation drift, not a
+        // contrived outlier.
+        const lateralOffsetNm = 0.05;
+        const cosLat = Math.cos((startLat * Math.PI) / 180);
+        const lonOffset = (lateralOffsetNm / 60.0) / cosLat;
+
+        const aircraftByHex = new Map([
+            ['a1b2c3', movingRec({
+                lat: startLat + 0.001, lon: startLon + lonOffset, gs, track: trueTrack, receivedAt: 0,
+            })],
+        ]);
+        const displayByHex = new Map([['a1b2c3', { lat: startLat, lon: startLon, track: trueTrack }]]);
+
+        const dtS = 1 / 60;
+        let peakDeviation = 0;
+        for (let frame = 1; frame <= 180; frame++) {   // 3s of real animation frames
+            const now = frame * dtS * 1000;
+            const fc = buildFeatureCollection(aircraftByHex, now, displayByHex, dtS, 0.6);
+            const iconTrack = fc.features[0].properties.icon_track;
+            const deviation = Math.min(Math.abs(iconTrack - trueTrack), 360 - Math.abs(iconTrack - trueTrack));
+            peakDeviation = Math.max(peakDeviation, deviation);
+        }
+
+        // Unfixed (raw bearingDeg with no rate cap), this scenario peaks at ~38.8deg
+        // on the very first frame. MAX_ICON_TURN_RATE_DEG_S keeps the same scenario
+        // well clear of anything reading as a "wrong direction" snap.
+        expect(peakDeviation).toBeLessThan(20);
     });
 });
 
