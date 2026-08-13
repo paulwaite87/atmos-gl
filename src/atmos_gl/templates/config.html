@@ -99,7 +99,7 @@
         <ul class="nav nav-tabs mb-3" id="configTabs" role="tablist">
             <li class="nav-item"><button class="nav-link active" id="global-tab" data-bs-toggle="tab" data-bs-target="#global-pane" type="button">Global</button></li>
             <li class="nav-item"><button class="nav-link" id="show-tab" data-bs-toggle="tab" data-bs-target="#show-pane" type="button">Show</button></li>
-            <li class="nav-item"><button class="nav-link" id="atmospheric-tab" data-bs-toggle="tab" data-bs-target="#atmospheric-pane" type="button">Atmospheric</button></li>
+            <li class="nav-item"><button class="nav-link" id="weather-tab" data-bs-toggle="tab" data-bs-target="#weather-pane" type="button">Weather</button></li>
             <li class="nav-item"><button class="nav-link" id="climate-tab" data-bs-toggle="tab" data-bs-target="#climate-pane" type="button">Climate</button></li>
             <li class="nav-item"><button class="nav-link" id="events-tab" data-bs-toggle="tab" data-bs-target="#events-pane" type="button">Events</button></li>
             <li class="nav-item"><button class="nav-link" id="misc-tab" data-bs-toggle="tab" data-bs-target="#misc-pane" type="button">Miscellaneous</button></li>
@@ -128,7 +128,7 @@
 
                     <div class="tab-pane fade" id="show-pane">
                         <div class="grouping-box">
-                            <h5>Atmospheric</h5>
+                            <h5>Weather</h5>
                             <div class="row g-3">
                                 <div class="col-md-4"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="clouds__enabled"><label class="form-check-label fw-bold ms-2">Clouds</label></div></div>
                                 <div class="col-md-4"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="isobars__enabled"><label class="form-check-label fw-bold ms-2">Isobars</label></div></div>
@@ -138,6 +138,7 @@
                                 <div class="col-md-4"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="pwat__enabled"><label class="form-check-label fw-bold ms-2">Precipitable Water</label></div></div>
                                 <div class="col-md-4"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="lightning__enabled"><label class="form-check-label fw-bold ms-2">Lightning</label></div></div>
                                 <div class="col-md-4"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="storms__enabled"><label class="form-check-label fw-bold ms-2">Storm Track</label></div></div>
+                                <div class="col-md-4"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="waves__enabled"><label class="form-check-label fw-bold ms-2">Waves</label></div></div>
                             </div>
                         </div>
 
@@ -147,7 +148,6 @@
                             <div class="row g-3">
                                 <div class="col-md-3"><div class="form-check"><input class="form-check-input" type="radio" name="exclusive_climate" id="radio__sst"><label class="form-check-label fw-bold ms-1" for="radio__sst">Sea Surface Temp</label></div></div>
                                 <div class="col-md-3"><div class="form-check"><input class="form-check-input" type="radio" name="exclusive_climate" id="radio__currents"><label class="form-check-label fw-bold ms-1" for="radio__currents">Ocean Currents</label></div></div>
-                                <div class="col-md-3"><div class="form-check"><input class="form-check-input" type="radio" name="exclusive_climate" id="radio__waves"><label class="form-check-label fw-bold ms-1" for="radio__waves">Wave Heights</label></div></div>
                                 <div class="col-md-3"><div class="form-check"><input class="form-check-input" type="radio" name="exclusive_climate" id="radio__temperature"><label class="form-check-label fw-bold ms-1" for="radio__temperature">Air Temperature</label></div></div>
                                 <div class="col-md-3"><div class="form-check"><input class="form-check-input" type="radio" name="exclusive_climate" id="radio__ozone"><label class="form-check-label fw-bold ms-1" for="radio__ozone">Ozone</label></div></div>
                                 <div class="col-md-3"><div class="form-check"><input class="form-check-input" type="radio" name="exclusive_climate" id="radio__stormwatch"><label class="form-check-label fw-bold ms-1" for="radio__stormwatch">Storm Watch</label></div></div>
@@ -192,8 +192,8 @@
 
                     </div>
 
-                    <div class="tab-pane fade" id="atmospheric-pane"><div id="container-atmospheric">{{ field_macros.render_tab_group(["clouds", "isobars", "wind", "jetstream", "precipitation", "pwat", "lightning", "storms"], config_data) }}</div></div>
-                    <div class="tab-pane fade" id="climate-pane"><div id="container-climate">{{ field_macros.render_tab_group(["sst", "currents", "waves", "temperature", "ozone", "stormwatch", "greenhouse_gases"], config_data) }}</div></div>
+                    <div class="tab-pane fade" id="weather-pane"><div id="container-weather">{{ field_macros.render_tab_group(["clouds", "isobars", "wind", "jetstream", "precipitation", "pwat", "lightning", "storms", "waves"], config_data) }}</div></div>
+                    <div class="tab-pane fade" id="climate-pane"><div id="container-climate">{{ field_macros.render_tab_group(["sst", "currents", "temperature", "ozone", "stormwatch", "greenhouse_gases"], config_data) }}</div></div>
                     <div class="tab-pane fade" id="events-pane"><div id="container-events">{{ field_macros.render_tab_group(["quakes", "volcanoes", "fires", "air_quality"], config_data) }}</div></div>
                     <div class="tab-pane fade" id="misc-pane"><div id="container-misc">{{ field_macros.render_tab_group(["satellites", "terminator", "markers", "flightradar", "landmass", "shipping"], config_data) }}</div></div>
                     <div class="tab-pane fade" id="background-pane">
@@ -358,7 +358,7 @@
         });
 
         function parseExplicitElements(data) {
-            ['clouds', 'isobars', 'wind', 'jetstream', 'precipitation', 'pwat', 'lightning', 'storms', 'quakes', 'volcanoes', 'fires', 'air_quality', 'satellites', 'shipping', 'terminator', 'markers', 'flightradar', 'landmass'].forEach(layer => {
+            ['clouds', 'isobars', 'wind', 'jetstream', 'precipitation', 'pwat', 'lightning', 'storms', 'waves', 'quakes', 'volcanoes', 'fires', 'air_quality', 'satellites', 'shipping', 'terminator', 'markers', 'flightradar', 'landmass'].forEach(layer => {
                 const el = document.getElementById(`${layer}__enabled`);
                 if (el && data[layer]) {
                     el.checked = !!data[layer].enabled;
@@ -366,7 +366,7 @@
                 }
             });
 
-            ['sst', 'currents', 'waves', 'temperature', "ozone", "stormwatch", "greenhouse_gases"].forEach(layer => {
+            ['sst', 'currents', 'temperature', "ozone", "stormwatch", "greenhouse_gases"].forEach(layer => {
                 const el = document.getElementById(`radio__${layer}`);
                 if (el) {
                     el.addEventListener('change', toggleSectionVisibility);
@@ -471,6 +471,7 @@
                 "pwat": document.getElementById('pwat__enabled')?.checked,
                 "lightning": document.getElementById('lightning__enabled')?.checked,
                 "storms": document.getElementById('storms__enabled')?.checked,
+                "waves": document.getElementById('waves__enabled')?.checked,
                 "quakes": document.getElementById('quakes__enabled')?.checked,
                 "volcanoes": document.getElementById('volcanoes__enabled')?.checked,
                 "fires": document.getElementById('fires__enabled')?.checked,
@@ -483,7 +484,6 @@
                 "shipping": document.getElementById('shipping__enabled')?.checked,
                 "sst": document.getElementById('radio__sst')?.checked,
                 "currents": document.getElementById('radio__currents')?.checked,
-                "waves": document.getElementById('radio__waves')?.checked,
                 "temperature": document.getElementById('radio__temperature')?.checked,
                 "ozone": document.getElementById('radio__ozone')?.checked,
                 "stormwatch": document.getElementById('radio__stormwatch')?.checked,
@@ -526,13 +526,12 @@
 
             const payload = JSON.parse(JSON.stringify(masterConfigCache));
 
-            ['clouds', 'isobars', 'wind', 'jetstream', 'precipitation', 'pwat', 'lightning', 'storms', 'quakes', 'volcanoes', 'fires', 'air_quality', 'satellites', 'terminator', 'markers', 'flightradar', 'landmass', 'shipping', 'shipping_collector', 'lightning_collector', 'satellites_collector', 'data_collector'].forEach(layer => {
+            ['clouds', 'isobars', 'wind', 'jetstream', 'precipitation', 'pwat', 'lightning', 'storms', 'waves', 'quakes', 'volcanoes', 'fires', 'air_quality', 'satellites', 'terminator', 'markers', 'flightradar', 'landmass', 'shipping', 'shipping_collector', 'lightning_collector', 'satellites_collector', 'data_collector'].forEach(layer => {
                 if (payload[layer]) payload[layer].enabled = document.getElementById(`${layer}__enabled`)?.checked || false;
             });
 
             if(payload.sst) payload.sst.enabled = document.getElementById('radio__sst').checked;
             if(payload.currents) payload.currents.enabled = document.getElementById('radio__currents').checked;
-            if(payload.waves) payload.waves.enabled = document.getElementById('radio__waves').checked;
             if(payload.temperature) payload.temperature.enabled = document.getElementById('radio__temperature').checked;
             if(payload.ozone) payload.ozone.enabled = document.getElementById('radio__ozone').checked;
             if(payload.stormwatch) payload.stormwatch.enabled = document.getElementById('radio__stormwatch').checked;

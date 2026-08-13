@@ -289,10 +289,10 @@ their data every few hours at most anyway. Data collection itself, though, alway
 background regardless of whether a layer is switched on — so the moment you enable
 something it's ready to display rather than waiting for a fresh fetch.
 
-### Atmospheric
-This group loosely comprises day-to-day atmospheric activity. We generally just lump
-this into the category "weather", and the layers we have here are usually the most
-interesting from the point of view of direct daily impact on our activities.
+### Weather
+This group loosely comprises day-to-day atmospheric (and wind-driven ocean surface)
+activity — the layers we have here are usually the most interesting from the point of
+view of direct daily impact on our activities.
 
 Of these clouds are the outlier in that it isn't a true data layer (see below). For
 the rest the data is measured by satellites every 6 hours ('runs' termed 00Z, 06Z, 12Z, 18Z).
@@ -343,6 +343,15 @@ layer is quite good paired with isobars where you can see the effect of differin
 pressure. If you want to see Precipitation at the same time as Wind then I recommend
 you set `Heatmap opacity` of the underlying wind speed canvas to zero.
 ![Wind](docs/atmos-gl-wind.png)
+
+#### Waves
+This one is a colourisation depicting wave height across the planet, GFS-sourced (same
+forecast cycle as Wind) rather than the Ocean Currents layer's separate RTOFS model. It
+gets quite interesting when you watch waves interacting with a storm, or a tsunami
+eventuates from an earthquake. Unlike Wind's heatmap it doesn't cover landmasses, so it's
+usually safe to leave showing alongside other layers rather than needing `Heatmap opacity`
+zeroed out.
+![Waves](docs/atmos-gl-waves.png)
 
 #### Storm Tracks
 A storm is depicted as a track history followed by a prediction cone showing where
@@ -475,11 +484,11 @@ weather apps' air-quality widgets.
 This area is quite fascinating as it covers the entire planet. The data is sourced
 from https://nomads.ncep.noaa.gov/ which contains a staggering amount of publicly
 available data. Currently we are just dipping our toes in those waters and providing
-Sea Surface Temperature, Air Temperature, Wave Heights, Ocean Currents and
+Sea Surface Temperature, Air Temperature, Ocean Currents and
 the Ozone Layer data resolved to a 0.25 degree grid (with interpolation/smoothing
 as required).
 
-Each of Sea Surface Temperature, Ocean Currents, Wave Heights, Air Temperature, Ozone,
+Each of Sea Surface Temperature, Ocean Currents, Air Temperature, Ozone,
 Storm Watch and Greenhouse Gases is mutually exclusive as a "climate base layer" — the
 `Show` tab presents them as radio buttons rather than independent checkboxes, since they
 each colourise the entire planet and having more than one on at once would just be a
@@ -500,12 +509,6 @@ But there is another mode available `Anomaly SST` which shows the variation from
 Air/land temperatures are a measure of what's going on in our atmosphere, resolved
 globally at the same grid resolution as everything else here.
 ![Air Temperature](docs/atmos-gl-air-temperature.png)
-
-#### Waves
-This one is a colourisation depicting wave height across the planet. It gets quite
-interesting when you watch waves interacting with a storm, or a tsunami eventuates
-from an earthquake.
-![Waves](docs/atmos-gl-waves.png)
 
 #### Ocean Currents
 These are depicted as curves with arrows showing the flows going on in our oceans
