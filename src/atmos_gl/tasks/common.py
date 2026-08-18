@@ -822,6 +822,15 @@ class MultiHourRenderMixin:
                      (architecture review candidate "interleave per-hour rendering
                      across layers").
 
+        A "hour actually (re)plotted" means plot_fn ran without raising AND
+        should_plot_for_hour now reports the hour complete -- not merely that plot_fn
+        returned. Some plot_fn implementations (WindUpdater, ScalarFieldUpdater)
+        deliberately swallow a partial internal failure so it doesn't also block an
+        independent output (see issue #283); without this recheck, a hour that fails
+        the same way on every attempt would count as "done" here, get re-selected as
+        the earliest still-pending hour on every future call, and starve every later
+        hour behind it forever under max_hours=1's round-robin dispatch.
+
         Returns the number of hours actually (re)plotted.
         """
         # Resolve the run from the CATALOG (what's actually ingested), not from a
@@ -848,6 +857,7 @@ class MultiHourRenderMixin:
         hours = [h for h in hours if h >= now_fhour]
 
         plotted = 0
+        attempted = 0
         examined = 0
         for fh in hours:
             examined += 1
@@ -857,9 +867,9 @@ class MultiHourRenderMixin:
             field = self.get_db_field_at_hour(state, product_name)
             if not field or not field_ready(field):
                 continue
+            attempted += 1
             try:
                 plot_fn(field, state)
-                plotted += 1
                 # Advance last_updated as each hour lands, not just once the whole
                 # cycle (every TASK_CLASSES entry) finishes — a multi-hour layer can
                 # take a long time to catch up on a cold start, and the Data Status
@@ -873,8 +883,26 @@ class MultiHourRenderMixin:
                 # briefly point at an older hour than it did a moment ago (hours render
                 # in ascending order) before reaching the true latest again -- accepted
                 # in exchange for every layer visibly progressing instead of one at a
-                # time.
+                # time. Published even when the hour turns out still-incomplete below
+                # (e.g. a swallowed partial failure) -- whatever DID get written should
+                # still reach the frontend's stable filename right away.
                 self.publish_current_hour(state.fhour)
+                # plot_fn not raising is NOT proof this hour is done: WindUpdater and
+                # ScalarFieldUpdater deliberately swallow a known, deterministic Cartopy
+                # antimeridian bug (issue #283/PR #281) internally so a contourf failure
+                # doesn't also block their texture output. That means the same hour can
+                # fail this way on every attempt and never produce a complete
+                # per_hour_outputs set. Crediting that as a "success" toward max_hours
+                # would make this method re-select the same permanently-broken hour
+                # (always the earliest pending one, since hours are ascending) on every
+                # future call forever -- under max_hours=1's round-robin dispatch that
+                # starves every later hour behind it (observed live: Data Status stuck
+                # at 0% while the log repeats "static render fNNN failed" for one hour).
+                # Re-checking here is cheap (catalog metadata only, no array load) and
+                # only credits genuinely-complete hours, so the loop moves on to try a
+                # later hour instead of stalling on this one.
+                if not self.should_plot_for_hour(state, product_name):
+                    plotted += 1
             except Exception as e:
                 logger.warning(f"{self.section}: plot f{state.fhour:03d} failed: {e}")
             if max_hours is not None and plotted >= max_hours:
@@ -888,6 +916,11 @@ class MultiHourRenderMixin:
                 else f"({len(hours)} available, {len(hours) - plotted} already fresh)"
             )
             logger.info(f"{self.section}: rendered {plotted} hour(s) {suffix}.")
+        elif attempted:
+            logger.warning(
+                f"{self.section}: attempted {attempted} hour(s) but none completed "
+                f"({len(hours)} available) -- still incomplete, will retry next cycle."
+            )
         else:
             logger.debug(
                 f"{self.section}: all {len(hours)} hour(s) fresh; nothing to render."

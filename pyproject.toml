@@ -13,7 +13,7 @@ dependencies = [
     "alembic>=1.18.5",
     "authlib>=1.7.2",
     "beautifulsoup4==4.14.3",
-    "cartopy==0.24.1",
+    "cartopy==0.25.0",
     "cdsapi>=0.7.7",
     "cfgrib==0.9.15.1",
     "configparser==7.2.0",

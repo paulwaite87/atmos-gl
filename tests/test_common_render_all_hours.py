@@ -30,11 +30,34 @@ def make_bare_layer(hours_resolved=("2026-06-13", "18", [0, 3, 6])):
     return u
 
 
+def _pending_then_done(already_done=()):
+    """should_plot_for_hour stub paired with a plot_fn side_effect: an hour reads as
+    "needs plotting" (True) until mark_done() has been called for it -- mirrors real
+    should_plot_for_hour, which flips False once plot_fn has actually written the
+    hour's outputs. render_all_hours re-checks should_plot_for_hour right after a
+    non-raising plot_fn call to decide whether the hour counts toward max_hours (a
+    plot_fn that swallows its own partial failure, like WindUpdater/ScalarFieldUpdater,
+    can return without raising yet leave the hour incomplete -- see render_all_hours'
+    docstring) -- so tests simulating "this hour rendered successfully" must flip the
+    same way, not just return a constant.
+    """
+    done = set(already_done)
+
+    def should_plot(state, product):
+        return state.fhour not in done
+
+    def mark_done(field, state):
+        done.add(state.fhour)
+
+    return should_plot, mark_done
+
+
 def test_builds_a_fresh_state_per_hour_and_passes_it_to_plot_fn():
     u = make_bare_layer()
-    u.should_plot_for_hour = MagicMock(return_value=True)
+    should_plot, mark_done = _pending_then_done()
+    u.should_plot_for_hour = MagicMock(side_effect=should_plot)
     u.get_db_field_at_hour = MagicMock(return_value={"values": [[1.0]]})
-    plot_fn = MagicMock()
+    plot_fn = MagicMock(side_effect=mark_done)
 
     plotted = u.render_all_hours("isobars", plot_fn, field_ready=lambda f: True)
 
@@ -50,9 +73,10 @@ def test_builds_a_fresh_state_per_hour_and_passes_it_to_plot_fn():
 
 def test_skips_hours_that_are_already_fresh():
     u = make_bare_layer()
-    u.should_plot_for_hour = MagicMock(side_effect=lambda state, product: state.fhour != 3)
+    should_plot, mark_done = _pending_then_done(already_done=(3,))
+    u.should_plot_for_hour = MagicMock(side_effect=should_plot)
     u.get_db_field_at_hour = MagicMock(return_value={"values": [[1.0]]})
-    plot_fn = MagicMock()
+    plot_fn = MagicMock(side_effect=mark_done)
 
     plotted = u.render_all_hours("isobars", plot_fn, field_ready=lambda f: True)
 
@@ -75,16 +99,48 @@ def test_skips_hours_whose_field_is_not_ready():
 
 def test_one_hour_plot_failure_does_not_stop_the_others():
     u = make_bare_layer()
-    u.should_plot_for_hour = MagicMock(return_value=True)
+    should_plot, mark_done = _pending_then_done()
+    u.should_plot_for_hour = MagicMock(side_effect=should_plot)
     u.get_db_field_at_hour = MagicMock(return_value={"values": [[1.0]]})
 
     def flaky_plot(field, state):
         if state.fhour == 3:
             raise RuntimeError("boom")
+        mark_done(field, state)
 
     plotted = u.render_all_hours("isobars", flaky_plot, field_ready=lambda f: True)
 
     assert plotted == 2  # hours 0 and 6 still rendered despite hour 3 raising
+
+
+def test_a_hour_that_never_completes_does_not_block_later_hours():
+    """Regression: a plot_fn that swallows its own partial failure (WindUpdater/
+    ScalarFieldUpdater's contourf-vs-texture split, issue #283) never raises, so
+    "plot_fn didn't raise" alone can't be trusted as "this hour is done". Before
+    render_all_hours re-checked should_plot_for_hour, a permanently-broken earliest
+    hour would count as plotted every call, get re-selected first again next call
+    (still earliest, still pending), and -- under max_hours=1's round-robin dispatch --
+    starve every later hour behind it forever (observed live: Data Status stuck at 0%,
+    logs repeating "static render fNNN failed" for one hour)."""
+    u = make_bare_layer()
+    should_plot, mark_done = _pending_then_done()
+    u.should_plot_for_hour = MagicMock(side_effect=should_plot)
+    u.get_db_field_at_hour = MagicMock(return_value={"values": [[1.0]]})
+
+    def _plot(field, state):
+        if state.fhour != 0:
+            mark_done(field, state)  # hour 0 never actually completes
+
+    plot_fn = MagicMock(side_effect=_plot)
+
+    plotted = u.render_all_hours("isobars", plot_fn, field_ready=lambda f: True, max_hours=1)
+
+    assert plotted == 1
+    seen_hours = [call.args[1].fhour for call in plot_fn.call_args_list]
+    # hour 0 is attempted (and published) but not credited; the loop moves on and
+    # yields as soon as hour 3 genuinely completes, instead of stopping cold on 0.
+    assert seen_hours == [0, 3]
+    assert u.publish_current_hour.call_args_list == [((0,),), ((3,),)]
 
 
 def test_publishes_each_plotted_hour_immediately():
@@ -117,9 +173,10 @@ def test_does_not_publish_when_nothing_needs_plotting():
 
 def test_max_hours_stops_after_plotting_that_many_and_yields():
     u = make_bare_layer()
-    u.should_plot_for_hour = MagicMock(return_value=True)
+    should_plot, mark_done = _pending_then_done()
+    u.should_plot_for_hour = MagicMock(side_effect=should_plot)
     u.get_db_field_at_hour = MagicMock(return_value={"values": [[1.0]]})
-    plot_fn = MagicMock()
+    plot_fn = MagicMock(side_effect=mark_done)
 
     plotted = u.render_all_hours("isobars", plot_fn, field_ready=lambda f: True, max_hours=1)
 
@@ -131,9 +188,10 @@ def test_max_hours_stops_after_plotting_that_many_and_yields():
 
 def test_max_hours_none_drains_the_whole_backlog():
     u = make_bare_layer()
-    u.should_plot_for_hour = MagicMock(return_value=True)
+    should_plot, mark_done = _pending_then_done()
+    u.should_plot_for_hour = MagicMock(side_effect=should_plot)
     u.get_db_field_at_hour = MagicMock(return_value={"values": [[1.0]]})
-    plot_fn = MagicMock()
+    plot_fn = MagicMock(side_effect=mark_done)
 
     plotted = u.render_all_hours("isobars", plot_fn, field_ready=lambda f: True, max_hours=None)
 
@@ -160,9 +218,10 @@ def test_skips_hours_before_now_fhour():
     replay its entire past backlog first."""
     u = make_bare_layer(hours_resolved=("2026-06-13", "18", [0, 3, 6, 9]))
     u._now_fhour = MagicMock(return_value=6)
-    u.should_plot_for_hour = MagicMock(return_value=True)
+    should_plot, mark_done = _pending_then_done()
+    u.should_plot_for_hour = MagicMock(side_effect=should_plot)
     u.get_db_field_at_hour = MagicMock(return_value={"values": [[1.0]]})
-    plot_fn = MagicMock()
+    plot_fn = MagicMock(side_effect=mark_done)
 
     plotted = u.render_all_hours("isobars", plot_fn, field_ready=lambda f: True)
 
@@ -174,9 +233,10 @@ def test_skips_hours_before_now_fhour():
 def test_skips_hours_before_now_fhour_respects_max_hours():
     u = make_bare_layer(hours_resolved=("2026-06-13", "18", [0, 3, 6, 9]))
     u._now_fhour = MagicMock(return_value=6)
-    u.should_plot_for_hour = MagicMock(return_value=True)
+    should_plot, mark_done = _pending_then_done()
+    u.should_plot_for_hour = MagicMock(side_effect=should_plot)
     u.get_db_field_at_hour = MagicMock(return_value={"values": [[1.0]]})
-    plot_fn = MagicMock()
+    plot_fn = MagicMock(side_effect=mark_done)
 
     plotted = u.render_all_hours("isobars", plot_fn, field_ready=lambda f: True, max_hours=1)
 
