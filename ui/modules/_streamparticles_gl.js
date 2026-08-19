@@ -451,8 +451,19 @@ void main(){
     float dlon = abs(pA.x - pB.x);
     float dlat = abs(pA.y - pB.y);
     float seg2 = dlon*dlon + dlat*dlat;
-    // discard: land, degenerate (land-frozen coincident), stray-long.
-    if (vsB.z < 0.5 || seg2 < 1e-12 || seg2 > (0.02*0.02)) {
+    // discard: land, degenerate (land-frozen coincident -> pA==pB exactly), stray-long.
+    // The degenerate threshold is RELATIVE to u_H, not a fixed absolute UV-space
+    // constant: u_H is deliberately shrunk as zoom increases (curLengthZoomFactor at
+    // this shader's call site) to keep the ribbon's SCREEN-SPACE length constant, so a
+    // real, moving segment's seg2 shrinks right along with it. A fixed absolute cutoff
+    // (previously 1e-12) can't tell "genuinely frozen/calm" (seg2 exactly/near zero,
+    // any positive threshold catches it) apart from "just tiny because zoomed in" once
+    // u_H shrinks far enough -- past roughly zoom 9-10 for wind's H range, EVERY
+    // segment fell under the fixed cutoff and the whole particle vanished. Scaling by
+    // u_H*u_H keeps a real segment's margin above the cutoff constant across zoom
+    // levels instead of shrinking it away.
+    float minSeg2 = 1e-4 * u_H * u_H;
+    if (vsB.z < 0.5 || seg2 < minSeg2 || seg2 > (0.02*0.02)) {
         v_speed = 0.0; v_t = 0.0; gl_Position = vec4(2.0,2.0,2.0,1.0); return;
     }
     v_speed = length(vsB.xy);

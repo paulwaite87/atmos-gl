@@ -6,12 +6,17 @@
 // (captures gl_Position/v_speed/v_t per vertex without rasterizing), against a mock
 // identity projectTile so expected screen-space output is exactly computable in JS.
 //
-// Covers two previously-untested claims from the file's own docstring:
+// Covers three previously-untested claims from the file's own docstring:
 //   1. The tail is traced UPSTREAM from the head -- for eastward flow, the tail-side
 //      point of the first ribbon segment must sit WEST of the head.
 //   2. A streamline that runs into land freezes (cp_step's `ended` latch) and the
 //      resulting coincident segment is discarded (the "meteor" class of artifact this
 //      technique was designed to make structurally impossible).
+//   3. Regression for the wind-particles-vanish-at-high-zoom bug: a real, moving
+//      segment must survive the degenerate-segment discard even when u_H is shrunk to
+//      a high-zoom-realistic size (curLengthZoomFactor keeps ribbons a constant SCREEN
+//      length as zoom increases, so u_H legitimately gets tiny) -- the discard must
+//      only catch genuinely coincident/frozen points, not "small because zoomed in".
 import { chromium } from "playwright";
 import { extractFromParticlesEngine } from "./extract_shaders.js";
 
@@ -190,9 +195,23 @@ async function main() {
     assert(v.x >= 1.9 && v.y >= 1.9, `landward segment 15: expected the discard sentinel (2,2,2,1) once frozen on land, got ${JSON.stringify(v)}`);
   }
 
+  // 3. High-zoom regression: same uniform eastward flow, but H shrunk to a size
+  // curLengthZoomFactor's floor (1e-6) can actually produce at high zoom (~zoom 20+
+  // for wind's own H range) -- well below the OLD fixed 1e-12 absolute cutoff, which
+  // discarded every segment regardless of real motion (issue: wind particles vanish
+  // around zoom 9-10). A real, non-land, non-frozen segment must still survive.
+  const highZoom = await runStreamlineQuad({
+    headX: 0.5, headY: 0.5, vmax, halfThick, H: 1e-6, viewport,
+    velTexture: uniformOceanTexture(4, 1.25, 0.0, vmax),
+  });
+  const hzSeg0 = highZoom.slice(0, 6);
+  for (const v of hzSeg0) assert(v.w > 0.9, `high-zoom segment 0: expected a valid (non-discarded) vertex even with tiny H, got w=${v.w}`);
+  assert(hzSeg0.every((v) => Math.abs(v.speed - 1.25) < 0.05), `high-zoom segment 0: expected v_speed~1.25 for all corners, got ${JSON.stringify(hzSeg0.map((v) => v.speed))}`);
+
   console.log("PASS: streamparticles_streamline_geometry");
   console.log(`  segment 0: tail-side v_t=${fOld.toFixed(4)} west of head-side v_t=${fNew}`);
   console.log(`  land-adjacent streamline: segment 15 correctly discarded (frozen/coincident)`);
+  console.log(`  high-zoom (tiny H) streamline: segment 0 still drawn, not falsely treated as degenerate`);
 }
 
 main().catch((err) => {
