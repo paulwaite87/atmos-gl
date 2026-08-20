@@ -770,15 +770,27 @@ class MultiHourRenderMixin:
             except Exception as e:
                 logger.warning(f"{self.section}: failed to publish {src} -> {dst}: {e}")
 
-    def should_plot_for_hour(self, state: "ForecastState", product_name: str) -> bool:
+    def should_plot_for_hour(
+        self, state: "ForecastState", product_name: str, settings_sig: str | None = None
+    ) -> bool:
         """Check if a per-hour output needs updating.
 
         Returns True if:
           - The output file doesn't exist, OR
+          - settings_sig is given and doesn't match the '<output>.sig' sidecar, OR
           - The field's valid_time is newer than the output file's mtime
 
         Returns False if the file is already fresh. This prevents re-plotting
         when data hasn't changed. Uses the catalog metadata only (no array load).
+
+        settings_sig (optional): a string from Updater._settings_signature(),
+        capturing the render-relevant settings (e.g. isobars' linewidth/color/step).
+        A settings-only change touches neither the output file's mtime nor the data's
+        updated_at, so without this check an edited setting would never actually
+        re-render an already-cached hour -- mirrors Updater._is_render_fresh's
+        identical '<out>.sig' sidecar, used by single-shot layers. Missing/mismatched
+        sig counts as stale. Callers that don't pass one (None, the default) keep the
+        old data-only freshness behaviour unchanged.
         """
         output_path = self.get_output_path_for_hour(state.fhour)
         base, ext = os.path.splitext(output_path)
@@ -793,6 +805,14 @@ class MultiHourRenderMixin:
         missing = [p for p in required_paths if not os.path.exists(p)]
         if missing:
             return True
+
+        if settings_sig is not None:
+            try:
+                with open(f"{output_path}.sig") as f:
+                    if f.read() != settings_sig:
+                        return True
+            except FileNotFoundError:
+                return True
 
         # All outputs exist — check freshness against when the data was written.
         # Use the static PNG's mtime as the reference (oldest-equivalent; all outputs
@@ -832,7 +852,9 @@ class MultiHourRenderMixin:
             # On error, be conservative — don't plot (file is probably fine)
             return False
 
-    def render_all_hours(self, product_name, plot_fn, field_ready, max_hours=None):
+    def render_all_hours(
+        self, product_name, plot_fn, field_ready, max_hours=None, settings_sig=None
+    ):
         """Gap-filling per-hour render loop.
 
         The scrubber needs a rendered PNG for every forecast hour that has data, not
@@ -855,6 +877,11 @@ class MultiHourRenderMixin:
                      monopolising a worker until its entire backlog is caught up
                      (architecture review candidate "interleave per-hour rendering
                      across layers").
+            settings_sig: optional signature (Updater._settings_signature()) of this
+                     layer's render-relevant settings, forwarded to should_plot_for_hour
+                     so a settings-only change (e.g. isobars' linewidth) invalidates
+                     already-cached hours the same way a data change does. None (the
+                     default) keeps the old data-only freshness behaviour.
 
         A "hour actually (re)plotted" means plot_fn ran without raising AND
         should_plot_for_hour now reports the hour complete -- not merely that plot_fn
@@ -890,13 +917,18 @@ class MultiHourRenderMixin:
         now_fhour = self._now_fhour(run_date, run_id)
         hours = [h for h in hours if h >= now_fhour]
 
+        # Only pass settings_sig through when the caller actually gave one, so callers
+        # (and tests) that don't care about settings-driven staleness keep calling
+        # should_plot_for_hour with its original two-argument shape.
+        sig_kwargs = {"settings_sig": settings_sig} if settings_sig is not None else {}
+
         plotted = 0
         attempted = 0
         examined = 0
         for fh in hours:
             examined += 1
             state = ForecastState.at_hour(run_date, run_id, fh)
-            if not self.should_plot_for_hour(state, product_name):
+            if not self.should_plot_for_hour(state, product_name, **sig_kwargs):
                 continue
             field = self.get_db_field_at_hour(state, product_name)
             if not field or not field_ready(field):
@@ -921,6 +953,13 @@ class MultiHourRenderMixin:
                 # (e.g. a swallowed partial failure) -- whatever DID get written should
                 # still reach the frontend's stable filename right away.
                 self.publish_current_hour(state.fhour)
+                # Written BEFORE the should_plot_for_hour recheck below, so a genuinely
+                # complete render is recognised as such by that same call rather than
+                # reading its own just-written signature as still "missing".
+                if settings_sig is not None:
+                    self._write_render_signature(
+                        self.get_output_path_for_hour(state.fhour), settings_sig
+                    )
                 # plot_fn not raising is NOT proof this hour is done: WindUpdater and
                 # ScalarFieldUpdater deliberately swallow a known, deterministic Cartopy
                 # antimeridian bug (issue #283/PR #281) internally so a contourf failure
@@ -935,7 +974,7 @@ class MultiHourRenderMixin:
                 # Re-checking here is cheap (catalog metadata only, no array load) and
                 # only credits genuinely-complete hours, so the loop moves on to try a
                 # later hour instead of stalling on this one.
-                if not self.should_plot_for_hour(state, product_name):
+                if not self.should_plot_for_hour(state, product_name, **sig_kwargs):
                     plotted += 1
             except Exception as e:
                 logger.warning(f"{self.section}: plot f{state.fhour:03d} failed: {e}")
