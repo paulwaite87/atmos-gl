@@ -4,6 +4,7 @@ import json
 import logging
 import shutil
 import numpy as np
+from cartopy.util import add_cyclic_point
 from scipy.interpolate import RegularGridInterpolator
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -469,6 +470,39 @@ class Updater:
         mesh_lats, mesh_lons = np.meshgrid(new_lats, new_lons, indexing="ij")
         field_smooth = fn((mesh_lats, mesh_lons))
         return new_lats, new_lons, field_smooth
+
+    def close_lon_seam_for_contour(self, lons, field, lon_span_threshold=359.0):
+        """Appends a duplicate of the first column at lons[-1]+step (cartopy.util.
+        add_cyclic_point) so a contour()/contourf() call spanning the whole globe
+        closes the loop at the antimeridian, instead of leaving a visible seam.
+
+        matplotlib's contour machinery has no concept of a periodic domain: a global
+        grid's last column (e.g. 179.75°) and first column (-180°) are geographically
+        adjacent but numerically the two opposite EDGES of a plain rectangular grid,
+        so contour lines simply stop dead at each edge and filled polygons don't
+        connect across them -- caught live as a hard vertical break in both the
+        isobars and precipitation static renders, running the full height of the
+        antimeridian.
+
+        Deliberately applied only at each contourf/contour call site, immediately
+        before the call -- NOT folded into regrid_for_lod's own return contract.
+        Several consumers of that grid (GPU texture encoding via encode_frames/
+        encode_uv, for the wind/currents/waves/precipitation animated layers) rely on
+        its exact "new_lons has exactly 360/step columns" width invariant (see
+        regrid_for_lod's own comment on the GFS-grid gap it already corrects for) --
+        appending a column there would silently break that invariant again the same
+        way the wind/currents/wave particle "west of where the shader thought it was
+        sampling" bug did before.
+
+        Returns (lons, field) unchanged for a regional (non-global) span -- there's
+        no real wraparound to close, and add_cyclic_point would insert a bogus point
+        past the field's real edge."""
+        lons = np.asarray(lons)
+        lon_span = lons.max() - lons.min()
+        if lon_span < lon_span_threshold:
+            return lons, field
+        field, lons = add_cyclic_point(np.asarray(field), coord=lons)
+        return lons, field
 
     def layer_status(self) -> dict:
         """Read-only snapshot for the Config UI's Data Status tab — the layer-task

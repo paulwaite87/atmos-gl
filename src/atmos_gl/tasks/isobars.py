@@ -40,6 +40,10 @@ class IsobarUpdater(Updater, MultiHourRenderMixin):
         lats = clamp_lats_to_mercator_limit(field0["lat"])
         lons = field0["lon"]
         p = field0["values"]  # already smoothed from unpacker
+        # Isobars render straight from the native grid (no regrid_for_lod call here),
+        # so the antimeridian seam has to be closed directly -- see
+        # close_lon_seam_for_contour's docstring for why contour() needs this at all.
+        lons, p = self.close_lon_seam_for_contour(lons, p)
 
         plot = Plot(self.map_data.region)
         plot.get_figure()

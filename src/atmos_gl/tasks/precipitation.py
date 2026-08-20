@@ -132,10 +132,16 @@ class PrecipitationUpdater(SingleHourScalarUpdater):
 
         # Render Heatmap Contour
         prate_smooth = gaussian_filter(prate_smooth, sigma=filter_sigma)
+        # Closes the antimeridian seam for this static render only -- see
+        # close_lon_seam_for_contour's docstring. regrid_for_lod's own new_lons/
+        # prate_smooth stay untouched for any other use (there is none here: the GPU
+        # data texture below is encoded from field0["values"], the native grid, not
+        # this LOD-regridded one).
+        contour_lons, contour_prate = self.close_lon_seam_for_contour(new_lons, prate_smooth)
         plot.ax.contourf(
-            new_lons,
+            contour_lons,
             clamp_lats_to_mercator_limit(new_lats),
-            prate_smooth,
+            contour_prate,
             levels=levels,
             cmap=cmap,
             norm=norm,
