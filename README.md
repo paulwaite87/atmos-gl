@@ -808,12 +808,13 @@ Or just one service:
 
 See [Watching It Work](#watching-it-work) above for what a healthy log cycle looks like.
 
-One useful command for shipping is:
+One useful command for a quick data snapshot is:
 
     make status
 
-That will print out some status info about ships in each region, ship totals and also lightning
-strikes per region.
+That prints a summary of everything currently stored in the database — ships and lightning per
+region, plus earthquakes, volcanic activity, fires, world events, storms, satellites, weather
+model cache coverage, place markers, and flight radar — one heading per data domain.
 
 ### Testing a Changed Layer Faster (Round-Robin Priority)
 `layer_builder` renders the multi-hour layers (isobars, precipitation, wind, currents,

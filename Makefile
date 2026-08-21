@@ -190,6 +190,70 @@ status:
 	 LEFT JOIN lightning_strikes l ON ST_Within(l.geom, r.boundary) \
 	 GROUP BY r.label \
 	 ORDER BY strikes DESC;"
+	@echo "\n--- Earthquakes in Each Region ---"
+	@docker compose exec -T $(DB_SERVICE) psql -U $(DB_USER) $(DB_NAME) -c \
+	"SELECT r.label as region, count(e.id) as quakes \
+	 FROM map_region r \
+	 LEFT JOIN earthquakes e ON ST_Within(e.geom, r.boundary) \
+	 GROUP BY r.label \
+	 ORDER BY quakes DESC;"
+	@echo "\n--- Earthquake Magnitude Summary ---"
+	@docker compose exec -T $(DB_SERVICE) psql -U $(DB_USER) $(DB_NAME) -c \
+	"SELECT count(*) as total, \
+	    round(min(mag)::numeric, 1) as weakest, \
+	    round(max(mag)::numeric, 1) as strongest, \
+	    round(avg(mag)::numeric, 1) as avg_mag \
+	 FROM earthquakes;"
+	@echo "\n--- Volcanic Activity by Alert Level ---"
+	@docker compose exec -T $(DB_SERVICE) psql -U $(DB_USER) $(DB_NAME) -c \
+	"SELECT coalesce(hans_alert_level, 'Not HANS-tracked') as alert_level, count(*) \
+	 FROM volcanic_activity \
+	 GROUP BY alert_level \
+	 ORDER BY count(*) DESC;"
+	@echo "\n--- Active Fire Detections by Confidence ---"
+	@docker compose exec -T $(DB_SERVICE) psql -U $(DB_USER) $(DB_NAME) -c \
+	"SELECT confidence, count(*) \
+	 FROM fires \
+	 GROUP BY confidence \
+	 ORDER BY count(*) DESC;"
+	@echo "\n--- World Events by Category ---"
+	@docker compose exec -T $(DB_SERVICE) psql -U $(DB_USER) $(DB_NAME) -c \
+	"SELECT category, count(*) \
+	 FROM world_events \
+	 GROUP BY category \
+	 ORDER BY count(*) DESC;"
+	@echo "\n--- Active Storms ---"
+	@docker compose exec -T $(DB_SERVICE) psql -U $(DB_USER) $(DB_NAME) -c \
+	"SELECT s.sid, s.name, \
+	    (SELECT count(*) FROM storm_track st WHERE st.sid = s.sid) as track_points \
+	 FROM storms s \
+	 ORDER BY s.name;"
+	@echo "\n--- Satellites Tracked ---"
+	@docker compose exec -T $(DB_SERVICE) psql -U $(DB_USER) $(DB_NAME) -c \
+	"SELECT count(*) as total, min(epoch) as oldest_epoch, max(epoch) as newest_epoch \
+	 FROM satellites;"
+	@echo "\n--- Weather Model Data by Product ---"
+	@docker compose exec -T $(DB_SERVICE) psql -U $(DB_USER) $(DB_NAME) -c \
+	"SELECT product, count(*) as cached_entries, max(valid_time) as latest_valid_time \
+	 FROM field_catalog \
+	 GROUP BY product \
+	 ORDER BY product;"
+	@echo "\n--- Place Markers by Kind ---"
+	@docker compose exec -T $(DB_SERVICE) psql -U $(DB_USER) $(DB_NAME) -c \
+	"SELECT kind, count(*) \
+	 FROM markers \
+	 GROUP BY kind \
+	 ORDER BY count(*) DESC;"
+	@echo "\n--- Aircraft Currently Tracked ---"
+	@docker compose exec -T $(DB_SERVICE) psql -U $(DB_USER) $(DB_NAME) -c \
+	"SELECT count(*) FILTER (WHERE on_ground) as on_ground, \
+	    count(*) FILTER (WHERE NOT on_ground) as airborne, \
+	    count(*) as total \
+	 FROM aircraft;"
+	@echo "\n--- Flight Routes Resolved ---"
+	@docker compose exec -T $(DB_SERVICE) psql -U $(DB_USER) $(DB_NAME) -c \
+	"SELECT count(*) FILTER (WHERE stops IS NOT NULL) as with_route, count(*) as total_lookups \
+	 FROM flight_route;"
 
 ## help: Show this help menu
 help:
