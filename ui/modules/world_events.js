@@ -8,7 +8,7 @@ import { fetchOrThrow, escapeHtml, buildPopupHtml } from './_feedhelpers.js';
 // one when a color-coded circle already carries the category distinction.
 const CATEGORY_LABELS = {
     explosion: 'Explosion',
-    warfare: 'Warfare',
+    warfare: 'Conflict or War',
     targeted_violence: 'Targeted / Mass Violence',
     diplomacy: 'Diplomatic Meeting',
 };

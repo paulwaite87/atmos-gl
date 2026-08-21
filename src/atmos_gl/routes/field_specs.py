@@ -799,6 +799,7 @@ _LABEL_OVERRIDES = {
     ("volcanoes", "so2_min"): "Smoke Plume Threshold",
     ("world_events", "min_mentions"): "Minimum corroborating sources",
     ("world_events", "backfill_days"): "Initial backfill window",
+    ("world_events", "show_warfare"): "Show conflict",
     ("world_events", "show_targeted_violence"): "Show targeted / mass violence",
 }
 
