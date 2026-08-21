@@ -68,6 +68,11 @@ services:
       - ./data:/opt/project/data
       - ./config:/opt/project/config
       - ./markers:/opt/project/markers
+      # Bind-mounted rather than baked into the image so `make status` (scripts/
+      # status.sh execs into this service) picks up scripts/ changes on a plain
+      # `git pull` -- no image rebuild/republish needed, same reasoning as ./config
+      # above. Read-only: nothing running in this container ever writes to it.
+      - ./scripts:/opt/project/scripts:ro
     networks:
       - agl
 
