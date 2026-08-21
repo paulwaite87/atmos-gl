@@ -28,12 +28,17 @@ stop:
 	docker compose down
 
 ## bootstrap-config: Ensure live config/atmos-gl.json, .env, and docker-compose.override.yml exist, and keep atmos-gl.json's shape synced with its template (adds template keys you're missing, drops keys the template no longer defines, never touches the value of anything already there)
+# sync_config.py runs via bare python3, not `uv run` -- it's pure stdlib (no
+# atmos_gl/project deps), and `uv run` here would drag in the whole project's
+# venv+117-package bootstrap just to edit a JSON file, on a host that may only
+# have docker/make/python3 (a lean prod box, unlike a dev machine) -- keep it
+# that way rather than "helpfully" reintroducing uv for consistency.
 bootstrap-config:
 	@if [ ! -f config/atmos-gl.json ]; then \
 		cp config/atmos-gl.json.tmpl config/atmos-gl.json; \
 		echo "Created config/atmos-gl.json from config/atmos-gl.json.tmpl"; \
 	else \
-		uv run python tools/sync_config.py; \
+		python3 tools/sync_config.py; \
 	fi
 	@if [ ! -f .env ]; then \
 		cp .env.tmpl .env; \
