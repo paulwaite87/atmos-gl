@@ -86,6 +86,10 @@ the configuration webpage there. If you do use that page, and save some changes 
 will overwrite your `atmos-gl.json` — which is fine, but if you want to preserve your own
 hand-edits, make a backup copy of the file first.
 
+The configurator and the Data Status page (below) both require signing in as an admin —
+see [Account & Personal Settings](#account--personal-settings) for how an account
+becomes an admin.
+
 The live globe itself is at `http://localhost:8180`.
 
 Here is a shot of the homepage for the configurator at `http://localhost:9000/config`
@@ -100,6 +104,25 @@ If you change something in `config/atmos-gl.json` by hand rather than through th
 restart the backend to pick it up:
 
     ./atmos-gl.sh restart
+
+### Account & Personal Settings
+The live globe itself (`http://localhost:8180`) needs no account at all — it's open to
+anyone who can reach it. Signing in (Google or GitHub, via the hamburger menu top-right)
+unlocks two things beyond that:
+
+* **Personal settings** — a signed-in user can save their own overrides for most sliders/
+  toggles/colours (camera start position, palettes, opacity, thresholds and the like),
+  layered on top of the shared `config/atmos-gl.json` rather than replacing it: your
+  override wins for you, everyone else still gets the shared default. Settings that
+  affect what the backend actually renders (not just how it's displayed) stay admin-only,
+  shared config.
+* **Admin access** — one or more accounts can be designated admin (via an email
+  allowlist in `.env`). Only an admin account can reach the configurator
+  (`http://localhost:9000/config`, which edits the shared `atmos-gl.json` default
+  everyone else's overrides sit on top of) and the Data Status page.
+
+The account menu also has a settings link, sign-out, account deletion, and shows the
+running release version in its footer.
 
 ### API Keys
 Some of the data resources we are lucky enough to have free access to are only available
@@ -212,6 +235,22 @@ of what's happening on the planet day and night. It has its own opacity, colour 
 softness settings if you'd like to tune the look, and can simply be switched off if you'd
 rather have an unshaded view of whatever layers you have enabled.
 
+### Place Markers
+A static layer of city/town and marine feature labels (in the `Miscellaneous` group of
+the `Show` tab), with priority-based label collision handling so busy areas don't turn
+into an unreadable jumble of overlapping text as you zoom in and out. Turn on
+`Weather popup` and hovering a marker shows a live-sampled temperature, humidity and
+wind reading for that exact point, sourced from the same GFS atmos data every other
+weather layer uses — a quick way to check conditions for a specific city without
+needing any colourising layer switched on at all.
+
+### Coastline Outline (Landmass)
+A thin outline layer (`Miscellaneous` group) tracing coastlines and lake shores,
+independent of any basemap style. Useful mainly alongside data layers or basemaps
+where landmass boundaries otherwise get lost — it has its own line colour, a
+contrasting halo colour (so it stays legible over any combination of basemap and data
+layers underneath), line width and opacity.
+
 ### Watching It Work
 To tail the logs of everything:
 
@@ -256,6 +295,7 @@ The full list is:
 * Clouds
 * Isobars
 * Wind speed & direction
+* Jet stream
 * Precipitation
 * Precipitable water (atmospheric moisture)
 * Sea surface temperature
@@ -274,6 +314,7 @@ The full list is:
 * Flight Radar
 * Satellites
 * Place markers
+* Landmass outline (coastlines/lakes)
 
 Each of these has its own configuration options.
 
@@ -281,7 +322,10 @@ Hopefully the settings in each section are fairly self-explanatory.
 
 In the web configuration UI, the `Show` tab controls what gets shown on the map. If 
 something is disabled, then the following tabs will show that section disabled, to avoid 
-cluttering the interface.
+cluttering the interface. A checked layer whose underlying `Data Collector` is itself
+switched off (see [Data Collector](#data-collector) below) is greyed out too, with an
+explanation — a nudge that the checkbox alone won't get you data, since there's nothing
+being collected for it to show.
 
 The data for these elements is also updated according to a frequency determined by a 
 `Runs per day `setting. This is to restrict load on the remote servers, which only update 
@@ -343,6 +387,15 @@ layer is quite good paired with isobars where you can see the effect of differin
 pressure. If you want to see Precipitation at the same time as Wind then I recommend
 you set `Heatmap opacity` of the underlying wind speed canvas to zero.
 ![Wind](docs/atmos-gl-wind.png)
+
+#### Jet Stream
+The high-altitude core of fastest wind (around the 250mb level), shown as animated
+particle trails the same way Wind is, but with no underlying heatmap — the trails
+themselves, colour-coded by speed, are the whole picture. It shares Wind/Currents'
+particle engine, and reads the same GFS atmos data, just at a much higher, faster-moving
+level. A `Palette` selector lets you pick between a few different colour treatments
+(`stratosphere`, `aurora`, `inferno`) for however you like the jet core to look against
+the basemap.
 
 #### Waves
 This one is a colourisation depicting wave height across the planet, GFS-sourced (same
@@ -662,6 +715,11 @@ everything enabled the system is configured to be a light footprint in terms of 
 download requests, so all you scarifice there is some disk space. That said, if you are
 genuinely never going to look at some of the data, it makes no sense to collect it.
 ![Data Status](docs/atmos-gl-conf-status.png)
+
+If you're running on a small VPS or a machine you don't want pegged, the `Global` tab's
+`Performance tier` setting (Low/Medium/High) caps how many layers `layer_builder` renders
+concurrently — lower it if rendering is starving other things on the host of CPU/RAM;
+raise it for faster rendering on a beefier machine.
 
 ### Satellites
 Plotting satellite paths is something that XPlanet did, and since that venerable project
