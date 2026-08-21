@@ -443,6 +443,31 @@ FIELD_SPECS = {
     ("fires", "min_risk_filter"): SliderSpec(
         min=0, max=100, step=5, suffix="", zero_label="off", personalizable=True
     ),
+    # World Events (GDELT Event Database 2.0, curated CAMEO code allowlist -- see
+    # collectors/world_events.py). expiry_days is a pure read-time WHERE filter
+    # (WorldEventAdapter.get_events_as_geojson) -- every viewer shares the same
+    # underlying rows, only how far back a given query looks changes, same shape as
+    # quakes'/fires' own personalizable expiry sliders. min_mentions/backfill_days
+    # are NOT personalizable: unlike fires' confidence/frp (filtered only at read
+    # time, every detection is always stored), min_mentions gates what
+    # WorldEventsCollector.collect() stores in the first place -- a real,
+    # shared collection-cost control, not a per-viewer display preference.
+    ("world_events", "enabled"): _ENABLED_PERSONALIZABLE,
+    ("world_events", "opacity"): _OPACITY,
+    ("world_events", "marker_size"): SliderSpec(
+        min=0.5, max=3.0, step=0.1, decimals=1, suffix="x", personalizable=True
+    ),
+    ("world_events", "expiry_days"): SliderSpec(
+        min=1, max=14, step=1, suffix=" day", pluralize=True, personalizable=True
+    ),
+    ("world_events", "min_mentions"): SliderSpec(min=0, max=100, step=5),
+    ("world_events", "backfill_days"): SliderSpec(
+        min=1, max=14, step=1, suffix=" day", pluralize=True
+    ),
+    ("world_events", "show_explosion"): ToggleSpec(personalizable=True),
+    ("world_events", "show_warfare"): ToggleSpec(personalizable=True),
+    ("world_events", "show_targeted_violence"): ToggleSpec(personalizable=True),
+    ("world_events", "show_diplomacy"): ToggleSpec(personalizable=True),
     # --- Misc (satellites, terminator, markers, flightradar) ---
     ("satellites", "enabled"): _ENABLED_PERSONALIZABLE,
     ("satellites", "sat_names"): _SAT_NAMES,
@@ -772,6 +797,9 @@ _LABEL_OVERRIDES = {
     ("fires", "min_risk_filter"): "Fire risk display threshold",
     ("volcanoes", "smoke_opacity"): "Smoke Plume Opacity",
     ("volcanoes", "so2_min"): "Smoke Plume Threshold",
+    ("world_events", "min_mentions"): "Minimum corroborating sources",
+    ("world_events", "backfill_days"): "Initial backfill window",
+    ("world_events", "show_targeted_violence"): "Show targeted / mass violence",
 }
 
 
@@ -807,6 +835,7 @@ SECTION_LABELS = {
     "quakes": "Earthquakes",
     "volcanoes": "Volcanoes",
     "fires": "Wildfires",
+    "world_events": "World Events",
     "satellites": "Satellites",
     "terminator": "Terminator Night/day Shade",
     "markers": "Place Markers",
