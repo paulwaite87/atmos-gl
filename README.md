@@ -309,6 +309,8 @@ The full list is:
 * Active storms
 * Earthquakes
 * Volcanoes (with a Smoke Plume/SO2 overlay)
+* Wildfires
+* World Events (conflict, explosions and high-level diplomacy)
 * Air Quality (PM2.5/PM10/Smoke/SO2)
 * Shipping
 * Flight Radar
@@ -504,6 +506,27 @@ the globe and hence how high the fire risk is, as well as highlighting areas whe
 fires are most probably burning. When you see a group of many together spread across
 a line or in a cluster, there is a high probability is is a wildfire.
 ![Wildfires](docs/atmos-gl-wildfires.png)
+
+#### World Events
+Sourced from the [GDELT Project](https://www.gdeltproject.org)'s real-time Event
+Database, refreshed roughly every 15 minutes. Rather than showing GDELT's entire
+firehose of hundreds of thousands of daily events, this layer is filtered down to a
+curated, high-signal set of four categories:
+
+* **Explosion** — suicide, car and roadside bombings
+* **Warfare** — armed conflict, occupation, ceasefire violations
+* **Targeted / mass violence** — abductions, assassinations, mass killings, use of
+  weapons of mass destruction
+* **Diplomatic Meeting** — a genuinely high-level summit or negotiation (NATO, the UN,
+  G7/G8/G20, the EU, and similar bodies), not just any two officials on a routine call
+
+Each category has its own marker colour, and can be individually shown or hidden in
+`World Events Properties`, alongside marker size, opacity, and how many days of history
+to display. Hovering a marker shows who was involved, where, when, how many sources
+reported it, and a link to read the original article. On first setup the layer
+backfills a configurable window of recent history (three days by default) so it isn't
+empty while waiting for new data to arrive, and self-heals if the collector is ever
+offline for a while.
 
 #### Air Quality
 Needs a [Copernicus CDS/ADS API Key](#copernicus-cdsads-api-key), the same one used by

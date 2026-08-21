@@ -168,6 +168,7 @@
                                 <div class="col-md-6"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="quakes__enabled"><label class="form-check-label fw-bold ms-2">Earthquakes</label></div></div>
                                 <div class="col-md-6"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="volcanoes__enabled"><label class="form-check-label fw-bold ms-2">Volcanoes</label></div></div>
                                 <div class="col-md-6"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="fires__enabled"><label class="form-check-label fw-bold ms-2">Wildfires</label></div></div>
+                                <div class="col-md-6"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="world_events__enabled"><label class="form-check-label fw-bold ms-2">World Events</label></div></div>
                                 <div class="col-md-6">
                                     <div class="form-check form-switch">
                                         <input class="form-check-input" type="checkbox" id="air_quality__enabled">
@@ -194,7 +195,7 @@
 
                     <div class="tab-pane fade" id="weather-pane"><div id="container-weather">{{ field_macros.render_tab_group(["clouds", "isobars", "wind", "jetstream", "precipitation", "pwat", "lightning", "storms", "waves"], config_data) }}</div></div>
                     <div class="tab-pane fade" id="climate-pane"><div id="container-climate">{{ field_macros.render_tab_group(["sst", "currents", "temperature", "ozone", "stormwatch", "greenhouse_gases"], config_data) }}</div></div>
-                    <div class="tab-pane fade" id="events-pane"><div id="container-events">{{ field_macros.render_tab_group(["quakes", "volcanoes", "fires", "air_quality"], config_data) }}</div></div>
+                    <div class="tab-pane fade" id="events-pane"><div id="container-events">{{ field_macros.render_tab_group(["quakes", "volcanoes", "fires", "world_events", "air_quality"], config_data) }}</div></div>
                     <div class="tab-pane fade" id="misc-pane"><div id="container-misc">{{ field_macros.render_tab_group(["satellites", "terminator", "markers", "flightradar", "landmass", "shipping"], config_data) }}</div></div>
                     <div class="tab-pane fade" id="background-pane">
                         <div class="grouping-box">
@@ -358,7 +359,7 @@
         });
 
         function parseExplicitElements(data) {
-            ['clouds', 'isobars', 'wind', 'jetstream', 'precipitation', 'pwat', 'lightning', 'storms', 'waves', 'quakes', 'volcanoes', 'fires', 'air_quality', 'satellites', 'shipping', 'terminator', 'markers', 'flightradar', 'landmass'].forEach(layer => {
+            ['clouds', 'isobars', 'wind', 'jetstream', 'precipitation', 'pwat', 'lightning', 'storms', 'waves', 'quakes', 'volcanoes', 'fires', 'world_events', 'air_quality', 'satellites', 'shipping', 'terminator', 'markers', 'flightradar', 'landmass'].forEach(layer => {
                 const el = document.getElementById(`${layer}__enabled`);
                 if (el && data[layer]) {
                     el.checked = !!data[layer].enabled;
@@ -475,6 +476,7 @@
                 "quakes": document.getElementById('quakes__enabled')?.checked,
                 "volcanoes": document.getElementById('volcanoes__enabled')?.checked,
                 "fires": document.getElementById('fires__enabled')?.checked,
+                "world_events": document.getElementById('world_events__enabled')?.checked,
                 "air_quality": document.getElementById('air_quality__enabled')?.checked,
                 "satellites": document.getElementById('satellites__enabled')?.checked,
                 "terminator": document.getElementById('terminator__enabled')?.checked,
@@ -526,7 +528,7 @@
 
             const payload = JSON.parse(JSON.stringify(masterConfigCache));
 
-            ['clouds', 'isobars', 'wind', 'jetstream', 'precipitation', 'pwat', 'lightning', 'storms', 'waves', 'quakes', 'volcanoes', 'fires', 'air_quality', 'satellites', 'terminator', 'markers', 'flightradar', 'landmass', 'shipping', 'shipping_collector', 'lightning_collector', 'satellites_collector', 'data_collector'].forEach(layer => {
+            ['clouds', 'isobars', 'wind', 'jetstream', 'precipitation', 'pwat', 'lightning', 'storms', 'waves', 'quakes', 'volcanoes', 'fires', 'world_events', 'air_quality', 'satellites', 'terminator', 'markers', 'flightradar', 'landmass', 'shipping', 'shipping_collector', 'lightning_collector', 'satellites_collector', 'data_collector'].forEach(layer => {
                 if (payload[layer]) payload[layer].enabled = document.getElementById(`${layer}__enabled`)?.checked || false;
             });
 

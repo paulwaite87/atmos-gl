@@ -15,6 +15,8 @@ Synchronous event feeds  (COLLECTORS)        — write straight to the DB
   fires      — NASA FIRMS VIIRS_NOAA20_NRT active-fire CSV, runs_per_day=24 (every ~hour)
   satellites — CelesTrak OMM JSON, runs_per_day=6
   markers    — LOCAL markers.geojson -> DB 'markers' table (mtime-gated, not remote)
+  world_events — GDELT Event Database 2.0 export files, runs_per_day=96 (every ~15min,
+               matching GDELT's own update cadence), curated CAMEO code allowlist
 
 Synchronous file caches  (CACHE_COLLECTORS)  — write an image/netCDF under {workdir}/data
 --------------------------------------------------------------------------
@@ -64,6 +66,7 @@ from .volcanoes import VolcanicActivityCollector
 from .fires import FiresCollector
 from .satellites import SatellitesCollector
 from .markers_sync import MarkersSyncCollector
+from .world_events import WorldEventsCollector
 from atmos_gl.collectors.sst import SstCollector
 from atmos_gl.collectors.clouds import CloudsCollector
 from atmos_gl.collectors.greenhouse_gases import (
@@ -86,6 +89,7 @@ COLLECTORS = (
     FiresCollector,
     SatellitesCollector,
     MarkersSyncCollector,
+    WorldEventsCollector,
 )
 
 # Synchronous file-cache collectors (image/netCDF under {workdir}/data), driven by
