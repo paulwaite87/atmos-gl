@@ -2,6 +2,7 @@ import { liveLayerSync } from './_refresh.js';
 import { timeline } from './timeline.js';
 import { scrubber } from './scrubber.js';
 import { flagBackfill } from './_backfill.js';
+import { linkProg } from './_particlegl_primitives.js';
 
 /**
  * GPU scalar-field FILL as a MapLibre v5 CUSTOM WEBGL LAYER.
@@ -71,6 +72,53 @@ void main(){
     vec4 clip = projectTile(toMerc(vec2(nx, ny)));
     gl_Position = clip;
 }`;
+
+// Build the lon/lat mesh (two triangles per cell), tiled across WORLD_COPIES' extra
+// +-360 degree strips (see that constant's own docstring). Shared by createFillLayer
+// (hour-animated) and createStaticFillLayer (single texture) -- identical geometry
+// either way, since the seam-tiling need doesn't depend on how many textures a given
+// fill variant samples.
+function buildFillMesh(gl) {
+    const verts = [];
+    const dLon = 360 / MESH_COLS, dLat = (2 * LAT_MAX) / MESH_ROWS;
+    for (let r = 0; r < MESH_ROWS; r++) {
+        const lat0 = LAT_MAX - r * dLat, lat1 = LAT_MAX - (r + 1) * dLat;
+        for (let w = -WORLD_COPIES; w <= WORLD_COPIES; w++) {
+            const wOff = w * 360;
+            for (let c = 0; c < MESH_COLS; c++) {
+                const lon0 = -180 + wOff + c * dLon, lon1 = -180 + wOff + (c + 1) * dLon;
+                verts.push(lon0, lat0, lon1, lat0, lon0, lat1,
+                           lon0, lat1, lon1, lat0, lon1, lat1);
+            }
+        }
+    }
+    const meshVertCount = verts.length / 2;
+    const meshBuf = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, meshBuf);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(verts), gl.STATIC_DRAW);
+    return { meshBuf, meshVertCount };
+}
+
+// A blank (1x1, transparent) global data texture, parameterised for a LINEAR-filtered
+// GPU sample of an always-global equirect field. REPEAT (not CLAMP_TO_EDGE) on S: the
+// data texture's columns always span a complete 360 degrees (render is always global),
+// so REPEAT lets the sampler wrap straight across the antimeridian instead of clamping
+// to the edge texel, which produced a hard vertical break there (found live: isobars/
+// precipitation/etc. static renders had already been fixed via close_lon_seam_for_contour,
+// but that only closes the seam in the matplotlib PNG -- this GPU data texture, sampled
+// by this shader, is a separate path with its own seam). T stays CLAMP_TO_EDGE: latitude
+// is not cyclic (poles). Shared by createFillLayer's per-hour textures and
+// createStaticFillLayer's single texture -- both are global LINEAR-filtered samples.
+function initGlobalDataTexture(gl) {
+    const tex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([0, 0, 0, 0]));
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    return tex;
+}
 
 /** Resolve any CSS colour string ("White", "#07f", "rgb(...)") to [r,g,b] in 0..1. */
 export function cssToRgb(str) {
@@ -227,78 +275,20 @@ void main(){
     fragColor = shade(value, uv);
 }`;
 
-    const compile = (gl, type, src) => {
-        const sh = gl.createShader(type);
-        gl.shaderSource(sh, src); gl.compileShader(sh);
-        if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) {
-            console.warn(`[${sectionKey}] shader compile:`, gl.getShaderInfoLog(sh));
-            return null;
-        }
-        return sh;
-    };
     const getProg = (gl, shaderData) => {
         const key = shaderData.variantName || '__default__';
         if (progCache.has(key)) return progCache.get(key);
         if (progFailed) return null;
         const vs = `#version 300 es\n${shaderData.vertexShaderPrelude}\n${shaderData.define}\n${VS_BODY}`;
         const fs = `#version 300 es\n${FS_BODY}`;
-        const v = compile(gl, gl.VERTEX_SHADER, vs), f = compile(gl, gl.FRAGMENT_SHADER, fs);
-        if (!v || !f) { progFailed = true; return null; }
-        const p = gl.createProgram();
-        gl.attachShader(p, v); gl.attachShader(p, f); gl.linkProgram(p);
-        gl.deleteShader(v); gl.deleteShader(f);
-        if (!gl.getProgramParameter(p, gl.LINK_STATUS)) {
-            console.warn(`[${sectionKey}] link:`, gl.getProgramInfoLog(p));
-            progFailed = true; return null;
-        }
+        const p = linkProg(gl, vs, fs, false, sectionKey);
+        if (!p) { progFailed = true; return null; }
         progCache.set(key, p);
         return p;
     };
 
-    // Build the lon/lat mesh (two triangles per cell). Static geometry; the globe
-    // projection happens per-frame in the vertex shader.
-    const buildMesh = (gl) => {
-        const verts = [];
-        const dLon = 360 / MESH_COLS, dLat = (2 * LAT_MAX) / MESH_ROWS;
-        for (let r = 0; r < MESH_ROWS; r++) {
-            const lat0 = LAT_MAX - r * dLat, lat1 = LAT_MAX - (r + 1) * dLat;
-            // See WORLD_COPIES' docstring: repeat the lon strip at +-360 degree offsets
-            // so geometry exists for whichever world copy the camera needs near the seam.
-            for (let w = -WORLD_COPIES; w <= WORLD_COPIES; w++) {
-                const wOff = w * 360;
-                for (let c = 0; c < MESH_COLS; c++) {
-                    const lon0 = -180 + wOff + c * dLon, lon1 = -180 + wOff + (c + 1) * dLon;
-                    verts.push(lon0, lat0, lon1, lat0, lon0, lat1,
-                               lon0, lat1, lon1, lat0, lon1, lat1);
-                }
-            }
-        }
-        meshVertCount = verts.length / 2;
-        meshBuf = gl.createBuffer();
-        gl.bindBuffer(gl.ARRAY_BUFFER, meshBuf);
-        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(verts), gl.STATIC_DRAW);
-    };
-
     const makeHourTexture = (gl, hour, bust = bustKey) => {
-        const entry = { tex: gl.createTexture(), ready: false, loading: true };
-        gl.bindTexture(gl.TEXTURE_2D, entry.tex);
-        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([0,0,0,0]));
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-        // REPEAT (not CLAMP_TO_EDGE) on S: the data texture's columns always span a
-        // complete 360 degrees (render is always global -- see regrid_for_lod's own
-        // "exactly 360/width degrees per column" invariant, which isobars' native
-        // 0.25 deg GFS grid already satisfies without regridding). REPEAT lets the GPU
-        // sampler -- including bicubicVal's out-of-[0,1] taps near the edge -- wrap
-        // straight across the antimeridian instead of clamping to the edge texel,
-        // which produced a hard vertical break in contour lines there (found live:
-        // isobars/precipitation/etc. static renders had already been fixed via
-        // close_lon_seam_for_contour, but that only closes the seam in the matplotlib
-        // PNG -- this GPU data texture, sampled by _webglfill's own shader, is a
-        // separate path with its own seam). T stays CLAMP_TO_EDGE: latitude is not
-        // cyclic (poles).
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        const entry = { tex: initGlobalDataTexture(gl), ready: false, loading: true };
         const img = new Image();
         img.crossOrigin = 'anonymous';
         img.onload = () => {
@@ -389,7 +379,7 @@ void main(){
         onAdd(m, gl) {
             glRef = gl;
             progCache = new Map(); progFailed = false;
-            buildMesh(gl);
+            ({ meshBuf, meshVertCount } = buildFillMesh(gl));
             bustKey = timeline.get().refreshEpoch || Date.now();
             lastSnap = timeline.get();
             // Upload the colour LUT now that we have a GL context (mountFill runs
@@ -617,15 +607,6 @@ void main(){
     fragColor = shade(value, v_uv);
 }`;
 
-    const compile = (gl, type, src) => {
-        const sh = gl.createShader(type);
-        gl.shaderSource(sh, src); gl.compileShader(sh);
-        if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) {
-            console.warn(`[${sectionKey}] shader compile:`, gl.getShaderInfoLog(sh));
-            return null;
-        }
-        return sh;
-    };
     // shaderData supplies MapLibre's projectTile() prelude (globe/mercator variant) --
     // without it the VS_BODY call to projectTile() has nothing defining it. Cached per
     // variantName like createFillLayer.getProg, since MapLibre swaps variants across a
@@ -636,39 +617,10 @@ void main(){
         if (progFailed) return null;
         const vs = `#version 300 es\n${shaderData.vertexShaderPrelude}\n${shaderData.define}\n${VS_BODY}`;
         const fs = `#version 300 es\n${FS_BODY}`;
-        const v = compile(gl, gl.VERTEX_SHADER, vs), f = compile(gl, gl.FRAGMENT_SHADER, fs);
-        if (!v || !f) { progFailed = true; return null; }
-        const p = gl.createProgram();
-        gl.attachShader(p, v); gl.attachShader(p, f); gl.linkProgram(p);
-        gl.deleteShader(v); gl.deleteShader(f);
-        if (!gl.getProgramParameter(p, gl.LINK_STATUS)) {
-            console.warn(`[${sectionKey}] link:`, gl.getProgramInfoLog(p));
-            progFailed = true; return null;
-        }
+        const p = linkProg(gl, vs, fs, false, sectionKey);
+        if (!p) { progFailed = true; return null; }
         progCache.set(key, p);
         return p;
-    };
-
-    const buildMesh = (gl) => {
-        const verts = [];
-        const dLon = 360 / MESH_COLS, dLat = (2 * LAT_MAX) / MESH_ROWS;
-        for (let r = 0; r < MESH_ROWS; r++) {
-            const lat0 = LAT_MAX - r * dLat, lat1 = LAT_MAX - (r + 1) * dLat;
-            // See WORLD_COPIES' docstring (createFillLayer's buildMesh above) -- same
-            // antimeridian world-copy gap applies to this single-texture variant too.
-            for (let w = -WORLD_COPIES; w <= WORLD_COPIES; w++) {
-                const wOff = w * 360;
-                for (let c = 0; c < MESH_COLS; c++) {
-                    const lon0 = -180 + wOff + c * dLon, lon1 = -180 + wOff + (c + 1) * dLon;
-                    verts.push(lon0, lat0, lon1, lat0, lon0, lat1,
-                               lon0, lat1, lon1, lat0, lon1, lat1);
-                }
-            }
-        }
-        meshVertCount = verts.length / 2;
-        meshBuf = gl.createBuffer();
-        gl.bindBuffer(gl.ARRAY_BUFFER, meshBuf);
-        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(verts), gl.STATIC_DRAW);
     };
 
     const uploadCmap = (gl, lut) => {
@@ -688,16 +640,7 @@ void main(){
     // finishing after a newer one and overwriting fresher data with stale bytes.
     const loadDataTexture = (gl, url) => {
         if (!dataTex) {
-            dataTex = gl.createTexture();
-            gl.bindTexture(gl.TEXTURE_2D, dataTex);
-            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([0, 0, 0, 0]));
-            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-            // REPEAT on S, same antimeridian reasoning as createFillLayer's
-            // makeHourTexture above -- these single-shot fields (SST, greenhouse
-            // gases) are global too. T stays CLAMP_TO_EDGE (latitude isn't cyclic).
-            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
-            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+            dataTex = initGlobalDataTexture(gl);
         }
         const seq = ++loadSeq;
         const img = new Image();
@@ -718,7 +661,7 @@ void main(){
         onAdd(m, gl) {
             glRef = gl;
             progCache = new Map(); progFailed = false;
-            buildMesh(gl);
+            ({ meshBuf, meshVertCount } = buildFillMesh(gl));
             if (colormap) { const lut = colormap(curCfg); if (lut) uploadCmap(gl, lut); }
             loadDataTexture(gl, `${dataUrl(curCfg)}?t=${Date.now()}`);
         },
