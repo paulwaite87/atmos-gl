@@ -514,7 +514,7 @@ firehose of hundreds of thousands of daily events, this layer is filtered down t
 curated, high-signal set of four categories:
 
 * **Explosion** — suicide, car and roadside bombings
-* **Warfare** — armed conflict, occupation, ceasefire violations
+* **Conflict** — armed conflict, occupation, ceasefire violations
 * **Targeted / mass violence** — abductions, assassinations, mass killings, use of
   weapons of mass destruction
 * **Diplomatic Meeting** — a genuinely high-level summit or negotiation (NATO, the UN,
