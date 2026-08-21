@@ -27,11 +27,13 @@ endif
 stop:
 	docker compose down
 
-## bootstrap-config: Ensure live config/atmos-gl.json, .env, and docker-compose.override.yml exist (never overwrites any if already there)
+## bootstrap-config: Ensure live config/atmos-gl.json, .env, and docker-compose.override.yml exist, and keep atmos-gl.json's shape synced with its template (adds template keys you're missing, drops keys the template no longer defines, never touches the value of anything already there)
 bootstrap-config:
 	@if [ ! -f config/atmos-gl.json ]; then \
 		cp config/atmos-gl.json.tmpl config/atmos-gl.json; \
 		echo "Created config/atmos-gl.json from config/atmos-gl.json.tmpl"; \
+	else \
+		uv run python tools/sync_config.py; \
 	fi
 	@if [ ! -f .env ]; then \
 		cp .env.tmpl .env; \
