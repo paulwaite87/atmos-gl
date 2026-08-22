@@ -29,11 +29,19 @@ def _row(
     num_mentions="20", num_sources="2", goldstein="1.0", avg_tone="0.5",
     date_added="20260821120000", source_url="http://example.com/a",
     global_event_id="123", action_geo_fullname="Somewhere",
+    # Non-blank by default so tests unrelated to actor-vetting keep classifying as
+    # before -- see test_classify_conflict_categories_require_a_state_or_group_actor
+    # for the case that deliberately blanks these out.
+    actor1_country="USA", actor2_country="", actor1_type1="", actor2_type1="",
 ):
     fields = [""] * 61
     fields[0] = global_event_id
     fields[6] = actor1
+    fields[7] = actor1_country
+    fields[12] = actor1_type1
     fields[16] = actor2
+    fields[17] = actor2_country
+    fields[22] = actor2_type1
     fields[26] = event_code
     fields[30] = goldstein
     fields[31] = num_mentions
@@ -64,17 +72,28 @@ class _FakeResponse:
 # ---- _classify ---------------------------------------------------------------------
 
 def test_classify_explosion_codes():
-    assert _classify("183", None, None) == "explosion"
-    assert _classify("1831", None, None) == "explosion"
+    assert _classify("183", None, None, True) == "explosion"
+    assert _classify("1831", None, None, True) == "explosion"
 
 
 def test_classify_warfare_codes():
-    assert _classify("193", None, None) == "warfare"
+    assert _classify("193", None, None, True) == "warfare"
 
 
 def test_classify_targeted_violence_codes():
-    assert _classify("202", None, None) == "targeted_violence"
-    assert _classify("2041", None, None) == "targeted_violence"
+    assert _classify("202", None, None, True) == "targeted_violence"
+    assert _classify("2041", None, None, True) == "targeted_violence"
+
+
+def test_classify_conflict_categories_require_a_state_or_group_actor():
+    """The false-positive fix: GDELT's NLP coder can match figurative "battle"/
+    "fight"/"war" language (e.g. a film-casting article about "the battle to become
+    the next James Bond") into these CAMEO bands. A real conflict's actors resolve to
+    a country/military/group entity in CAMEO's dictionaries; an unresolvable proper
+    noun doesn't, so has_state_actor=False drops it instead of miscategorizing it."""
+    assert _classify("183", "Some Actor", None, False) is None
+    assert _classify("193", "Some Actor", None, False) is None
+    assert _classify("202", "Some Actor", None, False) is None
 
 
 def test_classify_diplomacy_requires_both_root_code_and_org_match():
@@ -125,6 +144,15 @@ def test_parse_export_rows_excludes_unclassified_and_missing_coords():
     ])
     rows = _parse_export_rows(csv_text)
     assert len(rows) == 1
+
+
+def test_parse_export_rows_excludes_conflict_code_with_unresolved_actor():
+    """Regression test for the GDELT false-positive fix: a warfare-coded event whose
+    actors don't resolve to any CAMEO country/military/group entity (Actor*CountryCode
+    and Type1-3Code all blank) is dropped, not upserted as "Conflict or War"."""
+    csv_text = _row(event_code="193", actor1_country="", actor2_country="")
+    rows = _parse_export_rows(csv_text)
+    assert rows == []
 
 
 def test_parse_export_rows_skips_malformed_lines_without_raising():

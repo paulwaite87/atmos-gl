@@ -16,6 +16,16 @@ categories:
     organization list -- root 04 alone is too generic (any two officials on a routine
     call would qualify); see _DIPLOMACY_ORGS.
 
+Explosion/Warfare/Targeted-violence additionally require at least one actor to resolve
+to a real state/military/organized-group entity (a non-blank Actor1/Actor2 CountryCode
+or Type1-3Code -- see _has_state_actor()), the same actor-vetting principle Diplomacy
+already applies via _DIPLOMACY_ORGS. GDELT's NLP event-coder matches on bare verb
+phrases and will code figurative "battle"/"fight"/"war" language -- e.g. a film-casting
+article about "the battle to become the next James Bond" -- into these conflict bands;
+such an article's actors don't resolve to anything in CAMEO's country/military/group
+dictionaries the way a real conflict's actors do, so requiring that resolution filters
+the false positive at the source instead of guessing at tone/mention thresholds.
+
 has_new_data() diffs lastupdate.txt's named export file against the last one actually
 processed, so an unchanged 15-min window costs only a small text fetch. Backfill is
 coverage-based, not empty-table-gated: every collect() compares the oldest stored
@@ -40,7 +50,15 @@ logger = logging.getLogger(__name__)
 # 0-indexed column positions in GDELT 2.0's tab-delimited export CSV.
 _COL_GLOBALEVENTID = 0
 _COL_ACTOR1NAME = 6
+_COL_ACTOR1COUNTRYCODE = 7
+_COL_ACTOR1TYPE1CODE = 12
+_COL_ACTOR1TYPE2CODE = 13
+_COL_ACTOR1TYPE3CODE = 14
 _COL_ACTOR2NAME = 16
+_COL_ACTOR2COUNTRYCODE = 17
+_COL_ACTOR2TYPE1CODE = 22
+_COL_ACTOR2TYPE2CODE = 23
+_COL_ACTOR2TYPE3CODE = 24
 _COL_EVENTCODE = 26
 _COL_GOLDSTEIN = 30
 _COL_NUM_MENTIONS = 31
@@ -72,13 +90,28 @@ _DIPLOMACY_ORGS = (
 _EXPORT_FILE_RE = re.compile(r"(\d{14})\.export\.CSV\.zip$")
 
 
-def _classify(event_code: str, actor1_name: str | None, actor2_name: str | None) -> str | None:
+def _has_state_actor(*codes: str | None) -> bool:
+    """True when at least one Actor1/Actor2 CountryCode or Type1-3Code field resolved
+    to something. GDELT's CAMEO actor dictionary only populates these when the raw
+    actor text matched a known country, government, military, or organized-group
+    pattern -- an unresolvable proper noun (e.g. a film-casting article's "Pierce
+    Brosnan") leaves them all blank even though Actor1Name/Actor2Name still carry the
+    raw text. See module docstring for why this gates the conflict categories."""
+    return any((c or "").strip() for c in codes)
+
+
+def _classify(
+    event_code: str,
+    actor1_name: str | None,
+    actor2_name: str | None,
+    has_state_actor: bool = False,
+) -> str | None:
     if event_code in _EXPLOSION_CODES:
-        return "explosion"
+        return "explosion" if has_state_actor else None
     if event_code in _WARFARE_CODES:
-        return "warfare"
+        return "warfare" if has_state_actor else None
     if event_code in _TARGETED_VIOLENCE_CODES:
-        return "targeted_violence"
+        return "targeted_violence" if has_state_actor else None
     if event_code in _DIPLOMACY_EVENT_CODES:
         names = f"{actor1_name or ''} {actor2_name or ''}".upper()
         if any(org in names for org in _DIPLOMACY_ORGS):
@@ -102,7 +135,13 @@ def _parse_export_rows(csv_text: str) -> list[dict]:
         event_code = parts[_COL_EVENTCODE].strip()
         actor1_name = parts[_COL_ACTOR1NAME].strip() or None
         actor2_name = parts[_COL_ACTOR2NAME].strip() or None
-        category = _classify(event_code, actor1_name, actor2_name)
+        has_state_actor = _has_state_actor(
+            parts[_COL_ACTOR1COUNTRYCODE], parts[_COL_ACTOR1TYPE1CODE],
+            parts[_COL_ACTOR1TYPE2CODE], parts[_COL_ACTOR1TYPE3CODE],
+            parts[_COL_ACTOR2COUNTRYCODE], parts[_COL_ACTOR2TYPE1CODE],
+            parts[_COL_ACTOR2TYPE2CODE], parts[_COL_ACTOR2TYPE3CODE],
+        )
+        category = _classify(event_code, actor1_name, actor2_name, has_state_actor)
         if category is None:
             continue
 
