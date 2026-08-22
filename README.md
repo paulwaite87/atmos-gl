@@ -311,6 +311,7 @@ The full list is:
 * Volcanoes (with a Smoke Plume/SO2 overlay)
 * Wildfires
 * World Events (conflict, explosions and high-level diplomacy)
+* Troublespots (multi-source convergence zones)
 * Air Quality (PM2.5/PM10/Smoke/SO2)
 * Shipping
 * Flight Radar
@@ -527,6 +528,25 @@ reported it, and a link to read the original article. On first setup the layer
 backfills a configurable window of recent history (three days by default) so it isn't
 empty while waiting for new data to arrive, and self-heals if the collector is ever
 offline for a while.
+
+#### Troublespots
+A derived layer, not its own data source: it flags areas where at least two of four
+independently-collected feeds converge within the same geographic cell and time window —
+
+* **Earthquakes**
+* **Wildfires**
+* **Volcanic Activity**
+* **World Events** (any of the four categories above, counted once regardless of category)
+
+Convergence is banded by how many of the four types overlap in a cell — **Elevated** (2),
+**High** (3), **Severe** (4) — each rendered as a smooth, hatched boundary outlined in
+that band's colour, so it reads as a heatmap-style zone rather than a hard grid. Hovering
+a zone breaks down exactly which sources contributed and how many reports came from each.
+Cell size and time window are both configurable.
+
+Because it has no collector of its own, the `Show` checkbox is only available (not greyed
+out) once at least two of its four source layers' Data Collectors are enabled — with only
+zero or one contributing, a troublespot can never form.
 
 #### Air Quality
 Needs a [Copernicus CDS/ADS API Key](#copernicus-cdsads-api-key), the same one used by

@@ -468,6 +468,21 @@ FIELD_SPECS = {
     ("world_events", "show_warfare"): ToggleSpec(personalizable=True),
     ("world_events", "show_targeted_violence"): ToggleSpec(personalizable=True),
     ("world_events", "show_diplomacy"): ToggleSpec(personalizable=True),
+    # Troublespots (issue #366) -- a derived multi-domain convergence layer over
+    # World Events/Earthquakes/Fires/Volcanic Activity, computed live per request (no
+    # table, no collector of its own). cell_size_deg/window_hours are NOT
+    # personalizable, unlike every other layer's opacity/expiry: they control the
+    # underlying convergence computation itself, which is meant to be one objective,
+    # shared signal every viewer sees the same way -- letting each user tune their own
+    # severity map would undermine that (see the design's roster/config decision).
+    ("troublespots", "enabled"): _ENABLED_PERSONALIZABLE,
+    ("troublespots", "opacity"): _OPACITY,
+    ("troublespots", "cell_size_deg"): SliderSpec(
+        min=1.0, max=5.0, step=0.5, decimals=1, suffix=" deg"
+    ),
+    ("troublespots", "window_hours"): SliderSpec(
+        min=12, max=168, step=12, suffix="h"
+    ),
     # --- Misc (satellites, terminator, markers, flightradar) ---
     ("satellites", "enabled"): _ENABLED_PERSONALIZABLE,
     ("satellites", "sat_names"): _SAT_NAMES,
@@ -801,6 +816,8 @@ _LABEL_OVERRIDES = {
     ("world_events", "backfill_days"): "Initial backfill window",
     ("world_events", "show_warfare"): "Show conflict",
     ("world_events", "show_targeted_violence"): "Show targeted / mass violence",
+    ("troublespots", "cell_size_deg"): "Cell size (degrees)",
+    ("troublespots", "window_hours"): "Convergence window",
 }
 
 
@@ -837,6 +854,7 @@ SECTION_LABELS = {
     "volcanoes": "Volcanoes",
     "fires": "Wildfires",
     "world_events": "World Events",
+    "troublespots": "Troublespots",
     "satellites": "Satellites",
     "terminator": "Terminator Night/day Shade",
     "markers": "Place Markers",
