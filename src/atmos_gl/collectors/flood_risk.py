@@ -40,6 +40,7 @@ from atmos_gl.lib.flood_risk import (
     ensure_jrc_tile_extents_cached,
     glofas_forecast_cache_path,
     jrc_hazard_mosaic_cache_path,
+    jrc_tile_cache_path,
     load_gumbel_fit,
     load_jrc_tile_index,
     regrid_nearest,
@@ -257,6 +258,22 @@ class FloodRiskHistoricalCollector(CollectorBase):
     channel_key = "flood_risk_historical"
     display_label = "JRC Flood Hazard (Historical)"
 
+    # collect() runs synchronously inside CollectorService.collect_once()'s single
+    # sequential sweep (collectors/service.py) -- everything after this collector in
+    # that sweep (event feeds, then GFS/RTOFS field ingestion), AND the
+    # "data_collector" service heartbeat itself, all wait for collect() to return.
+    # Downloading every remaining tile in one call can take long enough (network
+    # latency x up to 271 tiles, ~515MB total -- ensure_jrc_tile_cached()'s own
+    # docstring notes this host observed mid-transfer failures on a 271-tile batch)
+    # to push that heartbeat past the Data Status page's dead threshold, which reads
+    # as the WHOLE data_collector service being down even though it's just busy with
+    # this one-time historical backfill. Capping actual NEW downloads per call
+    # (already-cached tiles are free -- they don't count) bounds collect()'s
+    # wall-clock time regardless of how many tiles remain, spreading the initial
+    # backfill across is_stale()'s normal hourly cadence instead -- matching this
+    # class's own docstring, which already claimed (but didn't enforce) that shape.
+    _MAX_NEW_TILE_DOWNLOADS_PER_CYCLE = 30
+
     def source_url(self) -> str | None:
         """Overridden: hardcoded open-FTP source, not a data_collector.datasources
         entry -- same "no config datasource" convention as StormsCollector's own
@@ -280,7 +297,17 @@ class FloodRiskHistoricalCollector(CollectorBase):
         mosaic = np.zeros((len(lat), len(lon)), dtype=np.uint8)
 
         cached_count = 0
+        new_downloads = 0
         for tile in tiles:
+            already_cached = os.path.exists(jrc_tile_cache_path(tile["id"], tile["name"]))
+            if not already_cached and new_downloads >= self._MAX_NEW_TILE_DOWNLOADS_PER_CYCLE:
+                logger.info(
+                    f"{self.section}: per-cycle download budget "
+                    f"({self._MAX_NEW_TILE_DOWNLOADS_PER_CYCLE} new tiles) reached "
+                    f"({cached_count}/{len(tiles)} cached so far); will resume next cycle."
+                )
+                return
+
             try:
                 tile_path = ensure_jrc_tile_cached(tile["id"], tile["name"])
             except Exception as e:
@@ -289,6 +316,8 @@ class FloodRiskHistoricalCollector(CollectorBase):
                     f"({e}); will retry next cycle."
                 )
                 continue
+            if not already_cached:
+                new_downloads += 1
             cached_count += 1
 
             row0, row1, col0, col1 = tile_dst_window(tile["bounds"])
