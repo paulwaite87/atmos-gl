@@ -333,3 +333,23 @@ def test_data_status_last_error_takes_priority_over_computed_detail():
     result = c.data_status()
 
     assert result["detail"] == "EWDS unreachable"
+
+
+def test_data_status_next_update_ignores_the_frontend_show_toggle():
+    """Regression guard: settings_section is overridden to the shared "flood_risk"
+    section (same convention as CACHE_COLLECTORS), so self.enabled here reflects the
+    layer's frontend Show-toggle, not a real collection kill-switch -- _collect_fields()
+    drives this collector every cycle unconditionally of it. next_update must stay
+    populated (matching freshness_data_status()'s next_update_respects_enabled=False
+    default) even while the toggle is off, while the returned "enabled" field still
+    correctly reports the real flag value."""
+    c = make_bare_data_status_collector(settings={"enabled": False})
+    c.process_status_adapter.get_process_status.return_value = {
+        "last_updated": None, "last_error": None,
+    }
+    c.store.field_catalog_adapter.get_latest_run_hours.return_value = None
+
+    result = c.data_status()
+
+    assert result["enabled"] is False
+    assert result["next_update"] is not None
