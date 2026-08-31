@@ -152,6 +152,12 @@
     "ch4_palette": "vivid",
     "runs_per_day": 24
   },
+  "flood_risk": {
+    "enabled": false,
+    "mode": "live",
+    "opacity": 60,
+    "runs_per_day": 24
+  },
   "storms": {
     "enabled": false,
     "expiry_days": 4,
@@ -270,6 +276,7 @@
       "sst": "https://downloads.psl.noaa.gov/Datasets/noaa.oisst.v2.highres",
       "clouds": "https://gibs.earthdata.nasa.gov/wms/epsg4326/best/wms.cgi",
       "cams_ads": "https://ads.atmosphere.copernicus.eu/api",
+      "glofas_ews": "https://ewds.climate.copernicus.eu/api",
       "jtwc": "https://www.ssd.noaa.gov/PS/TROP/DATA/ATCF/JTWC/",
       "nhc": "https://ftp.nhc.noaa.gov/atcf/fst/",
       "quakes": "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.csv",
@@ -292,6 +299,8 @@
       "ghg_forecast": true,
       "ghg_egg4_baseline": true,
       "air_quality": true,
+      "flood_risk_live": true,
+      "flood_risk_historical": true,
       "quakes": true,
       "volcanoes": true,
       "fires": true,

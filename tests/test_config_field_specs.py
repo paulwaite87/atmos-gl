@@ -945,3 +945,43 @@ def test_config_page_renders_landmass_fields_section_and_gated_fallback():
     assert 'id="landmass__color"' in html
     assert 'id="landmass__halo_color"' in html
     assert 'id="landmass__linewidth"' in html
+
+
+# --- Flood Risk (issue #371) ---
+
+
+def test_config_page_renders_flood_risk_toggle_on_show_tab():
+    resp = client.get("/config")
+    html = resp.text
+    assert 'type="checkbox" id="flood_risk__enabled"' in html
+
+
+def test_config_page_renders_flood_risk_fields_section_and_gated_fallback():
+    resp = client.get("/config")
+    html = resp.text
+    assert 'id="fields-section-flood_risk"' in html
+    assert 'id="fallback-section-flood_risk"' in html
+    assert 'id="flood_risk__mode"' in html
+    assert 'id="flood_risk__opacity"' in html
+
+
+def test_config_page_renders_flood_risk_mode_select_with_both_options():
+    resp = client.get("/config")
+    html = resp.text
+    idx = html.index('id="flood_risk__mode"')
+    select_html = html[idx : html.index("</select>", idx)]
+    assert '<option value="live"' in select_html
+    assert '<option value="historical"' in select_html
+
+
+def test_config_page_renders_glofas_warning_markup_for_the_flood_risk_gate():
+    """Locks that the admin page has the key-warn-glofas element the JS in
+    config.html looks for (`data.flood_risk.RULE__missing_glofas_apikey` ->
+    classList.remove('d-none')) -- the gate itself (mode-specific, only Live mode
+    needs GLOFAS_API_KEY) is exercised at the /api/config data layer by
+    test_flood_risk_config_gate.py; this just confirms the page has somewhere to
+    surface that flag."""
+    resp = client.get("/config")
+    html = resp.text
+    assert 'id="key-warn-glofas"' in html
+    assert "RULE__missing_glofas_apikey" in html

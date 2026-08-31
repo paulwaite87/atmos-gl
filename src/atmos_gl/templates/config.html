@@ -177,6 +177,13 @@
                                         <div id="key-warn-cdsapi-aq" class="text-danger small mt-1 d-none">⚠️ Deactivated: Missing CDSAPI_KEY.</div>
                                     </div>
                                 </div>
+                                <div class="col-md-6">
+                                    <div class="form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" id="flood_risk__enabled">
+                                        <label class="form-check-label fw-bold ms-2">Flood Risk</label>
+                                        <div id="key-warn-glofas" class="text-danger small mt-1 d-none">⚠️ Deactivated: Missing GLOFAS_API_KEY (needed for Live mode -- switch to Historical instead).</div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
@@ -196,7 +203,7 @@
 
                     <div class="tab-pane fade" id="weather-pane"><div id="container-weather">{{ field_macros.render_tab_group(["clouds", "isobars", "wind", "jetstream", "precipitation", "pwat", "lightning", "storms", "waves"], config_data) }}</div></div>
                     <div class="tab-pane fade" id="climate-pane"><div id="container-climate">{{ field_macros.render_tab_group(["sst", "currents", "temperature", "ozone", "stormwatch", "greenhouse_gases"], config_data) }}</div></div>
-                    <div class="tab-pane fade" id="events-pane"><div id="container-events">{{ field_macros.render_tab_group(["quakes", "volcanoes", "fires", "world_events", "troublespots", "air_quality"], config_data) }}</div></div>
+                    <div class="tab-pane fade" id="events-pane"><div id="container-events">{{ field_macros.render_tab_group(["quakes", "volcanoes", "fires", "world_events", "troublespots", "air_quality", "flood_risk"], config_data) }}</div></div>
                     <div class="tab-pane fade" id="misc-pane"><div id="container-misc">{{ field_macros.render_tab_group(["satellites", "terminator", "markers", "flightradar", "landmass", "shipping"], config_data) }}</div></div>
                     <div class="tab-pane fade" id="background-pane">
                         <div class="grouping-box">
@@ -360,7 +367,7 @@
         });
 
         function parseExplicitElements(data) {
-            ['clouds', 'isobars', 'wind', 'jetstream', 'precipitation', 'pwat', 'lightning', 'storms', 'waves', 'quakes', 'volcanoes', 'fires', 'world_events', 'troublespots', 'air_quality', 'satellites', 'shipping', 'terminator', 'markers', 'flightradar', 'landmass'].forEach(layer => {
+            ['clouds', 'isobars', 'wind', 'jetstream', 'precipitation', 'pwat', 'lightning', 'storms', 'waves', 'quakes', 'volcanoes', 'fires', 'world_events', 'troublespots', 'air_quality', 'flood_risk', 'satellites', 'shipping', 'terminator', 'markers', 'flightradar', 'landmass'].forEach(layer => {
                 const el = document.getElementById(`${layer}__enabled`);
                 if (el && data[layer]) {
                     el.checked = !!data[layer].enabled;
@@ -386,6 +393,16 @@
             if (aqEnabled && data.air_quality && data.air_quality.RULE__missing_cdsapi_key) {
                 aqEnabled.disabled = true; aqEnabled.checked = false;
                 document.getElementById('key-warn-cdsapi-aq').classList.remove('d-none');
+            }
+
+            // Mode-specific gate (unlike the always-on cdsapi checks above): Historical
+            // mode needs no credential at all, so this only fires when RULE__missing_
+            // glofas_apikey was actually set server-side, i.e. the stored mode is "live"
+            // and GLOFAS_API_KEY is absent (see routes/config.py's _build_config_data).
+            const floodRiskEnabled = document.getElementById('flood_risk__enabled');
+            if (floodRiskEnabled && data.flood_risk && data.flood_risk.RULE__missing_glofas_apikey) {
+                floodRiskEnabled.disabled = true; floodRiskEnabled.checked = false;
+                document.getElementById('key-warn-glofas').classList.remove('d-none');
             }
 
             const aisEnabled = document.getElementById('shipping_collector__enabled');
@@ -480,6 +497,7 @@
                 "world_events": document.getElementById('world_events__enabled')?.checked,
                 "troublespots": document.getElementById('troublespots__enabled')?.checked,
                 "air_quality": document.getElementById('air_quality__enabled')?.checked,
+                "flood_risk": document.getElementById('flood_risk__enabled')?.checked,
                 "satellites": document.getElementById('satellites__enabled')?.checked,
                 "terminator": document.getElementById('terminator__enabled')?.checked,
                 "markers": document.getElementById('markers__enabled')?.checked,
@@ -530,7 +548,7 @@
 
             const payload = JSON.parse(JSON.stringify(masterConfigCache));
 
-            ['clouds', 'isobars', 'wind', 'jetstream', 'precipitation', 'pwat', 'lightning', 'storms', 'waves', 'quakes', 'volcanoes', 'fires', 'world_events', 'troublespots', 'air_quality', 'satellites', 'terminator', 'markers', 'flightradar', 'landmass', 'shipping', 'shipping_collector', 'lightning_collector', 'satellites_collector', 'data_collector'].forEach(layer => {
+            ['clouds', 'isobars', 'wind', 'jetstream', 'precipitation', 'pwat', 'lightning', 'storms', 'waves', 'quakes', 'volcanoes', 'fires', 'world_events', 'troublespots', 'air_quality', 'flood_risk', 'satellites', 'terminator', 'markers', 'flightradar', 'landmass', 'shipping', 'shipping_collector', 'lightning_collector', 'satellites_collector', 'data_collector'].forEach(layer => {
                 if (payload[layer]) payload[layer].enabled = document.getElementById(`${layer}__enabled`)?.checked || false;
             });
 

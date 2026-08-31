@@ -224,6 +224,16 @@ _GHG_SPECIES = SelectSpec([
     ("ch4", "CH4 (Methane)"),
 ], personalizable=True)
 
+# Flood Risk's two modes are independently-sourced metrics, not two views of the same
+# data (see issue #371's design grill) -- Live is a daily GloFAS forecast (needs
+# GLOFAS_API_KEY), Historical is a fixed JRC hazard classification (no credential).
+# Personalizable like every other client-side-only mode toggle (post-#312): switching
+# it just changes which pre-rendered texture this layer's next poll tick fetches.
+_FLOOD_RISK_MODE = SelectSpec([
+    ("live", "Live (GloFAS Forecast)"),
+    ("historical", "Historical (JRC 100yr Hazard)"),
+], personalizable=True)
+
 # CAMS EGG4 reanalysis (the anomaly baseline source) was never extended past 2020, so
 # the picker only offers years it actually has gridded data for -- see
 # lib/greenhouse_gases.BASELINE_YEAR_MIN/MAX and the GHG design grill.
@@ -745,6 +755,14 @@ FIELD_SPECS = {
     # ("volcanoes", "so2_min") above, which now belongs to the separate
     # volcanic-specific SO2 variable Smoke Plume renders instead.
     ("air_quality", "so2_min"): SliderSpec(min=0, max=20, step=0.5, decimals=1, suffix=" DU"),
+    # --- Flood Risk (issue #371) -- both mode's variants render every cycle
+    # regardless of the configured mode (FloodRiskUpdater.run(), same "render
+    # everything, publish only what's selected" shape as GHG's species/mode), and
+    # rendering is entirely client-side (raw data texture + client LUT, issue #312's
+    # convention) -- so mode/opacity are personalizable exactly like GHG's above. ---
+    ("flood_risk", "enabled"): _ENABLED_PERSONALIZABLE,
+    ("flood_risk", "mode"): _FLOOD_RISK_MODE,
+    ("flood_risk", "opacity"): _OPACITY,
     # --- Background (shipping_collector, lightning_collector, satellites_collector,
     # data_collector, housekeeper) ---
     ("shipping_collector", "enabled"): _ENABLED,

@@ -23,7 +23,11 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from atmos_gl.lib.cds_client import retrieve_and_unzip, retrieve_with_fallback
+from atmos_gl.lib.cds_client import (
+    resolve_ewds_credentials,
+    retrieve_and_unzip,
+    retrieve_with_fallback,
+)
 
 
 def test_retrieve_and_unzip_extracts_the_nc_member_to_cache_dest(tmp_path, make_netcdf_zip_bytes):
@@ -149,3 +153,87 @@ def test_retrieve_with_fallback_gives_up_after_every_candidate_fails(tmp_path):
     assert ok is False
     assert client.retrieve.call_count == 3
     assert not os.path.exists(dest)
+
+
+def test_retrieve_with_fallback_unzip_false_downloads_the_bare_nc_directly(tmp_path):
+    """GloFAS's data_format=netcdf/download_format=unarchived delivers a bare .nc, not
+    a zip archive -- unzip=False must skip retrieve_and_unzip's archive-extraction
+    step entirely and cache the file as-is."""
+
+    def fake_retrieve(dataset, request, target):
+        with open(target, "wb") as f:
+            f.write(b"bare-netcdf-bytes")
+
+    client = MagicMock()
+    client.retrieve.side_effect = fake_retrieve
+    dest = str(tmp_path / "data" / "cached.nc")
+
+    ok = retrieve_with_fallback(
+        client, "cems-glofas-forecast", _requests("2026-07-29"), dest,
+        timeout_s=5, label="test", unzip=False,
+    )
+
+    assert ok is True
+    assert open(dest, "rb").read() == b"bare-netcdf-bytes"
+    assert not os.path.exists(dest + ".tmp")  # atomically renamed away, not left behind
+
+
+def test_retrieve_with_fallback_unzip_false_leaves_no_partial_file_on_timeout(tmp_path):
+    """A timed-out retrieve must never leave a partial/corrupt file at the real cache
+    path -- retrieve_with_timeout's own docstring notes a timed-out background
+    download isn't cancelled, so it could keep writing after this call returns; the
+    tempfile + os.replace step must keep that off the real `dest` path."""
+    client = MagicMock()
+    dest = str(tmp_path / "data" / "cached.nc")
+
+    with patch(
+        "atmos_gl.lib.cds_client.retrieve_with_timeout",
+        side_effect=concurrent.futures.TimeoutError,
+    ):
+        ok = retrieve_with_fallback(
+            client, "cems-glofas-forecast", _requests("2026-07-29"), dest,
+            timeout_s=5, label="test", unzip=False,
+        )
+
+    assert ok is False
+    assert not os.path.exists(dest)
+    assert not os.path.exists(dest + ".tmp")
+
+
+# ---- resolve_ewds_credentials --------------------------------------------------
+
+
+def test_resolve_ewds_credentials_returns_none_without_glofas_api_key(monkeypatch):
+    monkeypatch.delenv("GLOFAS_API_KEY", raising=False)
+    result = resolve_ewds_credentials(lambda key: "https://ewds.example/api", "test")
+    assert result is None
+
+
+def test_resolve_ewds_credentials_returns_none_without_glofas_ews_datasource(monkeypatch):
+    monkeypatch.setenv("GLOFAS_API_KEY", "some-key")
+    result = resolve_ewds_credentials(lambda key: "", "test")
+    assert result is None
+
+
+def test_resolve_ewds_credentials_does_not_fall_back_to_cdsapi_key(monkeypatch):
+    """EWDS is a separate credential from ADS -- confirmed live during issue #371's
+    spike (GLOFAS_API_KEY does not reuse CDSAPI_KEY). CDSAPI_KEY being set must never
+    satisfy this resolver on its own."""
+    monkeypatch.delenv("GLOFAS_API_KEY", raising=False)
+    monkeypatch.setenv("CDSAPI_KEY", "an-ads-key")
+    result = resolve_ewds_credentials(lambda key: "https://ewds.example/api", "test")
+    assert result is None
+
+
+def test_resolve_ewds_credentials_returns_base_url_and_key_when_both_configured(monkeypatch):
+    monkeypatch.setenv("GLOFAS_API_KEY", "the-glofas-key")
+    seen_keys = []
+
+    def datasource_url(key):
+        seen_keys.append(key)
+        return "https://ewds.climate.copernicus.eu/api"
+
+    result = resolve_ewds_credentials(datasource_url, "test")
+
+    assert result == ("https://ewds.climate.copernicus.eu/api", "the-glofas-key")
+    assert seen_keys == ["glofas_ews"]
