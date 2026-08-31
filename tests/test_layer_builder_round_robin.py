@@ -33,7 +33,7 @@ def test_multi_hour_and_single_shot_sections_partition_task_classes():
     assert set(SINGLE_SHOT_SECTIONS) == {"sst", "clouds", "markers", "greenhouse_gases", "air_quality"}
     assert set(MULTI_HOUR_SECTIONS) == {
         "isobars", "precipitation", "wind", "currents", "jetstream", "waves",
-        "temperature", "ozone", "stormwatch", "pwat", "fires",
+        "temperature", "ozone", "stormwatch", "pwat", "fires", "flood_risk",
     }
 
 

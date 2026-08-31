@@ -202,6 +202,7 @@ def _build_config_data() -> dict:
     maptiler_key = os.getenv("MAPTILER_API_KEY", "").strip()
     firms_key = os.getenv("FIRMS_API_KEY", "").strip()
     cdsapi_key = os.getenv("CDSAPI_KEY", "").strip()
+    glofas_key = os.getenv("GLOFAS_API_KEY", "").strip()
 
     if "shipping_collector" in data:
         if not ais_key:
@@ -237,6 +238,15 @@ def _build_config_data() -> dict:
         if not cdsapi_key:
             data["air_quality"]["enabled"] = False
             data["air_quality"]["RULE__missing_cdsapi_key"] = True
+
+    if "flood_risk" in data:
+        # Only Live mode (GloFAS forecast via EWDS) needs GLOFAS_API_KEY -- Historical
+        # mode (JRC hazard maps, static/no-auth) needs no credential at all, so this
+        # gate is mode-specific rather than disabling the whole section the way the
+        # single-source greenhouse_gases/air_quality gates above do. See issue #371.
+        if data["flood_risk"].get("mode") == "live" and not glofas_key:
+            data["flood_risk"]["enabled"] = False
+            data["flood_risk"]["RULE__missing_glofas_apikey"] = True
 
     # Not stored in config.json, not user-editable (see lib/output_files.py) -- injected
     # here so the frontend can still read cfg.outfile exactly as before, just sourced
@@ -356,6 +366,8 @@ async def update_config(payload: dict, admin: dict = Depends(require_admin)):
         payload["greenhouse_gases"].pop("RULE__missing_cdsapi_key", None)
     if "air_quality" in payload:
         payload["air_quality"].pop("RULE__missing_cdsapi_key", None)
+    if "flood_risk" in payload:
+        payload["flood_risk"].pop("RULE__missing_glofas_apikey", None)
 
     # outfile is injected read-time-only by _build_config_data() (see OUTFILES/
     # lib/output_files.py) -- never a real stored setting. Strip it the same way the

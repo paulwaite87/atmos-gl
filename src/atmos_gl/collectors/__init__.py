@@ -31,6 +31,12 @@ Synchronous file caches  (CACHE_COLLECTORS)  — write an image/netCDF under {wo
   air_quality — CAMS current PM2.5/PM10/smoke-AOD forecast (AirQualityCollector,
                collectors/air_quality.py) -- Absolute-only, single collector, no
                settings_section sharing.
+  flood_risk_historical — JRC Global River Flood Hazard Maps (100-year return
+               period), mosaicked once from 271 open-FTP tiles into a single global
+               raster and cached forever (FloodRiskHistoricalCollector, collectors/
+               flood_risk.py) -- shares its settings_section ("flood_risk") with
+               FIELD_COLLECTOR_CLASSES' FloodRiskLiveCollector below, same
+               forecast/baseline settings-sharing split as greenhouse_gases.
 
   These are single fields (one daily netCDF / one global image), not per-forecast-hour
   products, so they live as file caches rather than fieldstore rows. The layer updaters
@@ -42,6 +48,12 @@ Field collectors  (FIELD_COLLECTOR_CLASSES)  — fieldstore-backed, per-forecast
   gfs_waves.py, rtofs_currents.py). Driven per-cycle by CollectorService, sharing one
   CycleContext baseline probe. Canonical list, imported by both service.py and
   routes/status.py so a new field collector can't drift between the two.
+  flood_risk_live — GloFAS ensemble discharge forecast via EWDS, classified against
+               ETH's Gumbel-fit return-period thresholds (FloodRiskLiveCollector,
+               collectors/flood_risk.py) -- its own baseline_key ("glofas") and
+               settings_section ("flood_risk", NOT the shared "data_collector" the
+               other three use), since GloFAS's daily-run/EWDS-credential shape is
+               independent of the GFS/RTOFS baseline the other three share.
 
 Async collectors  (EMBEDDABLE_COLLECTORS)    — persistent coroutines
 --------------------------------------------------------------------------
@@ -77,6 +89,7 @@ from atmos_gl.collectors.air_quality import AirQualityCollector
 from atmos_gl.collectors.gfs_atmos import GfsAtmosCollector
 from atmos_gl.collectors.gfs_waves import GfsWavesCollector
 from atmos_gl.collectors.rtofs_currents import RtofsCurrentsCollector
+from atmos_gl.collectors.flood_risk import FloodRiskHistoricalCollector, FloodRiskLiveCollector
 from atmos_gl.collectors.driving import EventFeedDriver
 
 logger = logging.getLogger(__name__)
@@ -101,6 +114,7 @@ CACHE_COLLECTORS = (
     CamsGhgForecastCollector,
     CamsEgg4BaselineCollector,
     AirQualityCollector,
+    FloodRiskHistoricalCollector,
 )
 
 # Field collectors (fieldstore-backed, FieldCollectorBase), driven per-cycle by
@@ -108,7 +122,9 @@ CACHE_COLLECTORS = (
 # collectors/service.py and routes/status.py import this so a new field collector can't
 # run in one place while silently missing from the other (previously two hand-copied
 # tuples that could drift).
-FIELD_COLLECTOR_CLASSES = (GfsAtmosCollector, GfsWavesCollector, RtofsCurrentsCollector)
+FIELD_COLLECTOR_CLASSES = (
+    GfsAtmosCollector, GfsWavesCollector, RtofsCurrentsCollector, FloodRiskLiveCollector,
+)
 
 # Async collectors (AsyncCollectorBase persistent coroutines) that can run in-process,
 # keyed by config-section name. Resolved lazily via resolve_embeddable() (importlib) so a

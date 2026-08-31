@@ -31,6 +31,25 @@ def resolve_cds_credentials(datasource_url_fn, label: str):
     return base_url, api_key
 
 
+def resolve_ewds_credentials(datasource_url_fn, label: str):
+    """(base_url, api_key) for a request against Copernicus's EWDS (Early Warning Data
+    Store, home of the GloFAS forecast dataset), or None (having logged why) if either
+    GLOFAS_API_KEY or the glofas_ews datasource isn't configured.
+
+    EWDS is a SEPARATE host/credential from ADS (confirmed live during issue #371's
+    spike -- GLOFAS_API_KEY does not reuse CDSAPI_KEY), hence its own resolver rather
+    than a parameterised version of resolve_cds_credentials above."""
+    api_key = os.environ.get("GLOFAS_API_KEY", "").strip()
+    if not api_key:
+        logger.warning(f"{label}: no GLOFAS_API_KEY configured; skipping.")
+        return None
+    base_url = datasource_url_fn("glofas_ews")
+    if not base_url:
+        logger.warning(f"{label}: no 'glofas_ews' datasource configured; skipping.")
+        return None
+    return base_url, api_key
+
+
 def retrieve_with_timeout(client, dataset: str, request: dict, target: str, timeout_s: float):
     """Run client.retrieve() (cdsapi's own blocking submit-then-poll-then-download) in
     a worker thread, bounded by timeout_s. Raises concurrent.futures.TimeoutError if
@@ -81,6 +100,7 @@ def retrieve_and_unzip(
 
 def retrieve_with_fallback(
     client, dataset: str, requests: list, dest: str, timeout_s: float, label: str,
+    unzip: bool = True,
 ) -> bool:
     """Try each request in `requests` (an ordered, freshest-first list of full CDS
     request dicts) via retrieve_and_unzip(), stopping at the first that succeeds.
@@ -96,11 +116,29 @@ def retrieve_with_fallback(
     see the published spec's issue comments) -- so each caller builds its own
     freshest-first candidate list and this function only owns the shared "try each,
     stop at the first success" mechanics, same day-search-fallback spirit
-    resolve_gfs_baseline() (lib/gfs.py) uses for GFS's own publish lag."""
+    resolve_gfs_baseline() (lib/gfs.py) uses for GFS's own publish lag.
+
+    `unzip=False` (GloFAS's `data_format=netcdf, download_format=unarchived` delivers a
+    bare .nc directly -- confirmed live against the real EWDS API, see issue #371's
+    spike) skips retrieve_and_unzip's archive-extraction step and downloads straight to
+    `dest` via retrieve_with_timeout instead."""
     last_error = None
     for request in requests:
         try:
-            retrieve_and_unzip(client, dataset, request, dest, timeout_s, label)
+            if unzip:
+                retrieve_and_unzip(client, dataset, request, dest, timeout_s, label)
+            else:
+                # retrieve_with_timeout writes straight to its target with no atomic
+                # rename, and (per its own docstring) does NOT cancel a timed-out
+                # background download -- which could keep writing to `dest` after this
+                # call returns. Downloading to a tempfile first and only replacing
+                # `dest` on success (mirroring retrieve_and_unzip's own tmp_dest/
+                # os.replace step) keeps a timed-out/failed attempt from ever leaving a
+                # partial file at the real cache path.
+                os.makedirs(os.path.dirname(dest), exist_ok=True)
+                tmp_dest = f"{dest}.tmp"
+                retrieve_with_timeout(client, dataset, request, tmp_dest, timeout_s)
+                os.replace(tmp_dest, dest)
             logger.info(f"{label}: cached -> {os.path.basename(dest)}")
             return True
         except concurrent.futures.TimeoutError:
