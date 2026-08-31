@@ -228,7 +228,17 @@ class FloodRiskLiveCollector(FieldCollectorBase):
             kind="collector",
             percent=percent,
             last_updated=last_updated,
-            next_update=estimate_next_update(last_updated, period_s, self.enabled),
+            # next_update ignores self.enabled deliberately, matching
+            # freshness_data_status()'s next_update_respects_enabled=False default
+            # (lib/data_status.py): self.enabled here resolves to flood_risk.enabled
+            # (settings_section is overridden to the shared "flood_risk" section,
+            # same as CACHE_COLLECTORS' own convention) -- the layer's frontend
+            # Show-toggle, NOT a collection kill-switch. _collect_fields() drives this
+            # collector every cycle unconditionally of it (gated only by
+            # channel_enabled["flood_risk_live"]), so reporting "next: disabled" here
+            # would misleadingly suggest collection itself had stopped just because
+            # the layer isn't currently shown on the map.
+            next_update=estimate_next_update(last_updated, period_s, True),
             enabled=self.enabled,
             detail=detail,
             status=status,
