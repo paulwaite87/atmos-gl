@@ -30,6 +30,10 @@ from atmos_gl.lib.flood_risk import (
 def make_bare_live_collector(
     workdir=".", api_key="glofas-secret", url="https://ewds.example/api", monkeypatch=None,
 ):
+    # collect()'s self-gate (see its own comment) lives on the CLASS, not the instance,
+    # since production relies on it surviving fresh-instance construction every cycle --
+    # reset it here so one test's attempt doesn't silently gate the next.
+    FloodRiskLiveCollector._last_attempt_monotonic = None
     c = FloodRiskLiveCollector.__new__(FloodRiskLiveCollector)
     c.settings = {}
     c.store = MagicMock()
@@ -179,6 +183,44 @@ def test_collect_skips_the_fetch_when_the_latest_run_is_already_fully_stored(
         c.collect(ctx=None)
 
     mock_client_cls.assert_not_called()
+
+
+# ---- collect(): self-gate on flood_risk.runs_per_day -----------------------------
+
+
+def test_collect_skips_when_called_again_before_the_configured_period_has_elapsed(
+    tmp_path, monkeypatch
+):
+    """FieldCollectorDriver has no is_stale() cadence check of its own (unlike
+    EventFeedDriver) -- see collect()'s own comment -- so this collector must self-gate
+    on flood_risk.runs_per_day, or a slow/failing EWDS request gets retried every single
+    service cycle instead of waiting out its own period (confirmed live on prod: repeated
+    requests fired every ~15-30min cycle, racing/aborting each other's downloads)."""
+    c = make_bare_live_collector(workdir=str(tmp_path), monkeypatch=monkeypatch)
+    c.settings = {"runs_per_day": 24}  # period_s = 3600
+
+    with patch("atmos_gl.collectors.flood_risk.cdsapi.Client") as mock_client_cls:
+        c.collect(ctx=None)
+    assert mock_client_cls.call_count == 1
+
+    with patch("atmos_gl.collectors.flood_risk.cdsapi.Client") as mock_client_cls2:
+        c.collect(ctx=None)  # immediately again -- must be gated, not re-attempted
+    mock_client_cls2.assert_not_called()
+
+
+def test_collect_retries_once_the_configured_period_has_elapsed(tmp_path, monkeypatch):
+    c = make_bare_live_collector(workdir=str(tmp_path), monkeypatch=monkeypatch)
+    c.settings = {"runs_per_day": 24}  # period_s = 3600
+
+    with patch("atmos_gl.collectors.flood_risk.cdsapi.Client") as mock_client_cls:
+        c.collect(ctx=None)
+    assert mock_client_cls.call_count == 1
+
+    FloodRiskLiveCollector._last_attempt_monotonic -= 3601  # simulate period_s elapsed
+
+    with patch("atmos_gl.collectors.flood_risk.cdsapi.Client") as mock_client_cls2:
+        c.collect(ctx=None)
+    assert mock_client_cls2.call_count == 1
 
 
 # ---- _process_and_store: real (tiny) netCDF fixtures ----------------------------
