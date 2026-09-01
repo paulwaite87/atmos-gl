@@ -39,13 +39,15 @@ _BROWSER_USER_AGENT = (
 )
 
 GLOFAS_DATASET = "cems-glofas-forecast"
-# EWDS's own async job queue took ~1-2 minutes to start "running" even for a tiny
-# single-leadtime/small-bbox request during issue #371's live spike, before the
-# (separately slow, sandbox-specific) download even began -- a real global/
-# 7-leadtime/51-member request needs comparable queue-wait margin on top of a much
-# larger download. Kept generous rather than tuned tight, same reasoning
-# CamsEgg4BaselineCollector's own 600s gives its larger-than-usual request.
-GLOFAS_TIMEOUT_S = 1800
+# Originally 1800s, based on issue #371's live spike (a tiny single-leadtime/
+# small-bbox request queued for only ~1-2 minutes). Confirmed live on prod that a
+# real global/7-leadtime/51-member request's genuine EWDS queue+download time can
+# land right at that bound (one observed run: 1781s, i.e. within 20s of timing
+# out) -- retrieve_with_timeout() does NOT cancel the in-flight EWDS job on
+# timeout (see its own docstring), so a too-tight bound here discards a job that
+# was about to succeed, wasting a full cycle. Raised to a full hour for genuine
+# margin instead of chasing the exact real duration.
+GLOFAS_TIMEOUT_S = 3600
 # GloFAS issues one forecast run per day, but confirmed live (issue #371's spike)
 # that "today"'s run isn't always published yet when this collector happens to run
 # (a same-day request 400'd; the previous day's succeeded) -- same publish-lag

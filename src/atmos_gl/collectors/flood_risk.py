@@ -14,6 +14,7 @@ layer's forecast/baseline pair.
 """
 import logging
 import os
+import time
 from datetime import datetime, timedelta, timezone
 
 import cdsapi
@@ -101,7 +102,35 @@ class FloodRiskLiveCollector(FieldCollectorBase):
             "FloodRiskLiveCollector resolves its baseline inline in collect()"
         )
 
+    # In-memory last-attempt marker (monotonic clock), keyed on the class rather than an
+    # instance since FieldCollectorDriver constructs a fresh instance every cycle
+    # (collectors/service.py's _collect_fields() docstring) but this class object persists
+    # for the life of the data_collector process. Deliberately NOT read from process_status:
+    # FieldCollectorDriver._drive_one() (driving.py) calls record_process_start() -- which
+    # overwrites that row's timestamp -- BEFORE collect() ever runs, so by the time this
+    # method executes, process_status already reflects the CURRENT attempt, not the
+    # previous one. FieldCollectorDriver, unlike EventFeedDriver, has no is_stale() cadence
+    # check of its own (see driving.py's docstring: it's built for GFS/RTOFS's incremental
+    # per-hour dedup, not a single whole-run-per-day fetch like this collector's), so
+    # flood_risk.runs_per_day was configured but silently had no effect on Live mode --
+    # confirmed live on prod: repeated EWDS requests fired every ~15-30min service cycle
+    # regardless of whether the previous one had even finished, racing/aborting each other.
+    # This self-gate (mirrors CollectorBase.is_stale()'s own monotonic-clock convention)
+    # makes that setting actually take effect.
+    _last_attempt_monotonic: float | None = None
+
     def collect(self, ctx: CycleContext) -> None:
+        now_mono = time.monotonic()
+        last = FloodRiskLiveCollector._last_attempt_monotonic
+        if last is not None and (now_mono - last) < self.period_s:
+            logger.debug(
+                f"{self.status_name}: not yet due "
+                f"(period {self.period_s:.0f}s, {now_mono - last:.0f}s since last attempt); "
+                f"skipping."
+            )
+            return
+        FloodRiskLiveCollector._last_attempt_monotonic = now_mono
+
         creds = resolve_ewds_credentials(self.datasource_url, self.status_name)
         if creds is None:
             return
