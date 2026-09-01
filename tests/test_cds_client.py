@@ -18,6 +18,7 @@ indirectly by both collectors' own test suites
 directly here.
 """
 import concurrent.futures
+import glob
 import os
 from unittest.mock import MagicMock, patch
 
@@ -197,7 +198,67 @@ def test_retrieve_with_fallback_unzip_false_leaves_no_partial_file_on_timeout(tm
 
     assert ok is False
     assert not os.path.exists(dest)
-    assert not os.path.exists(dest + ".tmp")
+
+
+def test_retrieve_with_fallback_unzip_false_uses_a_unique_tmp_path_per_call(tmp_path):
+    """Regression guard: confirmed live on prod (flood_risk_live) that a fixed
+    f"{dest}.tmp" path lets a timed-out call's orphaned background download thread
+    (retrieve_with_timeout's own docstring: not cancelled on timeout) collide with a
+    LATER call's fresh attempt -- multiurl resumes from the shared partial file's
+    on-disk size with no remote content validation, observed as the byte offset
+    jumping backwards by over a gigabyte between attempts. Two separate timed-out
+    calls must never target the same tmp path."""
+    client = MagicMock()
+    dest = str(tmp_path / "data" / "cached.nc")
+    seen_targets = []
+
+    def fake_timeout(client, dataset, request, target, timeout_s):
+        seen_targets.append(target)
+        raise concurrent.futures.TimeoutError
+
+    with patch("atmos_gl.lib.cds_client.retrieve_with_timeout", side_effect=fake_timeout):
+        retrieve_with_fallback(
+            client, "cems-glofas-forecast", _requests("2026-07-29"), dest,
+            timeout_s=5, label="test", unzip=False,
+        )
+        retrieve_with_fallback(
+            client, "cems-glofas-forecast", _requests("2026-07-29"), dest,
+            timeout_s=5, label="test", unzip=False,
+        )
+
+    assert len(seen_targets) == 2
+    assert seen_targets[0] != seen_targets[1]
+
+
+def test_retrieve_with_fallback_unzip_false_cleans_up_a_stale_tmp_from_an_earlier_call(
+    tmp_path,
+):
+    """An orphaned tmp file from an earlier timed-out call (see the unique-path test
+    above) must not accumulate forever -- housekeeper.sweep()'s expiry-based cleanup
+    only fires once a layer's cache_expiry_days elapses, often unset (keep forever)
+    for a file-cache layer like this one, so this function must sweep its own stale
+    siblings before starting a new attempt."""
+    client = MagicMock()
+    dest = str(tmp_path / "data" / "cached.nc")
+    os.makedirs(os.path.dirname(dest), exist_ok=True)
+    stale_tmp = f"{dest}.deadbeefdeadbeefdeadbeefdeadbeef.tmp"
+    with open(stale_tmp, "wb") as f:
+        f.write(b"orphaned-partial-bytes")
+
+    def fake_retrieve(dataset, request, target):
+        with open(target, "wb") as f:
+            f.write(b"bare-netcdf-bytes")
+
+    client.retrieve.side_effect = fake_retrieve
+
+    ok = retrieve_with_fallback(
+        client, "cems-glofas-forecast", _requests("2026-07-29"), dest,
+        timeout_s=5, label="test", unzip=False,
+    )
+
+    assert ok is True
+    assert not os.path.exists(stale_tmp)
+    assert glob.glob(f"{dest}.*.tmp") == []  # no leftover tmp of any kind
 
 
 # ---- resolve_ewds_credentials --------------------------------------------------
