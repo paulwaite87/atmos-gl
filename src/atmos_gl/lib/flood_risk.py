@@ -39,15 +39,22 @@ _BROWSER_USER_AGENT = (
 )
 
 GLOFAS_DATASET = "cems-glofas-forecast"
-# Originally 1800s, based on issue #371's live spike (a tiny single-leadtime/
-# small-bbox request queued for only ~1-2 minutes). Confirmed live on prod that a
-# real global/7-leadtime/51-member request's genuine EWDS queue+download time can
-# land right at that bound (one observed run: 1781s, i.e. within 20s of timing
-# out) -- retrieve_with_timeout() does NOT cancel the in-flight EWDS job on
-# timeout (see its own docstring), so a too-tight bound here discards a job that
-# was about to succeed, wasting a full cycle. Raised to a full hour for genuine
-# margin instead of chasing the exact real duration.
-GLOFAS_TIMEOUT_S = 3600
+# Originally 1800s (issue #371's live spike: a tiny single-leadtime/small-bbox
+# request queued for only ~1-2 minutes), then raised to 3600s after a near-miss
+# (one observed run: 1781s). Confirmed live on prod over 8+ hours of retries at
+# 3600s that the real global/7-leadtime/51-member download's own transfer time
+# -- not EWDS's queue -- is the actual bottleneck: every attempt topped out
+# between ~1.1-1.45GB and timed out, never once completing. The tightest sample
+# (resumed at byte 1,125,122,048 only 4min before that attempt's own 3600s bound
+# fired, i.e. it had been running close to the full window already) implies
+# ~335KB/s sustained -- at that rate even a conservative 1.5GB file needs
+# ~75min. retrieve_with_timeout() does NOT cancel the in-flight download on
+# timeout (see its own docstring) and each attempt now downloads to its own
+# unique tmp path (see retrieve_with_fallback's unzip=False branch, lib/
+# cds_client.py) rather than resuming a shared one across attempts, so there is
+# no cost to waiting longer here beyond how long a genuinely-still-failing
+# attempt takes to report back -- raised to 2 hours for real margin.
+GLOFAS_TIMEOUT_S = 7200
 # GloFAS issues one forecast run per day, but confirmed live (issue #371's spike)
 # that "today"'s run isn't always published yet when this collector happens to run
 # (a same-day request 400'd; the previous day's succeeded) -- same publish-lag
