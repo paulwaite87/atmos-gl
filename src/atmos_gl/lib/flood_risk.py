@@ -123,9 +123,24 @@ def ensemble_severity_band(ensemble_discharge, loc, scale, return_periods=RETURN
         into `return_periods` for the highest threshold exceeded by >=50% of members.
       - `fraction`: float array in [0, 1], the fraction of members exceeding that
         cell's assigned band's threshold (0.0 where band is 0).
+
+    Cells with an unreliable Gumbel fit are forced to band 0 regardless of what the
+    threshold math above produces. `scale <= 0` mirrors gumbel_return_period's own
+    guard, but confirmed live (flood_risk artifacts over Greenland's ice sheet and
+    open ocean, unrelated to any real river) that regrid_nearest onto GloFAS's finer
+    0.05deg grid can also produce a NEGATIVE `loc` at non-river cells -- physically
+    impossible for river discharge (always >=0) -- which collapses
+    gumbel_threshold_discharge toward/below zero, so almost any nonzero discharge
+    (model noise included) spuriously "exceeds" every tier. Live sample: 24% of
+    Greenland's regridded cells had negative loc, and 10% of the ice sheet was
+    consequently flagged at the lowest severity band despite no real river network
+    there.
     """
     ensemble_discharge = np.asarray(ensemble_discharge, dtype=np.float64)
+    loc = np.asarray(loc, dtype=np.float64)
+    scale = np.asarray(scale, dtype=np.float64)
     n_members = ensemble_discharge.shape[0]
+    invalid_fit = (scale <= 0) | (loc < 0)
 
     band = np.zeros(ensemble_discharge.shape[1:], dtype=np.int8)
     fraction = np.zeros(ensemble_discharge.shape[1:], dtype=np.float64)
@@ -136,6 +151,9 @@ def ensemble_severity_band(ensemble_discharge, loc, scale, return_periods=RETURN
         meets_band = frac_exceeding >= 0.5
         band = np.where(meets_band, band_index, band)
         fraction = np.where(meets_band, frac_exceeding, fraction)
+
+    band = np.where(invalid_fit, 0, band).astype(np.int8)
+    fraction = np.where(invalid_fit, 0.0, fraction)
 
     return band, fraction
 
