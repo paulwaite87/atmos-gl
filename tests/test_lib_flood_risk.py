@@ -24,6 +24,7 @@ from atmos_gl.lib.flood_risk import (
     load_gumbel_fit,
     load_jrc_hazard_mosaic,
     load_jrc_tile_index,
+    pad_glofas_grid_to_global_lat,
     regrid_nearest,
     resample_jrc_tile_onto_grid,
     save_jrc_hazard_mosaic,
@@ -171,6 +172,40 @@ def test_return_periods_years_matches_glofas_official_bands():
 
 
 # ---- regrid_nearest -------------------------------------------------------------
+
+
+def test_pad_glofas_grid_to_global_lat_extends_to_a_full_180_degree_span():
+    """GloFAS's own domain stops well short of -90 (LISFLOOD excludes Antarctica) --
+    confirmed live the app's WebGL data-texture shader assumes every texture spans
+    the full -90..90 range linearly (matching build_jrc_mosaic_grid's own full-globe
+    axis), so encoding the native, shorter grid unpadded stretches it to fill that
+    height and displaces real features south of their true position."""
+    lat = np.array([20.0, 10.0, 0.0])  # descending, 10-degree step, native domain
+    values = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]])
+    padded, padded_lat = pad_glofas_grid_to_global_lat(values, lat)
+    assert padded.shape == (18, 2)  # 180 / 10
+    assert padded_lat[0] == 20.0
+    assert padded_lat[-1] == pytest.approx(-150.0)
+
+
+def test_pad_glofas_grid_to_global_lat_preserves_native_rows_at_the_top():
+    """The native (north-first) rows must land unchanged at the top of the padded
+    grid -- padding is added below them (south), not interleaved or reordered."""
+    lat = np.array([20.0, 10.0, 0.0])
+    values = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]])
+    padded, padded_lat = pad_glofas_grid_to_global_lat(values, lat)
+    assert np.array_equal(padded[:3], values)
+    assert np.array_equal(padded_lat[:3], lat)
+
+
+def test_pad_glofas_grid_to_global_lat_fills_the_missing_south_with_nan():
+    """The padded (missing) rows must be NaN, not zero -- encode_frames masks NaN
+    cells to fully transparent (alpha=0), the correct "no data here" rendering,
+    rather than a spurious "confirmed zero severity" opaque black fill."""
+    lat = np.array([20.0, 10.0, 0.0])
+    values = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]])
+    padded, _ = pad_glofas_grid_to_global_lat(values, lat)
+    assert np.all(np.isnan(padded[3:]))
 
 
 def test_regrid_nearest_reproduces_source_values_at_matching_points():

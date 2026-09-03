@@ -181,6 +181,38 @@ def regrid_nearest(values, src_lat, src_lon, dst_lat, dst_lon):
     return fn((mesh_lat, mesh_lon))
 
 
+def pad_glofas_grid_to_global_lat(values, lat):
+    """Pad a GloFAS-native (lat, ...) array -- whose lat axis covers only GloFAS's own
+    hydrological domain (observed live: 89.975 down to -59.975, NOT the full globe;
+    GloFAS's LISFLOOD routing excludes Antarctica/deep-Southern-Ocean latitudes) --
+    with NaN rows down to a full, contiguous -90..90 axis at the same lat step and
+    phase as the native grid.
+
+    Necessary because this app's WebGL data-texture shader (ui/modules/_webglfill.js's
+    VS_BODY: `ny = 0.5 - lat/180.0`) assumes every encoded texture linearly spans the
+    FULL -90..90 latitude range across its whole height -- true of GFS's own native
+    grid and of build_jrc_mosaic_grid's explicit full-globe axis (Historical mode's
+    own grid, n_lat = round(180/step)), but NOT of GloFAS's naturally ~150-degree-tall
+    domain. Encoding that shorter span unpadded into a texture the shader still reads
+    as 180 degrees tall stretches it to fill that height, so every row's DISPLAYED
+    latitude drifts increasingly south of its TRUE latitude the further from the
+    north edge -- confirmed live: real river-network shapes (e.g. New Zealand)
+    rendering visibly displaced south of their true position.
+
+    `lat` must be descending (north-first, GloFAS's own native order -- see
+    regrid_nearest's docstring). Returns (padded_values, padded_lat), lat still
+    descending; `values`' trailing dims (lon, or lon plus any leading ensemble/member
+    axis handled by the caller per-slice) are preserved unchanged."""
+    lat = np.asarray(lat, dtype=np.float64)
+    values = np.asarray(values)
+    step = float(lat[0] - lat[1])
+    n_lat_full = round(180.0 / step)
+    padded_lat = lat[0] - np.arange(n_lat_full) * step
+    padded = np.full((n_lat_full,) + values.shape[1:], np.nan, dtype=values.dtype)
+    padded[: len(lat)] = values
+    return padded, padded_lat
+
+
 def _flood_risk_cache_dir() -> str:
     """Container-local cache dir for one-time downloads -- NOT bind-mounted, same
     "ephemeral across container recreation, persistent across worker restarts"

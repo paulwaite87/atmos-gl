@@ -44,6 +44,7 @@ from atmos_gl.lib.flood_risk import (
     jrc_tile_cache_path,
     load_gumbel_fit,
     load_jrc_tile_index,
+    pad_glofas_grid_to_global_lat,
     regrid_nearest,
     resample_jrc_tile_onto_grid,
     save_jrc_hazard_mosaic,
@@ -214,13 +215,23 @@ class FloodRiskLiveCollector(FieldCollectorBase):
                 band, fraction = ensemble_severity_band(ensemble_discharge, loc, scale)
                 valid_time = run_timestamp + timedelta(hours=fhour)
 
+                # GloFAS's own domain stops at ~-60 lat (see pad_glofas_grid_to_global_lat's
+                # docstring) -- pad to a full -90..90 grid before storing so this product's
+                # texture spans the same latitude range every other layer's does.
+                band_full, lat_full = pad_glofas_grid_to_global_lat(
+                    band.astype(np.float32), lat
+                )
+                fraction_full, _ = pad_glofas_grid_to_global_lat(
+                    fraction.astype(np.float32), lat
+                )
+
                 self.store.store_field(
                     run_date_str, _RUN_ID, fhour, _PRODUCT,
                     {
-                        "lat": lat,
+                        "lat": lat_full,
                         "lon": lon,
-                        "values": band.astype(np.float32),
-                        "values2": fraction.astype(np.float32),
+                        "values": band_full,
+                        "values2": fraction_full,
                     },
                     valid_time,
                 )
