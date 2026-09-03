@@ -139,6 +139,31 @@ def test_ensemble_severity_band_shape_matches_grid_not_member_count():
     assert band.dtype == np.int8
 
 
+def test_ensemble_severity_band_masks_cells_with_negative_loc():
+    """A negative Gumbel loc is physically impossible for river discharge (always
+    >=0) -- confirmed live over Greenland's ice sheet (no real river network) that a
+    regridded negative loc collapses the threshold toward/below zero, so ordinary
+    discharge noise spuriously "exceeds" every tier. Such cells must render as band 0
+    (no risk), not a spurious high band, regardless of how much discharge is present."""
+    loc = np.array([[-50.0]])
+    scale = np.array([[10.0]])
+    ensemble = np.full((50, 1, 1), 5.0)  # tiny, near-zero discharge -- would otherwise exceed a negative threshold
+    band, fraction = ensemble_severity_band(ensemble, loc, scale)
+    assert band[0, 0] == 0
+    assert fraction[0, 0] == pytest.approx(0.0)
+
+
+def test_ensemble_severity_band_masks_cells_with_non_positive_scale():
+    """Mirrors gumbel_return_period's own scale<=0 guard -- a degenerate/no-flow fit
+    must not be classified at all, even if raw discharge happens to be nonzero."""
+    loc = np.array([[500.0]])
+    scale = np.array([[0.0]])
+    ensemble = np.full((50, 1, 1), 10000.0)
+    band, fraction = ensemble_severity_band(ensemble, loc, scale)
+    assert band[0, 0] == 0
+    assert fraction[0, 0] == pytest.approx(0.0)
+
+
 def test_return_periods_years_matches_glofas_official_bands():
     """Pinned so an accidental edit to the tier list is caught -- these three values
     are GloFAS's own official reporting-point classification, not arbitrary."""
