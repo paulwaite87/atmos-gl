@@ -55,6 +55,17 @@ GLOFAS_DATASET = "cems-glofas-forecast"
 # across attempts, so there is no cost to waiting longer here beyond how long a
 # genuinely-still-failing attempt takes to report back -- raised to 3 hours for
 # real margin above the observed ~2h11m.
+#
+# Now the budget for ONE leadtime-hour request rather than all 7 in one job (see
+# FloodRiskLiveCollector.collect's docstring) -- confirmed live that the shared
+# ECMWF/Copernicus object-store backend serving GloFAS (and, separately observed,
+# CAMS) can drop the connection every few minutes for stretches, so a single
+# ~2.8GB combined job risked losing ALL forecast-hour progress to one bad patch
+# late in a 3-hour transfer. Left unchanged rather than scaled down by ~7x since
+# there's no live evidence yet for a safe smaller per-hour bound (EWDS job-queue
+# wait time doesn't scale down with file size) -- a generous shared ceiling here
+# is cheap: an interrupted hour is simply retried, not re-downloaded from zero,
+# since already-stored hours are skipped on the next self-gated cycle.
 GLOFAS_TIMEOUT_S = 10800
 # GloFAS issues one forecast run per day, but confirmed live (issue #371's spike)
 # that "today"'s run isn't always published yet when this collector happens to run
@@ -287,21 +298,31 @@ def load_gumbel_fit(path: str):
     return loc, scale, lat, lon
 
 
-def glofas_forecast_cache_path(workdir: str) -> str:
-    """Cache path for the current GloFAS ensemble discharge forecast netCDF (all 7
-    leadtime days in one file -- see GLOFAS_LEADTIME_HOURS)."""
-    return os.path.join(workdir, "data", "flood_risk_cache_glofas_forecast.nc")
+def glofas_forecast_cache_path(workdir: str, leadtime_hour) -> str:
+    """Cache path for ONE leadtime hour of the GloFAS ensemble discharge forecast --
+    fetched, processed, and stored independently per hour (see
+    FloodRiskLiveCollector.collect's docstring) rather than as a single all-7-day
+    file, so a connection drop partway through only costs the hour in flight and
+    already-fetched hours are never re-downloaded."""
+    return os.path.join(
+        workdir, "data", f"flood_risk_cache_glofas_forecast_f{int(leadtime_hour):03d}.nc"
+    )
 
 
-def build_glofas_forecast_request(date_str: str) -> dict:
+def build_glofas_forecast_request(date_str: str, leadtime_hour: str) -> dict:
     """CDS/EWDS API request for cems-glofas-forecast's full ensemble
-    (product_type=ensemble_perturbed_forecasts), covering all of GLOFAS_LEADTIME_HOURS
-    in a single request (GloFAS's leadtime_hour field accepts a list -- confirmed live
-    during issue #371's spike -- so the 7-day horizon is one job, not seven).
+    (product_type=ensemble_perturbed_forecasts) for ONE leadtime hour.
+
+    Originally requested all of GLOFAS_LEADTIME_HOURS in a single job (the field
+    accepts a list), but confirmed live that the shared ECMWF/Copernicus object-store
+    backend can drop mid-transfer repeatedly, which made one ~2.8GB combined job an
+    all-or-nothing bet against a 3-hour timeout -- see FloodRiskLiveCollector.collect's
+    docstring for the per-hour split this now feeds into.
 
     `date_str` is "YYYYMMDD" (matching this codebase's other date_str conventions,
     e.g. resolve_gfs_baseline), split into the separate year/month/day fields this
-    dataset's form requires (unlike CAMS's single combined "date" field)."""
+    dataset's form requires (unlike CAMS's single combined "date" field). `leadtime_hour`
+    is one entry from GLOFAS_LEADTIME_HOURS (e.g. "24")."""
     return {
         "system_version": ["operational"],
         "hydrological_model": ["lisflood"],
@@ -310,7 +331,7 @@ def build_glofas_forecast_request(date_str: str) -> dict:
         "year": [date_str[:4]],
         "month": [date_str[4:6]],
         "day": [date_str[6:8]],
-        "leadtime_hour": list(GLOFAS_LEADTIME_HOURS),
+        "leadtime_hour": [leadtime_hour],
         "data_format": "netcdf",
         "download_format": "unarchived",
     }

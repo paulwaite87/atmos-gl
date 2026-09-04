@@ -247,23 +247,25 @@ def test_glofas_leadtime_hours_covers_a_7_day_horizon_at_24h_steps():
 
 
 def test_build_glofas_forecast_request_splits_date_str_into_year_month_day():
-    request = build_glofas_forecast_request("20260829")
+    request = build_glofas_forecast_request("20260829", "24")
     assert request["year"] == ["2026"]
     assert request["month"] == ["08"]
     assert request["day"] == ["29"]
 
 
-def test_build_glofas_forecast_request_targets_the_full_ensemble_and_leadtime_range():
-    request = build_glofas_forecast_request("20260829")
+def test_build_glofas_forecast_request_targets_the_full_ensemble_and_one_leadtime_hour():
+    """One request per leadtime hour now (not all of GLOFAS_LEADTIME_HOURS in a
+    single job) -- see FloodRiskLiveCollector.collect's docstring."""
+    request = build_glofas_forecast_request("20260829", "72")
     assert request["product_type"] == ["ensemble_perturbed_forecasts"]
     assert request["variable"] == ["river_discharge_in_the_last_24_hours"]
-    assert request["leadtime_hour"] == list(GLOFAS_LEADTIME_HOURS)
+    assert request["leadtime_hour"] == ["72"]
 
 
 def test_build_glofas_forecast_request_delivers_a_bare_unarchived_netcdf():
     """GloFAS's format differs from CAMS's netcdf_zip -- must request the unarchived
     form so retrieve_with_fallback's unzip=False path is the correct one to use."""
-    request = build_glofas_forecast_request("20260829")
+    request = build_glofas_forecast_request("20260829", "24")
     assert request["data_format"] == "netcdf"
     assert request["download_format"] == "unarchived"
 
