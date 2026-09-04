@@ -135,8 +135,16 @@ def ensemble_severity_band(ensemble_discharge, loc, scale, return_periods=RETURN
     Greenland's regridded cells had negative loc, and 10% of the ice sheet was
     consequently flagged at the lowest severity band despite no real river network
     there.
+
+    `ensemble_discharge` is deliberately left at its native dtype (float32 straight
+    off the netCDF, typically) rather than upcast to float64 -- confirmed live that a
+    (50, 3000, 7200) forecast array doubles from ~4.3GB to ~8.6GB under
+    np.asarray(..., dtype=np.float64), which OOM-killed the data_collector process
+    outright on an 11GB host right as _process_and_store() reached this call. The `>`
+    comparison against threshold_q (small, loc/scale-shaped) broadcasts fine across
+    mixed float32/float64 without needing the huge array pre-cast.
     """
-    ensemble_discharge = np.asarray(ensemble_discharge, dtype=np.float64)
+    ensemble_discharge = np.asarray(ensemble_discharge)
     loc = np.asarray(loc, dtype=np.float64)
     scale = np.asarray(scale, dtype=np.float64)
     n_members = ensemble_discharge.shape[0]
