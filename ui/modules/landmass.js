@@ -1,5 +1,6 @@
 import { liveDataSync } from './_datasync.js';
 import { opacityUniform } from './_opacity.js';
+import { keepLayersOnTop } from './_layerstack.js';
 
 // Coastline/lake-shore outlines, drawn from MapTiler's own OpenMapTiles vector tiles
 // (independent of basemap.js's chosen style -- even the raster-only "satellite" style
@@ -45,15 +46,9 @@ export function loadLayer(map, config, fullConfig = {}) {
     // fighting forever: the only state that still makes landmass act is "some raster
     // fill is on top", and reclaiming the top either satisfies landmass outright or
     // hands markers' own listener a reason to reclaim it next -- which then satisfies
-    // landmass's check on the following pass.
-    const ensureOnTop = () => {
-        const layers = map.getStyle()?.layers;
-        if (!layers || !layers.length) return;
-        const topId = layers[layers.length - 1].id;
-        if (topId === LINE_LYR || topId === 'markers-labels') return;
-        if (map.getLayer(HALO_LYR)) map.moveLayer(HALO_LYR);
-        if (map.getLayer(LINE_LYR)) map.moveLayer(LINE_LYR);
-    };
+    // landmass's check on the following pass. See _layerstack.js's keepLayersOnTop
+    // for why this must read map.getLayersOrder(), not map.getStyle().layers.
+    const ensureOnTop = () => keepLayersOnTop(map, [HALO_LYR, LINE_LYR], [LINE_LYR, 'markers-labels']);
 
     const mount = async (cfg) => {
         if (map.getSource(SRC)) return;
