@@ -34,15 +34,15 @@ import re
 
 import numpy as np
 
-from atmos_gl.lib.flood_risk import reproject_categorical_max
+from atmos_gl.lib.raster_reproject import reproject_categorical_max
 
 logger = logging.getLogger(__name__)
 
 # The dataset is only ever accessed as a single whole-file fetch (it's already a
 # global mosaic, unlike JRC/MODIS-flood's per-tile products), so this module needs
-# no tile-mosaic machinery of its own -- only _reproject_categorical_max's generic
-# rasterio reproject(max) mechanics are reused from lib/flood_risk.py, since that's
-# equally applicable to any single-band categorical GeoTIFF, not just flood tiles.
+# no tile-mosaic machinery of its own -- only reproject_categorical_max's generic
+# rasterio reproject(max) mechanics are needed, shared with lib/flood_risk.py's
+# JRC/MODIS-flood tiles via lib/raster_reproject.py (nothing here is flood-specific).
 _ZENODO_RECORD_ID = "8367523"
 ZENODO_VERSIONS_LATEST_URL = (
     f"https://zenodo.org/api/records/{_ZENODO_RECORD_ID}/versions/latest"
@@ -152,7 +152,7 @@ def burnable_vegetation_mask(lat, lon, workdir: str):
     callers fall back to whatever other masking they have, same graceful-degrade
     contract as coastline.py's coastline_land_mask().
 
-    reproject_categorical_max (reused from lib/flood_risk.py) assumes a
+    reproject_categorical_max (lib/raster_reproject.py) assumes a
     north-first (descending) destination latitude axis, matching every one of its
     existing callers' mosaic grids. ScalarFieldUpdater's LOD-regridded axis
     (regrid_for_lod) is ascending instead, unlike the native fieldstore grid this
