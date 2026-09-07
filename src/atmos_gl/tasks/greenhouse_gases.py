@@ -20,14 +20,19 @@ from .common import Updater, MapData
 
 logger = logging.getLogger(__name__)
 
-# CAMS's high-resolution forecast is ~9km (~0.1 deg) native, but rendering AT that
-# resolution is far too slow to be practical: live timing found the old pcolormesh
-# render alone taking >80s per render at the native 6.5M-point grid (regrid+coastline-
-# mask together are a comparatively cheap ~7s) -- with 4 species x mode combinations
-# rendered every cycle, that's minutes per cycle just for this one layer. 0.25 deg
-# (matching this codebase's "low" LOD tier default) cuts the point count by ~6x,
-# bringing regrid+encode back into the same ballpark as every other layer.
-_REGRID_STEP_DEG = 0.25
+# CAMS's high-resolution forecast is ~9km (~0.1 deg) native. This used to be coarsened
+# to 0.25 deg (this codebase's "low" LOD tier) because the OLD pcolormesh render alone
+# took >80s per render at the native 6.5M-point grid -- but issue #312 replaced that
+# pcolormesh render with a raw client-LUT data texture (plain regrid + encode_frames,
+# no contourf/pcolormesh at all), and the 0.25 deg choice was never revisited afterward.
+# That coarsening left every rendered cell ~28km wide, visibly blocky at zoom -- live
+# timing against a real CAMS file confirms regrid+coastline-mask together cost the same
+# ~11-14s at native 0.1 deg as they did at 0.25 deg (the mask step, not the regrid
+# resolution, dominates), so there's no real cost to rendering at CAMS's own native
+# resolution instead of an arbitrary coarser one. 0.1 deg matches that native resolution
+# exactly -- no benefit in going finer, unlike SST's _SST_REGRID_STEP_DEG (0.08), which
+# genuinely upsamples past OISST's coarser 0.25 deg native grid for coastline crispness.
+_REGRID_STEP_DEG = 0.1
 
 # Both CAMS datasets (the current forecast and the EGG4 baseline) use the same
 # in-file netCDF variable names for these two species -- confirmed by downloading and
