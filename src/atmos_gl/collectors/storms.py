@@ -12,7 +12,6 @@ import logging
 import math
 from datetime import datetime, timedelta, timezone
 
-import requests
 from bs4 import BeautifulSoup
 
 from atmos_gl.collectors.base import CollectorBase
@@ -49,10 +48,11 @@ class StormsCollector(CollectorBase):
         return changed
 
     def _get_file_list(self, directory_url):
+        r = self._get(directory_url, timeout=10)
+        if r is None:
+            logger.debug(f"Storms: failed to list {directory_url}.")
+            return []
         try:
-            r = requests.get(directory_url, timeout=10)
-            if r.status_code != 200:
-                return []
             soup = BeautifulSoup(r.text, "html.parser")
             return [
                 link["href"]
@@ -91,7 +91,8 @@ class StormsCollector(CollectorBase):
 
     def _parse_b_deck(self, url, now_utc, expiry_days):
         try:
-            text = requests.get(url, timeout=10).text
+            r = self._get(url, timeout=10)
+            text = r.text if r is not None else ""
             lines = text.splitlines()
             pts = []
             storm_name = None
@@ -147,8 +148,8 @@ class StormsCollector(CollectorBase):
 
     def _parse_a_deck(self, url, sid):
         try:
-            r = requests.get(url, timeout=10)
-            if r.status_code != 200:
+            r = self._get(url, timeout=10)
+            if r is None:
                 return []
             lines = r.text.splitlines()
             valid_lines = [

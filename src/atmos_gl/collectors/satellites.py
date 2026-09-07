@@ -15,8 +15,6 @@ full multi-group download.
 """
 import logging
 
-import requests
-
 from .base import CollectorBase
 from atmos_gl.db.satellite_adapter import SatelliteAdapter
 
@@ -52,19 +50,15 @@ class SatellitesCollector(CollectorBase):
 
     def _fetch_group(self, group: str) -> list:
         url = f"{self.source_url()}/gp.php?GROUP={group}&FORMAT=json"
+        r = self._get(url, timeout=30)
+        if r is None:
+            logger.warning(f"Satellites: failed to fetch group '{group}'.")
+            return []
         try:
-            r = requests.get(
-                url,
-                timeout=30,
-                headers={"User-Agent": "AtmosGL-Collector/1.0"},
-            )
-            if r.status_code == 200:
-                # CelesTrak sometimes serves JSON as text/plain
-                return r.json()
-            logger.warning(f"Satellites: group '{group}' returned HTTP {r.status_code}")
-        except Exception as exc:
-            logger.warning(f"Satellites: failed to fetch group '{group}': {exc}")
-        return []
+            return r.json()  # CelesTrak sometimes serves JSON as text/plain
+        except ValueError as exc:
+            logger.warning(f"Satellites: group '{group}' returned invalid JSON: {exc}")
+            return []
 
     def collect(self) -> None:
         stored = 0

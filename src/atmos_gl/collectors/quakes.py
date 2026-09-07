@@ -11,7 +11,6 @@ when the file hasn't changed since the previous run.
 import io
 import logging
 
-import requests
 import pandas as pd
 
 from atmos_gl.collectors.base import CollectorBase
@@ -43,31 +42,26 @@ class QuakeCollector(CollectorBase):
             logger.warning("Quakes: no URL configured; skipping.")
             return
 
-        try:
-            r = requests.get(
-                url,
-                timeout=15,
-                headers={"User-Agent": "AtmosGL-Collector/1.0"},
+        r = self._get(url, timeout=15)
+        if r is None:
+            logger.error(f"Quakes: fetch failed for {url!r}.")
+            return
+
+        df = pd.read_csv(io.StringIO(r.text))
+        df["time"] = pd.to_datetime(df["time"])
+        filtered = df[df["mag"] >= min_mag]
+
+        count = 0
+        for _, row in filtered.iterrows():
+            self.quake_adapter.update_quake(
+                str(row["id"]),
+                float(row["mag"]),
+                float(row["depth"]),
+                str(row.get("place", "Unknown Location")),
+                row["time"].isoformat(),
+                float(row["latitude"]),
+                float(row["longitude"]),
             )
-            r.raise_for_status()
+            count += 1
 
-            df = pd.read_csv(io.StringIO(r.text))
-            df["time"] = pd.to_datetime(df["time"])
-            filtered = df[df["mag"] >= min_mag]
-
-            count = 0
-            for _, row in filtered.iterrows():
-                self.quake_adapter.update_quake(
-                    str(row["id"]),
-                    float(row["mag"]),
-                    float(row["depth"]),
-                    str(row.get("place", "Unknown Location")),
-                    row["time"].isoformat(),
-                    float(row["latitude"]),
-                    float(row["longitude"]),
-                )
-                count += 1
-
-            logger.info(f"Quakes: upserted {count} records (min_mag={min_mag}).")
-        except requests.RequestException as e:
-            logger.error(f"Quakes: fetch failed: {e}")
+        logger.info(f"Quakes: upserted {count} records (min_mag={min_mag}).")

@@ -226,6 +226,40 @@ class CollectorBase:
         cls._etag_cache[url] = marker
         return True  # new or changed marker → proceed
 
+    # ------------------------------------------------------------------
+    # Shared GET helper
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def _get(cls, url: str, timeout: int = 15, **kwargs):
+        """Issue a GET request with the standard User-Agent, returning the raw
+        requests.Response on success or None on any failure -- a connection error, a
+        timeout, or raise_for_status() rejecting a non-2xx status. Every existing
+        caller already treats "fetch failed" as one outcome regardless of which of
+        those it was, so this collapses all three into the single contract callers
+        actually use, and logs once at error level so the failure isn't silent.
+
+        kwargs pass straight through to requests.get (stream=True, an extra header
+        dict merged on top of the fixed User-Agent, a timeout override, etc.), so
+        callers keep whatever per-request needs they already had.
+
+        Architecture review candidate: collapses the GET-fetch duplication hand-rolled
+        across quakes.py/satellites.py/storms.py/volcanoes.py/world_events.py -- four
+        different styles, one (storms.py) silently missing the User-Agent header
+        entirely -- the same shape of duplication _head_changed already collapsed for
+        HEAD requests.
+        """
+        import requests
+
+        headers = {"User-Agent": "AtmosGL-Collector/1.0", **kwargs.pop("headers", {})}
+        try:
+            r = requests.get(url, timeout=timeout, headers=headers, **kwargs)
+            r.raise_for_status()
+            return r
+        except requests.RequestException as exc:
+            logger.error(f"GET {url!r} failed: {exc!r}")
+            return None
+
     @classmethod
     def _head_changed_or_default(cls, url: str, label: str) -> bool:
         """The single-URL has_new_data() wrapper hand-duplicated across quakes.py,

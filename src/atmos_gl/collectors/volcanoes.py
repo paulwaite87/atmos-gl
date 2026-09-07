@@ -13,10 +13,8 @@ change), no history retention. Liveness is last_seen_at-driven (bumped by presen
 EITHER source each poll) -- see VolcanicActivityAdapter.upsert_activity and
 Housekeeper.prune_expired_activity.
 """
-import json
 import logging
 import re
-import urllib.request
 import xml.etree.ElementTree as ET
 
 from atmos_gl.collectors.base import CollectorBase
@@ -128,12 +126,14 @@ class VolcanicActivityCollector(CollectorBase):
         {vnum, name, country, activity_type, report_description, lat, lon} dicts.
         Items with no parseable vnum or title are logged and skipped."""
         items = []
+        r = self._get(url, timeout=30)
+        if r is None:
+            logger.error(f"Volcanoes: GVP fetch failed for {url!r}.")
+            return items
         try:
-            req = urllib.request.Request(url, headers={"User-Agent": "AtmosGL-Collector/1.0"})
-            with urllib.request.urlopen(req, timeout=30) as resp:
-                root = ET.fromstring(resp.read())
-        except Exception as e:
-            logger.error(f"Volcanoes: GVP fetch failed: {e}")
+            root = ET.fromstring(r.content)
+        except ET.ParseError as e:
+            logger.error(f"Volcanoes: GVP feed failed to parse: {e}")
             return items
 
         for item in root.iter("item"):
@@ -182,14 +182,14 @@ class VolcanicActivityCollector(CollectorBase):
         """Fetches USGS HANS's getElevatedVolcanoes JSON into a list of
         {vnum, color_code, alert_level, notice_url} dicts."""
         items = []
+        resp = self._get(url, timeout=30, headers={"Accept": "application/json"})
+        if resp is None:
+            logger.error(f"Volcanoes: HANS fetch failed for {url!r}.")
+            return items
         try:
-            req = urllib.request.Request(
-                url, headers={"Accept": "application/json", "User-Agent": "AtmosGL-Collector/1.0"}
-            )
-            with urllib.request.urlopen(req, timeout=30) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-        except Exception as e:
-            logger.error(f"Volcanoes: HANS fetch failed: {e}")
+            data = resp.json()
+        except ValueError as e:
+            logger.error(f"Volcanoes: HANS feed failed to parse: {e}")
             return items
 
         for r in data if isinstance(data, list) else data.get("volcanoes", []):
