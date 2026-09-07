@@ -28,7 +28,7 @@ _NEW_LONS = np.array([0.0, 5.0, 10.0])
 _DISPLAY_DATA = np.array([[400.0, 405.0, 410.0], [410.0, 415.0, 420.0], [420.0, 425.0, 430.0]])
 
 
-def _patched(mock_land=None):
+def _patched():
     stack = ExitStack()
     mocks = {
         "load_field": stack.enter_context(
@@ -37,9 +37,6 @@ def _patched(mock_land=None):
         ),
         "compute_anomaly": stack.enter_context(
             patch("atmos_gl.tasks.greenhouse_gases.compute_anomaly", return_value=_DISPLAY_DATA.copy())
-        ),
-        "coastline_land_mask": stack.enter_context(
-            patch("atmos_gl.tasks.greenhouse_gases.coastline_land_mask", return_value=mock_land)
         ),
         "encode_frames": stack.enter_context(
             patch("atmos_gl.tasks.greenhouse_gases.encode_frames", return_value=True)
@@ -78,17 +75,34 @@ def test_plot_anomaly_encodes_with_each_species_fixed_physical_domain():
             assert sidecar_value["anomaly"]["vmin"] == -sidecar_value["anomaly"]["vmax"]
 
 
-def test_plot_masks_land_cells_as_nan_before_encoding():
-    land = np.array([[False, False, True], [False, False, True], [False, False, True]])
+def test_plot_does_not_mask_land_cells():
+    # CO2/CH4 are well-mixed atmospheric properties with a real value over both land
+    # and ocean -- unlike SST/Fire Risk/Flood Risk, this layer must NOT NaN out any
+    # cells based on land/ocean geography.
     u = make_bare_updater(settings={})
-    stack, mocks = _patched(mock_land=land)
+    stack, mocks = _patched()
     with stack:
         u.regrid_for_lod = MagicMock(return_value=(_NEW_LATS, _NEW_LONS, _DISPLAY_DATA.copy()))
         u.plot("co2", "absolute", "/tmp/current.nc", None, "/data/greenhouse_gases_co2_absolute.png")
 
         encoded_frame = mocks["encode_frames"].call_args.args[0][0]
-        assert np.isnan(encoded_frame[:, 2]).all()
-        assert not np.isnan(encoded_frame[:, :2]).any()
+        assert not np.isnan(encoded_frame).any()
+
+
+def test_plot_restores_north_first_row_order_before_encoding():
+    # regrid_for_lod always returns ASCENDING (south-first) latitude rows -- plot()
+    # must flip back to north-first (row 0 = north pole) before encode_frames, the
+    # same restore SSTUpdater.plot() applies for the identical reason. Missing this
+    # mirrored the whole layer north-south (reported live via the land mask, before
+    # #393 removed masking, registering over the wrong hemisphere).
+    u = make_bare_updater(settings={})
+    stack, mocks = _patched()
+    with stack:
+        u.regrid_for_lod = MagicMock(return_value=(_NEW_LATS, _NEW_LONS, _DISPLAY_DATA.copy()))
+        u.plot("co2", "absolute", "/tmp/current.nc", None, "/data/greenhouse_gases_co2_absolute.png")
+
+        encoded_frame = mocks["encode_frames"].call_args.args[0][0]
+        assert encoded_frame.tolist() == _DISPLAY_DATA[::-1, :].tolist()
 
 
 def test_mode_settings_signature_absolute_is_empty_since_nothing_affects_the_encoded_texture():

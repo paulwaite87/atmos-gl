@@ -6,7 +6,6 @@ import os
 import numpy as np
 
 from atmos_gl.lib.config import AtmosGLConfig
-from atmos_gl.lib.coastline import coastline_land_mask
 from atmos_gl.lib.greenhouse_gases import (
     SPECIES,
     camsforecast_cache_path,
@@ -94,17 +93,24 @@ class GhgUpdater(Updater):
                 display_data, lat_raw, lon_norm, baseline_matrix, baseline_lat, baseline_lon
             )
 
-        new_lats, new_lons, display_data = self.regrid_for_lod(
+        _, _, display_data = self.regrid_for_lod(
             display_data, lat_raw, lon_norm, fill_value=np.nan, step_override=_REGRID_STEP_DEG,
         )
-        mesh_lon, mesh_lat = np.meshgrid(new_lons, new_lats)
-        # coastline_land_mask() dilates the mask by one cell before returning (see its
-        # own docstring) -- needed because this renders through the same GPU fill
-        # layer's LINEAR-filtered alpha discard SST does, and would otherwise show the
-        # same coastal colour bleed SST had before docs/adr/0014.
-        land = coastline_land_mask(mesh_lon, mesh_lat, -180.0, -90.0, 180.0, 90.0)
-        if land is not None and land.shape == display_data.shape:
-            display_data[land] = np.nan
+        # regrid_for_lod always returns ASCENDING (south-first) latitude rows,
+        # regardless of the input's own order (see its docstring) -- but the GPU fill
+        # shader (ui/modules/_webglfill.js's VS_BODY: "y in [0,1] lat north->south")
+        # requires row 0 = north pole, the same contract every other encode_frames
+        # texture relies on (see SSTUpdater.plot()'s identical restore, and its own
+        # comment on the exact same bug: "the whole SST layer -- data AND land mask
+        # alike -- rendered mirrored across the equator"). This flip was missing here:
+        # both the CO2/CH4 data and the land mask this layer used to apply (see below)
+        # rendered mirrored across the equator, reported live as the land mask
+        # registering over the wrong hemisphere.
+        display_data = display_data[::-1, :]
+
+        # No land mask: unlike SST (sea-surface only) or Fire Risk (land-only hazard),
+        # CO2/CH4 are well-mixed atmospheric properties with a real, meaningful value
+        # over both land and ocean -- there is no land/ocean distinction to cut here.
 
         if mode == "anomaly":
             # Auto-scaled from the data (98th percentile of |anomaly|) rather than a
@@ -128,13 +134,11 @@ class GhgUpdater(Updater):
             vmax = self.settings.get(max_key, 1)
             encode_vmin, encode_vmax = _ABS_ENCODE_DOMAIN[species]
 
-        # Raw, un-colored data texture (issue #312) -- land cells stay NaN (encoded as
-        # alpha=0, discarded by the fragment shader), same convention currents.py/
-        # waves.py's land masking already relies on. The palette/LUT and the live
-        # min/max (or anomaly vmin/vmax) display range are applied entirely
-        # client-side (ui/modules/greenhouse_gases.js), reading this fixed, generous
-        # physical domain -- so a palette or scale change never needs a server
-        # re-render.
+        # Raw, un-colored data texture (issue #312) -- global, unmasked (see above).
+        # The palette/LUT and the live min/max (or anomaly vmin/vmax) display range
+        # are applied entirely client-side (ui/modules/greenhouse_gases.js), reading
+        # this fixed, generous physical domain -- so a palette or scale change never
+        # needs a server re-render.
         encode_frames([display_data], output_path, encode_vmin, encode_vmax)
 
         # Legend key renders entirely client-side too (issue #302). Absolute mode's
