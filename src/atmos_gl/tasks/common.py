@@ -375,7 +375,9 @@ class Updater:
             )
             return None
 
-    def regrid_for_lod(self, field, lats, lons, fill_value=np.nan, step_override=None):
+    def regrid_for_lod(
+        self, field, lats, lons, fill_value=np.nan, step_override=None, north_first=False
+    ):
         """Resample `field` (lat x lon 2D array) onto a finer grid via
         RegularGridInterpolator. Step size is driven by self.level_of_detail (3=high/
         0.15°, 2=medium/0.20°, else low/0.25°), or fixed directly via `step_override`
@@ -397,7 +399,22 @@ class Updater:
         regardless — see that constant's docstring.
 
         Returns (new_lats, new_lons, field_smooth) — the LOD grid axes and the
-        resampled field, ready to hand to contourf.
+        resampled field, ready to hand to contourf. Always ASCENDING (south-first)
+        by default, regardless of the input's own order.
+
+        north_first=True flips both new_lats and field_smooth together before
+        returning (kept mutually consistent -- a caller can never get one flipped
+        without the other), for a caller feeding the result straight into
+        encode_frames rather than contourf: the GPU fill shader's texture (see
+        ui/modules/_webglfill.js's VS_BODY, "y in [0,1] lat north->south") requires
+        row 0 = north pole. Two independent callers (SSTUpdater.plot(), then
+        GhgUpdater.plot()) each shipped the identical bug -- forgetting to flip the
+        ascending default back to north-first -- before this parameter existed (see
+        docs/adr/0015-sst-texture-was-missing-north-first-flip.md, which predicted a
+        third caller would eventually need exactly this). Callers that only feed
+        contourf (wind/scalar_field/precipitation's own regrid) or use a different
+        render path entirely (air_quality's imshow(origin="lower")) don't need this
+        and leave it at the default.
         """
         if step_override is not None:
             step = step_override
@@ -469,6 +486,11 @@ class Updater:
         )
         mesh_lats, mesh_lons = np.meshgrid(new_lats, new_lons, indexing="ij")
         field_smooth = fn((mesh_lats, mesh_lons))
+
+        if north_first:
+            new_lats = new_lats[::-1]
+            field_smooth = field_smooth[::-1, :]
+
         return new_lats, new_lons, field_smooth
 
     def close_lon_seam_for_contour(self, lons, field, lon_span_threshold=359.0):

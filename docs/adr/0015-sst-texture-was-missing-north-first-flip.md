@@ -62,22 +62,34 @@ Verified live: restarted `layer_builder`, forced a fresh SST render, and
 confirmed by eye in the browser that landmass now lines up correctly
 (Antarctica in the south, Arctic in the north) instead of mirrored.
 
-## `greenhouse_gases.py` has the identical latent bug, not yet fixed
+## Update: `greenhouse_gases.py` hit the predicted bug, and the flip is now promoted
 
-`GhgUpdater.plot()` follows the exact same pattern -- `regrid_for_lod()`
-straight into `encode_frames()`, no north-first restore -- so it is exposed
-to the same mirroring if its source netCDF's native latitude happens to be
-ascending (not confirmed either way here; out of scope for this fix, since
-it wasn't the reported symptom). Revisit if greenhouse gases is ever reported
-showing the same upside-down landmass.
+The "revisit if" below wasn't hypothetical: `GhgUpdater.plot()` shipped the
+identical bug (reported live as the land mask registering over the wrong
+hemisphere -- see PR #393, which also removed GHG's land mask entirely as a
+separate, unrelated decision -- CO2/CH4 are well-mixed atmospheric properties
+with no land/ocean distinction to cut). That made GHG the third real
+occurrence this ADR's own "revisit if" anticipated, so the flip is now a
+`north_first: bool` parameter on `regrid_for_lod()` itself (architecture
+review candidate "consolidate the north-first flip that SST and GHG both
+re-derived") -- both `SSTUpdater.plot()` and `GhgUpdater.plot()` now pass
+`north_first=True` instead of flipping `new_lats`/`display_data` by hand
+afterward; the fix's own code snippet above reflects the pre-promotion shape
+kept for historical context.
+
+Confirmed still scoped narrowly, not a blanket fix for every `regrid_for_lod`
+caller: `air_quality.py` independently needs north-first too but reaches it a
+third way (`imshow(origin="lower")`, a different render pipeline entirely,
+not `encode_frames`) -- a `north_first` parameter doesn't reach it. `wind.py`/
+`scalar_field.py`/`precipitation.py`'s own regrid never see this problem
+(contourf is orientation-agnostic, or they encode from the raw native-order
+field instead). See `tests/test_common_regrid_for_lod.py` for the parameter's
+own tests.
 
 ## Revisit if
 
-- `greenhouse_gases.py` is reported with mirrored geography -- apply the same
-  restore-north-first flip immediately after its `regrid_for_lod()` call.
-- Any future layer adds a hand-rolled `plot()` that calls `regrid_for_lod()`
-  directly for its `encode_frames` texture (bypassing `scalar_field.py`'s
-  shared path) -- it needs this same restore; worth promoting into
-  `regrid_for_lod()` itself (an optional `north_first=True` return) if a
-  third caller ever needs it, rather than trusting each new caller to
-  remember the convention.
+- A third `encode_frames`-via-`regrid_for_lod` caller appears with yet
+  another orientation quirk `north_first: bool` doesn't cover -- the
+  parameter's contract (flip both `new_lats` and `field_smooth` together,
+  default `False`) should stay this simple unless a real caller needs
+  something the boolean can't express.

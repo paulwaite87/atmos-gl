@@ -120,6 +120,21 @@ def test_plot_masks_land_cells_as_nan_before_encoding():
         assert not np.isnan(encoded_frame[:, :2]).any()
 
 
+def test_plot_requests_north_first_row_order_from_regrid_for_lod():
+    # regrid_for_lod always returns ASCENDING (south-first) latitude rows unless
+    # asked for north_first -- plot() must ask for it (and use the returned,
+    # now-descending new_lats for the land-mask meshgrid below), since the GPU fill
+    # shader's texture (encode_frames) requires row 0 = north pole. This was SST's
+    # own first occurrence of the bug the north_first parameter now exists to stop
+    # recurring (see docs/adr/0015-sst-texture-was-missing-north-first-flip.md).
+    u = make_bare_updater(settings={})
+    with _StackedMocks(mock_land=None):
+        u.regrid_for_lod = MagicMock(return_value=(_NEW_LATS, _NEW_LONS, _DISPLAY_DATA.copy()))
+        u.plot("absolute", "/tmp/fake.nc", "/data/sst_absolute.png")
+
+        assert u.regrid_for_lod.call_args.kwargs["north_first"] is True
+
+
 def test_mode_settings_signature_is_empty_since_nothing_affects_the_encoded_texture():
     u = make_bare_updater(settings={"min_c": 5, "max_c": 30, "palette": "vivid", "opacity": 90})
     assert u._mode_settings_signature("absolute") == u._settings_signature({})

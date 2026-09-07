@@ -164,6 +164,39 @@ def test_regrid_for_lod_step_override_bypasses_the_cap():
     assert len(new_lats) * len(new_lons) > _MAX_LOD_GRID_POINTS
 
 
+def test_regrid_for_lod_north_first_flips_lats_and_field_together():
+    # Architecture review candidate: SST and GHG each independently flipped both
+    # new_lats and field_smooth back to north-first after calling this (SST forgot
+    # once -- ADR-0015 -- and GHG shipped the identical bug later), so the flip now
+    # lives here, tested once, instead of trusting every future encode_frames caller
+    # to remember it.
+    updater = make_bare_updater(level_of_detail=1)
+    lats = np.arange(0.0, 6.0)  # ascending input
+    lons = np.arange(0.0, 6.0)
+    field = _linear_field(lats, lons)
+
+    asc_lats, _, asc_field = updater.regrid_for_lod(field, lats, lons)
+    nf_lats, nf_lons, nf_field = updater.regrid_for_lod(field, lats, lons, north_first=True)
+
+    assert nf_lats[0] > nf_lats[-1]  # descending (north-first)
+    assert np.array_equal(nf_lats, asc_lats[::-1])
+    assert np.array_equal(nf_field, asc_field[::-1, :])
+    # lats and field stay mutually consistent: row 0 of the flipped field is still
+    # the value at row 0's (now-northmost) latitude.
+    assert np.isclose(nf_field[0, 0], nf_lats[0] + nf_lons[0])
+
+
+def test_regrid_for_lod_north_first_defaults_to_false():
+    updater = make_bare_updater(level_of_detail=1)
+    lats = np.arange(0.0, 6.0)
+    lons = np.arange(0.0, 6.0)
+    field = _linear_field(lats, lons)
+
+    new_lats, _, _ = updater.regrid_for_lod(field, lats, lons)
+
+    assert new_lats[0] < new_lats[-1]  # unchanged: still ascending by default
+
+
 def test_regrid_for_lod_custom_fill_value_outside_domain():
     # step (0.25 at level_of_detail=1) doesn't evenly divide a 2.1-wide span, so
     # np.arange's last grid point genuinely overshoots the data's real max -> that
