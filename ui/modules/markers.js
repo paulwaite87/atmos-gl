@@ -1,6 +1,7 @@
 import { liveDataSync } from './_datasync.js';
 import { escapeHtml, buildPopupHtml } from './_feedhelpers.js';
 import { hoverPopup } from './_hoverpopup.js';
+import { keepLayersOnTop } from './_layerstack.js';
 
 // Static place-marker layer: a small dot + label per place, loaded from the
 // hard-coded markers/markers.geojson. Labels are collision-managed and revealed
@@ -80,14 +81,9 @@ export function loadLayer(map, config) {
     // (precipitation, etc.) would otherwise render above the small dots/labels, hiding
     // them so there's nothing to hover. styledata fires whenever the layer stack changes;
     // we only move when the labels aren't already topmost, so this can't loop (moving makes
-    // labels topmost -> the guard is false on the re-entrant styledata).
-    const ensureOnTop = () => {
-        const layers = map.getStyle()?.layers;
-        if (!layers || !layers.length) return;
-        if (layers[layers.length - 1].id === labelLayerId) return;   // already on top
-        if (map.getLayer(dotLayerId)) map.moveLayer(dotLayerId);      // dots to top
-        if (map.getLayer(labelLayerId)) map.moveLayer(labelLayerId);  // labels above dots
-    };
+    // labels topmost -> the guard is false on the re-entrant styledata). See _layerstack.js's
+    // keepLayersOnTop for why this must read map.getLayersOrder(), not map.getStyle().layers.
+    const ensureOnTop = () => keepLayersOnTop(map, [dotLayerId, labelLayerId], [labelLayerId]);
 
 
     const mount = async (cfg) => {
