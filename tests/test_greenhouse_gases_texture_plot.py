@@ -89,20 +89,21 @@ def test_plot_does_not_mask_land_cells():
         assert not np.isnan(encoded_frame).any()
 
 
-def test_plot_restores_north_first_row_order_before_encoding():
-    # regrid_for_lod always returns ASCENDING (south-first) latitude rows -- plot()
-    # must flip back to north-first (row 0 = north pole) before encode_frames, the
-    # same restore SSTUpdater.plot() applies for the identical reason. Missing this
-    # mirrored the whole layer north-south (reported live via the land mask, before
-    # #393 removed masking, registering over the wrong hemisphere).
+def test_plot_requests_north_first_row_order_from_regrid_for_lod():
+    # regrid_for_lod always returns ASCENDING (south-first) latitude rows unless
+    # asked for north_first -- plot() must ask for it, since the GPU fill shader's
+    # texture (encode_frames) requires row 0 = north pole. Missing this (before
+    # north_first existed) mirrored the whole layer north-south (reported live via
+    # the land mask, before #393 removed masking, registering over the wrong
+    # hemisphere). The flip itself is now regrid_for_lod's own responsibility (see
+    # tests/test_common_regrid_for_lod.py) -- this only confirms the caller asks.
     u = make_bare_updater(settings={})
     stack, mocks = _patched()
     with stack:
         u.regrid_for_lod = MagicMock(return_value=(_NEW_LATS, _NEW_LONS, _DISPLAY_DATA.copy()))
         u.plot("co2", "absolute", "/tmp/current.nc", None, "/data/greenhouse_gases_co2_absolute.png")
 
-        encoded_frame = mocks["encode_frames"].call_args.args[0][0]
-        assert encoded_frame.tolist() == _DISPLAY_DATA[::-1, :].tolist()
+        assert u.regrid_for_lod.call_args.kwargs["north_first"] is True
 
 
 def test_mode_settings_signature_absolute_is_empty_since_nothing_affects_the_encoded_texture():

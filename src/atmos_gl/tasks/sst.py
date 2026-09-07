@@ -88,21 +88,14 @@ class SSTUpdater(Updater):
         # LOD regrid off OISST's coarse native 0.25 deg grid down to _SST_REGRID_STEP_DEG,
         # then cut the true coastline the same way currents.py does -- see
         # docs/adr/0004-render-bbox-clipping-is-dead-code.md.
+        # north_first=True: the GPU fill shader's texture (encode_frames below)
+        # requires row 0 = north pole -- see regrid_for_lod's own docstring for the
+        # bug this parameter exists to stop recurring (this call site was its first
+        # occurrence, before the parameter existed).
         new_lats, new_lons, display_data = self.regrid_for_lod(
             raw_matrix, lat_raw, lon_norm, fill_value=np.nan,
-            step_override=_SST_REGRID_STEP_DEG,
+            step_override=_SST_REGRID_STEP_DEG, north_first=True,
         )
-        # regrid_for_lod always returns ASCENDING (south-first) latitude rows,
-        # regardless of the input's own order (see its docstring) -- but the GPU fill
-        # shader (ui/modules/_webglfill.js's VS_BODY: "y in [0,1] lat north->south")
-        # requires row 0 = north pole, the same contract every other encode_frames
-        # texture relies on (see precipitation.py's _smooth_global_field, which
-        # explicitly flips back with the comment "restore north-first row order for
-        # the texture"). This restore was missing here, so the whole SST layer --
-        # data AND land mask alike -- rendered mirrored across the equator, reported
-        # live as "the landmass mask is upside-down".
-        new_lats = new_lats[::-1]
-        display_data = display_data[::-1, :]
         mesh_lon, mesh_lat = np.meshgrid(new_lons, new_lats)
         # coastline_land_mask() dilates the mask by one cell before returning (see its
         # own docstring) -- needed because the GPU fill layer samples this texture with

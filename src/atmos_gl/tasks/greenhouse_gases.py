@@ -93,20 +93,16 @@ class GhgUpdater(Updater):
                 display_data, lat_raw, lon_norm, baseline_matrix, baseline_lat, baseline_lon
             )
 
+        # north_first=True: the GPU fill shader's texture (encode_frames below)
+        # requires row 0 = north pole -- see regrid_for_lod's own docstring. Missing
+        # this (before the parameter existed) mirrored the CO2/CH4 data across the
+        # equator, reported live via the land mask registering over the wrong
+        # hemisphere (that mask is gone now -- see below -- but the orientation bug
+        # was independent of it).
         _, _, display_data = self.regrid_for_lod(
             display_data, lat_raw, lon_norm, fill_value=np.nan, step_override=_REGRID_STEP_DEG,
+            north_first=True,
         )
-        # regrid_for_lod always returns ASCENDING (south-first) latitude rows,
-        # regardless of the input's own order (see its docstring) -- but the GPU fill
-        # shader (ui/modules/_webglfill.js's VS_BODY: "y in [0,1] lat north->south")
-        # requires row 0 = north pole, the same contract every other encode_frames
-        # texture relies on (see SSTUpdater.plot()'s identical restore, and its own
-        # comment on the exact same bug: "the whole SST layer -- data AND land mask
-        # alike -- rendered mirrored across the equator"). This flip was missing here:
-        # both the CO2/CH4 data and the land mask this layer used to apply (see below)
-        # rendered mirrored across the equator, reported live as the land mask
-        # registering over the wrong hemisphere.
-        display_data = display_data[::-1, :]
 
         # No land mask: unlike SST (sea-surface only) or Fire Risk (land-only hazard),
         # CO2/CH4 are well-mixed atmospheric properties with a real, meaningful value
