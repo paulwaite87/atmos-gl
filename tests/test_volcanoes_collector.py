@@ -4,8 +4,10 @@ parsing (pure functions, tested directly against fixture text) and collect()'s
 GVP/HANS join (tested with mocked HTTP against a FakeVolcanicActivityAdapter-equivalent
 MagicMock, asserting the resulting upsert_activity calls).
 """
+import json
 from unittest.mock import MagicMock, patch
 
+from atmos_gl.collectors.base import CollectorBase
 from atmos_gl.collectors.volcanoes import (
     VolcanicActivityCollector,
     _fix_mangled_punctuation,
@@ -51,14 +53,12 @@ class _FakeResponse:
     def __init__(self, body: bytes):
         self._body = body
 
-    def read(self):
+    @property
+    def content(self):
         return self._body
 
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *exc):
-        return False
+    def json(self):
+        return json.loads(self._body)
 
 
 def test_parse_guid_vnum_extracts_the_smithsonian_number():
@@ -157,10 +157,10 @@ def test_collect_joins_gvp_and_hans_by_vnum():
         "https://hans.example/api": _FakeResponse(_HANS_FIXTURE),
     }
 
-    def fake_urlopen(req, timeout=30):
-        return responses[req.full_url]
+    def fake_get(url, **kwargs):
+        return responses[url]
 
-    with patch("urllib.request.urlopen", side_effect=fake_urlopen):
+    with patch.object(CollectorBase, "_get", side_effect=fake_get):
         c.collect()
 
     calls_by_vnum = {call.args[0]: call.args for call in c.activity_adapter.upsert_activity.call_args_list}

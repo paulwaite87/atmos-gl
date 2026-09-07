@@ -6,6 +6,7 @@ were previously discarded entirely (no popup row, no DB column)."""
 from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
+from atmos_gl.collectors.base import CollectorBase
 from atmos_gl.collectors.storms import StormsCollector
 
 
@@ -14,10 +15,7 @@ def make_collector():
 
 
 def _fake_response(text):
-    resp = MagicMock()
-    resp.status_code = 200
-    resp.text = text
-    return resp
+    return MagicMock(text=text)
 
 
 # A real-shaped BEST-track line (NHC btk format) -- SID/NAME come from the filename and
@@ -34,7 +32,7 @@ def test_parse_b_deck_extracts_wind_pressure_and_category():
     c = make_collector()
     # expiry_days is irrelevant to what this test checks (field extraction) -- pass a
     # huge value so B_DECK_LINE's fixed date never trips the "too old" check.
-    with patch("atmos_gl.collectors.storms.requests.get", return_value=_fake_response(B_DECK_LINE)):
+    with patch.object(CollectorBase, "_get", return_value=_fake_response(B_DECK_LINE)):
         pts = c._parse_b_deck(
             "http://example/bep012026.dat", datetime.now(timezone.utc), expiry_days=999999
         )
@@ -49,7 +47,7 @@ def test_parse_a_deck_extracts_wind_pressure_and_category():
     # OFCL forecast line, TAU=24 (not 0, so _parse_a_deck keeps it).
     a_deck_line = B_DECK_LINE.replace("BEST", "OFCL").replace("   0, 113N", "  24, 113N")
     c = make_collector()
-    with patch("atmos_gl.collectors.storms.requests.get", return_value=_fake_response(a_deck_line)):
+    with patch.object(CollectorBase, "_get", return_value=_fake_response(a_deck_line)):
         pts = c._parse_a_deck("http://example/aep012026.dat", "EP012026")
 
     assert len(pts) == 1

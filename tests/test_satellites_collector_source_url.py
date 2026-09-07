@@ -8,6 +8,7 @@ directly instead of maintaining a separate _base_url().
 """
 from unittest.mock import MagicMock, patch
 
+from atmos_gl.collectors.base import CollectorBase
 from atmos_gl.collectors.satellites import SatellitesCollector
 
 
@@ -39,10 +40,10 @@ def test_has_new_data_builds_url_from_source_url():
     )
 
 
-@patch("atmos_gl.collectors.satellites.requests.get")
+@patch.object(CollectorBase, "_get")
 def test_fetch_group_uses_the_fallback_when_unconfigured(mock_get):
     c = make_collector()
-    mock_get.return_value = MagicMock(status_code=200, json=lambda: [])
+    mock_get.return_value = MagicMock(json=lambda: [])
 
     c._fetch_group("stations")
 

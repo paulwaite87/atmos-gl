@@ -10,6 +10,7 @@ from unittest.mock import MagicMock, patch
 
 import requests
 
+from atmos_gl.collectors.base import CollectorBase
 from atmos_gl.collectors.world_events import WorldEventsCollector, _classify, _parse_export_rows
 
 _BASE_URL = "http://data.gdeltproject.org/gdeltv2"
@@ -56,14 +57,9 @@ def _row(
 
 
 class _FakeResponse:
-    def __init__(self, text="", lines=None, status_code=200):
+    def __init__(self, text="", lines=None):
         self.text = text
         self._lines = lines or []
-        self.status_code = status_code
-
-    def raise_for_status(self):
-        if self.status_code >= 400:
-            raise requests.HTTPError(f"HTTP {self.status_code}")
 
     def iter_lines(self, decode_unicode=True):
         return iter(self._lines)
@@ -179,10 +175,7 @@ def test_parse_export_rows_does_not_apply_a_mentions_floor():
 def test_has_new_data_true_when_export_filename_changed():
     c = make_collector()
     lastupdate_text = "123 abc http://data.gdeltproject.org/gdeltv2/20260821120000.export.CSV.zip"
-    with patch(
-        "atmos_gl.collectors.world_events.requests.get",
-        return_value=_FakeResponse(text=lastupdate_text),
-    ):
+    with patch.object(CollectorBase, "_get", return_value=_FakeResponse(text=lastupdate_text)):
         assert c.has_new_data() is True
 
 
@@ -191,19 +184,13 @@ def test_has_new_data_false_when_export_filename_unchanged():
     url = "http://data.gdeltproject.org/gdeltv2/20260821120000.export.CSV.zip"
     c._etag_cache[f"{_BASE_URL}/lastupdate.txt"] = url
     lastupdate_text = f"123 abc {url}"
-    with patch(
-        "atmos_gl.collectors.world_events.requests.get",
-        return_value=_FakeResponse(text=lastupdate_text),
-    ):
+    with patch.object(CollectorBase, "_get", return_value=_FakeResponse(text=lastupdate_text)):
         assert c.has_new_data() is False
 
 
 def test_has_new_data_defaults_true_on_fetch_failure():
     c = make_collector()
-    with patch(
-        "atmos_gl.collectors.world_events.requests.get",
-        side_effect=requests.ConnectionError("down"),
-    ):
+    with patch.object(CollectorBase, "_get", return_value=None):
         assert c.has_new_data() is True
 
 
@@ -218,7 +205,7 @@ def test_collect_upserts_rows_at_or_above_the_mentions_floor():
         _row(event_code="193", global_event_id="2", num_mentions="5"),  # below floor
     ])
 
-    with patch("atmos_gl.collectors.world_events.requests.get", return_value=_FakeResponse(text=lastupdate_text)), \
+    with patch.object(CollectorBase, "_get", return_value=_FakeResponse(text=lastupdate_text)), \
          patch("atmos_gl.collectors.world_events._fetch_export_csv", return_value=csv_text):
         c.collect()
 
@@ -230,10 +217,7 @@ def test_collect_upserts_rows_at_or_above_the_mentions_floor():
 def test_collect_skips_when_lastupdate_has_no_export_entry():
     c = make_collector()
     c.world_event_adapter.oldest_event_date.return_value = datetime.now(timezone.utc)
-    with patch(
-        "atmos_gl.collectors.world_events.requests.get",
-        return_value=_FakeResponse(text="no export file here"),
-    ):
+    with patch.object(CollectorBase, "_get", return_value=_FakeResponse(text="no export file here")):
         c.collect()
     c.world_event_adapter.upsert_events.assert_not_called()
 
@@ -245,7 +229,7 @@ def test_backfill_skipped_when_coverage_already_reaches_backfill_days():
     c.world_event_adapter.oldest_event_date.return_value = (
         datetime.now(timezone.utc) - timedelta(days=5)
     )
-    with patch("atmos_gl.collectors.world_events.requests.get") as mock_get:
+    with patch.object(CollectorBase, "_get") as mock_get:
         c._backfill_gap(backfill_days=3, min_mentions=10)
     mock_get.assert_not_called()
 
@@ -275,7 +259,7 @@ def test_backfill_fetches_only_the_missing_window_on_an_empty_table():
             return master_response
         raise AssertionError(f"unexpected fetch: {url}")
 
-    with patch("atmos_gl.collectors.world_events.requests.get", side_effect=fake_get), \
+    with patch.object(CollectorBase, "_get", side_effect=fake_get), \
          patch("atmos_gl.collectors.world_events._fetch_export_csv", return_value=csv_text) as mock_fetch_csv:
         c._backfill_gap(backfill_days=1, min_mentions=10)
 
@@ -308,7 +292,7 @@ def test_backfill_one_file_failing_does_not_block_the_rest():
             raise requests.ConnectionError("mid-backfill outage")
         return _row(event_code="183", global_event_id="ok", num_mentions="20")
 
-    with patch("atmos_gl.collectors.world_events.requests.get", side_effect=fake_get), \
+    with patch.object(CollectorBase, "_get", side_effect=fake_get), \
          patch("atmos_gl.collectors.world_events._fetch_export_csv", side_effect=fake_fetch_csv):
         c._backfill_gap(backfill_days=1, min_mentions=10)  # must not raise
 

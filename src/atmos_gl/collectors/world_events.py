@@ -188,9 +188,16 @@ def _parse_export_rows(csv_text: str) -> list[dict]:
 def _fetch_export_csv(url: str) -> str:
     """Downloads one GDELT export.CSV.zip and returns its single member's decoded
     text. GDELT's export files are latin-1 (confirmed against a live file: several
-    actor/place names carry raw high-byte characters that aren't valid UTF-8)."""
-    r = requests.get(url, timeout=30, headers={"User-Agent": "AtmosGL-Collector/1.0"})
-    r.raise_for_status()
+    actor/place names carry raw high-byte characters that aren't valid UTF-8).
+
+    Raises (rather than returning a sentinel) on fetch failure -- collect()'s single
+    call site has no try/except of its own and relies on the driver's outer catch,
+    while _backfill_gap's per-file loop wraps each call in its own try/except and
+    skips just that file. CollectorBase._get() is a classmethod, called directly
+    since this is a module-level function, not a CollectorBase method."""
+    r = CollectorBase._get(url, timeout=30)
+    if r is None:
+        raise requests.ConnectionError(f"GET {url!r} failed")
     with zipfile.ZipFile(io.BytesIO(r.content)) as zf:
         name = zf.namelist()[0]
         return zf.read(name).decode("latin-1")
@@ -226,15 +233,10 @@ class WorldEventsCollector(CollectorBase):
         CollectorBase's own HEAD-based ETag cache) rather than re-downloading/parsing
         on every driver poll faster than GDELT's own 15-min cadence."""
         lastupdate_url = self._lastupdate_url()
-        try:
-            r = requests.get(
-                lastupdate_url, timeout=10, headers={"User-Agent": "AtmosGL-Collector/1.0"}
-            )
-            r.raise_for_status()
-            url = _export_url_from_lastupdate(r.text)
-        except Exception as e:
-            logger.debug(f"World Events: lastupdate.txt fetch failed: {e}")
+        r = self._get(lastupdate_url, timeout=10)
+        if r is None:
             return True  # can't tell -> collect anyway, safe fallback
+        url = _export_url_from_lastupdate(r.text)
 
         if not url:
             return True
@@ -266,14 +268,9 @@ class WorldEventsCollector(CollectorBase):
             f"to {gap_end.isoformat()}."
         )
 
-        try:
-            r = requests.get(
-                self._masterfilelist_url(), timeout=60,
-                headers={"User-Agent": "AtmosGL-Collector/1.0"}, stream=True,
-            )
-            r.raise_for_status()
-        except Exception as e:
-            logger.error(f"World Events: masterfilelist.txt fetch failed: {e}")
+        r = self._get(self._masterfilelist_url(), timeout=60, stream=True)
+        if r is None:
+            logger.error("World Events: masterfilelist.txt fetch failed.")
             return
 
         urls = []
@@ -316,15 +313,11 @@ class WorldEventsCollector(CollectorBase):
         self._backfill_gap(backfill_days, min_mentions)
 
         lastupdate_url = self._lastupdate_url()
-        try:
-            r = requests.get(
-                lastupdate_url, timeout=10, headers={"User-Agent": "AtmosGL-Collector/1.0"}
-            )
-            r.raise_for_status()
-            url = _export_url_from_lastupdate(r.text)
-        except Exception as e:
-            logger.error(f"World Events: lastupdate.txt fetch failed: {e}")
+        r = self._get(lastupdate_url, timeout=10)
+        if r is None:
+            logger.error(f"World Events: lastupdate.txt fetch failed for {lastupdate_url!r}.")
             return
+        url = _export_url_from_lastupdate(r.text)
 
         if not url:
             logger.warning("World Events: lastupdate.txt has no export.CSV.zip entry; skipping.")
