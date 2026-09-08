@@ -3,14 +3,14 @@ import { standardLegend } from './_legend.js';
 import { buildThresholdLUT } from './_thresholdpalette.js';
 import { opacityUniform } from './_opacity.js';
 
-// GPU scrubber layer. Critical-zone ramp over [150, 450] Dobson Units (total column
-// ozone) -- mirrors tasks/scalar_field.py's SPECS["ozone"] (architecture review
-// candidate #5: restores the critical-palette behaviour PR #49 silently dropped when
-// OzoneUpdater was collapsed into the generic ScalarFieldUpdater). Brightest colour
-// (yellow) marks the worst reading (lowest ozone, i.e. the hole), fading through
-// magenta at the critical_du threshold to a dim, near-transparent "safe" zone above it.
-const VMIN = 150.0;
-const VMAX = 500.0;
+// GPU scrubber layer. Critical-zone ramp (architecture review candidate #5: restores
+// the critical-palette behaviour PR #49 silently dropped when OzoneUpdater was
+// collapsed into the generic ScalarFieldUpdater). Brightest colour (yellow) marks the
+// worst reading (lowest ozone, i.e. the hole), fading through magenta at the
+// critical_du threshold to a dim, near-transparent "safe" zone above it.
+// vmin/vmax/ticks/title come from fullConfig.scalar_field_specs.ozone
+// (tasks/scalar_field.py's SPECS["ozone"], served by /api/config) -- the one source
+// of truth for this field's display domain.
 
 const PALETTES = {
     alert: [[1, 0, 1], [1, 1, 0]],           // magenta (threshold) -> yellow (worst)
@@ -18,11 +18,8 @@ const PALETTES = {
 };
 const FLAT_COLOR = [0, 0.1, 0.3, 0.2]; // dim, mostly-transparent -- the "safe" zone
 
-// Mirrors tasks/scalar_field.py's SPECS["ozone"] ticks/title.
-const TICKS = [150, 200, 250, 300, 350, 400, 450, 500];
-
-const lutFor = (cfg) => buildThresholdLUT({
-    vmin: VMIN, vmax: VMAX,
+const lutFor = (cfg, vmin, vmax) => buildThresholdLUT({
+    vmin, vmax,
     threshold: Number(cfg.critical_du) || 220.0,
     focus: 'below',
     paletteColors: PALETTES[cfg.palette] || PALETTES.alert,
@@ -30,9 +27,12 @@ const lutFor = (cfg) => buildThresholdLUT({
 });
 
 export function loadLayer(map, config, fullConfig = {}) {
+    const { vmin: VMIN, vmax: VMAX, ticks: TICKS, title: TITLE } =
+        fullConfig.scalar_field_specs.ozone;
+
     const legend = standardLegend('ozone-legend-slot', (cfg) => ({
-        lut: lutFor(cfg), vmin: VMIN, vmax: VMAX, ticks: TICKS,
-        title: 'Ozone (DU)', tickFormat: '%d',
+        lut: lutFor(cfg, VMIN, VMAX), vmin: VMIN, vmax: VMAX, ticks: TICKS,
+        title: TITLE, tickFormat: '%d',
     }), 0.85);
 
     createFillLayer(map, {
@@ -54,7 +54,7 @@ export function loadLayer(map, config, fullConfig = {}) {
         customUniforms: (cfg) => ({
             u_alpha: opacityUniform(cfg, 0.85),
         }),
-        colormap: (cfg) => lutFor(cfg),
+        colormap: (cfg) => lutFor(cfg, VMIN, VMAX),
         onMount: legend.addLegend,
         onRefresh: legend.addLegend,
         onUnmount: legend.removeLegend,

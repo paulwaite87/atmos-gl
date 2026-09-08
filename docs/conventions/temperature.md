@@ -45,11 +45,13 @@ per-render scale, so a palette/threshold setting change never needs a re-render 
 
 ## Frontend: `createFillLayer`
 
-`ui/modules/temperature.js` hardcodes its own mirror of the backend spec —
-`VMIN=-40.0, VMAX=50.0, TICKS=[...]` — matching `SPECS["temperature"]` exactly but with no
-code-level link between the two (a bug pattern the join-key fragility note in
-[layers.md](layers.md) also applies to: a spec change on one side and not the other
-silently desyncs the legend from the texture's actual encoded domain).
+`ui/modules/temperature.js` reads `vmin`/`vmax`/`ticks`/`title` straight off
+`fullConfig.scalar_field_specs.temperature` — a `/api/config` field built directly from
+`SPECS["temperature"]` (`routes/config.py`'s `_build_config_data()`), not a hand-copied
+mirror. This closed the exact desync risk the join-key fragility note in
+[layers.md](layers.md) still describes for other cross-language string ties: temperature/
+ozone/stormwatch/pwat's four frontend modules used to hardcode their own copies of these
+same numbers, enforced only by a comment.
 
 `createFillLayer` (`ui/modules/_webglfill.js`) is the shared GPU renderer behind all 20
 Animated fill layer instances. It:

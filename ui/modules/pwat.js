@@ -3,14 +3,13 @@ import { standardLegend } from './_legend.js';
 import { buildThresholdLUT } from './_thresholdpalette.js';
 import { opacityUniform } from './_opacity.js';
 
-// GPU scrubber layer. Critical-zone ramp over [0, 80] mm precipitable water (total
-// column moisture) -- mirrors tasks/scalar_field.py's SPECS["pwat"]. Highlights
-// potential problem areas (elevated moisture -- a precondition for heavy rain/
-// atmospheric rivers) rather than colouring the whole globe: below critical_pwat is
-// fully transparent, above it grades toward the brightest colour at vmax (the most
-// anomalous reading).
-const VMIN = 0.0;
-const VMAX = 80.0;
+// GPU scrubber layer. Critical-zone ramp over precipitable water (total column
+// moisture). Highlights potential problem areas (elevated moisture -- a precondition
+// for heavy rain/atmospheric rivers) rather than colouring the whole globe: below
+// critical_pwat is fully transparent, above it grades toward the brightest colour at
+// vmax (the most anomalous reading). vmin/vmax/ticks/title come from
+// fullConfig.scalar_field_specs.pwat (tasks/scalar_field.py's SPECS["pwat"], served
+// by /api/config) -- the one source of truth for this field's display domain.
 
 const PALETTES = {
     // Matches precipitation.js's "standard" palette exactly, so the two layers
@@ -23,11 +22,8 @@ const PALETTES = {
 };
 const FLAT_COLOR = [0, 0, 0, 0]; // fully transparent -- unremarkable moisture
 
-// Mirrors tasks/scalar_field.py's SPECS["pwat"] ticks/title.
-const TICKS = [0, 20, 40, 50, 60, 80];
-
-const lutFor = (cfg) => buildThresholdLUT({
-    vmin: VMIN, vmax: VMAX,
+const lutFor = (cfg, vmin, vmax) => buildThresholdLUT({
+    vmin, vmax,
     threshold: Number(cfg.critical_pwat) || 50.0,
     focus: 'above',
     paletteColors: PALETTES[cfg.palette] || PALETTES.standard,
@@ -35,9 +31,12 @@ const lutFor = (cfg) => buildThresholdLUT({
 });
 
 export function loadLayer(map, config, fullConfig = {}) {
+    const { vmin: VMIN, vmax: VMAX, ticks: TICKS, title: TITLE } =
+        fullConfig.scalar_field_specs.pwat;
+
     const legend = standardLegend('pwat-legend-slot', (cfg) => ({
-        lut: lutFor(cfg), vmin: VMIN, vmax: VMAX, ticks: TICKS,
-        title: 'Precipitable Water (mm)', tickFormat: '%d',
+        lut: lutFor(cfg, VMIN, VMAX), vmin: VMIN, vmax: VMAX, ticks: TICKS,
+        title: TITLE, tickFormat: '%d',
     }), 0.85);
 
     createFillLayer(map, {
@@ -59,7 +58,7 @@ export function loadLayer(map, config, fullConfig = {}) {
         customUniforms: (cfg) => ({
             u_alpha: opacityUniform(cfg, 0.85),
         }),
-        colormap: (cfg) => lutFor(cfg),
+        colormap: (cfg) => lutFor(cfg, VMIN, VMAX),
         onMount: legend.addLegend,
         onRefresh: legend.addLegend,
         onUnmount: legend.removeLegend,

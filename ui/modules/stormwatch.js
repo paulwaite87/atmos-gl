@@ -3,19 +3,19 @@ import { CMAP_YLORRD, rgbToRgba } from './_colormaps.js';
 import { standardLegend } from './_legend.js';
 import { opacityUniform } from './_opacity.js';
 
-// GPU scrubber layer (CAPE). Linear YlOrRd ramp over [0, 5000] J/kg -- mirrors
-// tasks/scalar_field.py's SPECS["stormwatch"] (cmap YlOrRd, Normalize 0..5000, same
-// ticks/title) so the client-drawn legend key matches exactly.
+// GPU scrubber layer (CAPE). Linear YlOrRd ramp -- vmin/vmax/ticks/title come from
+// fullConfig.scalar_field_specs.stormwatch (tasks/scalar_field.py's SPECS["stormwatch"],
+// served by /api/config), the one source of truth for this field's display domain.
 // Low CAPE is rendered transparent so the layer doesn't wash the whole globe yellow.
-const VMIN = 0.0;
-const VMAX = 5000.0;
-const TICKS = [0, 1000, 2000, 3000, 4000, 5000];
 
 export function loadLayer(map, config, fullConfig = {}) {
+    const { vmin: VMIN, vmax: VMAX, ticks: TICKS, title: TITLE } =
+        fullConfig.scalar_field_specs.stormwatch;
+
     const legend = standardLegend('stormwatch-legend-slot', () => ({
         lut: rgbToRgba(CMAP_YLORRD),
         vmin: VMIN, vmax: VMAX, ticks: TICKS,
-        title: 'CAPE (J/kg)', tickFormat: '%d',
+        title: TITLE, tickFormat: '%d',
     }), 0.85);
 
     createFillLayer(map, {
