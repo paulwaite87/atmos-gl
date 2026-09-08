@@ -11,6 +11,7 @@ from atmos_gl.lib.config import AtmosGLConfig
 from atmos_gl.lib.data_status import resolve_run_epoch_utc
 from atmos_gl.lib.output_files import OUTFILES
 from atmos_gl.routes.auth import current_user_optional, get_user_adapter, require_admin
+from atmos_gl.tasks.scalar_field import SPECS as SCALAR_FIELD_SPECS
 from atmos_gl.routes.field_specs import (
     FIELD_SPECS,
     field_label,
@@ -255,6 +256,18 @@ def _build_config_data() -> dict:
     # from the same hardcoded value the render task itself uses.
     for section, path in OUTFILES.items():
         data.setdefault(section, {})["outfile"] = path
+
+    # One source of truth for the Scalar field spec (architecture review candidate,
+    # second round): temperature.js/ozone.js/stormwatch.js/pwat.js used to hand-copy
+    # their own VMIN/VMAX/TICKS/title, enforced only by a "mirrors SPECS[...]" comment
+    # -- deleting scalar_field.py's SPECS entry for a field silently broke the frontend
+    # with nothing to catch it. Exposed here (not per-section, since these aren't user
+    # settings) so every one of those four modules reads the same value the backend
+    # actually renders from.
+    data["scalar_field_specs"] = {
+        name: {"vmin": s.vmin, "vmax": s.vmax, "ticks": s.ticks, "title": s.title}
+        for name, s in SCALAR_FIELD_SPECS.items()
+    }
 
     return data
 

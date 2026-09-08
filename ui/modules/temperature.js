@@ -3,18 +3,19 @@ import { CMAP_RDYLBU_R, rgbToRgba } from './_colormaps.js';
 import { standardLegend } from './_legend.js';
 import { opacityUniform } from './_opacity.js';
 
-// GPU scrubber layer. Linear RdYlBu_r ramp over [-40, 50] °C -- mirrors
-// tasks/scalar_field.py's SPECS["temperature"] (cmap RdYlBu_r, Normalize -40..50,
-// same ticks/title) so the client-drawn legend key matches exactly.
-const VMIN = -40.0;
-const VMAX = 50.0;
-const TICKS = [-40, -20, 0, 10, 20, 30, 40, 50];
+// GPU scrubber layer. Linear RdYlBu_r ramp -- vmin/vmax/ticks/title come from
+// fullConfig.scalar_field_specs.temperature (tasks/scalar_field.py's SPECS["temperature"],
+// served by /api/config), the one source of truth for this field's display domain --
+// see docs/conventions/temperature.md.
 
 export function loadLayer(map, config, fullConfig = {}) {
+    const { vmin: VMIN, vmax: VMAX, ticks: TICKS, title: TITLE } =
+        fullConfig.scalar_field_specs.temperature;
+
     const legend = standardLegend('temperature-legend-slot', () => ({
         lut: rgbToRgba(CMAP_RDYLBU_R),
         vmin: VMIN, vmax: VMAX, ticks: TICKS,
-        title: 'Temperature (°C)', tickFormat: '%d',
+        title: TITLE, tickFormat: '%d',
     }), 0.85);
 
     createFillLayer(map, {
