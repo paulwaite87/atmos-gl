@@ -5,14 +5,26 @@ definitions to one sentence.
 
 ## Layers
 
+Every layer (an `ALL_LAYERS` entry in `ui/index.html`) is one of five shapes — see
+[docs/conventions/layers.md](docs/conventions/layers.md) for the full index and a worked
+example of each.
+
 | Term | Definition | Aliases to avoid |
 | ---- | ---------- | ---------------- |
-| **Scalar field** | A layer rendered as a single-scalar `contourf` heatmap over a value range — temperature, ozone, and stormwatch (CAPE) — sharing one renderer (`ScalarFieldUpdater`) and differing only by a `ScalarFieldSpec` (colormap, range, `extend`, key ticks, title). | scalar layer, heatmap layer |
+| **Animated fill layer** | A forecast-hour-animated GPU texture fill layer — `createFillLayer` (`ui/modules/_webglfill.js`), 20 call sites, backed by a per-hour `Updater.plot()`. Broader than **Scalar field** below: isobars, precipitation, wind, currents, waves, and jetstream are Animated fill layers with their own bespoke renderers, not `ScalarFieldUpdater` instances. See [docs/conventions/temperature.md](docs/conventions/temperature.md). | fill layer |
+| **Scalar field** | A layer rendered as a single-scalar `contourf` heatmap over a value range — temperature, ozone, and stormwatch (CAPE) — sharing one renderer (`ScalarFieldUpdater`) and differing only by a `ScalarFieldSpec` (colormap, range, `extend`, key ticks, title). A subset of **Animated fill layer**, not a synonym for it. | scalar layer, heatmap layer |
+| **Static fill layer** | A GPU texture fill layer with no forecast-hour dimension, poll-refreshed instead — `createStaticFillLayer` (`ui/modules/_webglfill.js`), 6 call sites across sst, greenhouse_gases, and flood_risk. See [docs/conventions/sst.md](docs/conventions/sst.md). | static texture layer |
+| **Particle overlay** | A GPU particle/streamline animation layered atop an Animated fill layer's own vector field — the oriented-quad engine (`ui/modules/_particles_gl.js`, used by wind and waves) or the streamline-ribbon engine (`ui/modules/_streamparticles_gl.js`, used by wind and currents). Wind is the only layer driving both engines at once. See [docs/conventions/wind.md](docs/conventions/wind.md). | particle layer, streamline layer |
+| **Point-feed layer** | A layer with no server-side render task at all — a collector keeping a DB table fresh, read back live as DB-backed GeoJSON (`_feedhelpers.js`/`_hoverpopup.js`). 11 of the 28 `ALL_LAYERS` entries are this shape (quakes, volcanoes, world_events, troublespots, lightning, storms, shipping, satellites, flightradar, terminator, landmass) — none has a `TASK_CLASSES` entry. See [docs/conventions/quakes.md](docs/conventions/quakes.md). | feed layer, collector-only layer |
 
 A **Scalar field** is distinct from the vector layers (wind, currents), the
 boundary/level layers (isobars, precipitation's `BoundaryNorm`), and SST's
 runtime-computed range — those do not share the scalar-field renderer or its spec
 shape.
+
+`markers` is a one-instance hybrid, not a sixth named shape: a real backend task
+(`MarkerUpdater`) that renders nothing and only enriches DB rows, consumed by the frontend
+exactly like a **Point-feed layer**. See [docs/conventions/markers.md](docs/conventions/markers.md).
 
 | Term | Definition | Aliases to avoid |
 | ---- | ---------- | ---------------- |

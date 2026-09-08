@@ -43,6 +43,8 @@ shipping, lightning, and more.
   surgical changes, prefer common code, deepening template-method hierarchies, goal-driven execution
 - [Architecture & repository layout](docs/conventions/architecture.md) — collector class hierarchy,
   orchestration invariants, `src/` layout
+- [Layer anatomy](docs/conventions/layers.md) — the five layer shapes (Animated fill, Static
+  fill, Particle overlay, Point-feed, markers), the join-key fragility, `ui/modules/` naming
 - [Tooling](docs/conventions/tooling.md) — uv, Docker Compose, Makefile, CodeGraph
 - [Testing & validation](docs/conventions/testing.md) — validating collector code without a running stack
 - [Docker conventions](docs/conventions/docker.md)
