@@ -17,11 +17,124 @@ import { linkProg } from './_particlegl_primitives.js';
  * so band edges are crisp at any zoom with no intermediate raster — and no need
  * for a heavy level_of_detail canvas.
  *
- * Drop-in compatible options with createAnimatedRasterLayer: sectionKey, vmin,
- * vspan, fragmentBody (defines `vec4 shade(float value, vec2 uv)`), valueDecode,
- * bicubic, customUniforms, opacity, onMount/onRefresh/onUnmount, hourDataUrl,
- * staticUrl, forecastStepping. Timeline cross-fade + per-hour texture cache are
- * reused unchanged.
+ * Mode dispatch: each mount/refresh picks 'fill' (this GPU path, hour-animated) or
+ * 'static' (a single always-fresh raster image, see createStaticFillLayer's shape)
+ * via `forecastStepping(curAnim)`. 'static' is also the PERMANENT fallback once the
+ * custom-layer shader fails to build once (`webglFailed` latches for the rest of
+ * this page load — a later forecastStepping()===true does not revert it back to
+ * 'fill').
+ *
+ * Options (20 call sites today — see docs/conventions/temperature.md for a worked
+ * example):
+ *
+ * Required —
+ *
+ * `sectionKey` (string) — the join-key for this layer's MapLibre source/layer ids
+ * AND the config section this reads from `/api/config` — the same bare string
+ * threaded through `ALL_LAYERS`/`TASK_CLASSES`/`config/atmos-gl.json`, unenforced
+ * (see docs/conventions/layers.md's join-key fragility note).
+ *
+ * `initialConfig` (object) — this layer's own section's config values, used for the
+ * very first mount before the reconcile loop's own live `/api/config` poll takes over.
+ *
+ * `vmin`/`vspan` (numbers) — the physical value range a decoded texture sample maps
+ * onto: `value = decodedSample * vspan + vmin`, decodedSample already in [0, 1].
+ *
+ * `fragmentBody` (GLSL source string) — defines `vec4 shade(float value, vec2 uv)`,
+ * the per-pixel colorizer. `value` is already decoded to physical units (see
+ * `vmin`/`vspan` above); `uv` is the equirect [0, 1] sample coordinate (x=lon,
+ * y=lat, north→south) — a caller needing a second sample (e.g. for a derived
+ * quantity) can re-sample `u_tex0`/`u_tex1` at a different `uv` itself.
+ *
+ * Value decoding & sampling —
+ *
+ * `valueDecode` (GLSL expression string referencing `d`, a `vec4` texel; default
+ * `(d.r * 65280.0 + d.g * 255.0) / 65535.0`, the standard two-channel 16-bit LUT
+ * decode `lib/texture.py`'s `encode_frames` produces) — override only for a texture
+ * encoded some other way.
+ *
+ * `bicubic` (bool, default `false`) — bicubic (4×4 tap) vs. the texture's own native
+ * filtering for `sampleVal`. Smoother gradients at high zoom, at a real per-pixel
+ * cost; every current `SPECS`-backed scalar field layer sets this `true`.
+ *
+ * Uniforms & colour —
+ *
+ * `customUniforms` (fn(cfg) => object, default `() => ({})`) — extra uniform
+ * name→value pairs uploaded every render. A 2/3/4-length array uploads via
+ * `uniform{2,3,4}fv`; anything else uploads via `uniform1f`. A name with no matching
+ * `uniform` declared in `fragmentBody` is silently skipped (`getUniformLocation`
+ * returns null) — a typo here fails silent, not loud.
+ *
+ * `colormap` (fn(cfg) => Uint8ClampedArray|null, read from `opts.colormap` directly
+ * rather than destructured, default `null`) — a 256×1 RGBA LUT uploaded as `u_cmap`
+ * on mount and on every refresh; returning a falsy value leaves whatever LUT was
+ * previously uploaded bound (skip re-upload rather than clear).
+ *
+ * Static-fallback-only —
+ *
+ * `opacity` (number 0–1, default `0.9`) — ONLY the static-fallback raster layer's
+ * `raster-opacity` paint property. The GPU fill path itself never reads this — its
+ * alpha comes from `shade()`'s returned `vec4` (typically via a `customUniforms`
+ * alpha uniform), so setting `opacity` alone has no visible effect while 'fill' mode
+ * is active.
+ *
+ * Global config wiring —
+ *
+ * `initialAnimation`/`initialCommon` (objects, default `{}`) — initial values for the
+ * "animation"/"common" global config sections (see `liveLayerSync`'s `globalKeys`),
+ * used before the reconcile loop's own poll supplies live ones. `forecastStepping`
+ * (below) reads `animation.forecast_stepping`; `initialCommon` is tracked in
+ * parallel for the same wiring but isn't read anywhere in this function today.
+ *
+ * `forecastStepping` (fn(anim) => bool, default
+ * `(anim) => anim && anim.forecast_stepping !== false`) — decides 'fill' vs
+ * 'static' each mount/refresh (see "Mode dispatch" above).
+ *
+ * Lifecycle hooks —
+ *
+ * `onMount`/`onRefresh` (fn(cfg) => void, default no-ops) / `onUnmount`
+ * (fn() => void, default no-op) — called after this layer's own mount/refresh/
+ * unmount logic runs; every current caller uses these to add/remove a legend.
+ *
+ * URLs —
+ *
+ * `staticUrl` (fn(cfg) => string, default `${window.MAP_UI}/${cfg.outfile}`) — the
+ * single-image URL used both by 'static' mode and by the WebGL-failure fallback.
+ *
+ * `hourDataUrl` (fn(cfg, hour, bust) => string|null, default resolves
+ * `${outfile-without-.png}_f{hour:03d}_data.png?t={bust}`) — one forecast hour's raw
+ * data texture URL. Returning a falsy value means "not resolvable yet" (e.g. a
+ * currents-style reconciler still warming up) — skipped silently, no 404 and no
+ * backfill flagged, unlike a real fetch failure.
+ *
+ * Backfill & layering —
+ *
+ * `backfillKey` (fn(snap) => {date, run, hour}|null, default `null`) — resolves
+ * which forecast-hour identity to request backfill for when a per-hour texture
+ * 404s, or when the reconcile loop's own freshness probe finds the image missing.
+ *
+ * `beforeId` (string MapLibre layer id, default `null`) — insert this layer beneath
+ * `beforeId` if it currently exists; falls back to "add on top" otherwise rather
+ * than throwing.
+ *
+ * Cache & refresh cadence —
+ *
+ * `cacheKey` (fn(cfg) => any, default `null`) — identifies which pre-rendered
+ * variant `hourDataUrl` resolves to, for a layer with several backend-baked variants
+ * of the same hour sharing one per-hour texture cache keyed by hour ALONE (e.g. a
+ * species/mode selector). A `cacheKey` change on refresh clears the whole texture
+ * cache so the next render re-fetches under the new variant's URL — the same clear
+ * `onTimeline`'s own `bustChanged` branch does for a genuinely new render epoch.
+ *
+ * `refreshMs`/`syncMs` (numbers, undefined here — `liveLayerSync` supplies its own
+ * defaults, 300000/20000ms, when omitted) — `refreshMs` is the slow-cadence refetch
+ * interval while config is unchanged (picks up a backend re-render); `syncMs` is the
+ * reconcile loop's own config-poll interval.
+ *
+ * Returns the reconcile loop's teardown handle (`liveLayerSync`'s return value) —
+ * call it to unsubscribe from config polling and fully unmount this layer (its
+ * `unmount` unsubscribes from the timeline and removes the MapLibre layer, whose
+ * `onRemove` frees GL resources) before e.g. a basemap style swap.
  */
 
 const PREFETCH_AHEAD = 3;
@@ -168,8 +281,8 @@ export function createFillLayer(map, opts) {
         initialAnimation = {},
         initialCommon = {},
         onMount = () => {}, onRefresh = () => {}, onUnmount = () => {},
-        backfillKey = null,   // optional resolver (snap)=>{date,run,hour} for backfill
-        beforeId = null,      // insert beneath this layer id (guarded if it doesn't exist)
+        backfillKey = null,
+        beforeId = null,
         refreshMs, syncMs,
         staticUrl = (cfg) => `${window.MAP_UI}/${cfg.outfile}`,
         hourDataUrl = (cfg, hour, bust) => {
@@ -178,16 +291,6 @@ export function createFillLayer(map, opts) {
             return `${window.MAP_UI}/${base}_f${f}_data.png?t=${bust}`;
         },
         forecastStepping = (anim) => (anim && anim.forecast_stepping !== false),
-        // Optional: (cfg) => a value identifying which PRE-RENDERED variant hourDataUrl
-        // resolves to (e.g. a layer with several backend-pre-baked variants of the same
-        // hour, selected by a config setting). texCache is
-        // keyed by hour only -- an entry already cached for the current hour would
-        // otherwise keep serving whichever variant was live when it was first fetched,
-        // even after a live config change swaps in a different hourDataUrl(cfg, ...). A
-        // changed cacheKey between refreshes clears texCache (same as onTimeline's own
-        // bustChanged clear) so the next render re-fetches under the new URL. null
-        // (default): no per-config variants, texCache is never cleared by a settings
-        // change alone -- unchanged behaviour for every other caller.
         cacheKey = null,
     } = opts;
 
