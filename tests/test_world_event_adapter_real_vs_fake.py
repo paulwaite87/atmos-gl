@@ -157,3 +157,24 @@ def test_get_events_as_geojson_tone_filter_matches_between_real_and_fake(kind, r
 
     all_ids = {f["properties"]["id"] for f in unfiltered["features"]}
     assert {f"pos-war-{suffix}", f"pos-boom-{suffix}", f"pos-tv-{suffix}"} <= all_ids
+
+
+@pytest.mark.parametrize("kind", ["real", "fake"])
+def test_export_slot_bookkeeping_matches_between_real_and_fake(kind, real_db):
+    # Slots are offset per kind (and far from "now") so the real and fake runs, which
+    # share one session-scoped table on the real side, can't see each other's rows.
+    base = datetime(2001 if kind == "real" else 2002, 1, 1, tzinfo=timezone.utc)
+    old, mid, new = base, base + timedelta(minutes=15), base + timedelta(minutes=30)
+    adapter, ctx = _make_adapter(kind, real_db)
+
+    with ctx:
+        adapter.mark_export_processed(old, "ok", 4)
+        adapter.mark_export_processed(mid, "missing")
+        adapter.mark_export_processed(new, "ok", 1)
+        adapter.mark_export_processed(new, "ok", 2)  # re-marking is idempotent
+        assert adapter.processed_export_slots(mid) == {mid, new}
+
+        pruned = adapter.prune_export_slots(mid)
+        assert adapter.processed_export_slots(base - timedelta(days=1)) == {mid, new}
+
+    assert pruned >= 1
