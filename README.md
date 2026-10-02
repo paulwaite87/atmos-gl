@@ -544,7 +544,10 @@ tone gives them away. Diplomatic Meetings are never tone-filtered. Hovering a ma
 shows the source article's headline and summary (taken from the publisher's own page
 metadata, fetched in the background once per article), who was involved, where, when,
 how many sources reported it, and a link to read the full article. Articles that block
-automated access simply show the link alone. On first setup the layer backfills a
+automated access simply show the link alone. Each story appears once: GDELT often codes one
+article as several events, and syndicated copies of a story run at different outlets, so
+these collapse into a single marker (the most widely reported copy), with the other
+outlets listed underneath as "Also reported by". On first setup the layer backfills a
 configurable window of recent history (three days by default) so it isn't empty while
 waiting for new data to arrive, and self-heals if the collector is ever offline for a
 while.

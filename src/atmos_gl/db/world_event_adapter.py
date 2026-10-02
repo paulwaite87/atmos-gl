@@ -1,7 +1,7 @@
 import logging
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import and_, cast, func, select, delete, or_
+from sqlalchemy import and_, case, cast, delete, func, or_, select, text
 from sqlalchemy.dialects.postgresql import JSONB, insert as pg_insert
 from sqlalchemy.types import Text as SqlText
 
@@ -180,46 +180,57 @@ class WorldEventAdapter:
         category event (_TONE_FILTERED_CATEGORIES) whose GDELT avg_tone is ABOVE it is
         dropped. An event with no avg_tone is kept -- there's nothing to judge it by.
         Read-time rather than at collection, like expiry_days, so every row is still
-        stored and the threshold can be retuned against existing history."""
-        feature = func.jsonb_build_object(
-            "type",
-            "Feature",
-            "geometry",
-            cast(func.ST_AsGeoJSON(WorldEvent.geom), JSONB),
-            "properties",
-            func.jsonb_build_object(
-                "id",
-                WorldEvent.id,
-                "category",
-                WorldEvent.category,
-                "event_code",
-                WorldEvent.event_code,
-                "actor1_name",
-                WorldEvent.actor1_name,
-                "actor2_name",
-                WorldEvent.actor2_name,
-                "place",
-                WorldEvent.action_geo_full_name,
-                "event_date",
-                WorldEvent.event_date,
-                "num_mentions",
-                WorldEvent.num_mentions,
-                "num_sources",
-                WorldEvent.num_sources,
-                "source_url",
-                WorldEvent.source_url,
-                "headline",
-                WorldEventArticle.headline,
-                "summary",
-                WorldEventArticle.summary,
-                "age_hours",
-                func.extract("epoch", func.now() - WorldEvent.event_date) / 3600.0,
-            ),
-        )
-        collection = as_feature_collection(feature)
+        stored and the threshold can be retuned against existing history.
+
+        Duplicates are collapsed to one feature per STORY, after the tone filter:
+        GDELT often codes one article into several events (22% of markers, measured),
+        and syndicated copies of one story appear at different outlets' URLs. A story
+        is the article's summary when it has a real one, else its URL (else the event
+        itself); the most-mentioned event wins (then most recent), and the story's
+        other URLs come back as also_reported_by. A summary one site reuses across
+        articles with DIFFERENT headlines ("News in real-time", seen live) is site
+        boilerplate: it's dropped and never used to merge. Retitled syndication -- same
+        summary, different headlines, different sites -- still merges."""
         cutoff = func.now() - timedelta(days=expiry_days)
-        stmt = (
-            select(cast(collection, SqlText))
+        article_domain = func.split_part(func.split_part(WorldEventArticle.url, "//", 2), "/", 1)
+        boilerplate = (
+            select(WorldEventArticle.summary)
+            .where(WorldEventArticle.status == "ok", WorldEventArticle.summary.isnot(None))
+            .group_by(WorldEventArticle.summary, article_domain)
+            .having(func.count(func.lower(WorldEventArticle.headline).distinct()) > 1)
+        )
+        summary = case(
+            (WorldEventArticle.summary.in_(boilerplate), None),
+            else_=WorldEventArticle.summary,
+        )
+        story = func.coalesce(summary, WorldEvent.source_url, WorldEvent.id)
+        events = (
+            select(
+                WorldEvent.id,
+                WorldEvent.category,
+                WorldEvent.event_code,
+                WorldEvent.actor1_name,
+                WorldEvent.actor2_name,
+                WorldEvent.action_geo_full_name,
+                WorldEvent.geom,
+                WorldEvent.event_date,
+                WorldEvent.num_mentions,
+                WorldEvent.num_sources,
+                WorldEvent.source_url,
+                WorldEventArticle.headline,
+                summary.label("summary"),
+                story.label("story"),
+                func.row_number()
+                .over(
+                    partition_by=story,
+                    order_by=(
+                        WorldEvent.num_mentions.desc().nulls_last(),
+                        WorldEvent.event_date.desc(),
+                        WorldEvent.id,
+                    ),
+                )
+                .label("rank"),
+            )
             .select_from(WorldEvent)
             .outerjoin(
                 WorldEventArticle,
@@ -231,13 +242,67 @@ class WorldEventAdapter:
             .where(WorldEvent.event_date >= cutoff)
         )
         if max_conflict_tone is not None:
-            stmt = stmt.where(
+            events = events.where(
                 or_(
                     WorldEvent.category.notin_(_TONE_FILTERED_CATEGORIES),
                     WorldEvent.avg_tone.is_(None),
                     WorldEvent.avg_tone <= max_conflict_tone,
                 )
             )
+        events = events.cte("events")
+        outlets = (
+            select(events.c.story, func.array_agg(events.c.source_url.distinct()).label("urls"))
+            .where(events.c.source_url.isnot(None))
+            .group_by(events.c.story)
+            .cte("outlets")
+        )
+        also_reported_by = func.coalesce(
+            func.to_jsonb(func.array_remove(outlets.c.urls, events.c.source_url)),
+            text("'[]'::jsonb"),
+        )
+        feature = func.jsonb_build_object(
+            "type",
+            "Feature",
+            "geometry",
+            cast(func.ST_AsGeoJSON(events.c.geom), JSONB),
+            "properties",
+            func.jsonb_build_object(
+                "id",
+                events.c.id,
+                "category",
+                events.c.category,
+                "event_code",
+                events.c.event_code,
+                "actor1_name",
+                events.c.actor1_name,
+                "actor2_name",
+                events.c.actor2_name,
+                "place",
+                events.c.action_geo_full_name,
+                "event_date",
+                events.c.event_date,
+                "num_mentions",
+                events.c.num_mentions,
+                "num_sources",
+                events.c.num_sources,
+                "source_url",
+                events.c.source_url,
+                "headline",
+                events.c.headline,
+                "summary",
+                events.c.summary,
+                "also_reported_by",
+                also_reported_by,
+                "age_hours",
+                func.extract("epoch", func.now() - events.c.event_date) / 3600.0,
+            ),
+        )
+        stmt = (
+            select(cast(as_feature_collection(feature), SqlText))
+            .select_from(events)
+            .outerjoin(outlets, outlets.c.story == events.c.story)
+            .where(events.c.rank == 1)
+        )
         try:
             with Session() as session:
                 result = session.scalar(stmt)
@@ -347,12 +412,30 @@ class FakeWorldEventAdapter:
             del self._export_files[slot]
         return len(stale)
 
+    def _boilerplate_summaries(self) -> set:
+        """Summaries one site uses for articles with different headlines -- mirrors
+        the real adapter's boilerplate subquery (domain = text between "//" and the
+        next "/", exactly as its split_part() pair computes it)."""
+        headlines_by_site: dict[tuple, set] = {}
+        for url, a in self._articles.items():
+            if a["status"] != "ok" or a.get("summary") is None:
+                continue
+            domain = url.split("//", 1)[1].split("/", 1)[0] if "//" in url else ""
+            headlines_by_site.setdefault((a["summary"], domain), set()).add(
+                (a.get("headline") or "").lower() if a.get("headline") is not None else None
+            )
+        return {
+            summary for (summary, _), heads in headlines_by_site.items()
+            if len(heads - {None}) > 1
+        }
+
     def get_events_as_geojson(self, expiry_days=7, max_conflict_tone=None):
         import json
 
         now = datetime.now(timezone.utc)
         cutoff = now - timedelta(days=expiry_days)
-        features = []
+        boilerplate = self._boilerplate_summaries()
+        stories: dict[str, list] = {}
         for e in self._events.values():
             if e["event_date"] < cutoff:
                 continue
@@ -363,9 +446,24 @@ class FakeWorldEventAdapter:
                 and e["avg_tone"] > max_conflict_tone
             ):
                 continue
-            age_hours = (now - e["event_date"]).total_seconds() / 3600.0
             article = self._articles.get(e["source_url"]) or {}
             ok = article.get("status") == "ok"
+            summary = article.get("summary") if ok else None
+            if summary in boilerplate:
+                summary = None
+            story = summary or e["source_url"] or e["id"]
+            stories.setdefault(story, []).append((e, article if ok else {}, summary))
+
+        features = []
+        for members in stories.values():
+            members.sort(key=lambda m: (
+                -(m[0]["num_mentions"] if m[0]["num_mentions"] is not None else -1),
+                -m[0]["event_date"].timestamp(),
+                m[0]["id"],
+            ))
+            e, article, summary = members[0]
+            urls = {m[0]["source_url"] for m in members if m[0]["source_url"] is not None}
+            age_hours = (now - e["event_date"]).total_seconds() / 3600.0
             features.append(
                 {
                     "type": "Feature",
@@ -381,8 +479,9 @@ class FakeWorldEventAdapter:
                         "num_mentions": e["num_mentions"],
                         "num_sources": e["num_sources"],
                         "source_url": e["source_url"],
-                        "headline": article.get("headline") if ok else None,
-                        "summary": article.get("summary") if ok else None,
+                        "headline": article.get("headline"),
+                        "summary": summary,
+                        "also_reported_by": sorted(urls - {e["source_url"]}),
                         "age_hours": age_hours,
                     },
                 }
