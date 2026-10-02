@@ -469,6 +469,9 @@ FIELD_SPECS = {
     # time, every detection is always stored), min_mentions gates what
     # WorldEventsCollector.collect() stores in the first place -- a real,
     # shared collection-cost control, not a per-viewer display preference.
+    # max_conflict_tone is read-time like expiry_days (personalizable for the same
+    # reason): conflict-category events whose GDELT coverage tone is above it are
+    # hidden as likely figurative false positives -- see WorldEventAdapter.
     ("world_events", "enabled"): _ENABLED_PERSONALIZABLE,
     ("world_events", "opacity"): _OPACITY,
     ("world_events", "marker_size"): SliderSpec(
@@ -478,6 +481,9 @@ FIELD_SPECS = {
         min=1, max=14, step=1, suffix=" day", pluralize=True, personalizable=True
     ),
     ("world_events", "min_mentions"): SliderSpec(min=0, max=100, step=5),
+    ("world_events", "max_conflict_tone"): SliderSpec(
+        min=-10, max=15, step=0.5, decimals=1, personalizable=True
+    ),
     ("world_events", "backfill_days"): SliderSpec(
         min=1, max=14, step=1, suffix=" day", pluralize=True
     ),
@@ -826,6 +832,7 @@ _LABEL_OVERRIDES = {
     ("world_events", "backfill_days"): "Initial backfill window",
     ("world_events", "show_warfare"): "Show conflict",
     ("world_events", "show_targeted_violence"): "Show targeted / mass violence",
+    ("world_events", "max_conflict_tone"): "Max coverage tone (conflict events)",
 }
 
 

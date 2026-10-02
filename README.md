@@ -536,11 +536,15 @@ curated, high-signal set of four categories:
 
 Each category has its own marker colour, and can be individually shown or hidden in
 `World Events Properties`, alongside marker size, opacity, and how many days of history
-to display. Hovering a marker shows who was involved, where, when, how many sources
-reported it, and a link to read the original article. On first setup the layer
-backfills a configurable window of recent history (three days by default) so it isn't
-empty while waiting for new data to arrive, and self-heals if the collector is ever
-offline for a while.
+to display. A `Max coverage tone` filter hides Explosion/Conflict/Targeted-violence
+events whose news coverage reads more positively than the threshold (0 by default) —
+GDELT's automated coding regularly files figurative "battle"/"fight" language from
+sport, business or entertainment stories under conflict, and those stories' upbeat
+tone gives them away. Diplomatic Meetings are never tone-filtered. Hovering a marker
+shows who was involved, where, when, how many sources reported it, and a link to read
+the original article. On first setup the layer backfills a configurable window of
+recent history (three days by default) so it isn't empty while waiting for new data to
+arrive, and self-heals if the collector is ever offline for a while.
 
 #### Air Quality
 Needs a [Copernicus CDS/ADS API Key](#copernicus-cdsads-api-key), the same one used by

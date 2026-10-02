@@ -1,7 +1,7 @@
 import logging
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import cast, func, select, delete
+from sqlalchemy import cast, func, select, delete, or_
 from sqlalchemy.dialects.postgresql import JSONB, insert as pg_insert
 from sqlalchemy.types import Text as SqlText
 
@@ -10,6 +10,12 @@ from atmos_gl.db.geojson import as_feature_collection, EMPTY_FEATURE_COLLECTION
 from atmos_gl.db.models import WorldEvent
 
 logger = logging.getLogger(__name__)
+
+# Categories max_conflict_tone applies to. Diplomacy is exempt: its coverage tone is
+# naturally either sign, whereas a "conflict" event whose coverage reads positively is
+# almost always GDELT coding figurative "battle"/"fight" language (sitcom round-ups,
+# business deals, awards) -- confirmed by sampling live rows, see get_events_as_geojson.
+_TONE_FILTERED_CATEGORIES = ("explosion", "warfare", "targeted_violence")
 
 # Same chunking rationale as FireAdapter/MarkerAdapter's bulk upserts: a backfill run
 # can cover several days of curated-category GDELT events in one collect() cycle, well
@@ -78,9 +84,15 @@ class WorldEventAdapter:
             logger.error(f"Error reading oldest world event date: {e}")
             return None
 
-    def get_events_as_geojson(self, expiry_days=7):
+    def get_events_as_geojson(self, expiry_days=7, max_conflict_tone=None):
         """Returns world events as GeoJSON, filtering by age. age_hours (like quakes'
-        age_minutes) lets the frontend de-emphasize older events within the window."""
+        age_minutes) lets the frontend de-emphasize older events within the window.
+
+        max_conflict_tone (None = off) is a read-time quality filter: a conflict-
+        category event (_TONE_FILTERED_CATEGORIES) whose GDELT avg_tone is ABOVE it is
+        dropped. An event with no avg_tone is kept -- there's nothing to judge it by.
+        Read-time rather than at collection, like expiry_days, so every row is still
+        stored and the threshold can be retuned against existing history."""
         feature = func.jsonb_build_object(
             "type",
             "Feature",
@@ -115,6 +127,14 @@ class WorldEventAdapter:
         collection = as_feature_collection(feature)
         cutoff = func.now() - timedelta(days=expiry_days)
         stmt = select(cast(collection, SqlText)).where(WorldEvent.event_date >= cutoff)
+        if max_conflict_tone is not None:
+            stmt = stmt.where(
+                or_(
+                    WorldEvent.category.notin_(_TONE_FILTERED_CATEGORIES),
+                    WorldEvent.avg_tone.is_(None),
+                    WorldEvent.avg_tone <= max_conflict_tone,
+                )
+            )
         try:
             with Session() as session:
                 result = session.scalar(stmt)
@@ -171,7 +191,7 @@ class FakeWorldEventAdapter:
             return None
         return min(e["event_date"] for e in self._events.values())
 
-    def get_events_as_geojson(self, expiry_days=7):
+    def get_events_as_geojson(self, expiry_days=7, max_conflict_tone=None):
         import json
 
         now = datetime.now(timezone.utc)
@@ -179,6 +199,13 @@ class FakeWorldEventAdapter:
         features = []
         for e in self._events.values():
             if e["event_date"] < cutoff:
+                continue
+            if (
+                max_conflict_tone is not None
+                and e["category"] in _TONE_FILTERED_CATEGORIES
+                and e["avg_tone"] is not None
+                and e["avg_tone"] > max_conflict_tone
+            ):
                 continue
             age_hours = (now - e["event_date"]).total_seconds() / 3600.0
             features.append(

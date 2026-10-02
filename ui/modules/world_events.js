@@ -44,7 +44,8 @@ export function loadLayer(map, config) {
     let stopPopup = null;
 
     const urlFor = (cfg) => `${window.WM_API}/world_events/geojson`
-        + `?expiry_days=${cfg.expiry_days ?? 7}&t=${Date.now()}`;
+        + `?expiry_days=${cfg.expiry_days ?? 7}`
+        + `&max_conflict_tone=${cfg.max_conflict_tone ?? 0}&t=${Date.now()}`;
 
     const fetchData = (cfg) => fetchOrThrow(urlFor(cfg));
 
