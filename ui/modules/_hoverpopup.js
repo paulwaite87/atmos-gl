@@ -49,6 +49,10 @@
  * feature-less event -- lets a caller flip a setting (markers.js's weather_popup
  * toggle) without rebinding, instead of the on/off dance every other caller here
  * uses (bind once for the layer's whole lifetime).
+ *
+ * `html` is called as html(topFeature, allFeatures): the second argument is every
+ * feature under the cursor (MapLibre's e.features, topmost first), for a caller whose
+ * markers can sit exactly on top of each other (world_events.js) to list them all.
  */
 export function hoverPopup(map, layerId, {
     offset = 15, html, maxWidth, closeDelayMs = 200, event = 'enter', enabled,
@@ -96,7 +100,7 @@ export function hoverPopup(map, layerId, {
         // fixtures that only set coordinates still behave like real GeoJSON.
         const coordinates = e.features[0].geometry.coordinates;
         const coords = typeof coordinates[0] === 'number' ? coordinates.slice() : e.lngLat;
-        popup.setLngLat(coords).setHTML(html(e.features[0])).addTo(map);
+        popup.setLngLat(coords).setHTML(html(e.features[0], e.features)).addTo(map);
         // Only reachable once addTo() has actually built the DOM -- re-wired on
         // every open since remove() discards the previous element.
         const el = popup.getElement();

@@ -56,6 +56,24 @@ export function alsoReportedByHtml(urls) {
     return `Also reported by: ${links.join(', ')}${more}`;
 }
 
+// Stories GDELT geocodes to the same place (often a city's or country's centroid)
+// land on exactly the same coordinate, so all but the topmost marker would be
+// unreachable -- the popup lists every distinct story at the hovered marker's point
+// instead. e.features can repeat a feature (tile overlap), hence the id dedupe.
+export function coincidentFeatures(top, features) {
+    const [lon, lat] = top.geometry.coordinates;
+    const seen = new Set();
+    return [top, ...(features || [])].filter((f) => {
+        const [flon, flat] = f.geometry.coordinates;
+        const key = f.properties.id ?? f.id;
+        if (flon !== lon || flat !== lat || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+    });
+}
+
+const STACK_SEPARATOR = '<hr style="border:0;border-top:2px solid #999;margin:6px 0;">';
+
 const filterFor = (cfg) => ['in', ['get', 'category'], ['literal', visibleCategories(cfg)]];
 
 export function loadLayer(map, config) {
@@ -75,7 +93,7 @@ export function loadLayer(map, config) {
         Number(cfg.marker_size) || 1.0,
     ];
 
-    const popupHtml = (f) => {
+    const storyHtml = (f) => {
         const d = f.properties;
         const rows = [];
         if (d.actor1_name && d.actor2_name) {
@@ -118,6 +136,14 @@ export function loadLayer(map, config) {
             title: { text: CATEGORY_LABELS[d.category] || d.category, variant: d.category },
             blocks,
         });
+    };
+
+    const popupHtml = (top, features) => {
+        const stories = coincidentFeatures(top, features);
+        if (stories.length === 1) return storyHtml(top);
+        const header = `<div style="font-family:sans-serif;font-size:11px;color:#6c757d;padding:5px 5px 0;">`
+            + `${stories.length} stories at this location</div>`;
+        return header + stories.map(storyHtml).join(STACK_SEPARATOR);
     };
 
     const mount = async (cfg) => {
