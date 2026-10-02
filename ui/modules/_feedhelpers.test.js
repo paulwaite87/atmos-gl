@@ -266,6 +266,25 @@ describe('buildPopupHtml', () => {
         });
     });
 
+    describe('text block', () => {
+        test('renders a plain paragraph, always escaped (scraped article text)', () => {
+            const html = buildPopupHtml({
+                title: { text: 'X' },
+                blocks: [{ type: 'text', text: 'Police <b>& army</b> clash' }],
+            });
+            expect(html).toContain('Police &lt;b&gt;&amp; army&lt;/b&gt; clash');
+            expect(html).not.toContain('font-weight:bold');
+        });
+
+        test('bold:true renders it as a heading line', () => {
+            const html = buildPopupHtml({
+                title: { text: 'X' },
+                blocks: [{ type: 'text', text: 'Headline', bold: true }],
+            });
+            expect(html).toContain('font-weight:bold;">Headline</div>');
+        });
+    });
+
     describe('notice block', () => {
         test('defaults to the stale-signal warning colour, escaping text by default', () => {
             const html = buildPopupHtml({

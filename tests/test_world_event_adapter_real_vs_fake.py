@@ -178,3 +178,90 @@ def test_export_slot_bookkeeping_matches_between_real_and_fake(kind, real_db):
         assert adapter.processed_export_slots(base - timedelta(days=1)) == {mid, new}
 
     assert pruned >= 1
+
+
+def _age_article(adapter, url, real_db, hours):
+    """Backdates an article's last attempt so its retry becomes due."""
+    if isinstance(adapter, FakeWorldEventAdapter):
+        adapter._articles[url]["fetched_at"] -= timedelta(hours=hours)
+        return
+    with real_db.begin() as conn:
+        conn.execute(
+            text("UPDATE world_event_articles SET fetched_at = fetched_at - make_interval(hours => :h) WHERE url = :u"),
+            {"h": hours, "u": url},
+        )
+
+
+def _preview(url, status, headline=None, summary=None, http_status=200):
+    return {"url": url, "status": status, "http_status": http_status,
+            "headline": headline, "summary": summary}
+
+
+@pytest.mark.parametrize("kind", ["real", "fake"])
+def test_urls_needing_preview_matches_between_real_and_fake(kind, real_db):
+    adapter, ctx = _make_adapter(kind, real_db)
+    now = datetime.now(timezone.utc)
+    u = {name: f"https://news.example/{kind}/{name}" for name in
+         ("new", "older", "ok", "failed", "retry_recent", "retry_due", "retry_exhausted", "stale")}
+
+    def ev(event_id, url, hours_ago):
+        row = _event_row(f"{kind}-{event_id}", "warfare", 10.0, 20.0,
+                         (now - timedelta(hours=hours_ago)).isoformat())
+        row["source_url"] = url
+        return row
+
+    with ctx:
+        adapter.upsert_events([
+            ev("new", u["new"], 1),
+            ev("new-dup", u["new"], 2),  # same article coded as two events
+            ev("older", u["older"], 5),
+            ev("ok", u["ok"], 1),
+            ev("failed", u["failed"], 1),
+            ev("retry_recent", u["retry_recent"], 1),
+            ev("retry_due", u["retry_due"], 1),
+            ev("retry_exhausted", u["retry_exhausted"], 1),
+            ev("stale", u["stale"], 24 * 10),  # outside `since`
+        ])
+        adapter.save_article_previews([
+            _preview(u["ok"], "ok", "H"),
+            _preview(u["failed"], "failed", http_status=403),
+            _preview(u["retry_recent"], "retry", http_status=429),
+            _preview(u["retry_due"], "retry", http_status=503),
+        ])
+        for _ in range(3):
+            adapter.save_article_previews([_preview(u["retry_exhausted"], "retry", http_status=500)])
+        _age_article(adapter, u["retry_due"], real_db, hours=2)
+        _age_article(adapter, u["retry_exhausted"], real_db, hours=2)
+
+        needed = adapter.urls_needing_preview(now - timedelta(days=3), limit=100)
+
+    # The real table is shared across this module's tests, so look only at this run's URLs.
+    mine = [url for url in needed if f"/{kind}/" in url]
+    assert set(mine) == {u["new"], u["older"], u["retry_due"]}
+    assert mine.index(u["older"]) > mine.index(u["new"])  # most recent event first
+
+
+@pytest.mark.parametrize("kind", ["real", "fake"])
+def test_geojson_carries_headline_and_summary_only_for_ok_articles(kind, real_db):
+    adapter, ctx = _make_adapter(kind, real_db)
+    now_iso = datetime.now(timezone.utc).isoformat()
+    ok_url, retry_url = f"https://news.example/{kind}/geo-ok", f"https://news.example/{kind}/geo-retry"
+
+    def ev(event_id, url):
+        row = _event_row(f"geo-{kind}-{event_id}", "warfare", 10.0, 20.0, now_iso)
+        row["source_url"] = url
+        return row
+
+    with ctx:
+        adapter.upsert_events([ev("ok", ok_url), ev("retry", retry_url), ev("none", None)])
+        adapter.save_article_previews([
+            _preview(ok_url, "ok", "Strikes hit Kabul", "Twenty-two killed."),
+            _preview(retry_url, "retry", "should not show", http_status=503),
+        ])
+        geojson = json.loads(adapter.get_events_as_geojson(expiry_days=7))
+
+    props = {f["properties"]["id"]: f["properties"] for f in geojson["features"]}
+    assert props[f"geo-{kind}-ok"]["headline"] == "Strikes hit Kabul"
+    assert props[f"geo-{kind}-ok"]["summary"] == "Twenty-two killed."
+    assert props[f"geo-{kind}-retry"]["headline"] is None
+    assert props[f"geo-{kind}-none"]["headline"] is None

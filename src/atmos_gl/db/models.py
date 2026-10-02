@@ -578,6 +578,7 @@ class WorldEvent(Base):
     __table_args__ = (
         Index("idx_world_events_geom", "geom", postgresql_using="gist"),
         Index("idx_world_events_event_date", "event_date"),
+        Index("idx_world_events_source_url", "source_url"),
     )
 
     id: Mapped[str] = mapped_column(String(20), primary_key=True)
@@ -611,5 +612,26 @@ class WorldEventExportFile(Base):
     status: Mapped[str] = mapped_column(String(10), nullable=False)
     row_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     processed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class WorldEventArticle(Base):
+    """Headline + summary scraped from a World Event's source article (its og:/twitter:/
+    <meta> tags -- see lib/article_preview.py), keyed by URL rather than by event since
+    GDELT often codes one article into several events. status is "ok", "failed"
+    (permanent: blocked, gone, no metadata) or "retry" (transient: 429/5xx/network,
+    re-attempted up to a cap). Joined onto world_events at read time; headline/summary
+    are only ever surfaced for status "ok"."""
+
+    __tablename__ = "world_event_articles"
+
+    url: Mapped[str] = mapped_column(Text, primary_key=True)
+    status: Mapped[str] = mapped_column(String(10), nullable=False)
+    http_status: Mapped[int | None] = mapped_column(Integer)
+    headline: Mapped[str | None] = mapped_column(Text)
+    summary: Mapped[str | None] = mapped_column(Text)
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    fetched_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

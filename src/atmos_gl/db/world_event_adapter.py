@@ -1,13 +1,13 @@
 import logging
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import cast, func, select, delete, or_
+from sqlalchemy import and_, cast, func, select, delete, or_
 from sqlalchemy.dialects.postgresql import JSONB, insert as pg_insert
 from sqlalchemy.types import Text as SqlText
 
 from atmos_gl.db.engine import Session
 from atmos_gl.db.geojson import as_feature_collection, EMPTY_FEATURE_COLLECTION
-from atmos_gl.db.models import WorldEvent, WorldEventExportFile
+from atmos_gl.db.models import WorldEvent, WorldEventArticle, WorldEventExportFile
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +16,11 @@ logger = logging.getLogger(__name__)
 # almost always GDELT coding figurative "battle"/"fight" language (sitcom round-ups,
 # business deals, awards) -- confirmed by sampling live rows, see get_events_as_geojson.
 _TONE_FILTERED_CATEGORIES = ("explosion", "warfare", "targeted_violence")
+
+# A "retry" article (429/5xx/network error) is re-attempted at most this many times in
+# total, no sooner than _ARTICLE_RETRY_AFTER after its last attempt.
+_ARTICLE_MAX_ATTEMPTS = 3
+_ARTICLE_RETRY_AFTER = timedelta(hours=1)
 
 # Same chunking rationale as FireAdapter/MarkerAdapter's bulk upserts: a backfill run
 # can cover several days of curated-category GDELT events in one collect() cycle, well
@@ -108,6 +113,52 @@ class WorldEventAdapter:
             session.execute(stmt)
             session.commit()
 
+    def urls_needing_preview(self, since, limit):
+        """Distinct source URLs of events since `since` with no article preview yet, or
+        a "retry" one that's due again -- most recent event first, so a backlog fills
+        in what users are most likely looking at first. Raises on a DB error."""
+        due_retry = and_(
+            WorldEventArticle.status == "retry",
+            WorldEventArticle.attempts < _ARTICLE_MAX_ATTEMPTS,
+            WorldEventArticle.fetched_at < func.now() - _ARTICLE_RETRY_AFTER,
+        )
+        stmt = (
+            select(WorldEvent.source_url)
+            .outerjoin(WorldEventArticle, WorldEventArticle.url == WorldEvent.source_url)
+            .where(
+                WorldEvent.event_date >= since,
+                WorldEvent.source_url.isnot(None),
+                or_(WorldEventArticle.url.is_(None), due_retry),
+            )
+            .group_by(WorldEvent.source_url)
+            .order_by(func.max(WorldEvent.event_date).desc())
+            .limit(limit)
+        )
+        with Session() as session:
+            return list(session.scalars(stmt))
+
+    def save_article_previews(self, previews):
+        """Upserts article previews: dicts with url, status, http_status, headline,
+        summary. attempts counts every save for that URL."""
+        if not previews:
+            return
+        stmt = pg_insert(WorldEventArticle)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=[WorldEventArticle.url],
+            set_={
+                "status": stmt.excluded.status,
+                "http_status": stmt.excluded.http_status,
+                "headline": stmt.excluded.headline,
+                "summary": stmt.excluded.summary,
+                "attempts": WorldEventArticle.attempts + 1,
+                "fetched_at": func.now(),
+            },
+        )
+        values = [{**p, "attempts": 1} for p in previews]
+        with Session() as session:
+            session.execute(stmt, values)
+            session.commit()
+
     def prune_export_slots(self, before) -> int:
         """Deletes processed-file records older than `before` (the backfill window's
         start) -- they no longer affect coverage. Returns the number deleted."""
@@ -157,13 +208,28 @@ class WorldEventAdapter:
                 WorldEvent.num_sources,
                 "source_url",
                 WorldEvent.source_url,
+                "headline",
+                WorldEventArticle.headline,
+                "summary",
+                WorldEventArticle.summary,
                 "age_hours",
                 func.extract("epoch", func.now() - WorldEvent.event_date) / 3600.0,
             ),
         )
         collection = as_feature_collection(feature)
         cutoff = func.now() - timedelta(days=expiry_days)
-        stmt = select(cast(collection, SqlText)).where(WorldEvent.event_date >= cutoff)
+        stmt = (
+            select(cast(collection, SqlText))
+            .select_from(WorldEvent)
+            .outerjoin(
+                WorldEventArticle,
+                and_(
+                    WorldEventArticle.url == WorldEvent.source_url,
+                    WorldEventArticle.status == "ok",
+                ),
+            )
+            .where(WorldEvent.event_date >= cutoff)
+        )
         if max_conflict_tone is not None:
             stmt = stmt.where(
                 or_(
@@ -200,6 +266,7 @@ class FakeWorldEventAdapter:
     def __init__(self):
         self._events: dict[str, dict] = {}
         self._export_files: dict[datetime, dict] = {}
+        self._articles: dict[str, dict] = {}
 
     def upsert_events(self, rows):
         if not rows:
@@ -231,6 +298,34 @@ class FakeWorldEventAdapter:
     def mark_export_processed(self, slot, status, row_count=0):
         self._export_files[slot] = {"status": status, "row_count": row_count}
 
+    def urls_needing_preview(self, since, limit):
+        now = datetime.now(timezone.utc)
+        latest_by_url: dict[str, datetime] = {}
+        for e in self._events.values():
+            url = e["source_url"]
+            if url is None or e["event_date"] < since:
+                continue
+            a = self._articles.get(url)
+            due = a is None or (
+                a["status"] == "retry"
+                and a["attempts"] < _ARTICLE_MAX_ATTEMPTS
+                and a["fetched_at"] < now - _ARTICLE_RETRY_AFTER
+            )
+            if due:
+                latest_by_url[url] = max(e["event_date"], latest_by_url.get(url, e["event_date"]))
+        ordered = sorted(latest_by_url, key=latest_by_url.get, reverse=True)
+        return ordered[:limit]
+
+    def save_article_previews(self, previews):
+        now = datetime.now(timezone.utc)
+        for p in previews:
+            previous = self._articles.get(p["url"])
+            self._articles[p["url"]] = {
+                **p,
+                "attempts": (previous["attempts"] + 1) if previous else 1,
+                "fetched_at": now,
+            }
+
     def prune_export_slots(self, before) -> int:
         stale = [slot for slot in self._export_files if slot < before]
         for slot in stale:
@@ -254,6 +349,8 @@ class FakeWorldEventAdapter:
             ):
                 continue
             age_hours = (now - e["event_date"]).total_seconds() / 3600.0
+            article = self._articles.get(e["source_url"]) or {}
+            ok = article.get("status") == "ok"
             features.append(
                 {
                     "type": "Feature",
@@ -269,6 +366,8 @@ class FakeWorldEventAdapter:
                         "num_mentions": e["num_mentions"],
                         "num_sources": e["num_sources"],
                         "source_url": e["source_url"],
+                        "headline": article.get("headline") if ok else None,
+                        "summary": article.get("summary") if ok else None,
                         "age_hours": age_hours,
                     },
                 }
