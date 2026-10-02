@@ -17,6 +17,10 @@ import pytest
 from atmos_gl.collectors.driving import CollectorDriver, EventFeedDriver, FieldCollectorDriver
 
 
+# EventFeedDriver takes a Postgres advisory lock per collector; no DB here.
+pytestmark = pytest.mark.usefixtures("no_collector_lock")
+
+
 def make_config(channel_enabled=None):
     cfg = MagicMock()
     cfg.get_setting.return_value = channel_enabled or {}
@@ -310,3 +314,33 @@ def test_collect_fields_drives_FIELD_COLLECTOR_CLASSES_via_field_collector_drive
     assert args[1] is svc.store
     assert kwargs["process_status_adapter"] is svc.process_status_adapter
     MockDriver.return_value.drive.assert_called_once_with(FIELD_COLLECTOR_CLASSES)
+
+
+def test_event_feed_driver_skips_a_collector_whose_lock_a_manual_run_holds():
+    """`make collect` (collectors/run_once.py) holds the collector's advisory lock
+    while it runs; the sweep must skip that collector for the cycle rather than run
+    it concurrently, and leave last_runs alone so it's due again next cycle."""
+    from contextlib import contextmanager
+
+    @contextmanager
+    def busy_lock(name, wait=False, on_wait=None, bind=None):
+        yield False
+
+    feed = MagicMock()
+    feed.is_stale.return_value = True
+
+    class _Feed:
+        section = "busy_feed"
+        channel_key = None
+
+        def __new__(cls, config):
+            return feed
+
+    adapter = MagicMock()
+    last_runs = {}
+    EventFeedDriver(make_config({}), last_runs, adapter, lock=busy_lock).drive([_Feed])
+
+    feed.has_new_data.assert_not_called()
+    feed.collect.assert_not_called()
+    adapter.record_process_start.assert_not_called()
+    assert "busy_feed" not in last_runs

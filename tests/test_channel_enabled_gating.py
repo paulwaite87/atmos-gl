@@ -8,9 +8,15 @@ since those can themselves hit the network (e.g. a HEAD request).
 """
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from atmos_gl.collectors.driving import EventFeedDriver
 from atmos_gl.collectors.base import CollectorBase
 from atmos_gl.collectors.service import CollectorService
+
+
+# EventFeedDriver takes a Postgres advisory lock per collector; no DB here.
+pytestmark = pytest.mark.usefixtures("no_collector_lock")
 
 
 def make_fake_collector_class(section, channel_key=None):

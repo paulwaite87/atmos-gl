@@ -123,3 +123,18 @@ def real_db():
         engine = create_engine(pg.get_connection_url())
         yield engine
         engine.dispose()
+
+
+@pytest.fixture
+def no_collector_lock():
+    """Replace the cross-process collector lock (db/collector_lock.py, a Postgres
+    advisory lock) with an always-acquired no-op, for driver tests with no database."""
+    from contextlib import contextmanager
+    from unittest.mock import patch
+
+    @contextmanager
+    def _always_acquired(name, wait=False, on_wait=None, bind=None):
+        yield True
+
+    with patch("atmos_gl.db.collector_lock.collector_lock", _always_acquired):
+        yield
