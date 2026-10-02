@@ -7,7 +7,7 @@ from sqlalchemy.types import Text as SqlText
 
 from atmos_gl.db.engine import Session
 from atmos_gl.db.geojson import as_feature_collection, EMPTY_FEATURE_COLLECTION
-from atmos_gl.db.models import WorldEvent
+from atmos_gl.db.models import WorldEvent, WorldEventExportFile
 
 logger = logging.getLogger(__name__)
 
@@ -35,16 +35,20 @@ class WorldEventAdapter:
 
         A re-ingested id (a backfill re-covering a window collect() already filled)
         just refreshes the same row -- GDELT's own fields for a given event don't
-        change after the fact, so the ON CONFLICT SET list is the full column set."""
+        change after the fact, so the ON CONFLICT SET list is the full column set.
+
+        Returns True on success (including nothing to write), False if the write
+        failed -- WorldEventsCollector only marks an export file processed on True, so
+        a failed write is retried next cycle rather than silently leaving a gap."""
         if not rows:
-            return
+            return True
         values = [
             {**r, "geom": f"SRID=4326;POINT({r['lon']} {r['lat']})"}
             for r in rows
             if r.get("lat") is not None and r.get("lon") is not None
         ]
         if not values:
-            return
+            return True
         stmt = pg_insert(WorldEvent)
         stmt = stmt.on_conflict_do_update(
             index_elements=[WorldEvent.id],
@@ -70,19 +74,52 @@ class WorldEventAdapter:
                 for i in range(0, len(values), _UPSERT_CHUNK_SIZE):
                     session.execute(stmt, values[i : i + _UPSERT_CHUNK_SIZE])
                 session.commit()
+            return True
         except Exception as e:
             logger.error(f"Error bulk-saving {len(values)} world events: {e}")
+            return False
 
-    def oldest_event_date(self):
-        """The earliest event_date currently stored, or None if the table is empty --
-        used by WorldEventsCollector to decide how much of backfill_days' coverage is
-        still missing (see that module's docstring)."""
+    def processed_export_slots(self, since):
+        """Slot timestamps of every GDELT export file already processed (status ok or
+        missing) at or after `since` -- WorldEventsCollector diffs the backfill
+        window's expected slots against this to find gaps. Raises on a DB error (an
+        empty set would wrongly mean "nothing covered" and trigger a full re-fetch)."""
+        with Session() as session:
+            return set(
+                session.scalars(
+                    select(WorldEventExportFile.slot).where(WorldEventExportFile.slot >= since)
+                )
+            )
+
+    def mark_export_processed(self, slot, status, row_count=0):
+        """Records one export file as processed ("ok" or "missing"); idempotent."""
+        stmt = pg_insert(WorldEventExportFile).values(
+            slot=slot, status=status, row_count=row_count
+        )
+        stmt = stmt.on_conflict_do_update(
+            index_elements=[WorldEventExportFile.slot],
+            set_={
+                "status": stmt.excluded.status,
+                "row_count": stmt.excluded.row_count,
+                "processed_at": func.now(),
+            },
+        )
+        with Session() as session:
+            session.execute(stmt)
+            session.commit()
+
+    def prune_export_slots(self, before) -> int:
+        """Deletes processed-file records older than `before` (the backfill window's
+        start) -- they no longer affect coverage. Returns the number deleted."""
+        stmt = delete(WorldEventExportFile).where(WorldEventExportFile.slot < before)
         try:
             with Session() as session:
-                return session.scalar(select(func.min(WorldEvent.event_date)))
+                result = session.execute(stmt)
+                session.commit()
+                return result.rowcount
         except Exception as e:
-            logger.error(f"Error reading oldest world event date: {e}")
-            return None
+            logger.error(f"Error pruning world event export file records: {e}")
+            return 0
 
     def get_events_as_geojson(self, expiry_days=7, max_conflict_tone=None):
         """Returns world events as GeoJSON, filtering by age. age_hours (like quakes'
@@ -162,10 +199,11 @@ class FakeWorldEventAdapter:
 
     def __init__(self):
         self._events: dict[str, dict] = {}
+        self._export_files: dict[datetime, dict] = {}
 
     def upsert_events(self, rows):
         if not rows:
-            return
+            return True
         for r in rows:
             if r.get("lat") is None or r.get("lon") is None:
                 continue
@@ -185,11 +223,19 @@ class FakeWorldEventAdapter:
                 "avg_tone": r.get("avg_tone"),
                 "source_url": r.get("source_url"),
             }
+        return True
 
-    def oldest_event_date(self):
-        if not self._events:
-            return None
-        return min(e["event_date"] for e in self._events.values())
+    def processed_export_slots(self, since):
+        return {slot for slot in self._export_files if slot >= since}
+
+    def mark_export_processed(self, slot, status, row_count=0):
+        self._export_files[slot] = {"status": status, "row_count": row_count}
+
+    def prune_export_slots(self, before) -> int:
+        stale = [slot for slot in self._export_files if slot < before]
+        for slot in stale:
+            del self._export_files[slot]
+        return len(stale)
 
     def get_events_as_geojson(self, expiry_days=7, max_conflict_tone=None):
         import json

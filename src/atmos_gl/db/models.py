@@ -595,3 +595,21 @@ class WorldEvent(Base):
     goldstein_scale: Mapped[float | None] = mapped_column(REAL)
     avg_tone: Mapped[float | None] = mapped_column(REAL)
     source_url: Mapped[str | None] = mapped_column(Text)
+
+
+class WorldEventExportFile(Base):
+    """One row per GDELT 15-minute export file WorldEventsCollector has processed,
+    keyed by the file's own slot timestamp. Coverage of the backfill window is "every
+    slot has a row" -- not inferred from stored event dates, since a file can
+    legitimately yield zero curated events. status is "ok" (fetched and ingested) or
+    "missing" (GDELT returned 404 for that slot -- recorded so it isn't re-requested
+    every cycle). Rows older than the backfill window are pruned by the collector."""
+
+    __tablename__ = "world_event_export_files"
+
+    slot: Mapped[datetime] = mapped_column(DateTime(timezone=True), primary_key=True)
+    status: Mapped[str] = mapped_column(String(10), nullable=False)
+    row_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    processed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
