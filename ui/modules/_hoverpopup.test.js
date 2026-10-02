@@ -65,7 +65,7 @@ describe('hoverPopup', () => {
         map._handlers['mouseenter:quakes-layer']({ features: [feature] });
 
         expect(map.getCanvas().style.cursor).toBe('pointer');
-        expect(html).toHaveBeenCalledWith(feature);
+        expect(html).toHaveBeenCalledWith(feature, [feature]);
         const popup = globalThis.maplibregl.Popup.mock.results[0].value;
         expect(popup.setLngLat).toHaveBeenCalledWith([1, 2]);
         expect(popup.setHTML).toHaveBeenCalledWith('<strong>M 4.2</strong>');

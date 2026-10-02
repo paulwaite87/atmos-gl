@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { alsoReportedByHtml } from './world_events.js';
+import { alsoReportedByHtml, coincidentFeatures } from './world_events.js';
 
 describe('alsoReportedByHtml', () => {
     test('is empty when there are no other outlets', () => {
@@ -26,5 +26,23 @@ describe('alsoReportedByHtml', () => {
         const html = alsoReportedByHtml(['https://evil.example/"><script>x</script>']);
         expect(html).not.toContain('<script>');
         expect(html).toContain('&quot;&gt;&lt;script&gt;');
+    });
+});
+
+describe('coincidentFeatures', () => {
+    const at = (id, lon, lat) => ({ properties: { id }, geometry: { coordinates: [lon, lat] } });
+
+    test('is just the hovered feature when nothing shares its point', () => {
+        const top = at('a', 174.78, -41.3);
+        expect(coincidentFeatures(top, [top, at('b', 174.58, -36.75)])).toEqual([top]);
+    });
+
+    test('lists every story stacked on the same point, hovered one first, once each', () => {
+        const top = at('a', 174.78, -41.3);
+        const b = at('b', 174.78, -41.3);
+        const c = at('c', 174.78, -41.3);
+        // e.features repeats a feature when tiles overlap
+        expect(coincidentFeatures(top, [top, b, at('d', 0, 0), c, b]).map((f) => f.properties.id))
+            .toEqual(['a', 'b', 'c']);
     });
 });
