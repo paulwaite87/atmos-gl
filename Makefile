@@ -6,7 +6,10 @@ DB_USER = agl
 DB_PASS = agl
 DB_NAME = atmos_gl
 DB_SERVICE = atmos_gl_db
-DB_PORT = 15432
+# Host port for `make migrate`. Empty = ask Compose where the DB is actually published:
+# docker-compose.yml uses 15432, but the dev docker-compose.override.yml remaps it to
+# 25432 so a dev stack can run alongside prod. Set it to force a port.
+DB_PORT ?=
 BUILDER_SERVICE = layer_builder
 DUMP_FILE = atmos_gl_dump.sql
 
@@ -126,8 +129,11 @@ psql:
 ## migrate: Apply alembic migrations to the local dev database (via uv, outside Docker)
 migrate:
 	@echo "Ensuring atmos_gl database is running"
-	@docker compose up $(DB_SERVICE) -d
-	POSTGRES_HOST=localhost POSTGRES_PORT=$(DB_PORT) POSTGRES_USER=$(DB_USER) POSTGRES_PASSWORD=$(DB_PASS) POSTGRES_DB=$(DB_NAME) uv run alembic upgrade head
+	@docker compose up $(DB_SERVICE) -d --wait
+	@port="$(DB_PORT)"; \
+	[ -n "$$port" ] || port=$$(docker compose port $(DB_SERVICE) 5432 | sed 's/.*://'); \
+	echo "Migrating via localhost:$$port"; \
+	POSTGRES_HOST=localhost POSTGRES_PORT=$$port POSTGRES_USER=$(DB_USER) POSTGRES_PASSWORD=$(DB_PASS) POSTGRES_DB=$(DB_NAME) uv run alembic upgrade head
 
 ## status: Database Status Report
 status:
