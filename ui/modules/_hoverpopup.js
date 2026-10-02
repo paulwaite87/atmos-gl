@@ -88,8 +88,8 @@ export function hoverPopup(map, layerId, {
         cancelClose();
         map.getCanvas().style.cursor = 'pointer';
         // Point features anchor the popup to their own coordinate (stable even as the
-        // mouse moves within a small marker's hit area); anything else (e.g. Troublespots'
-        // polygons) has no single representative point, so anchor to where the mouse
+        // mouse moves within a small marker's hit area); anything else (e.g. a
+        // polygon) has no single representative point, so anchor to where the mouse
         // actually is instead -- a Polygon's geometry.coordinates is a nested rings
         // array, not a [lon, lat] pair, and would hand setLngLat garbage. Checked by
         // shape (a flat pair's first entry is a number) rather than geometry.type, so

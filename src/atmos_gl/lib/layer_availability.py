@@ -26,7 +26,6 @@ collecting.
 """
 from atmos_gl.collectors import COLLECTORS, CACHE_COLLECTORS, FIELD_COLLECTOR_CLASSES
 from atmos_gl.layer_builder import build_layer_channel_keys
-from atmos_gl.lib.troublespot_contours import MIN_CONVERGENCE_TYPES
 
 REASON_PAUSED = (
     "Data collection is currently paused by the site admin — this layer won't show "
@@ -41,15 +40,6 @@ _ASYNC_COLLECTOR_SECTIONS = {
     "lightning": "lightning_collector",
     "flightradar": "flightradar_collector",
 }
-
-# Troublespots (issue #366) is a derived view over these four collectors' channels,
-# not a single-channel-gated layer -- it requires AT LEAST MIN_CONVERGENCE_TYPES of
-# them enabled to ever produce a result (fewer than that, and its own 2+-type
-# convergence rule can never be satisfied). Reuses the SAME threshold constant the
-# contour-banding logic itself uses (lib/troublespot_contours.py), rather than a
-# second hardcoded "2" that could silently drift out of sync with it.
-_TROUBLESPOTS_CHANNELS = ("quakes", "fires", "volcanoes", "world_events")
-
 
 def _channel_gated_sections() -> dict:
     """section -> channel_key for every layer gated by data_collector.channel_enabled.
@@ -90,12 +80,5 @@ def compute_layer_availability(config) -> dict:
 
     for section, collector_section in _ASYNC_COLLECTOR_SECTIONS.items():
         result[section] = _entry(config.section_enabled(collector_section))
-
-    enabled_channel_count = sum(
-        1 for k in _TROUBLESPOTS_CHANNELS if channel_enabled.get(k, True)
-    )
-    result["troublespots"] = _entry(
-        data_collector_enabled and enabled_channel_count >= MIN_CONVERGENCE_TYPES
-    )
 
     return result
