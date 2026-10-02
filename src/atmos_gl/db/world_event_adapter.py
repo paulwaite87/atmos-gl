@@ -1,4 +1,5 @@
 import logging
+import re
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import and_, case, cast, delete, func, or_, select, text
@@ -186,7 +187,11 @@ class WorldEventAdapter:
         GDELT often codes one article into several events (22% of markers, measured),
         and syndicated copies of one story appear at different outlets' URLs. A story
         is the article's summary when it has a real one, else its URL (else the event
-        itself); the most-mentioned event wins (then most recent), and the story's
+        itself); the event whose place the headline names wins, then the
+        most-mentioned, then the most recent -- the headline check first because
+        GDELT's geocoding is the common failure (seen live: a fire in Auckland's
+        Mount Wellington suburb coded partly as Wellington city; the summary's "Mount
+        Wellington" would mislead, so only the headline is consulted). The story's
         other URLs come back as also_reported_by. A summary one site reuses across
         articles with DIFFERENT headlines ("News in real-time", seen live) is site
         boilerplate: it's dropped and never used to merge. Retitled syndication -- same
@@ -204,6 +209,16 @@ class WorldEventAdapter:
             else_=WorldEventArticle.summary,
         )
         story = func.coalesce(summary, WorldEvent.source_url, WorldEvent.id)
+        # 1 when the event's place (its first component, e.g. "Auckland" of "Auckland,
+        # Auckland, New Zealand") is named in the headline as a whole word. Regex
+        # metacharacters in the place are escaped; \\m/\\M are Postgres word boundaries.
+        place = func.split_part(WorldEvent.action_geo_full_name, ",", 1)
+        place_pattern = func.regexp_replace(func.trim(place), r"([^[:alnum:][:space:]])", r"\\\1", "g")
+        place_in_headline = case(
+            (WorldEventArticle.headline.op("~*", is_comparison=True)(
+                func.concat(r"\m", place_pattern, r"\M")), 1),
+            else_=0,
+        )
         events = (
             select(
                 WorldEvent.id,
@@ -224,6 +239,7 @@ class WorldEventAdapter:
                 .over(
                     partition_by=story,
                     order_by=(
+                        place_in_headline.desc(),
                         WorldEvent.num_mentions.desc().nulls_last(),
                         WorldEvent.event_date.desc(),
                         WorldEvent.id,
@@ -338,6 +354,15 @@ class WorldEventAdapter:
         except Exception as e:
             logger.error(f"Error pruning orphaned world event articles: {e}")
             return 0
+
+
+def _place_in_headline(place: str | None, headline: str | None) -> bool:
+    """Fake-side mirror of the real adapter's place_in_headline: the place's first
+    component named as a whole word in the headline, case-insensitively."""
+    if not place or not headline:
+        return False
+    first = place.split(",", 1)[0].strip()
+    return bool(first) and re.search(rf"(?<!\w){re.escape(first)}(?!\w)", headline, re.I) is not None
 
 
 class FakeWorldEventAdapter:
@@ -457,6 +482,7 @@ class FakeWorldEventAdapter:
         features = []
         for members in stories.values():
             members.sort(key=lambda m: (
+                not _place_in_headline(m[0]["action_geo_full_name"], m[1].get("headline")),
                 -(m[0]["num_mentions"] if m[0]["num_mentions"] is not None else -1),
                 -m[0]["event_date"].timestamp(),
                 m[0]["id"],

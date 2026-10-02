@@ -413,3 +413,33 @@ def test_the_tone_filter_applies_before_collapsing(kind, real_db):
         _dev(kind, "grim", url, mentions=15, avg_tone=-5.0),
     ], [], max_conflict_tone=0.0)
     assert set(props) == {f"d{kind[0]}-grim"}
+
+
+def _dev_at(kind, event_id, url, place, mentions=20, hours_ago=1):
+    row = _dev(kind, event_id, url, mentions=mentions, hours_ago=hours_ago)
+    row["action_geo_full_name"] = place
+    return row
+
+
+@pytest.mark.parametrize("kind", ["real", "fake"])
+def test_the_event_whose_place_the_headline_names_wins(kind, real_db):
+    # Seen live: RNZ's Coca-Cola fire in Auckland's Mount Wellington suburb was coded
+    # as one Auckland and one "Wellington (general)" event, tied on mentions and time;
+    # the collapse kept Wellington by id order and the Auckland marker vanished.
+    url = f"https://rnz.example/{kind}/coca-cola-fire"
+    props = _dedupe_features(kind, real_db, [
+        _dev_at(kind, "wlg", url, "Wellington, New Zealand (general), New Zealand", mentions=30),
+        _dev_at(kind, "akl", url, "Auckland, Auckland, New Zealand", mentions=10),
+    ], [_preview(url, "ok", "Firefighters battle blaze at Auckland Coca-Cola factory",
+                 f"About 50 firefighters were deployed in Auckland's Mount Wellington ({kind}).")])
+    assert set(props) == {f"d{kind[0]}-akl"}  # beats higher mentions; summary not consulted
+
+
+@pytest.mark.parametrize("kind", ["real", "fake"])
+def test_place_matching_is_whole_word(kind, real_db):
+    url = f"https://a.example/{kind}/oman"
+    props = _dedupe_features(kind, real_db, [
+        _dev_at(kind, "oman", url, "Oman", mentions=10),
+        _dev_at(kind, "uk", url, "United Kingdom", mentions=30),
+    ], [_preview(url, "ok", "Woman arrested after protest", f"Lede ({kind}).")])
+    assert set(props) == {f"d{kind[0]}-uk"}  # "Oman" is not in "Woman"; mentions decide
