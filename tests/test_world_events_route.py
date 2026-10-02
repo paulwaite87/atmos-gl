@@ -16,7 +16,9 @@ def _event(event_id, event_date_iso, category="warfare", avg_tone=-2.0):
         "actor1_name": "Actor A", "actor2_name": "Actor B",
         "action_geo_full_name": "Somewhere", "lat": 10.0, "lon": 20.0,
         "event_date": event_date_iso, "num_mentions": 15, "num_sources": 2,
-        "goldstein_scale": -5.0, "avg_tone": avg_tone, "source_url": "http://example.com/a",
+        "goldstein_scale": -5.0, "avg_tone": avg_tone,
+        # one URL per event: events sharing an article collapse into one feature
+        "source_url": f"http://example.com/{event_id}",
     }
 
 

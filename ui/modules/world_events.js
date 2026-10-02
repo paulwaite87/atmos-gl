@@ -36,6 +36,26 @@ const CATEGORY_TOGGLE_KEYS = {
 const visibleCategories = (cfg) => Object.keys(CATEGORY_TOGGLE_KEYS)
     .filter((cat) => cfg[CATEGORY_TOGGLE_KEYS[cat]] !== false);
 
+// Other outlets' copies of the same story (the backend collapses duplicates to one
+// marker -- see WorldEventAdapter.get_events_as_geojson), labelled by domain.
+const MAX_OTHER_OUTLETS = 5;
+
+const outletLabel = (url) => {
+    try {
+        return new URL(url).hostname.replace(/^www\./, '');
+    } catch {
+        return url;
+    }
+};
+
+export function alsoReportedByHtml(urls) {
+    if (!Array.isArray(urls) || urls.length === 0) return '';
+    const links = urls.slice(0, MAX_OTHER_OUTLETS).map((u) =>
+        `<a href="${escapeHtml(u)}" target="_blank" rel="noopener noreferrer">${escapeHtml(outletLabel(u))}</a>`);
+    const more = urls.length > MAX_OTHER_OUTLETS ? ` +${urls.length - MAX_OTHER_OUTLETS} more` : '';
+    return `Also reported by: ${links.join(', ')}${more}`;
+}
+
 const filterFor = (cfg) => ['in', ['get', 'category'], ['literal', visibleCategories(cfg)]];
 
 export function loadLayer(map, config) {
@@ -91,6 +111,8 @@ export function loadLayer(map, config) {
                 text: `<a href="${href}" target="_blank" rel="noopener noreferrer">Read full article →</a>`,
             });
         }
+        const also = alsoReportedByHtml(d.also_reported_by);
+        if (also) blocks.push({ type: 'notice', raw: true, color: '#6c757d', text: also });
 
         return buildPopupHtml({
             title: { text: CATEGORY_LABELS[d.category] || d.category, variant: d.category },

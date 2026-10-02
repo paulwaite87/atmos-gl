@@ -311,3 +311,105 @@ def test_prune_orphaned_articles_matches_between_real_and_fake(kind, real_db):
                 {"urls": [kept_url, shared_url, gone_url]},
             ).scalars().all()
         assert set(remaining) == {kept_url, shared_url}
+
+
+# ---- duplicate collapsing (read time) ----------------------------------------------
+
+def _dedupe_features(kind, real_db, events, previews, **geojson_kwargs):
+    adapter, ctx = _make_adapter(kind, real_db)
+    with ctx:
+        adapter.upsert_events(events)
+        adapter.save_article_previews(previews)
+        geojson = json.loads(adapter.get_events_as_geojson(expiry_days=7, **geojson_kwargs))
+    # The real table is shared across this module's tests: look only at this call's events.
+    mine = {e["id"] for e in events}
+    return {f["properties"]["id"]: f["properties"] for f in geojson["features"]
+            if f["properties"]["id"] in mine}
+
+
+def _dev(kind, event_id, url, mentions=20, hours_ago=1, category="warfare", avg_tone=None):
+    # ids must fit world_events.id's varchar(20); "dr"/"df" prefix scopes them per kind
+    row = _event_row(f"d{kind[0]}-{event_id}", category, 10.0, 20.0,
+                     (datetime.now(timezone.utc) - timedelta(hours=hours_ago)).isoformat(),
+                     num_mentions=mentions, avg_tone=avg_tone)
+    row["source_url"] = url
+    return row
+
+
+@pytest.mark.parametrize("kind", ["real", "fake"])
+def test_one_marker_per_article_keeping_the_most_mentioned_event(kind, real_db):
+    url = f"https://a.example/{kind}/same-article"
+    props = _dedupe_features(kind, real_db, [
+        _dev(kind, "low", url, mentions=10),
+        _dev(kind, "high", url, mentions=40),
+        _dev(kind, "mid", url, mentions=25),
+    ], [_preview(url, "ok", "Strikes hit Kabul", f"Lede {kind} one.")])
+    assert set(props) == {f"d{kind[0]}-high"}
+    assert props[f"d{kind[0]}-high"]["also_reported_by"] == []
+
+
+@pytest.mark.parametrize("kind", ["real", "fake"])
+def test_ties_on_mentions_go_to_the_most_recent_event(kind, real_db):
+    url = f"https://a.example/{kind}/tie"
+    props = _dedupe_features(kind, real_db, [
+        _dev(kind, "older", url, mentions=20, hours_ago=5),
+        _dev(kind, "newer", url, mentions=20, hours_ago=1),
+    ], [])
+    assert set(props) == {f"d{kind[0]}-newer"}
+
+
+@pytest.mark.parametrize("kind", ["real", "fake"])
+def test_syndicated_copies_collapse_and_list_the_other_outlets(kind, real_db):
+    summary = f"The fatal shooting of Renee Good ({kind}) prompted lawsuits."
+    npr, wutc, wysu = (f"https://www.{s}.example/{kind}/renee-good" for s in ("npr", "wutc", "wysu"))
+    props = _dedupe_features(kind, real_db, [
+        _dev(kind, "npr", npr, mentions=50),
+        _dev(kind, "wutc", wutc, mentions=12),
+        _dev(kind, "wysu", wysu, mentions=11),
+    ], [
+        _preview(npr, "ok", "Renee Good's family sues", summary),
+        _preview(wutc, "ok", "The family of Renee Good files lawsuits", summary),  # retitled
+        _preview(wysu, "ok", "The family of Renee Good files lawsuits", summary),
+    ])
+    assert set(props) == {f"d{kind[0]}-npr"}
+    assert props[f"d{kind[0]}-npr"]["summary"] == summary
+    assert sorted(props[f"d{kind[0]}-npr"]["also_reported_by"]) == sorted([wutc, wysu])
+
+
+@pytest.mark.parametrize("kind", ["real", "fake"])
+def test_a_sites_boilerplate_summary_is_dropped_and_never_merges_stories(kind, real_db):
+    # One site reusing its generic description on DIFFERENT stories ("News in
+    # real-time" on 5 different newsroomamerica.com tags, seen live).
+    boiler = f"News in real-time ({kind})"
+    a, b = (f"https://newsroom.example/{kind}/{s}" for s in ("armed-robbery", "fire-academy"))
+    props = _dedupe_features(kind, real_db, [
+        _dev(kind, "a", a), _dev(kind, "b", b),
+    ], [
+        _preview(a, "ok", "Tag: armed_robbery", boiler),
+        _preview(b, "ok", "Tag: national_fire_academy", boiler),
+    ])
+    assert set(props) == {f"d{kind[0]}-a", f"d{kind[0]}-b"}
+    assert props[f"d{kind[0]}-a"]["summary"] is None
+    assert props[f"d{kind[0]}-a"]["headline"] == "Tag: armed_robbery"
+
+
+@pytest.mark.parametrize("kind", ["real", "fake"])
+def test_events_without_a_preview_only_merge_on_the_same_url(kind, real_db):
+    props = _dedupe_features(kind, real_db, [
+        _dev(kind, "x", f"https://a.example/{kind}/x"),
+        _dev(kind, "y", f"https://a.example/{kind}/y"),
+        _dev(kind, "nourl", None),
+    ], [])
+    assert set(props) == {f"d{kind[0]}-x", f"d{kind[0]}-y", f"d{kind[0]}-nourl"}
+
+
+@pytest.mark.parametrize("kind", ["real", "fake"])
+def test_the_tone_filter_applies_before_collapsing(kind, real_db):
+    # The most-mentioned copy is a positive-tone false positive: once filtered, the
+    # next copy must win rather than the whole story vanishing.
+    url = f"https://a.example/{kind}/tone"
+    props = _dedupe_features(kind, real_db, [
+        _dev(kind, "upbeat", url, mentions=90, avg_tone=4.0),
+        _dev(kind, "grim", url, mentions=15, avg_tone=-5.0),
+    ], [], max_conflict_tone=0.0)
+    assert set(props) == {f"d{kind[0]}-grim"}
