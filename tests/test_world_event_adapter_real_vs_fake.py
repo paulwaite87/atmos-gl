@@ -39,13 +39,16 @@ def _row(adapter, event_id, real_db):
         return dict(result)
 
 
-def _event_row(event_id, category, lat, lon, event_date_iso, num_mentions=20, event_code="183"):
+def _event_row(
+    event_id, category, lat, lon, event_date_iso, num_mentions=20, event_code="183",
+    avg_tone=None,
+):
     return {
         "id": event_id, "category": category, "event_code": event_code,
         "actor1_name": None, "actor2_name": None, "action_geo_full_name": None,
         "lat": lat, "lon": lon, "event_date": event_date_iso,
         "num_mentions": num_mentions, "num_sources": 1,
-        "goldstein_scale": None, "avg_tone": None, "source_url": None,
+        "goldstein_scale": None, "avg_tone": avg_tone, "source_url": None,
     }
 
 
@@ -123,3 +126,34 @@ def test_delete_expired_prunes_only_rows_older_than_expiry_days(kind, real_db):
     ids = {f["properties"]["id"] for f in geojson["features"]}
     assert f"keep-{suffix}" in ids
     assert f"prune-{suffix}" not in ids
+
+
+@pytest.mark.parametrize("kind", ["real", "fake"])
+def test_get_events_as_geojson_tone_filter_matches_between_real_and_fake(kind, real_db):
+    # max_conflict_tone drops conflict-category events whose coverage reads MORE
+    # positively than the threshold (GDELT's figurative "battle"/"fight" false
+    # positives), but never diplomacy (whose tone is naturally either sign) and never
+    # an event with no tone at all (nothing to judge it by).
+    suffix = kind
+    adapter, ctx = _make_adapter(kind, real_db)
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    with ctx:
+        adapter.upsert_events([
+            _event_row(f"neg-war-{suffix}", "warfare", 10.0, 20.0, now_iso, avg_tone=-4.0),
+            _event_row(f"at-war-{suffix}", "warfare", 10.0, 20.0, now_iso, avg_tone=0.0),
+            _event_row(f"pos-war-{suffix}", "warfare", 10.0, 20.0, now_iso, avg_tone=3.5),
+            _event_row(f"pos-boom-{suffix}", "explosion", 10.0, 20.0, now_iso, avg_tone=0.1),
+            _event_row(f"pos-tv-{suffix}", "targeted_violence", 10.0, 20.0, now_iso, avg_tone=2.0),
+            _event_row(f"pos-dip-{suffix}", "diplomacy", 10.0, 20.0, now_iso, avg_tone=5.0),
+            _event_row(f"null-war-{suffix}", "warfare", 10.0, 20.0, now_iso, avg_tone=None),
+        ])
+        filtered = json.loads(adapter.get_events_as_geojson(expiry_days=7, max_conflict_tone=0.0))
+        unfiltered = json.loads(adapter.get_events_as_geojson(expiry_days=7))
+
+    ids = {f["properties"]["id"] for f in filtered["features"]}
+    assert {f"neg-war-{suffix}", f"at-war-{suffix}", f"pos-dip-{suffix}", f"null-war-{suffix}"} <= ids
+    assert not {f"pos-war-{suffix}", f"pos-boom-{suffix}", f"pos-tv-{suffix}"} & ids
+
+    all_ids = {f["properties"]["id"] for f in unfiltered["features"]}
+    assert {f"pos-war-{suffix}", f"pos-boom-{suffix}", f"pos-tv-{suffix}"} <= all_ids

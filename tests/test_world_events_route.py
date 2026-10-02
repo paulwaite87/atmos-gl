@@ -10,13 +10,13 @@ from atmos_gl.routes.world_events import get_world_event_adapter
 from atmos_gl.api import app
 
 
-def _event(event_id, event_date_iso, category="warfare"):
+def _event(event_id, event_date_iso, category="warfare", avg_tone=-2.0):
     return {
         "id": event_id, "category": category, "event_code": "193",
         "actor1_name": "Actor A", "actor2_name": "Actor B",
         "action_geo_full_name": "Somewhere", "lat": 10.0, "lon": 20.0,
         "event_date": event_date_iso, "num_mentions": 15, "num_sources": 2,
-        "goldstein_scale": -5.0, "avg_tone": -2.0, "source_url": "http://example.com/a",
+        "goldstein_scale": -5.0, "avg_tone": avg_tone, "source_url": "http://example.com/a",
     }
 
 
@@ -52,3 +52,19 @@ def test_world_events_geojson_passes_expiry_days_through_to_the_adapter(client):
 
     ids = {f["properties"]["id"] for f in resp.json()["features"]}
     assert ids == {"recent"}
+
+
+def test_world_events_geojson_passes_max_conflict_tone_through_to_the_adapter(client):
+    fake = FakeWorldEventAdapter()
+    now_iso = datetime.now(timezone.utc).isoformat()
+    fake.upsert_events([
+        _event("grim", now_iso, avg_tone=-6.0),
+        _event("upbeat", now_iso, avg_tone=4.0),
+    ])
+    app.dependency_overrides[get_world_event_adapter] = lambda: fake
+
+    filtered = client.get("/api/world_events/geojson", params={"max_conflict_tone": 0})
+    unfiltered = client.get("/api/world_events/geojson")
+
+    assert {f["properties"]["id"] for f in filtered.json()["features"]} == {"grim"}
+    assert {f["properties"]["id"] for f in unfiltered.json()["features"]} == {"grim", "upbeat"}
