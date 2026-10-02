@@ -1,5 +1,5 @@
 # Makefile for Atmos GL Project Suite
-.PHONY: run stop build rebuild start-desktop-fg stop-desktop psql logs clean purge backup restore refresh-map test bash status help bootstrap-config migrate
+.PHONY: run stop build rebuild start-desktop-fg stop-desktop psql logs clean purge backup restore refresh-map test bash status help bootstrap-config migrate collect
 
 # Variables
 DB_USER = agl
@@ -134,6 +134,12 @@ migrate:
 	[ -n "$$port" ] || port=$$(docker compose port $(DB_SERVICE) 5432 | sed 's/.*://'); \
 	echo "Migrating via localhost:$$port"; \
 	POSTGRES_HOST=localhost POSTGRES_PORT=$$port POSTGRES_USER=$(DB_USER) POSTGRES_PASSWORD=$(DB_PASS) POSTGRES_DB=$(DB_NAME) uv run alembic upgrade head
+
+## collect: Run one collector now, outside its schedule: make collect name=world_events [force=1]
+collect:
+	@[ -n "$(name)" ] || { echo "usage: make collect name=<collector> [force=1]  (make collect name=? lists them)"; exit 2; }
+	@docker compose exec data_collector python -m atmos_gl.collectors.run_once \
+		--config /opt/project/config/atmos-gl.json $(name) $(if $(force),--force)
 
 ## status: Database Status Report
 status:

@@ -887,6 +887,19 @@ Reset back to the default order:
 This is in-memory only — it resets to the default order whenever `layer_builder`
 restarts (e.g. after `make reload`).
 
+### Running a collector now
+Each data collector runs on its own schedule inside `data_collector`. When you're waiting on
+one to test something, run it immediately instead:
+
+    make collect name=world_events
+
+It runs inside the running `data_collector` container, so it uses your live code, config and
+database, and shows up on the Data Status page like a scheduled run. Like a scheduled run, it
+skips if nothing has changed upstream and won't run a channel you've disabled — add `force=1`
+to override both. If a scheduled run of the same collector is already in progress it waits
+for it to finish, and the schedule skips that collector while yours runs, so the two never
+overlap. `make collect name=?` lists the collector names.
+
 ### Everything Else
 `make test`, `make lint` and `make bash` are all there for you too — run `make help` for
 the full list.
