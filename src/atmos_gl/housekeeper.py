@@ -24,6 +24,7 @@ from atmos_gl.lib.scheduling import interval_elapsed
 from atmos_gl.db.ship_adapter import ShipAdapter
 from atmos_gl.db.aircraft_adapter import AircraftAdapter
 from atmos_gl.db.volcanic_activity_adapter import VolcanicActivityAdapter
+from atmos_gl.db.world_event_adapter import WorldEventAdapter
 from atmos_gl.db.process_status_adapter import ProcessStatusAdapter
 
 logger = logging.getLogger("atmos_gl.housekeeper")
@@ -209,6 +210,26 @@ class Housekeeper:
         except Exception as e:
             logger.warning(f"Housekeeper: volcanic activity prune failed: {e}")
 
+    def prune_expired_world_events(self, expiry_days: float):
+        """Prune world_events rows older than expiry_days (0/missing -> keep forever),
+        then any article preview no remaining event points at. WorldEventsCollector
+        only ever upserts; this is the only place either table shrinks. Defaults to
+        14 days (see run()) -- the furthest back the layer's expiry_days slider can
+        show, so pruning never removes anything a viewer could still display."""
+        if not expiry_days or expiry_days <= 0:
+            return
+        try:
+            adapter = WorldEventAdapter()
+            events = adapter.delete_expired(expiry_days)
+            articles = adapter.prune_orphaned_articles()
+            if events or articles:
+                logger.info(
+                    f"Housekeeper pruned {events} world event(s) older than "
+                    f"{expiry_days:g}d and {articles} orphaned article preview(s)."
+                )
+        except Exception as e:
+            logger.warning(f"Housekeeper: world events prune failed: {e}")
+
     def prune_orphaned_hour_outputs(self):
         """Delete per-hour render outputs whose (layer, hour) no longer has any
         backing field in the catalog.
@@ -377,6 +398,10 @@ class Housekeeper:
                         self.settings.get("volcanic_activity_expiry_days", 14)
                     )
                     self.prune_expired_activity(volcanic_activity_expiry_d)
+                    world_events_expiry_d = float(
+                        self.settings.get("world_events_expiry_days", 14)
+                    )
+                    self.prune_expired_world_events(world_events_expiry_d)
                     last_run = now
             else:
                 logger.debug("Housekeeper disabled; skipping.")

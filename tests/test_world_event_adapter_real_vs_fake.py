@@ -265,3 +265,49 @@ def test_geojson_carries_headline_and_summary_only_for_ok_articles(kind, real_db
     assert props[f"geo-{kind}-ok"]["summary"] == "Twenty-two killed."
     assert props[f"geo-{kind}-retry"]["headline"] is None
     assert props[f"geo-{kind}-none"]["headline"] is None
+
+
+@pytest.mark.parametrize("kind", ["real", "fake"])
+def test_prune_orphaned_articles_matches_between_real_and_fake(kind, real_db):
+    adapter, ctx = _make_adapter(kind, real_db)
+    now = datetime.now(timezone.utc)
+    kept_url = f"https://news.example/{kind}/orphan-kept"
+    shared_url = f"https://news.example/{kind}/orphan-shared"
+    gone_url = f"https://news.example/{kind}/orphan-gone"
+
+    def ev(event_id, url, days_ago):  # ids must fit world_events.id's varchar(20)
+        row = _event_row(f"o-{kind}-{event_id}", "warfare", 10.0, 20.0,
+                         (now - timedelta(days=days_ago)).isoformat())
+        row["source_url"] = url
+        return row
+
+    with ctx:
+        adapter.upsert_events([
+            ev("kept", kept_url, 1),
+            ev("shared-old", shared_url, 30),  # one old + one recent event, same article
+            ev("shared-new", shared_url, 1),
+            ev("gone", gone_url, 30),
+        ])
+        adapter.save_article_previews([
+            _preview(kept_url, "ok", "Kept"),
+            _preview(shared_url, "ok", "Shared"),
+            _preview(gone_url, "ok", "Gone"),
+        ])
+        adapter.delete_expired(expiry_days=14)
+        pruned = adapter.prune_orphaned_articles()
+        geojson = json.loads(adapter.get_events_as_geojson(expiry_days=36500))
+
+    headlines = {f["properties"]["id"]: f["properties"]["headline"] for f in geojson["features"]}
+    assert headlines[f"o-{kind}-kept"] == "Kept"
+    assert headlines[f"o-{kind}-shared-new"] == "Shared"  # still referenced
+    assert f"o-{kind}-gone" not in headlines
+    assert pruned >= 1
+    if kind == "fake":
+        assert gone_url not in adapter._articles
+    else:
+        with real_db.connect() as conn:
+            remaining = conn.execute(
+                text("SELECT url FROM world_event_articles WHERE url = ANY(:urls)"),
+                {"urls": [kept_url, shared_url, gone_url]},
+            ).scalars().all()
+        assert set(remaining) == {kept_url, shared_url}

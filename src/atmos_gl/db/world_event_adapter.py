@@ -259,6 +259,21 @@ class WorldEventAdapter:
             logger.error(f"Error deleting expired world events: {e}")
             return 0
 
+    def prune_orphaned_articles(self) -> int:
+        """Deletes article previews no remaining event points at -- run right after
+        delete_expired() so world_event_articles shrinks with world_events instead of
+        growing forever. Returns the number deleted."""
+        referenced = select(WorldEvent.id).where(WorldEvent.source_url == WorldEventArticle.url)
+        stmt = delete(WorldEventArticle).where(~referenced.exists())
+        try:
+            with Session() as session:
+                result = session.execute(stmt)
+                session.commit()
+                return result.rowcount
+        except Exception as e:
+            logger.error(f"Error pruning orphaned world event articles: {e}")
+            return 0
+
 
 class FakeWorldEventAdapter:
     """In-memory fake for world_events, matching WorldEventAdapter's method contracts."""
@@ -381,3 +396,10 @@ class FakeWorldEventAdapter:
         for eid in expired:
             del self._events[eid]
         return len(expired)
+
+    def prune_orphaned_articles(self) -> int:
+        referenced = {e["source_url"] for e in self._events.values()}
+        orphans = [url for url in self._articles if url not in referenced]
+        for url in orphans:
+            del self._articles[url]
+        return len(orphans)
