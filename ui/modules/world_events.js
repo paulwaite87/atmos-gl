@@ -74,7 +74,13 @@ export function loadLayer(map, config) {
             rows.push({ label: 'Sources', value: `Reported by ${d.num_sources} source${plural}`, width: 60 });
         }
 
-        const blocks = [{ type: 'divider' }];
+        // headline/summary are scraped from the source article's own metadata
+        // (lib/article_preview.py) and only present once that fetch succeeded --
+        // otherwise the popup is exactly the pre-preview layout. 'text' blocks escape.
+        const blocks = [];
+        if (d.headline) blocks.push({ type: 'text', text: d.headline, bold: true });
+        if (d.summary) blocks.push({ type: 'text', text: d.summary });
+        blocks.push({ type: 'divider' });
         if (rows.length) blocks.push({ type: 'rows', rows });
         if (d.source_url) {
             const href = escapeHtml(d.source_url);
@@ -82,7 +88,7 @@ export function loadLayer(map, config) {
                 type: 'notice',
                 raw: true,
                 color: '#6c757d',
-                text: `<a href="${href}" target="_blank" rel="noopener noreferrer">Read more →</a>`,
+                text: `<a href="${href}" target="_blank" rel="noopener noreferrer">Read full article →</a>`,
             });
         }
 
@@ -114,7 +120,8 @@ export function loadLayer(map, config) {
                 'circle-stroke-color': 'rgba(0,0,0,0.6)',
             },
         });
-        stopPopup = hoverPopup(map, layerId, { html: popupHtml });
+        // Wider than the default 240px: the scraped headline/summary read as prose.
+        stopPopup = hoverPopup(map, layerId, { html: popupHtml, maxWidth: '320px' });
     };
 
     const refresh = async (cfg) => {

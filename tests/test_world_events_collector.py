@@ -9,11 +9,13 @@ collector module's docstring).
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
+import pytest
 import requests
 
 from atmos_gl.collectors.base import CollectorBase
 from atmos_gl.collectors.world_events import (
     _MAX_FILES_PER_CYCLE,
+    _MAX_PREVIEWS_PER_CYCLE,
     ExportFileMissing,
     WorldEventsCollector,
     _classify,
@@ -22,8 +24,20 @@ from atmos_gl.collectors.world_events import (
     _parse_export_rows,
 )
 from atmos_gl.db.world_event_adapter import FakeWorldEventAdapter
+from atmos_gl.lib.article_preview import STATUS_FAILED, STATUS_OK, STATUS_RETRY, ArticlePreview
 
 _BASE_URL = "http://data.gdeltproject.org/gdeltv2"
+
+
+@pytest.fixture(autouse=True)
+def _no_real_article_fetches():
+    """collect() ends with an article-preview pass; never let a test hit the network.
+    Tests that care about previews re-patch fetch_article_preview themselves."""
+    with patch(
+        "atmos_gl.collectors.world_events.fetch_article_preview",
+        return_value=ArticlePreview(STATUS_FAILED),
+    ) as stub:
+        yield stub
 
 
 def make_collector(settings=None):
@@ -371,3 +385,76 @@ def test_collect_prunes_slot_records_older_than_the_window():
         c.collect()
 
     assert stale not in c.world_event_adapter._export_files
+
+
+
+# ---- article previews ---------------------------------------------------------------
+
+def _seed_event(c, event_id, url, hours_ago=1):
+    when = datetime.now(timezone.utc) - timedelta(hours=hours_ago)
+    c.world_event_adapter.upsert_events([{
+        "id": event_id, "category": "warfare", "event_code": "190",
+        "actor1_name": None, "actor2_name": None, "action_geo_full_name": None,
+        "lat": 1.0, "lon": 2.0, "event_date": when.isoformat(),
+        "num_mentions": 20, "num_sources": 1, "goldstein_scale": None,
+        "avg_tone": None, "source_url": url,
+    }])
+
+
+def test_has_new_data_true_when_only_article_previews_are_pending():
+    c = make_slot_collector()
+    latest = _latest()
+    _mark_all(c, _window_slots(c, latest))
+    _seed_event(c, "e1", "https://news.example/a")
+    with patch.object(CollectorBase, "_get", return_value=_lastupdate_for(latest)):
+        assert c.has_new_data() is True
+
+
+def test_collect_stores_a_preview_per_distinct_url(_no_real_article_fetches):
+    c = make_slot_collector()
+    latest = _latest()
+    _mark_all(c, _window_slots(c, latest))
+    _seed_event(c, "e1", "https://news.example/a")
+    _seed_event(c, "e2", "https://news.example/a")  # same article, second event
+    _seed_event(c, "e3", "https://news.example/b")
+    previews = {
+        "https://news.example/a": ArticlePreview(STATUS_OK, 200, "Headline A", "Lede A."),
+        "https://news.example/b": ArticlePreview(STATUS_RETRY, 503),
+    }
+    _no_real_article_fetches.side_effect = previews.get
+
+    with patch.object(CollectorBase, "_get", return_value=_lastupdate_for(latest)):
+        c.collect()
+
+    fetched = sorted(call.args[0] for call in _no_real_article_fetches.call_args_list)
+    assert fetched == ["https://news.example/a", "https://news.example/b"]
+    articles = c.world_event_adapter._articles
+    assert articles["https://news.example/a"]["headline"] == "Headline A"
+    assert articles["https://news.example/a"]["summary"] == "Lede A."
+    assert articles["https://news.example/b"]["status"] == STATUS_RETRY
+
+
+def test_collect_caps_previews_per_cycle_newest_events_first(_no_real_article_fetches):
+    c = make_slot_collector()
+    latest = _latest()
+    _mark_all(c, _window_slots(c, latest))
+    n = _MAX_PREVIEWS_PER_CYCLE + 5
+    for i in range(n):  # i=0 is the newest event
+        _seed_event(c, f"e{i}", f"https://news.example/{i}", hours_ago=1 + i * 0.1)
+
+    with patch.object(CollectorBase, "_get", return_value=_lastupdate_for(latest)):
+        c.collect()
+
+    fetched = {call.args[0] for call in _no_real_article_fetches.call_args_list}
+    assert fetched == {f"https://news.example/{i}" for i in range(_MAX_PREVIEWS_PER_CYCLE)}
+
+
+def test_a_failing_preview_pass_does_not_fail_the_cycle():
+    c = make_slot_collector()
+    latest = _latest()
+    _mark_all(c, _window_slots(c, latest))
+    _seed_event(c, "e1", "https://news.example/a")
+    c.world_event_adapter.save_article_previews = MagicMock(side_effect=RuntimeError("db down"))
+
+    with patch.object(CollectorBase, "_get", return_value=_lastupdate_for(latest)):
+        c.collect()  # must not raise

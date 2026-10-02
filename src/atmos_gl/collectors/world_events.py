@@ -36,18 +36,29 @@ So a gap anywhere in the window (not just at its old end) self-heals over the ne
 cycles, a file yielding zero curated events still counts as covered, and the export
 URL is computed from the slot directly -- no scan of the 128 MB masterfilelist.txt. A
 404 slot is recorded "missing" and not retried; any other failure leaves the slot
-unrecorded, so it's retried next cycle. has_new_data() is simply "any slot pending".
+unrecorded, so it's retried next cycle.
+
+After ingesting, each cycle also fetches a headline + summary for source articles that
+don't have one yet (lib/article_preview.py -- the publisher's og:/twitter:/<meta>
+tags), newest events first, at most _MAX_PREVIEWS_PER_CYCLE URLs across
+_PREVIEW_WORKERS threads. Keyed by URL, since GDELT often codes one article into
+several events. ~760 distinct URLs/day at ~2 s each (measured) is ~8 per 15-min cycle
+in steady state; the cap only bites while a backlog drains. has_new_data() is "any
+slot or article preview pending".
 """
 import io
 import logging
 import re
 import zipfile
+from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 
 import requests
 
 from atmos_gl.collectors.base import CollectorBase
 from atmos_gl.db.world_event_adapter import WorldEventAdapter
+from atmos_gl.lib.article_preview import fetch_article_preview
 
 logger = logging.getLogger(__name__)
 
@@ -95,6 +106,10 @@ _EXPORT_FILE_RE = re.compile(r"(\d{14})\.export\.CSV\.zip$")
 _SLOT = timedelta(minutes=15)
 # 48 files = 12 hours of GDELT per cycle (~65 KB each, a few seconds per file at most).
 _MAX_FILES_PER_CYCLE = 48
+# Article previews: network-bound, so threaded; 120 URLs / 8 workers at ~2 s each
+# (up to 10 s timeout) keeps a backlog-draining cycle to roughly 30-150 s.
+_MAX_PREVIEWS_PER_CYCLE = 120
+_PREVIEW_WORKERS = 8
 
 
 class ExportFileMissing(Exception):
@@ -284,12 +299,45 @@ class WorldEventsCollector(CollectorBase):
 
     def has_new_data(self) -> bool:
         """True when any slot in the backfill window is still unprocessed -- the newest
-        one GDELT just published, or an older gap. lastupdate.txt is small, so this is
-        cheap; on a failed read, collect anyway (safe fallback)."""
+        one GDELT just published, or an older gap -- or any article preview is pending.
+        lastupdate.txt is small, so this is cheap; on a failed read, collect anyway
+        (safe fallback)."""
         latest = self._latest_slot()
         if latest is None:
             return True
-        return bool(self._pending_slots(latest))
+        if self._pending_slots(latest):
+            return True
+        return bool(self.world_event_adapter.urls_needing_preview(self._window_start(), 1))
+
+    def _fetch_article_previews(self) -> None:
+        """Fetches and stores headline/summary previews for the next batch of source
+        URLs that need one. A failure here is logged, never raised -- the cycle's
+        event ingestion has already succeeded and shouldn't be reported as failed."""
+        try:
+            urls = self.world_event_adapter.urls_needing_preview(
+                self._window_start(), _MAX_PREVIEWS_PER_CYCLE
+            )
+            if not urls:
+                return
+            with ThreadPoolExecutor(max_workers=_PREVIEW_WORKERS) as pool:
+                previews = list(pool.map(fetch_article_preview, urls))
+            self.world_event_adapter.save_article_previews([
+                {
+                    "url": url,
+                    "status": p.status,
+                    "http_status": p.http_status,
+                    "headline": p.headline,
+                    "summary": p.summary,
+                }
+                for url, p in zip(urls, previews)
+            ])
+            counts = Counter(p.status for p in previews)
+            logger.info(
+                f"World Events: fetched {len(urls)} article preview(s): "
+                + ", ".join(f"{n} {status}" for status, n in sorted(counts.items()))
+            )
+        except Exception as e:
+            logger.error(f"World Events: article preview pass failed: {e}")
 
     def _ingest_slot(self, slot: datetime, min_mentions: int) -> int | None:
         """Fetches, filters and upserts one slot's export file, then records it.
@@ -335,3 +383,5 @@ class WorldEventsCollector(CollectorBase):
             f"file(s), upserted {upserted} event(s); {len(pending) - len(batch)} more "
             f"slot(s) pending for later cycles, {retry_later} to retry."
         )
+
+        self._fetch_article_previews()

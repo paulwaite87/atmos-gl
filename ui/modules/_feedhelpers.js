@@ -139,6 +139,8 @@ function renderBlock(block) {
             return renderLine(block.items);
         case 'emphasis':
             return `<div style="font-weight:bold;color:#000;font-size:20px;margin-top:2px;">${block.html}</div>`;
+        case 'text':
+            return `<div style="margin-top:4px;line-height:1.35;${block.bold ? 'font-weight:bold;' : ''}">${escapeHtml(block.text)}</div>`;
         case 'notice':
             return `<div style="color:${block.color || '#c0392b'};font-size:11px;margin-top:4px;">${escapeMaybe(block.text, block.raw)}</div>`;
         case 'fallback':
