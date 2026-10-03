@@ -224,3 +224,26 @@ def test_collect_stores_the_description_segments():
     c.collect()
     stored = c.frontline_adapter.get_snapshot_at()
     assert stored["description_segments"] == [{"text": "The enemy has occupied Svyatopetrivka."}]
+
+
+def _arrow(n, coords=(36.82590, 48.06571, 0)):
+    f = _feature("Напрямок удару /// Direction of attack /// geoJSON.status.attack_direction\n",
+                 "Point", list(coords))
+    f["properties"]["description"] = f"{{icon=arrow_{n}}}"
+    return f
+
+
+def test_attack_arrows_keep_their_point_and_compass_bearing():
+    raw = {"features": [_arrow(4), _arrow(8), _arrow(12), _arrow(16), _arrow(1)]}
+    features = frontline_features(raw)["features"]
+    assert [f["properties"] for f in features] == [
+        {"status": "attack_direction", "bearing": b} for b in (90.0, 180.0, 270.0, 0.0, 22.5)
+    ]
+    assert features[0]["geometry"] == {"type": "Point", "coordinates": [36.8259, 48.06571]}
+
+
+def test_attack_points_without_a_known_arrow_are_dropped():
+    no_icon = _arrow(1)
+    no_icon["properties"]["description"] = None
+    raw = {"features": [_arrow(17), _arrow(0), no_icon]}
+    assert frontline_features(raw)["features"] == []

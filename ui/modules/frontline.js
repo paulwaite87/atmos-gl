@@ -9,7 +9,46 @@ const STATUS_LABELS = {
     occupied: 'Occupied by Russia',
     contested: 'Contested (grey zone)',
     liberated: 'Liberated by Ukraine',
+    attack_direction: 'Direction of attack',
 };
+
+// DeepState's direction-of-attack points (collectors/frontline.py): one of 16 compass
+// bearings each, drawn as our own arrow -- centred on the point, as DeepState draws
+// them -- rotated to it.
+const ARROW_IMAGE = 'frontline-arrow';
+const ARROW_PX = 48;           // drawn at 2x for sharpness; icon-size 0.5 => 24 CSS px
+const COMPASS = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
+
+export const compassPoint = (bearing) => COMPASS[Math.round((((Number(bearing) % 360) + 360) % 360) / 22.5) % 16];
+
+export const arrowSize = (cfg) => {
+    const size = Number(cfg.arrow_size);
+    return Number.isFinite(size) && size > 0 ? size : 1;
+};
+
+// An upward-pointing arrow (rotated per feature by icon-rotate), in the occupied red
+// with a dark outline so it reads over any of the shading.
+function arrowImage() {
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = ARROW_PX;
+    const ctx = canvas.getContext('2d');
+    const c = ARROW_PX / 2;
+    ctx.beginPath();
+    ctx.moveTo(c, 3);                      // tip
+    ctx.lineTo(ARROW_PX - 7, c + 2);       // right barb
+    ctx.lineTo(c + 7, c + 2);
+    ctx.lineTo(c + 7, ARROW_PX - 3);       // shaft
+    ctx.lineTo(c - 7, ARROW_PX - 3);
+    ctx.lineTo(c - 7, c + 2);
+    ctx.lineTo(7, c + 2);                  // left barb
+    ctx.closePath();
+    ctx.fillStyle = '#d32f2f';
+    ctx.fill();
+    ctx.lineWidth = 2.5;
+    ctx.strokeStyle = 'rgba(40,0,0,0.85)';
+    ctx.stroke();
+    return ctx.getImageData(0, 0, ARROW_PX, ARROW_PX);
+}
 
 const STATUS_COLORS = {
     occupied: '#c62828',
@@ -114,6 +153,7 @@ export function loadLayer(map, config) {
     const changesSourceId = 'frontline-changes-source';
     const changesFillId = 'frontline-changes-fill';
     const changesLineId = 'frontline-changes-line';
+    const arrowsId = 'frontline-arrows';
     let stopPopup = null;
     let snapshot = null;  // which DeepState update is showing (route's "snapshot" member)
     let comparison = null;  // which updates the overlay compares (route's "comparison")
@@ -138,10 +178,16 @@ export function loadLayer(map, config) {
 
     const opacity = (cfg) => Number(cfg.opacity ?? 45) / 100;
     const visibility = (cfg) => (cfg.show_changes ? 'visible' : 'none');
+    const arrowVisibility = (cfg) => (cfg.show_attack_directions === false ? 'none' : 'visible');
+    const arrowIconSize = (cfg) => 0.5 * arrowSize(cfg);
 
     const statusHtml = (f) => {
-        const { status, liberated_on: liberatedOn, note } = f.properties;
+        const { status, liberated_on: liberatedOn, note, bearing } = f.properties;
         const blocks = [];
+        if (status === 'attack_direction') {
+            blocks.push({ type: 'rows', rows: [{ label: 'Heading', value: `${compassPoint(bearing)} (${Math.round(bearing)}°)`, width: 60 }] });
+            blocks.push({ type: 'divider' });
+        }
         if (status === 'liberated' && (liberatedOn || note)) {
             // DeepState's dates are day.month only -- most are from spring 2022.
             if (liberatedOn) blocks.push({ type: 'rows', rows: [{ label: 'Liberated', value: liberatedOn, width: 60 }] });
@@ -214,9 +260,24 @@ export function loadLayer(map, config) {
         // re-render crossing from one into the next. The changes layer is bound last so
         // its handler runs after the shading's on the same mousemove, and its popup
         // wins where a change sits over shaded territory.
+        if (!map.hasImage(ARROW_IMAGE)) map.addImage(ARROW_IMAGE, arrowImage(), { pixelRatio: 2 });
+        map.addLayer({
+            id: arrowsId, type: 'symbol', source: sourceId,
+            filter: ['==', ['get', 'status'], 'attack_direction'],
+            layout: {
+                visibility: arrowVisibility(cfg),
+                'icon-image': ARROW_IMAGE,
+                'icon-size': arrowIconSize(cfg),
+                'icon-rotate': ['get', 'bearing'],
+                'icon-rotation-alignment': 'map',
+                'icon-allow-overlap': true,
+                'icon-ignore-placement': true,
+            },
+        });
         // pinOnClick: the popup follows the cursor, so a click pins it in place to let
-        // the mouse reach its fly-to and Telegram links.
-        stopPopup = hoverPopup(map, [fillId, changesFillId], {
+        // the mouse reach its fly-to and Telegram links. Arrows are bound last so their
+        // popup wins over the area beneath them.
+        stopPopup = hoverPopup(map, [fillId, changesFillId, arrowsId], {
             html: popupHtml, maxWidth: '320px', event: 'move', pinOnClick: true,
         });
         map.getContainer().addEventListener('click', onFlyClick);
@@ -232,13 +293,17 @@ export function loadLayer(map, config) {
         for (const id of [changesFillId, changesLineId]) {
             if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', visibility(cfg));
         }
+        if (map.getLayer(arrowsId)) {
+            map.setLayoutProperty(arrowsId, 'visibility', arrowVisibility(cfg));
+            map.setLayoutProperty(arrowsId, 'icon-size', arrowIconSize(cfg));
+        }
         if (map.getLayer(fillId)) map.setPaintProperty(fillId, 'fill-opacity', opacity(cfg));
     };
 
     const unmount = () => {
         stopPopup?.();
         map.getContainer().removeEventListener('click', onFlyClick);
-        for (const id of [changesLineId, changesFillId, lineId, fillId]) {
+        for (const id of [arrowsId, changesLineId, changesFillId, lineId, fillId]) {
             if (map.getLayer(id)) map.removeLayer(id);
         }
         for (const id of [changesSourceId, sourceId]) {

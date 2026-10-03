@@ -499,6 +499,10 @@ FIELD_SPECS = {
     ("frontline", "show_liberated"): ToggleSpec(personalizable=True),
     # Gains/losses overlay (lib/frontline_changes.py): string values like
     # level_of_detail, since <select> values round-trip as strings.
+    ("frontline", "show_attack_directions"): ToggleSpec(personalizable=True),
+    ("frontline", "arrow_size"): SliderSpec(
+        min=0.5, max=3.0, step=0.1, decimals=1, suffix="x", personalizable=True
+    ),
     ("frontline", "show_changes"): ToggleSpec(personalizable=True),
     ("frontline", "change_days"): SelectSpec([
         ("1", "Last day"),
@@ -849,6 +853,7 @@ _LABEL_OVERRIDES = {
     ("world_events", "max_conflict_tone"): "Max coverage tone (conflict events)",
     ("frontline", "show_contested"): "Show contested (grey zone)",
     ("frontline", "show_liberated"): "Show Liberated by Ukraine",
+    ("frontline", "show_attack_directions"): "Show attack directions",
     ("frontline", "show_changes"): "Show gains / losses",
     ("frontline", "change_days"): "Gains / losses over",
 }

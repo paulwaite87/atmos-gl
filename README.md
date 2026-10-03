@@ -567,6 +567,12 @@ records for it (day and month only — most date from spring 2022) and its note,
 it has one. `Ukraine Frontline Properties` has
 the opacity and the contested/liberated toggles.
 
+`Show attack directions` adds DeepState's direction-of-attack arrows: red arrows at
+the points DeepState marks, each turned to one of 16 compass headings (DeepState's own
+precision), with an `Arrow size` slider. Hovering one shows its heading. DeepState
+gives only a point and a heading per arrow — no length, date or unit — so every arrow
+is drawn the same size.
+
 `Show gains / losses` overlays what changed over the last day, 7 days or 30 days
 (`Gains / losses over`), measured back from DeepState's latest update: land newly
 occupied by Russia in bright red, land no longer occupied (a Ukrainian gain) in blue.
