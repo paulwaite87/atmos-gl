@@ -610,6 +610,10 @@ class FrontlineSnapshot(Base):
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
+    # The same note as text/link pieces (collectors/frontline.py's
+    # description_segments()), so the popup can render DeepState's map links as
+    # fly-to links. NULL for snapshots stored before this column existed.
+    description_segments: Mapped[list | None] = mapped_column(JSONB)
     geojson: Mapped[dict] = mapped_column(JSONB, nullable=False)
 
 

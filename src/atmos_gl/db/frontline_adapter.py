@@ -12,19 +12,20 @@ logger = logging.getLogger(__name__)
 
 
 def _as_dict(row) -> dict:
-    return {"id": row.id, "created_at": row.created_at,
-            "description": row.description, "geojson": row.geojson}
+    return {"id": row.id, "created_at": row.created_at, "description": row.description,
+            "description_segments": row.description_segments, "geojson": row.geojson}
 
 
-def _with_snapshot(geojson: dict, snapshot_id, created_at, description) -> str:
+def _with_snapshot(row: dict) -> str:
     """The stored FeatureCollection plus a top-level "snapshot" member (GeoJSON allows
     foreign members; MapLibre ignores it) -- which DeepState update the map shows."""
     return json.dumps({
-        **geojson,
+        **row["geojson"],
         "snapshot": {
-            "id": snapshot_id,
-            "created_at": created_at.isoformat(),
-            "description": description,
+            "id": row["id"],
+            "created_at": row["created_at"].isoformat(),
+            "description": row["description"],
+            "description_segments": row["description_segments"],
         },
     })
 
@@ -36,9 +37,12 @@ class FrontlineAdapter:
         with Session() as session:
             return session.get(FrontlineSnapshot, snapshot_id) is not None
 
-    def save_snapshot(self, snapshot_id: int, created_at, description, geojson: dict) -> None:
+    def save_snapshot(
+        self, snapshot_id: int, created_at, description, geojson: dict, description_segments=None,
+    ) -> None:
         stmt = pg_insert(FrontlineSnapshot).values(
             id=snapshot_id, created_at=created_at, description=description, geojson=geojson,
+            description_segments=description_segments,
         ).on_conflict_do_nothing(index_elements=[FrontlineSnapshot.id])
         with Session() as session:
             session.execute(stmt)
@@ -63,7 +67,7 @@ class FrontlineAdapter:
             return EMPTY_FEATURE_COLLECTION
         if row is None:
             return EMPTY_FEATURE_COLLECTION
-        return _with_snapshot(row["geojson"], row["id"], row["created_at"], row["description"])
+        return _with_snapshot(row)
 
 
 class FakeFrontlineAdapter:
@@ -75,10 +79,12 @@ class FakeFrontlineAdapter:
     def has_snapshot(self, snapshot_id: int) -> bool:
         return snapshot_id in self._snapshots
 
-    def save_snapshot(self, snapshot_id: int, created_at, description, geojson: dict) -> None:
+    def save_snapshot(
+        self, snapshot_id: int, created_at, description, geojson: dict, description_segments=None,
+    ) -> None:
         self._snapshots.setdefault(snapshot_id, {
-            "id": snapshot_id, "created_at": created_at,
-            "description": description, "geojson": geojson,
+            "id": snapshot_id, "created_at": created_at, "description": description,
+            "description_segments": description_segments, "geojson": geojson,
         })
 
     def get_snapshot_at(self, at=None) -> dict | None:
@@ -91,4 +97,4 @@ class FakeFrontlineAdapter:
         row = self.get_snapshot_at()
         if row is None:
             return EMPTY_FEATURE_COLLECTION
-        return _with_snapshot(row["geojson"], row["id"], row["created_at"], row["description"])
+        return _with_snapshot(row)

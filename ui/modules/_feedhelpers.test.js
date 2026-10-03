@@ -267,7 +267,15 @@ describe('buildPopupHtml', () => {
     });
 
     describe('text block', () => {
-        test('renders a plain paragraph, always escaped (scraped article text)', () => {
+        test('raw:true passes caller-built (already escaped) HTML through', () => {
+            const html = buildPopupHtml({
+                title: { text: 'X' },
+                blocks: [{ type: 'text', text: 'near <a href="#">Bilytske</a>', raw: true }],
+            });
+            expect(html).toContain('near <a href="#">Bilytske</a>');
+        });
+
+        test('renders a plain paragraph, escaped by default (scraped article text)', () => {
             const html = buildPopupHtml({
                 title: { text: 'X' },
                 blocks: [{ type: 'text', text: 'Police <b>& army</b> clash' }],

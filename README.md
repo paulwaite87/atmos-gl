@@ -559,7 +559,12 @@ Shades the Russo-Ukrainian front line as published by
 occupied by Russia in red, the contested "grey zone" in grey, and (optionally) areas
 Ukraine has liberated in green. Ukrainian-held territory is everything left unshaded.
 Hovering an area shows when DeepState last updated the map and that update's note
-(e.g. "The enemy has occupied Svyatopetrivka…"). `Ukraine Frontline Properties` has
+(e.g. "The enemy has occupied Svyatopetrivka…"); the places it names are links —
+click one to fly the map there. The popup follows the cursor, so click once to pin it
+in place and move into it to use its links. Following a place link closes it; so does
+clicking anywhere else on the map. A liberated area also shows the date DeepState
+records for it (day and month only — most date from spring 2022) and its note, where
+it has one. `Ukraine Frontline Properties` has
 the opacity and the contested/liberated toggles.
 
 `Show gains / losses` overlays what changed over the last day, 7 days or 30 days
