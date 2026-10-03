@@ -7,6 +7,8 @@ import pytest
 
 from atmos_gl.collectors.frontline import (
     FrontlineCollector,
+    area_note,
+    description_segments,
     frontline_features,
     latest_update,
     update_description,
@@ -31,9 +33,8 @@ def test_areas_are_classified_by_their_geojson_tag():
         _feature("Окупований Крим /// Occupied Crimea\xa0/// geoJSON.territories.crimea"),
         _feature("ОРДЛО /// CADR and CALR\xa0/// geoJSON.territories.ordlo"),
     ]}
-    statuses = [f["properties"] for f in frontline_features(raw)["features"]]
-    assert statuses == [{"status": s} for s in
-                        ["occupied", "contested", "liberated", "liberated", "occupied", "occupied"]]
+    statuses = [f["properties"]["status"] for f in frontline_features(raw)["features"]]
+    assert statuses == ["occupied", "contested", "liberated", "liberated", "occupied", "occupied"]
 
 
 def test_everything_else_is_dropped():
@@ -151,3 +152,75 @@ def test_collect_also_stores_the_baselines():
                        "https://deepstate.example/api/history/11/geojson",
                        "https://deepstate.example/api/history/10/geojson"]
     assert c.frontline_adapter.has_snapshot(10) and c.frontline_adapter.has_snapshot(11)
+
+
+def _liberated(name, description=None):
+    f = _feature(name)
+    if description is not None:
+        f["properties"]["description"] = description
+    return f
+
+
+def test_liberated_areas_carry_their_date_and_english_note():
+    raw = {"features": [
+        _liberated("Звільнено 27-29.03 /// Liberated 27-29.03 /// geoJSON.status.dismissed_at {{at:27.03 - 29.03}}",
+                   "Підтверджено волонтерами<br>///<br>Confirmed first by volunteers, then by the General Staff<br>/// geoJSON.descriptions.#1"),
+        _liberated("Звільнено /// Liberated /// geoJSON.status.dismissed"),
+        _feature("x /// Occupied /// geoJSON.status.occupied"),
+    ]}
+    props = [f["properties"] for f in frontline_features(raw)["features"]]
+    assert props == [
+        {"status": "liberated", "liberated_on": "27.03–29.03",
+         "note": "Confirmed first by volunteers, then by the General Staff"},
+        {"status": "liberated", "liberated_on": None, "note": None},
+        {"status": "occupied"},
+    ]
+
+
+def test_area_note_drops_the_repeated_url_fragment_and_falls_back_to_ukrainian():
+    assert area_note(
+        "На каналі є детальний пост https://t.me/DeepStateUA/10772<br>/// In our Telegram there is "
+        "a separate message about this https://t.me/DeepStateUA/10772 /// "
+        "(https://t.me/DeepStateUA/10772 ///) geoJSON.descriptions.#2"
+    ) == "In our Telegram there is a separate message about this https://t.me/DeepStateUA/10772"
+    assert area_note(
+        "На каналі є пост https://t.me/DeepStateUA/10772<br><br>/// In our Telegram there is a separate "
+        "message about this https://t.me/DeepStateUA/10772 (https://t.me/DeepStateUA/10772 )<br>"
+        "/// geoJSON.descriptions.#2"
+    ) == "In our Telegram there is a separate message about this https://t.me/DeepStateUA/10772"
+    assert area_note("See (https://t.me/x/1 ) only once") == "See (https://t.me/x/1 ) only once"
+    assert area_note("Тільки українською") == "Тільки українською"
+    assert area_note(None) is None
+
+
+def test_description_links_become_fly_to_and_external_segments():
+    entry = {"descriptionEn": (
+        'The enemy has occupied <a href="https://deepstatemap.live/en#dl!coords!47.69243236930309,36.164073944091804">'
+        'Svyatopetrivka</a> and advanced near <a href="https://deepstatemap.live/en#14/47.6780851/ 36.1425371">'
+        'Staroukrainka</a>, near <a href="https://deepstatemap.live/en#dl!city!dsm:l:123">Hulyaipole</a>.'
+        ' Details: <a href="https://t.me/DeepStateEN/99">Telegram</a>'
+    )}
+    assert description_segments(entry) == [
+        {"text": "The enemy has occupied "},
+        {"text": "Svyatopetrivka", "lat": 47.69243236930309, "lon": 36.164073944091804, "zoom": 13},
+        {"text": " and advanced near "},
+        {"text": "Staroukrainka", "lat": 47.6780851, "lon": 36.1425371, "zoom": 14.0},
+        {"text": ", near Hulyaipole. Details: "},
+        {"text": "Telegram", "url": "https://t.me/DeepStateEN/99"},
+    ]
+    assert update_description(entry) == (
+        "The enemy has occupied Svyatopetrivka and advanced near Staroukrainka, near Hulyaipole. Details: Telegram")
+
+
+def test_out_of_range_or_foreign_map_links_stay_plain_text():
+    entry = {"descriptionEn": '<a href="https://deepstatemap.live/#14/95.0/36.1">Nowhere</a> '
+                              '<a href="javascript:alert(1)">x</a>'}
+    assert description_segments(entry) == [{"text": "Nowhere x"}]
+    assert description_segments({"descriptionEn": "", "description": ""}) is None
+
+
+def test_collect_stores_the_description_segments():
+    c, _ = _collector(_HISTORY, _RAW)
+    c.collect()
+    stored = c.frontline_adapter.get_snapshot_at()
+    assert stored["description_segments"] == [{"text": "The enemy has occupied Svyatopetrivka."}]

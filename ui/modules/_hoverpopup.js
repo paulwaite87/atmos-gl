@@ -53,9 +53,19 @@
  * `html` is called as html(topFeature, allFeatures): the second argument is every
  * feature under the cursor (MapLibre's e.features, topmost first), for a caller whose
  * markers can sit exactly on top of each other (world_events.js) to list them all.
+ *
+ * `pinOnClick` (optional): a click on the map while the popup is showing over a
+ * feature pins it -- it stops following the cursor and stops closing on leave, so the
+ * mouse can travel into it to click a link (frontline.js, whose `event: 'move'` popup
+ * otherwise tracks the cursor and can never be reached). The next click anywhere on
+ * the map outside the popup unpins and closes it. Clicks inside the popup aren't map
+ * clicks, so its links work while pinned.
+ *
+ * Returns the teardown function; its `close()` property closes (and unpins) the popup
+ * without unbinding anything.
  */
 export function hoverPopup(map, layerId, {
-    offset = 15, html, maxWidth, closeDelayMs = 200, event = 'enter', enabled,
+    offset = 15, html, maxWidth, closeDelayMs = 200, event = 'enter', enabled, pinOnClick = false,
 }) {
     const popupOpts = { closeButton: false, closeOnClick: false, offset };
     if (maxWidth) popupOpts.maxWidth = maxWidth;
@@ -66,19 +76,28 @@ export function hoverPopup(map, layerId, {
     let overMarker = false;
     let overPopup = false;
     let closeTimer = null;
+    let open = false;
+    let pinned = false;
 
     const cancelClose = () => {
         if (closeTimer) { clearTimeout(closeTimer); closeTimer = null; }
     };
 
+    const close = () => {
+        cancelClose();
+        open = false;
+        pinned = false;
+        map.getCanvas().style.cursor = '';
+        popup.remove();
+    };
+
     const closeIfNeitherHovered = () => {
         cancelClose();
-        if (overMarker || overPopup) return;
+        if (overMarker || overPopup || pinned) return;
         closeTimer = setTimeout(() => {
             closeTimer = null;
-            if (overMarker || overPopup) return;
-            map.getCanvas().style.cursor = '';
-            popup.remove();
+            if (overMarker || overPopup || pinned) return;
+            close();
         }, closeDelayMs);
     };
 
@@ -86,6 +105,7 @@ export function hoverPopup(map, layerId, {
     const onPopupLeave = () => { overPopup = false; closeIfNeitherHovered(); };
 
     const onEnter = (e) => {
+        if (pinned) return;
         if (enabled && !enabled()) return;
         if (!e.features.length) return;
         overMarker = true;
@@ -101,6 +121,7 @@ export function hoverPopup(map, layerId, {
         const coordinates = e.features[0].geometry.coordinates;
         const coords = typeof coordinates[0] === 'number' ? coordinates.slice() : e.lngLat;
         popup.setLngLat(coords).setHTML(html(e.features[0], e.features)).addTo(map);
+        open = true;
         // Only reachable once addTo() has actually built the DOM -- re-wired on
         // every open since remove() discards the previous element.
         const el = popup.getElement();
@@ -111,17 +132,30 @@ export function hoverPopup(map, layerId, {
     };
     const onLeave = () => { overMarker = false; closeIfNeitherHovered(); };
 
+    // One map-wide click handler (not per layer) so the click that pins and the click
+    // that unpins are the same event stream and can't both fire for one click.
+    const onMapClick = () => {
+        if (pinned) {
+            close();
+        } else if (open && overMarker) {
+            cancelClose();
+            pinned = true;
+        }
+    };
+
     for (const id of layerIds) {
         map.on(enterEvent, id, onEnter);
         map.on('mouseleave', id, onLeave);
     }
+    if (pinOnClick) map.on('click', onMapClick);
 
-    return () => {
+    const teardown = () => {
         cancelClose();
         for (const id of layerIds) {
             map.off(enterEvent, id, onEnter);
             map.off('mouseleave', id, onLeave);
         }
+        if (pinOnClick) map.off('click', onMapClick);
         const el = popup.getElement();
         if (el) {
             el.removeEventListener('mouseenter', onPopupEnter);
@@ -129,4 +163,8 @@ export function hoverPopup(map, layerId, {
         }
         popup.remove();
     };
+    // teardown.close(): close (and unpin) the popup now, keeping the hover bindings --
+    // for an action inside the popup that makes it moot (frontline.js's fly-to links).
+    teardown.close = close;
+    return teardown;
 }

@@ -45,8 +45,27 @@ def test_latest_snapshot_is_served_with_its_metadata(kind, real_db):
     assert [f["properties"]["status"] for f in body["features"]] == ["occupied"]
     assert body["snapshot"] == {
         "id": base + 2, "created_at": _at(kind, 2).isoformat(),
-        "description": "The enemy advanced near X.",
+        "description": "The enemy advanced near X.", "description_segments": None,
     }
+
+
+@pytest.mark.parametrize("kind", ["real", "fake"])
+def test_description_segments_round_trip(kind, real_db):
+    adapter, ctx = _make_adapter(kind, real_db)
+    snapshot_id = 9_000_000_030 + (0 if kind == "real" else 100)
+    segments = [{"text": "The enemy advanced near "},
+                {"text": "Bilytske", "lat": 48.398, "lon": 37.18, "zoom": 14.0},
+                {"text": "."}]
+    # Dated before every other test's snapshots, so it never becomes the shared
+    # real table's "latest" and disturbs them.
+    at = datetime(2099, 1, 1 if kind == "real" else 2, tzinfo=timezone.utc)
+    with ctx:
+        adapter.save_snapshot(snapshot_id, at, "The enemy advanced near Bilytske.",
+                              _fc("occupied"), description_segments=segments)
+        stored = adapter.get_snapshot_at(at)
+
+    assert stored["id"] == snapshot_id
+    assert stored["description_segments"] == segments
 
 
 @pytest.mark.parametrize("kind", ["real", "fake"])
@@ -83,5 +102,5 @@ def test_snapshot_at_is_the_newest_at_or_before_the_time(kind, real_db):
 
     assert at_17["id"] == base + 2
     assert at_16 == {"id": base + 1, "created_at": _at(kind, 10), "description": "a",
-                     "geojson": _fc("occupied")}
+                     "description_segments": None, "geojson": _fc("occupied")}
     assert before_any is None

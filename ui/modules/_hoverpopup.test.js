@@ -31,9 +31,16 @@ function fakeMap() {
     return {
         _handlers: handlers,
         getCanvas: () => canvas,
-        on: vi.fn((evt, layerId, fn) => { handlers[`${evt}:${layerId}`] = fn; }),
+        // Also MapLibre's map-wide two-argument form, map.on('click', fn), keyed by
+        // the bare event name.
+        on: vi.fn((evt, layerId, fn) => {
+            if (typeof layerId === 'function') handlers[evt] = layerId;
+            else handlers[`${evt}:${layerId}`] = fn;
+        }),
         off: vi.fn((evt, layerId, fn) => {
-            if (handlers[`${evt}:${layerId}`] === fn) delete handlers[`${evt}:${layerId}`];
+            if (typeof layerId === 'function') {
+                if (handlers[evt] === layerId) delete handlers[evt];
+            } else if (handlers[`${evt}:${layerId}`] === fn) delete handlers[`${evt}:${layerId}`];
         }),
     };
 }
@@ -436,6 +443,97 @@ describe('hoverPopup', () => {
             });
 
             expect(popup.addTo).toHaveBeenCalledWith(map);
+        });
+    });
+
+    describe('pinOnClick', () => {
+        const feature = (name, coords = [1, 2]) => ({ properties: { name }, geometry: { coordinates: coords } });
+        const setup = (opts = {}) => {
+            const map = fakeMap();
+            hoverPopup(map, 'zones-fill', { html: (f) => f.properties.name, event: 'move', pinOnClick: true, ...opts });
+            const popup = globalThis.maplibregl.Popup.mock.results[0].value;
+            return { map, popup, h: map._handlers };
+        };
+
+        test('is off by default: no map-wide click handler', () => {
+            const map = fakeMap();
+            hoverPopup(map, 'zones-fill', { html: () => '' });
+            expect(map._handlers.click).toBeUndefined();
+        });
+
+        test('a click while the popup shows pins it: further moves and leaving keep it as is', () => {
+            const { popup, h } = setup();
+            h['mousemove:zones-fill']({ features: [feature('A')] });
+            h.click();
+
+            h['mousemove:zones-fill']({ features: [feature('B', [5, 6])] });
+            h['mouseleave:zones-fill']();
+            vi.advanceTimersByTime(1000);
+
+            expect(popup.html).toBe('A');
+            expect(popup.lngLat).toEqual([1, 2]);
+            expect(popup.onMap).toBe(true);
+        });
+
+        test('leaving the pinned popup itself does not close it', () => {
+            const { popup, h } = setup();
+            h['mousemove:zones-fill']({ features: [feature('A')] });
+            h.click();
+            h['mouseleave:zones-fill']();
+            const el = popup.getElement();
+            el._listeners.mouseenter();
+            el._listeners.mouseleave();
+            vi.advanceTimersByTime(1000);
+            expect(popup.onMap).toBe(true);
+        });
+
+        test('the next map click unpins and closes it; hovering then works again', () => {
+            const { map, popup, h } = setup();
+            h['mousemove:zones-fill']({ features: [feature('A')] });
+            h.click();
+            h['mouseleave:zones-fill']();
+            h.click();
+
+            expect(popup.onMap).toBe(false);
+            expect(map.getCanvas().style.cursor).toBe('');
+
+            h['mousemove:zones-fill']({ features: [feature('B', [5, 6])] });
+            expect(popup.html).toBe('B');
+            expect(popup.onMap).toBe(true);
+        });
+
+        test('a click with no popup showing does nothing', () => {
+            const { popup, h } = setup();
+            h.click();
+            h['mousemove:zones-fill']({ features: [feature('A')] });
+            expect(popup.html).toBe('A');
+            h['mouseleave:zones-fill']();
+            vi.advanceTimersByTime(1000);
+            expect(popup.onMap).toBe(false);
+        });
+
+        test('close() closes and unpins without unbinding', () => {
+            const map = fakeMap();
+            const stop = hoverPopup(map, 'zones-fill', { html: (f) => f.properties.name, event: 'move', pinOnClick: true });
+            const popup = globalThis.maplibregl.Popup.mock.results[0].value;
+            const h = map._handlers;
+            h['mousemove:zones-fill']({ features: [feature('A')] });
+            h.click();
+
+            stop.close();
+
+            expect(popup.onMap).toBe(false);
+            expect(map.getCanvas().style.cursor).toBe('');
+            h['mousemove:zones-fill']({ features: [feature('B', [5, 6])] });
+            expect(popup.html).toBe('B');
+            expect(popup.onMap).toBe(true);
+        });
+
+        test('teardown removes the click handler', () => {
+            const map = fakeMap();
+            const stop = hoverPopup(map, 'zones-fill', { html: () => '', pinOnClick: true });
+            stop();
+            expect(map._handlers.click).toBeUndefined();
         });
     });
 });

@@ -1,6 +1,6 @@
 import { liveDataSync } from './_datasync.js';
 import { hoverPopup } from './_hoverpopup.js';
-import { fetchOrThrow, buildPopupHtml } from './_feedhelpers.js';
+import { fetchOrThrow, buildPopupHtml, escapeHtml } from './_feedhelpers.js';
 
 // DeepStateMap.live's front line (collectors/frontline.py): occupied, contested
 // ("grey zone") and liberated polygons from DeepState's latest update. Ukrainian-held
@@ -49,6 +49,43 @@ export function changeSummaryRows(comparison) {
         { label: 'Russia', value: `+${km2(comparison.totals_km2.russian_gain)}`, width: 55, valueColor: CHANGE_COLORS.russian_gain },
         { label: 'Ukraine', value: `+${km2(comparison.totals_km2.ukrainian_gain)}`, width: 55, valueColor: CHANGE_COLORS.ukrainian_gain },
     ];
+}
+
+// The update note's pieces (collectors/frontline.py's description_segments()): plain
+// text, a fly-to link (lat/lon/zoom -- DeepState's own map links, re-pointed at this
+// map), or an external link (url). Every piece of text is escaped; snapshots stored
+// before segments existed fall back to the plain description.
+export function descriptionHtml(snapshot) {
+    if (!snapshot) return '';
+    const segments = snapshot.description_segments;
+    if (!Array.isArray(segments)) return escapeHtml(snapshot.description ?? '');
+    return segments.map((s) => {
+        const text = escapeHtml(s.text);
+        if (Number.isFinite(s.lat) && Number.isFinite(s.lon)) {
+            const target = [s.lon, s.lat, Number.isFinite(s.zoom) ? s.zoom : 13].join(',');
+            return `<a href="#" data-frontline-fly="${target}" title="Show on map">${text}</a>`;
+        }
+        if (typeof s.url === 'string' && /^https?:\/\//.test(s.url)) {
+            return `<a href="${escapeHtml(s.url)}" target="_blank" rel="noopener noreferrer">${text}</a>`;
+        }
+        return text;
+    }).join('');
+}
+
+// Area notes carry bare URLs (DeepState's Telegram posts); link them, escaping the rest.
+export function linkifyHtml(text) {
+    const parts = String(text ?? '').split(/(https?:\/\/[^\s<>"')]+)/);
+    return parts.map((part, i) => (i % 2
+        ? `<a href="${escapeHtml(part)}" target="_blank" rel="noopener noreferrer">${escapeHtml(part)}</a>`
+        : escapeHtml(part))).join('');
+}
+
+// "lon,lat,zoom" from a fly-to link's data attribute, or null if it's malformed.
+export function parseFlyTarget(value) {
+    const [lon, lat, zoom] = String(value ?? '').split(',').map(Number);
+    if (![lon, lat, zoom].every(Number.isFinite)) return null;
+    if (Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;
+    return { center: [lon, lat], zoom };
 }
 
 const ATTRIBUTION = '<a href="https://deepstatemap.live/en" target="_blank" rel="noopener noreferrer">DeepStateMap.live</a>';
@@ -103,11 +140,18 @@ export function loadLayer(map, config) {
     const visibility = (cfg) => (cfg.show_changes ? 'visible' : 'none');
 
     const statusHtml = (f) => {
-        const status = f.properties.status;
+        const { status, liberated_on: liberatedOn, note } = f.properties;
         const blocks = [];
+        if (status === 'liberated' && (liberatedOn || note)) {
+            // DeepState's dates are day.month only -- most are from spring 2022.
+            if (liberatedOn) blocks.push({ type: 'rows', rows: [{ label: 'Liberated', value: liberatedOn, width: 60 }] });
+            if (note) blocks.push({ type: 'text', text: linkifyHtml(note), raw: true });
+            blocks.push({ type: 'divider' });
+        }
         if (snapshot) {
             blocks.push({ type: 'rows', rows: [{ label: 'Updated', value: formatDate(snapshot.created_at), width: 60 }] });
-            if (snapshot.description) blocks.push({ type: 'text', text: snapshot.description });
+            const description = descriptionHtml(snapshot);
+            if (description) blocks.push({ type: 'text', text: description, raw: true });
         }
         blocks.push({ type: 'notice', raw: true, color: '#6c757d', text: `Source: ${ATTRIBUTION}` });
         return buildPopupHtml({ title: { text: STATUS_LABELS[status] || status }, blocks });
@@ -126,6 +170,19 @@ export function loadLayer(map, config) {
     };
 
     const popupHtml = (f) => (f.properties.change ? changeHtml(f) : statusHtml(f));
+
+    // Fly-to links live in popup HTML strings, so one delegated listener on the map
+    // container handles them all.
+    const onFlyClick = (e) => {
+        const link = e.target.closest?.('[data-frontline-fly]');
+        if (!link) return;
+        e.preventDefault();
+        const target = parseFlyTarget(link.dataset.frontlineFly);
+        if (!target) return;
+        // The popup is anchored where it was opened, which the flight moves away from.
+        stopPopup?.close();
+        map.flyTo(target);
+    };
 
     const mount = async (cfg) => {
         const [data, changes] = await Promise.all([fetchData(), fetchChanges(cfg)]);
@@ -157,7 +214,12 @@ export function loadLayer(map, config) {
         // re-render crossing from one into the next. The changes layer is bound last so
         // its handler runs after the shading's on the same mousemove, and its popup
         // wins where a change sits over shaded territory.
-        stopPopup = hoverPopup(map, [fillId, changesFillId], { html: popupHtml, maxWidth: '320px', event: 'move' });
+        // pinOnClick: the popup follows the cursor, so a click pins it in place to let
+        // the mouse reach its fly-to and Telegram links.
+        stopPopup = hoverPopup(map, [fillId, changesFillId], {
+            html: popupHtml, maxWidth: '320px', event: 'move', pinOnClick: true,
+        });
+        map.getContainer().addEventListener('click', onFlyClick);
     };
 
     const refresh = async (cfg) => {
@@ -175,6 +237,7 @@ export function loadLayer(map, config) {
 
     const unmount = () => {
         stopPopup?.();
+        map.getContainer().removeEventListener('click', onFlyClick);
         for (const id of [changesLineId, changesFillId, lineId, fillId]) {
             if (map.getLayer(id)) map.removeLayer(id);
         }

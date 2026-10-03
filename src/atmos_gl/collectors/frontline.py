@@ -18,9 +18,12 @@ Personal, non-commercial use only: DeepState's licence (deepstatemap.live/licens
 makes the API free for volunteer/charitable use and forbids redistributing or proxying
 it to third parties -- see the README's Frontline section.
 """
+import html
 import logging
 import re
 from datetime import datetime, timedelta
+from html.parser import HTMLParser
+from urllib.parse import urlsplit
 
 from atmos_gl.collectors.base import CollectorBase
 from atmos_gl.db.frontline_adapter import FrontlineAdapter
@@ -42,7 +45,20 @@ _STATUS_BY_TAG = {
     "status.dismissed_at": "liberated",
 }
 _TAG_RE = re.compile(r"geoJSON\.([\w.]+)")
-_LINK_TAG_RE = re.compile(r"</?a\b[^>]*>", re.I)
+# A liberated area's date(s), e.g. "{{at:27.03 - 29.03}}" -- day.month, no year.
+_LIBERATED_AT_RE = re.compile(r"\{\{at:([^}]*)\}\}")
+# DeepState's own translation-key suffix on area descriptions: "geoJSON.descriptions.#7"
+_DESCRIPTION_KEY_RE = re.compile(r"geoJSON\.descriptions\.#\d+")
+_NOTE_MAX = 400
+# DeepState's own markup repeats a note's link as "(<url> )"; dropped when the same URL
+# already appears in the note.
+_PAREN_URL_RE = re.compile(r"\s*\(\s*(https?://[^\s()]+)\s*\)")
+# Coordinates in a deepstatemap.live link's fragment: "#<zoom>/<lat>/<lon>" (sometimes
+# with stray spaces) or "#dl!coords!<lat>,<lon>". "#dl!city!<id>" links carry no
+# coordinates and stay plain text.
+_ZOOM_LAT_LON_RE = re.compile(r"^\s*(\d+(?:\.\d+)?)\s*/\s*(-?\d+(?:\.\d+)?)\s*/\s*(-?\d+(?:\.\d+)?)\s*$")
+_COORDS_RE = re.compile(r"^dl!coords!\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$")
+_DEFAULT_FLY_ZOOM = 13
 _AREA_TYPES = ("Polygon", "MultiPolygon")
 _COORD_DECIMALS = 5  # ~1 m; DeepState's own 7 decimals only inflate the payload
 
@@ -50,6 +66,34 @@ _COORD_DECIMALS = 5  # ~1 m; DeepState's own 7 decimals only inflate the payload
 def _status(feature: dict) -> str | None:
     match = _TAG_RE.search((feature.get("properties") or {}).get("name") or "")
     return _STATUS_BY_TAG.get(match.group(1)) if match else None
+
+
+def _liberated_on(name: str) -> str | None:
+    """"27.03 - 29.03" -> "27.03–29.03"; None for an undated liberated area."""
+    match = _LIBERATED_AT_RE.search(name)
+    if not match or not match.group(1).strip():
+        return None
+    return re.sub(r"\s*-\s*", "–", match.group(1).strip())
+
+
+def area_note(description: str | None) -> str | None:
+    """A liberated area's note in English where DeepState gives one. The raw form is
+    "<Ukrainian> /// <English> /// geoJSON.descriptions.#N" (with <br>s, and sometimes a
+    repeated "(url ///)" fragment), so the second part wins, falling back to the first."""
+    if not description:
+        return None
+    parts = [
+        strip_html(_DESCRIPTION_KEY_RE.sub("", html.unescape(part))) or ""
+        for part in description.split("///")
+    ]
+    note = (parts[1] if len(parts) > 1 and parts[1] else parts[0]) or None
+    if note:
+        note = _PAREN_URL_RE.sub(
+            lambda m: "" if note.count(m.group(1)) > 1 else m.group(0), note
+        ).strip() or None
+    if note and len(note) > _NOTE_MAX:
+        note = note[:_NOTE_MAX].rsplit(" ", 1)[0] + "…"
+    return note
 
 
 def _round_coords(coords):
@@ -68,10 +112,15 @@ def frontline_features(raw: dict) -> dict:
         status = _status(f)
         if status is None or geometry.get("type") not in _AREA_TYPES:
             continue
+        properties = {"status": status}
+        if status == "liberated":
+            raw = f.get("properties") or {}
+            properties["liberated_on"] = _liberated_on(raw.get("name") or "")
+            properties["note"] = area_note(raw.get("description"))
         features.append({
             "type": "Feature",
             "geometry": {"type": geometry["type"], "coordinates": _round_coords(geometry["coordinates"])},
-            "properties": {"status": status},
+            "properties": properties,
         })
     return {"type": "FeatureCollection", "features": features}
 
@@ -102,12 +151,88 @@ def updates_to_store(history: list) -> list:
     return wanted
 
 
+def _fly_target(href: str) -> dict | None:
+    """{lat, lon, zoom} for a deepstatemap.live map link, else None."""
+    parts = urlsplit(href.strip())
+    if parts.netloc and not parts.netloc.endswith("deepstatemap.live"):
+        return None
+    if (m := _ZOOM_LAT_LON_RE.match(parts.fragment)):
+        zoom, lat, lon = float(m.group(1)), float(m.group(2)), float(m.group(3))
+    elif (m := _COORDS_RE.match(parts.fragment)):
+        zoom, lat, lon = _DEFAULT_FLY_ZOOM, float(m.group(1)), float(m.group(2))
+    else:
+        return None
+    if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+        return None
+    return {"lat": lat, "lon": lon, "zoom": min(zoom, 18)}
+
+
+def _external_url(href: str) -> str | None:
+    parts = urlsplit(href.strip())
+    if parts.scheme in ("http", "https") and parts.netloc and not parts.netloc.endswith("deepstatemap.live"):
+        return href.strip()
+    return None
+
+
+class _SegmentParser(HTMLParser):
+    """Splits a description's HTML into text and link segments; every other tag is
+    dropped (a <br> becomes a space)."""
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.segments: list[dict] = []
+        self._href = None
+
+    def handle_starttag(self, tag, attrs):
+        if tag == "a":
+            self._href = dict(attrs).get("href") or ""
+        elif tag == "br":
+            self.handle_data(" ")
+
+    def handle_endtag(self, tag):
+        if tag == "a":
+            self._href = None
+
+    def handle_data(self, data):
+        segment = {"text": data}
+        if self._href is not None:
+            if (target := _fly_target(self._href)):
+                segment.update(target)
+            elif (url := _external_url(self._href)):
+                segment["url"] = url
+        last = self.segments[-1] if self.segments else None
+        if last is not None and set(last) == {"text"} and set(segment) == {"text"}:
+            last["text"] += data
+        else:
+            self.segments.append(segment)
+
+
+def description_segments(entry: dict) -> list[dict] | None:
+    """The update's note (English, falling back to Ukrainian) as an ordered list of
+    {"text"} pieces, where a piece linked to a deepstatemap.live map position also
+    carries {"lat", "lon", "zoom"} (the popup turns it into a fly-to link) and one
+    linked elsewhere (e.g. DeepState's Telegram) carries {"url"}. Whitespace is
+    collapsed; None when there's no note."""
+    raw = entry.get("descriptionEn") or entry.get("description") or ""
+    parser = _SegmentParser()
+    parser.feed(raw)
+    parser.close()
+    segments = []
+    for segment in parser.segments:
+        text = re.sub(r"\s+", " ", segment["text"])
+        if text:
+            segments.append({**segment, "text": text})
+    if segments:
+        segments[0]["text"] = segments[0]["text"].lstrip()
+        segments[-1]["text"] = segments[-1]["text"].rstrip()
+    segments = [s for s in segments if s["text"]]
+    return segments or None
+
+
 def update_description(entry: dict) -> str | None:
-    """The update's English note, falling back to the Ukrainian one; DeepState embeds
-    <a> links to map coordinates, which the popup can't use, so tags are stripped."""
-    text = entry.get("descriptionEn") or entry.get("description") or ""
-    # Unwrap inline <a> links first so "<a>Name</a>." doesn't become "Name ."
-    return strip_html(_LINK_TAG_RE.sub("", text)) or None
+    """The update's note as plain text (description_segments() joined)."""
+    segments = description_segments(entry)
+    return "".join(s["text"] for s in segments) if segments else None
 
 
 class FrontlineCollector(CollectorBase):
@@ -148,5 +273,6 @@ class FrontlineCollector(CollectorBase):
             raise RuntimeError(f"Frontline: update {snapshot_id} had no recognisable areas")
         self.frontline_adapter.save_snapshot(
             snapshot_id, created_at(entry), update_description(entry), geojson,
+            description_segments=description_segments(entry),
         )
         logger.info(f"Frontline: stored DeepState update {snapshot_id} ({len(geojson['features'])} areas)")
