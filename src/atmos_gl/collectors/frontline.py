@@ -8,10 +8,10 @@ ones deepstatemap.live's own map loads):
   * history/<id>/geojson -- that update's whole map as one FeatureCollection
 
 Each map feature's `name` is "<Ukrainian> /// <English> /// geoJSON.<tag>"; the tag is
-what classifies it (_STATUS_BY_TAG). Only area polygons are kept: the map also carries
-unit positions, airfields, attack-direction icons (points with no direction in the
-data) and a handful of satirical "occupied" territories (East Prussia, Karelia, ...)
--- none of which this layer draws. Ukrainian-held territory isn't a polygon at all:
+what classifies it (_STATUS_BY_TAG). Kept: the area polygons, and the "direction of
+attack" points -- each one's heading is the pre-rotated icon its description names,
+"{icon=arrow_N}" (_attack_bearing). Dropped: unit positions, airfields and a handful of
+satirical "occupied" territories (East Prussia, Karelia, ...). Ukrainian-held territory isn't a polygon at all:
 it's everything not occupied or contested.
 
 Personal, non-commercial use only: DeepState's licence (deepstatemap.live/license-en.html)
@@ -60,12 +60,33 @@ _ZOOM_LAT_LON_RE = re.compile(r"^\s*(\d+(?:\.\d+)?)\s*/\s*(-?\d+(?:\.\d+)?)\s*/\
 _COORDS_RE = re.compile(r"^dl!coords!\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$")
 _DEFAULT_FLY_ZOOM = 13
 _AREA_TYPES = ("Polygon", "MultiPolygon")
+_ATTACK_TAG = "status.attack_direction"
+ATTACK_DIRECTION = "attack_direction"
+# deepstatemap.live draws "{icon=arrow_N}" with /images/custom/arrow_N.png -- 16
+# pre-rotated arrows, checked by eye: arrow_N points N x 22.5 degrees clockwise from
+# north (arrow_4 east, arrow_8 south, arrow_12 west, arrow_16 north), drawn centred
+# on the point.
+_ARROW_ICON_RE = re.compile(r"\{icon=arrow_(\d+)\b")
+_ARROW_DIRECTIONS = 16
 _COORD_DECIMALS = 5  # ~1 m; DeepState's own 7 decimals only inflate the payload
 
 
-def _status(feature: dict) -> str | None:
+def _tag(feature: dict) -> str | None:
     match = _TAG_RE.search((feature.get("properties") or {}).get("name") or "")
-    return _STATUS_BY_TAG.get(match.group(1)) if match else None
+    return match.group(1) if match else None
+
+
+def _status(feature: dict) -> str | None:
+    return _STATUS_BY_TAG.get(_tag(feature))
+
+
+def _attack_bearing(feature: dict) -> float | None:
+    """Compass bearing (degrees clockwise from north) of a direction-of-attack point,
+    from its "{icon=arrow_N}" description; None if it names no known arrow."""
+    match = _ARROW_ICON_RE.search(str((feature.get("properties") or {}).get("description") or ""))
+    if not match or not 1 <= int(match.group(1)) <= _ARROW_DIRECTIONS:
+        return None
+    return int(match.group(1)) * 360 / _ARROW_DIRECTIONS % 360
 
 
 def _liberated_on(name: str) -> str | None:
@@ -104,11 +125,21 @@ def _round_coords(coords):
 
 
 def frontline_features(raw: dict) -> dict:
-    """DeepState's raw FeatureCollection -> just the classified area polygons, each
-    with a single property, status: occupied / contested / liberated."""
+    """DeepState's raw FeatureCollection -> the classified area polygons (status:
+    occupied / contested / liberated) and direction-of-attack points (status:
+    attack_direction, with bearing)."""
     features = []
     for f in raw.get("features") or []:
         geometry = f.get("geometry") or {}
+        if _tag(f) == _ATTACK_TAG and geometry.get("type") == "Point":
+            bearing = _attack_bearing(f)
+            if bearing is not None:
+                features.append({
+                    "type": "Feature",
+                    "geometry": {"type": "Point", "coordinates": _round_coords(geometry["coordinates"])},
+                    "properties": {"status": ATTACK_DIRECTION, "bearing": bearing},
+                })
+            continue
         status = _status(f)
         if status is None or geometry.get("type") not in _AREA_TYPES:
             continue
@@ -275,4 +306,8 @@ class FrontlineCollector(CollectorBase):
             snapshot_id, created_at(entry), update_description(entry), geojson,
             description_segments=description_segments(entry),
         )
-        logger.info(f"Frontline: stored DeepState update {snapshot_id} ({len(geojson['features'])} areas)")
+        arrows = sum(1 for f in geojson["features"] if f["properties"]["status"] == ATTACK_DIRECTION)
+        logger.info(
+            f"Frontline: stored DeepState update {snapshot_id} "
+            f"({len(geojson['features']) - arrows} areas, {arrows} attack arrows)"
+        )

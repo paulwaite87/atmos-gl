@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import {
-    changeDays, changeSummaryRows, descriptionHtml, linkifyHtml, parseFlyTarget, visibleStatuses,
+    arrowSize, changeDays, changeSummaryRows, compassPoint, descriptionHtml, linkifyHtml, parseFlyTarget,
+    visibleStatuses,
 } from './frontline.js';
 
 describe('visibleStatuses', () => {
@@ -88,4 +89,24 @@ describe('parseFlyTarget', () => {
         expect(parseFlyTarget('36.16,95,13')).toBeNull();
         expect(parseFlyTarget(undefined)).toBeNull();
     });
+});
+
+describe('compassPoint', () => {
+    test('names each of the 16 arrow bearings', () => {
+        expect([0, 22.5, 90, 180, 247.5, 270, 337.5].map(compassPoint))
+            .toEqual(['N', 'NNE', 'E', 'S', 'WSW', 'W', 'NNW']);
+        expect(compassPoint(360)).toBe('N');
+    });
+});
+
+describe('arrowSize', () => {
+    test('reads the slider, falling back to 1x', () => {
+        expect(arrowSize({ arrow_size: 1.5 })).toBe(1.5);
+        expect(arrowSize({})).toBe(1);
+        expect(arrowSize({ arrow_size: 0 })).toBe(1);
+    });
+});
+
+test('visibleStatuses never includes attack arrows (their own symbol layer draws them)', () => {
+    expect(visibleStatuses({ show_contested: true, show_liberated: true })).not.toContain('attack_direction');
 });
