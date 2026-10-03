@@ -68,3 +68,20 @@ def test_no_snapshot_yet_is_an_empty_collection():
     assert json.loads(FakeFrontlineAdapter().get_latest_geojson()) == {
         "type": "FeatureCollection", "features": [],
     }
+
+
+@pytest.mark.parametrize("kind", ["real", "fake"])
+def test_snapshot_at_is_the_newest_at_or_before_the_time(kind, real_db):
+    adapter, ctx = _make_adapter(kind, real_db)
+    base = 9_000_000_020 + (0 if kind == "real" else 100)
+    with ctx:
+        adapter.save_snapshot(base + 1, _at(kind, 10), "a", _fc("occupied"))
+        adapter.save_snapshot(base + 2, _at(kind, 17), "b", _fc("contested"))
+        at_17 = adapter.get_snapshot_at(_at(kind, 17))
+        at_16 = adapter.get_snapshot_at(_at(kind, 16))
+        before_any = adapter.get_snapshot_at(datetime(1990, 1, 1, tzinfo=timezone.utc))
+
+    assert at_17["id"] == base + 2
+    assert at_16 == {"id": base + 1, "created_at": _at(kind, 10), "description": "a",
+                     "geojson": _fc("occupied")}
+    assert before_any is None

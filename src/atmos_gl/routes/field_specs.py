@@ -497,6 +497,14 @@ FIELD_SPECS = {
     ("frontline", "opacity"): _OPACITY,
     ("frontline", "show_contested"): ToggleSpec(personalizable=True),
     ("frontline", "show_liberated"): ToggleSpec(personalizable=True),
+    # Gains/losses overlay (lib/frontline_changes.py): string values like
+    # level_of_detail, since <select> values round-trip as strings.
+    ("frontline", "show_changes"): ToggleSpec(personalizable=True),
+    ("frontline", "change_days"): SelectSpec([
+        ("1", "Last day"),
+        ("7", "Last 7 days"),
+        ("30", "Last 30 days"),
+    ], personalizable=True),
     # --- Misc (satellites, terminator, markers, flightradar) ---
     ("satellites", "enabled"): _ENABLED_PERSONALIZABLE,
     ("satellites", "sat_names"): _SAT_NAMES,
@@ -841,6 +849,8 @@ _LABEL_OVERRIDES = {
     ("world_events", "max_conflict_tone"): "Max coverage tone (conflict events)",
     ("frontline", "show_contested"): "Show contested (grey zone)",
     ("frontline", "show_liberated"): "Show liberated areas",
+    ("frontline", "show_changes"): "Show gains / losses",
+    ("frontline", "change_days"): "Gains / losses over",
 }
 
 
