@@ -598,6 +598,21 @@ class WorldEvent(Base):
     source_url: Mapped[str | None] = mapped_column(Text)
 
 
+class FrontlineSnapshot(Base):
+    """One DeepStateMap.live update of the Russo-Ukrainian front (see
+    collectors/frontline.py). id is DeepState's own history id, so re-fetching an
+    already-stored update is a no-op. geojson holds only the polygons the Frontline
+    layer draws (occupied / contested / liberated), already classified -- each
+    feature's properties.status -- so the read path is a plain lookup."""
+
+    __tablename__ = "frontline_snapshots"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    geojson: Mapped[dict] = mapped_column(JSONB, nullable=False)
+
+
 class WorldEventExportFile(Base):
     """One row per GDELT 15-minute export file WorldEventsCollector has processed,
     keyed by the file's own slot timestamp. Coverage of the backfill window is "every

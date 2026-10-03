@@ -213,6 +213,13 @@
     "show_diplomacy": true,
     "runs_per_day": 96
   },
+  "frontline": {
+    "enabled": false,
+    "opacity": 45,
+    "show_contested": true,
+    "show_liberated": false,
+    "runs_per_day": 24
+  },
   "air_quality": {
     "enabled": false,
     "variable": "pm2_5",
@@ -282,7 +289,8 @@
       "shipping": "wss://stream.aisstream.io/v0/stream",
       "lightning": "https://demo.openweathermap.org/lightning/1.0/data",
       "flightradar": "https://api.adsb.lol/v2",
-      "flightradar_routeset": "https://adsb.im/api/0/routeset"
+      "flightradar_routeset": "https://adsb.im/api/0/routeset",
+      "frontline": "https://deepstatemap.live/api"
     },
     "channel_enabled": {
       "gfs_atmos": true,
@@ -300,7 +308,8 @@
       "fires": true,
       "world_events": true,
       "satellites": true,
-      "storms": true
+      "storms": true,
+      "frontline": true
     },
     "runs_per_day": 96,
     "backfill_poll_seconds": 60,

@@ -50,7 +50,7 @@ def _display_name(key: str) -> str:
 # with real percent/next_update math already derived from the shared cadence.
 RUNS_PER_DAY_SECTIONS = {
     "quakes", "volcanoes", "storms", "fires", "markers", "sst",
-    "clouds", "satellites_collector", "world_events", "air_quality",
+    "clouds", "satellites_collector", "world_events", "air_quality", "frontline",
 }
 
 

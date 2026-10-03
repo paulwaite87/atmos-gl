@@ -491,6 +491,12 @@ FIELD_SPECS = {
     ("world_events", "show_warfare"): ToggleSpec(personalizable=True),
     ("world_events", "show_targeted_violence"): ToggleSpec(personalizable=True),
     ("world_events", "show_diplomacy"): ToggleSpec(personalizable=True),
+    # Ukraine Frontline (DeepStateMap.live, collectors/frontline.py): all read-time
+    # display choices over one shared snapshot, so all personalizable.
+    ("frontline", "enabled"): _ENABLED_PERSONALIZABLE,
+    ("frontline", "opacity"): _OPACITY,
+    ("frontline", "show_contested"): ToggleSpec(personalizable=True),
+    ("frontline", "show_liberated"): ToggleSpec(personalizable=True),
     # --- Misc (satellites, terminator, markers, flightradar) ---
     ("satellites", "enabled"): _ENABLED_PERSONALIZABLE,
     ("satellites", "sat_names"): _SAT_NAMES,
@@ -833,6 +839,8 @@ _LABEL_OVERRIDES = {
     ("world_events", "show_warfare"): "Show conflict",
     ("world_events", "show_targeted_violence"): "Show targeted / mass violence",
     ("world_events", "max_conflict_tone"): "Max coverage tone (conflict events)",
+    ("frontline", "show_contested"): "Show contested (grey zone)",
+    ("frontline", "show_liberated"): "Show liberated areas",
 }
 
 
@@ -869,6 +877,7 @@ SECTION_LABELS = {
     "volcanoes": "Volcanoes",
     "fires": "Wildfires",
     "world_events": "World Events",
+    "frontline": "Ukraine Frontline",
     "satellites": "Satellites",
     "terminator": "Terminator Night/day Shade",
     "markers": "Place Markers",

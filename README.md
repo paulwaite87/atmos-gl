@@ -552,6 +552,20 @@ configurable window of recent history (three days by default) so it isn't empty 
 waiting for new data to arrive, and self-heals if the collector is ever offline for a
 while.
 
+#### Ukraine Frontline
+Shades the Russo-Ukrainian front line as published by
+[DeepStateMap.live](https://deepstatemap.live/en), checked hourly by default: territory
+occupied by Russia in red, the contested "grey zone" in grey, and (optionally) areas
+Ukraine has liberated in green. Ukrainian-held territory is everything left unshaded.
+Hovering an area shows when DeepState last updated the map and that update's note
+(e.g. "The enemy has occupied Svyatopetrivka…"). `Ukraine Frontline Properties` has
+the opacity and the contested/liberated toggles.
+
+DeepState's data is free to use for personal, non-commercial and volunteer purposes,
+but its [licence](https://deepstatemap.live/license-en.html) forbids redistributing or
+proxying its API to third parties — keep this layer off on a deployment other people
+use unless you have DeepState's agreement.
+
 #### Air Quality
 Needs a [Copernicus CDS/ADS API Key](#copernicus-cdsads-api-key), the same one used by
 Greenhouse Gases below. Shows near-real-time air quality sourced from Copernicus CAMS's
