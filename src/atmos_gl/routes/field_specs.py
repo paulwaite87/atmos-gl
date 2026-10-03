@@ -848,7 +848,7 @@ _LABEL_OVERRIDES = {
     ("world_events", "show_targeted_violence"): "Show targeted / mass violence",
     ("world_events", "max_conflict_tone"): "Max coverage tone (conflict events)",
     ("frontline", "show_contested"): "Show contested (grey zone)",
-    ("frontline", "show_liberated"): "Show liberated areas",
+    ("frontline", "show_liberated"): "Show Liberated by Ukraine",
     ("frontline", "show_changes"): "Show gains / losses",
     ("frontline", "change_days"): "Gains / losses over",
 }
