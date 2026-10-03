@@ -562,6 +562,14 @@ Hovering an area shows when DeepState last updated the map and that update's not
 (e.g. "The enemy has occupied Svyatopetrivka…"). `Ukraine Frontline Properties` has
 the opacity and the contested/liberated toggles.
 
+`Show gains / losses` overlays what changed over the last day, 7 days or 30 days
+(`Gains / losses over`), measured back from DeepState's latest update: land newly
+occupied by Russia in bright red, land no longer occupied (a Ukrainian gain) in blue.
+Hovering a change shows its size and both sides' total gains for the period, with the
+exact dates compared — DeepState doesn't post every day, so "the last day" compares
+against whichever update was current a day before the latest one. Only occupied
+territory counts; shifts in the grey zone aren't treated as gains or losses.
+
 DeepState's data is free to use for personal, non-commercial and volunteer purposes,
 but its [licence](https://deepstatemap.live/license-en.html) forbids redistributing or
 proxying its API to third parties — keep this layer off on a deployment other people

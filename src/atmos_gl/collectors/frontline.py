@@ -20,10 +20,11 @@ it to third parties -- see the README's Frontline section.
 """
 import logging
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from atmos_gl.collectors.base import CollectorBase
 from atmos_gl.db.frontline_adapter import FrontlineAdapter
+from atmos_gl.lib.frontline_changes import CHANGE_WINDOWS_DAYS
 from atmos_gl.lib.text_sanitize import strip_html
 
 logger = logging.getLogger(__name__)
@@ -81,6 +82,26 @@ def latest_update(history: list) -> dict | None:
     return max(published, key=lambda h: h["createdAt"], default=None)
 
 
+def created_at(entry: dict) -> datetime:
+    return datetime.fromisoformat(entry["createdAt"].replace("Z", "+00:00"))
+
+
+def updates_to_store(history: list) -> list:
+    """The latest published update, then the one current CHANGE_WINDOWS_DAYS before
+    it, deduplicated (a quiet week can make two windows share one update) -- newest
+    first. Empty if nothing is published."""
+    latest = latest_update(history)
+    if latest is None:
+        return []
+    wanted = [latest]
+    for days in CHANGE_WINDOWS_DAYS:
+        cutoff = created_at(latest) - timedelta(days=days)
+        baseline = latest_update([h for h in history if h.get("createdAt") and created_at(h) <= cutoff])
+        if baseline is not None and all(baseline["id"] != w["id"] for w in wanted):
+            wanted.append(baseline)
+    return wanted
+
+
 def update_description(entry: dict) -> str | None:
     """The update's English note, falling back to the Ukrainian one; DeepState embeds
     <a> links to map coordinates, which the popup can't use, so tags are stripped."""
@@ -106,18 +127,19 @@ class FrontlineCollector(CollectorBase):
         return True if changed is None else changed
 
     def collect(self) -> None:
+        """Stores DeepState's latest update, plus the update that was current 1/7/30
+        days before it (CHANGE_WINDOWS_DAYS) -- the baselines the gains/losses view
+        compares against. Each is fetched only once; already-stored ids are skipped."""
         r = self._get(self._url("history/public"), timeout=30)
         if r is None:
             raise RuntimeError("Frontline: couldn't fetch DeepState's update history")
-        entry = latest_update(r.json())
-        if entry is None:
-            logger.warning("Frontline: DeepState returned no published updates")
-            return
-        snapshot_id = int(entry["id"])
-        if self.frontline_adapter.has_snapshot(snapshot_id):
-            logger.debug(f"Frontline: update {snapshot_id} already stored")
-            return
+        history = r.json()
+        for entry in updates_to_store(history):
+            if not self.frontline_adapter.has_snapshot(int(entry["id"])):
+                self._store(entry)
 
+    def _store(self, entry: dict) -> None:
+        snapshot_id = int(entry["id"])
         g = self._get(self._url(f"history/{snapshot_id}/geojson"), timeout=60)
         if g is None:
             raise RuntimeError(f"Frontline: couldn't fetch DeepState update {snapshot_id}")
@@ -125,9 +147,6 @@ class FrontlineCollector(CollectorBase):
         if not geojson["features"]:
             raise RuntimeError(f"Frontline: update {snapshot_id} had no recognisable areas")
         self.frontline_adapter.save_snapshot(
-            snapshot_id,
-            datetime.fromisoformat(entry["createdAt"].replace("Z", "+00:00")),
-            update_description(entry),
-            geojson,
+            snapshot_id, created_at(entry), update_description(entry), geojson,
         )
         logger.info(f"Frontline: stored DeepState update {snapshot_id} ({len(geojson['features'])} areas)")
