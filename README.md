@@ -324,6 +324,7 @@ The full list is:
 * Volcanoes (with a Smoke Plume/SO2 overlay)
 * Wildfires
 * World Events (conflict, explosions and high-level diplomacy)
+* Ukraine Frontline (DeepStateMap.live's occupied / contested areas)
 * Air Quality (PM2.5/PM10/Smoke/SO2)
 * Flood Risk (live observed inundation / historical hazard)
 * Shipping
