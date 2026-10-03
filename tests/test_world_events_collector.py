@@ -2,18 +2,42 @@
 """Tests for WorldEventsCollector -- GDELT Event Database 2.0 ingestion, filtered to a
 curated CAMEO code allowlist (see collectors/world_events.py's module docstring).
 Covers: category classification (including correct exclusions), the min_mentions
-noise floor, has_new_data()'s freshness check, and the coverage-based backfill gap-fill
-(not a one-shot empty-table gate -- see that method's docstring).
+noise floor, and slot-based coverage: has_new_data(), gap-fill anywhere in the
+backfill window, 404/transient-failure handling, and the per-cycle cap (see the
+collector module's docstring).
 """
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
+import pytest
 import requests
 
 from atmos_gl.collectors.base import CollectorBase
-from atmos_gl.collectors.world_events import WorldEventsCollector, _classify, _parse_export_rows
+from atmos_gl.collectors.world_events import (
+    _MAX_FILES_PER_CYCLE,
+    _MAX_PREVIEWS_PER_CYCLE,
+    ExportFileMissing,
+    WorldEventsCollector,
+    _classify,
+    _expected_slots,
+    _floor_to_slot,
+    _parse_export_rows,
+)
+from atmos_gl.db.world_event_adapter import FakeWorldEventAdapter
+from atmos_gl.lib.article_preview import STATUS_FAILED, STATUS_OK, STATUS_RETRY, ArticlePreview
 
 _BASE_URL = "http://data.gdeltproject.org/gdeltv2"
+
+
+@pytest.fixture(autouse=True)
+def _no_real_article_fetches():
+    """collect() ends with an article-preview pass; never let a test hit the network.
+    Tests that care about previews re-patch fetch_article_preview themselves."""
+    with patch(
+        "atmos_gl.collectors.world_events.fetch_article_preview",
+        return_value=ArticlePreview(STATUS_FAILED),
+    ) as stub:
+        yield stub
 
 
 def make_collector(settings=None):
@@ -170,130 +194,267 @@ def test_parse_export_rows_does_not_apply_a_mentions_floor():
     assert rows[0]["num_mentions"] == 0
 
 
-# ---- has_new_data --------------------------------------------------------------
+# ---- slot-based coverage: has_new_data / collect / backfill ---------------------
+# These run against FakeWorldEventAdapter (not a MagicMock) so processed-slot
+# bookkeeping behaves like the real table across successive collect() calls.
 
-def test_has_new_data_true_when_export_filename_changed():
-    c = make_collector()
-    lastupdate_text = "123 abc http://data.gdeltproject.org/gdeltv2/20260821120000.export.CSV.zip"
-    with patch.object(CollectorBase, "_get", return_value=_FakeResponse(text=lastupdate_text)):
+def make_slot_collector(settings=None):
+    c = make_collector(settings if settings is not None else {"backfill_days": 1})
+    c.world_event_adapter = FakeWorldEventAdapter()
+    return c
+
+
+def _latest():
+    return _floor_to_slot(datetime.now(timezone.utc))
+
+
+def _lastupdate_for(slot):
+    return _FakeResponse(
+        text=f"123 abc {_BASE_URL}/{slot.strftime('%Y%m%d%H%M%S')}.export.CSV.zip"
+    )
+
+
+def _window_slots(c, latest):
+    window_start = datetime.now(timezone.utc) - timedelta(days=c.settings["backfill_days"])
+    return _expected_slots(window_start, latest)
+
+
+def _mark_all(c, slots):
+    for slot in slots:
+        c.world_event_adapter.mark_export_processed(slot, "ok", 0)
+
+
+def _slot_of(url):
+    return datetime.strptime(url.rsplit("/", 1)[1][:14], "%Y%m%d%H%M%S").replace(
+        tzinfo=timezone.utc
+    )
+
+
+def test_has_new_data_true_when_the_newest_slot_is_unprocessed():
+    c = make_slot_collector()
+    latest = _latest()
+    _mark_all(c, _window_slots(c, latest)[1:])
+    with patch.object(CollectorBase, "_get", return_value=_lastupdate_for(latest)):
         assert c.has_new_data() is True
 
 
-def test_has_new_data_false_when_export_filename_unchanged():
-    c = make_collector()
-    url = "http://data.gdeltproject.org/gdeltv2/20260821120000.export.CSV.zip"
-    c._etag_cache[f"{_BASE_URL}/lastupdate.txt"] = url
-    lastupdate_text = f"123 abc {url}"
-    with patch.object(CollectorBase, "_get", return_value=_FakeResponse(text=lastupdate_text)):
+def test_has_new_data_false_when_every_slot_in_the_window_is_processed():
+    c = make_slot_collector()
+    latest = _latest()
+    _mark_all(c, _window_slots(c, latest))
+    with patch.object(CollectorBase, "_get", return_value=_lastupdate_for(latest)):
         assert c.has_new_data() is False
 
 
 def test_has_new_data_defaults_true_on_fetch_failure():
-    c = make_collector()
+    c = make_slot_collector()
     with patch.object(CollectorBase, "_get", return_value=None):
         assert c.has_new_data() is True
 
 
-# ---- collect (backfill disabled via full coverage, to isolate the normal-cycle path) --
-
-def test_collect_upserts_rows_at_or_above_the_mentions_floor():
-    c = make_collector(settings={"min_mentions": 10, "backfill_days": 3})
-    c.world_event_adapter.oldest_event_date.return_value = datetime.now(timezone.utc)
-    lastupdate_text = f"123 abc {_BASE_URL}/20260821120000.export.CSV.zip"
+def test_collect_upserts_rows_at_or_above_the_mentions_floor_and_records_the_slot():
+    c = make_slot_collector({"min_mentions": 10, "backfill_days": 1})
+    latest = _latest()
+    _mark_all(c, _window_slots(c, latest)[1:])
     csv_text = "\n".join([
         _row(event_code="183", global_event_id="1", num_mentions="20"),
         _row(event_code="193", global_event_id="2", num_mentions="5"),  # below floor
     ])
 
-    with patch.object(CollectorBase, "_get", return_value=_FakeResponse(text=lastupdate_text)), \
+    with patch.object(CollectorBase, "_get", return_value=_lastupdate_for(latest)), \
          patch("atmos_gl.collectors.world_events._fetch_export_csv", return_value=csv_text):
         c.collect()
 
-    (upserted_rows,), _ = c.world_event_adapter.upsert_events.call_args
-    assert [r["id"] for r in upserted_rows] == ["1"]
-    assert c._etag_cache[f"{_BASE_URL}/lastupdate.txt"] == f"{_BASE_URL}/20260821120000.export.CSV.zip"
+    assert set(c.world_event_adapter._events) == {"1"}
+    assert c.world_event_adapter._export_files[latest] == {"status": "ok", "row_count": 1}
 
 
 def test_collect_skips_when_lastupdate_has_no_export_entry():
-    c = make_collector()
-    c.world_event_adapter.oldest_event_date.return_value = datetime.now(timezone.utc)
-    with patch.object(CollectorBase, "_get", return_value=_FakeResponse(text="no export file here")):
+    c = make_slot_collector()
+    with patch.object(CollectorBase, "_get", return_value=_FakeResponse(text="no export file here")), \
+         patch("atmos_gl.collectors.world_events._fetch_export_csv") as mock_fetch:
         c.collect()
-    c.world_event_adapter.upsert_events.assert_not_called()
+    mock_fetch.assert_not_called()
 
 
-# ---- backfill gap-fill ----------------------------------------------------------
+def test_collect_fills_a_gap_in_the_middle_of_the_window():
+    # The original bug: coverage was judged only by the OLDEST stored event, so a
+    # collector outage mid-window was never backfilled. Every slot is processed
+    # except two in the middle -- exactly those two must be fetched.
+    c = make_slot_collector()
+    latest = _latest()
+    slots = _window_slots(c, latest)
+    gap = {slots[40], slots[41]}
+    _mark_all(c, [s for s in slots if s not in gap])
 
-def test_backfill_skipped_when_coverage_already_reaches_backfill_days():
-    c = make_collector(settings={"backfill_days": 3})
-    c.world_event_adapter.oldest_event_date.return_value = (
-        datetime.now(timezone.utc) - timedelta(days=5)
-    )
-    with patch.object(CollectorBase, "_get") as mock_get:
-        c._backfill_gap(backfill_days=3, min_mentions=10)
-    mock_get.assert_not_called()
+    with patch.object(CollectorBase, "_get", return_value=_lastupdate_for(latest)), \
+         patch("atmos_gl.collectors.world_events._fetch_export_csv", return_value="") as mock_fetch:
+        c.collect()
 
-
-def test_backfill_fetches_only_the_missing_window_on_an_empty_table():
-    c = make_collector(settings={"backfill_days": 1})
-    c.world_event_adapter.oldest_event_date.return_value = None
-    now = datetime.now(timezone.utc)
-
-    def ts(delta_hours):
-        return (now - timedelta(hours=delta_hours)).strftime("%Y%m%d%H%M%S")
-
-    master_lines = [
-        # Well outside the 1-day backfill window -- must be skipped.
-        f"1 x {_BASE_URL}/{ts(24 * 30)}.export.CSV.zip",
-        # Inside the window.
-        f"1 x {_BASE_URL}/{ts(20)}.export.CSV.zip",
-        f"1 x {_BASE_URL}/{ts(10)}.export.CSV.zip",
-        # Not an export file -- must be ignored.
-        f"1 x {_BASE_URL}/{ts(5)}.mentions.CSV.zip",
-    ]
-    master_response = _FakeResponse(lines=master_lines)
-    csv_text = _row(event_code="183", global_event_id="42", num_mentions="20")
-
-    def fake_get(url, **kwargs):
-        if url.endswith("masterfilelist.txt"):
-            return master_response
-        raise AssertionError(f"unexpected fetch: {url}")
-
-    with patch.object(CollectorBase, "_get", side_effect=fake_get), \
-         patch("atmos_gl.collectors.world_events._fetch_export_csv", return_value=csv_text) as mock_fetch_csv:
-        c._backfill_gap(backfill_days=1, min_mentions=10)
-
-    assert mock_fetch_csv.call_count == 2
-    fetched_urls = {call.args[0] for call in mock_fetch_csv.call_args_list}
-    assert all(".export.CSV.zip" in u for u in fetched_urls)
-    assert c.world_event_adapter.upsert_events.call_count == 2
+    assert {_slot_of(call.args[0]) for call in mock_fetch.call_args_list} == gap
+    # A file yielding zero curated events still counts as covered.
+    assert all(c.world_event_adapter._export_files[s]["status"] == "ok" for s in gap)
 
 
-def test_backfill_one_file_failing_does_not_block_the_rest():
-    c = make_collector(settings={"backfill_days": 1})
-    c.world_event_adapter.oldest_event_date.return_value = None
-    now = datetime.now(timezone.utc)
+def test_collect_records_a_404_slot_as_missing_and_never_refetches_it():
+    c = make_slot_collector()
+    latest = _latest()
+    _mark_all(c, _window_slots(c, latest)[1:])
 
-    def ts(delta_hours):
-        return (now - timedelta(hours=delta_hours)).strftime("%Y%m%d%H%M%S")
+    with patch.object(CollectorBase, "_get", return_value=_lastupdate_for(latest)), \
+         patch("atmos_gl.collectors.world_events._fetch_export_csv",
+               side_effect=ExportFileMissing("gone")) as mock_fetch:
+        c.collect()
+        c.collect()
 
-    master_lines = [
-        f"1 x {_BASE_URL}/{ts(20)}.export.CSV.zip",
-        f"1 x {_BASE_URL}/{ts(10)}.export.CSV.zip",
-    ]
+    assert mock_fetch.call_count == 1
+    assert c.world_event_adapter._export_files[latest]["status"] == "missing"
 
-    def fake_get(url, **kwargs):
-        if url.endswith("masterfilelist.txt"):
-            return _FakeResponse(lines=master_lines)
-        raise AssertionError(f"unexpected fetch: {url}")
 
-    def fake_fetch_csv(url):
-        if ts(20) in url:
-            raise requests.ConnectionError("mid-backfill outage")
+def test_collect_leaves_a_transiently_failed_slot_pending_without_blocking_the_rest():
+    c = make_slot_collector()
+    latest = _latest()
+    slots = _window_slots(c, latest)
+    flaky, fine = slots[0], slots[1]
+    _mark_all(c, slots[2:])
+
+    def fake_fetch(url):
+        if _slot_of(url) == flaky:
+            raise requests.ConnectionError("outage")
         return _row(event_code="183", global_event_id="ok", num_mentions="20")
 
-    with patch.object(CollectorBase, "_get", side_effect=fake_get), \
-         patch("atmos_gl.collectors.world_events._fetch_export_csv", side_effect=fake_fetch_csv):
-        c._backfill_gap(backfill_days=1, min_mentions=10)  # must not raise
+    with patch.object(CollectorBase, "_get", return_value=_lastupdate_for(latest)), \
+         patch("atmos_gl.collectors.world_events._fetch_export_csv", side_effect=fake_fetch):
+        c.collect()  # must not raise
 
-    assert c.world_event_adapter.upsert_events.call_count == 1
+    assert flaky not in c.world_event_adapter._export_files
+    assert c.world_event_adapter._export_files[fine]["status"] == "ok"
+
+    with patch.object(CollectorBase, "_get", return_value=_lastupdate_for(latest)), \
+         patch("atmos_gl.collectors.world_events._fetch_export_csv",
+               return_value="") as mock_fetch:
+        c.collect()
+    assert [_slot_of(call.args[0]) for call in mock_fetch.call_args_list] == [flaky]
+
+
+def test_collect_leaves_the_slot_pending_when_the_upsert_fails():
+    c = make_slot_collector()
+    latest = _latest()
+    _mark_all(c, _window_slots(c, latest)[1:])
+    c.world_event_adapter.upsert_events = MagicMock(return_value=False)
+
+    with patch.object(CollectorBase, "_get", return_value=_lastupdate_for(latest)), \
+         patch("atmos_gl.collectors.world_events._fetch_export_csv",
+               return_value=_row(event_code="183", num_mentions="20")):
+        c.collect()
+
+    assert latest not in c.world_event_adapter._export_files
+
+
+def test_collect_caps_files_per_cycle_newest_first():
+    c = make_slot_collector()  # empty table: the whole 1-day window (97 slots) is pending
+    latest = _latest()
+    slots = _window_slots(c, latest)
+    assert len(slots) > _MAX_FILES_PER_CYCLE
+
+    with patch.object(CollectorBase, "_get", return_value=_lastupdate_for(latest)), \
+         patch("atmos_gl.collectors.world_events._fetch_export_csv", return_value="") as mock_fetch:
+        c.collect()
+
+    fetched = [_slot_of(call.args[0]) for call in mock_fetch.call_args_list]
+    assert fetched == slots[:_MAX_FILES_PER_CYCLE]
+
+
+def test_collect_never_requests_a_slot_newer_than_lastupdate():
+    c = make_slot_collector()
+    latest = _latest() - timedelta(hours=1)  # GDELT running an hour behind
+    with patch.object(CollectorBase, "_get", return_value=_lastupdate_for(latest)), \
+         patch("atmos_gl.collectors.world_events._fetch_export_csv", return_value="") as mock_fetch:
+        c.collect()
+    assert max(_slot_of(call.args[0]) for call in mock_fetch.call_args_list) == latest
+
+
+def test_collect_prunes_slot_records_older_than_the_window():
+    c = make_slot_collector()
+    latest = _latest()
+    stale = latest - timedelta(days=5)
+    c.world_event_adapter.mark_export_processed(stale, "ok", 3)
+    _mark_all(c, _window_slots(c, latest))
+
+    with patch.object(CollectorBase, "_get", return_value=_lastupdate_for(latest)):
+        c.collect()
+
+    assert stale not in c.world_event_adapter._export_files
+
+
+
+# ---- article previews ---------------------------------------------------------------
+
+def _seed_event(c, event_id, url, hours_ago=1):
+    when = datetime.now(timezone.utc) - timedelta(hours=hours_ago)
+    c.world_event_adapter.upsert_events([{
+        "id": event_id, "category": "warfare", "event_code": "190",
+        "actor1_name": None, "actor2_name": None, "action_geo_full_name": None,
+        "lat": 1.0, "lon": 2.0, "event_date": when.isoformat(),
+        "num_mentions": 20, "num_sources": 1, "goldstein_scale": None,
+        "avg_tone": None, "source_url": url,
+    }])
+
+
+def test_has_new_data_true_when_only_article_previews_are_pending():
+    c = make_slot_collector()
+    latest = _latest()
+    _mark_all(c, _window_slots(c, latest))
+    _seed_event(c, "e1", "https://news.example/a")
+    with patch.object(CollectorBase, "_get", return_value=_lastupdate_for(latest)):
+        assert c.has_new_data() is True
+
+
+def test_collect_stores_a_preview_per_distinct_url(_no_real_article_fetches):
+    c = make_slot_collector()
+    latest = _latest()
+    _mark_all(c, _window_slots(c, latest))
+    _seed_event(c, "e1", "https://news.example/a")
+    _seed_event(c, "e2", "https://news.example/a")  # same article, second event
+    _seed_event(c, "e3", "https://news.example/b")
+    previews = {
+        "https://news.example/a": ArticlePreview(STATUS_OK, 200, "Headline A", "Lede A."),
+        "https://news.example/b": ArticlePreview(STATUS_RETRY, 503),
+    }
+    _no_real_article_fetches.side_effect = previews.get
+
+    with patch.object(CollectorBase, "_get", return_value=_lastupdate_for(latest)):
+        c.collect()
+
+    fetched = sorted(call.args[0] for call in _no_real_article_fetches.call_args_list)
+    assert fetched == ["https://news.example/a", "https://news.example/b"]
+    articles = c.world_event_adapter._articles
+    assert articles["https://news.example/a"]["headline"] == "Headline A"
+    assert articles["https://news.example/a"]["summary"] == "Lede A."
+    assert articles["https://news.example/b"]["status"] == STATUS_RETRY
+
+
+def test_collect_caps_previews_per_cycle_newest_events_first(_no_real_article_fetches):
+    c = make_slot_collector()
+    latest = _latest()
+    _mark_all(c, _window_slots(c, latest))
+    n = _MAX_PREVIEWS_PER_CYCLE + 5
+    for i in range(n):  # i=0 is the newest event
+        _seed_event(c, f"e{i}", f"https://news.example/{i}", hours_ago=1 + i * 0.1)
+
+    with patch.object(CollectorBase, "_get", return_value=_lastupdate_for(latest)):
+        c.collect()
+
+    fetched = {call.args[0] for call in _no_real_article_fetches.call_args_list}
+    assert fetched == {f"https://news.example/{i}" for i in range(_MAX_PREVIEWS_PER_CYCLE)}
+
+
+def test_a_failing_preview_pass_does_not_fail_the_cycle():
+    c = make_slot_collector()
+    latest = _latest()
+    _mark_all(c, _window_slots(c, latest))
+    _seed_event(c, "e1", "https://news.example/a")
+    c.world_event_adapter.save_article_previews = MagicMock(side_effect=RuntimeError("db down"))
+
+    with patch.object(CollectorBase, "_get", return_value=_lastupdate_for(latest)):
+        c.collect()  # must not raise

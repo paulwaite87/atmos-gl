@@ -90,22 +90,25 @@ class CollectorService:
     # Synchronous full refresh — offloaded to a thread by run()
     # ------------------------------------------------------------------
     def collect_once(self):
-        """One full pass over every synchronous collector family. Each family self-gates
-        on its own cadence/freshness, so a steady-state cycle is cheap.
+        """One full pass over every synchronous collector family, run strictly one
+        after another. Each family self-gates on its own cadence/freshness, so a
+        steady-state cycle is cheap -- but anything slow delays everything behind it,
+        so the order is lightest first:
 
-        Lightweight families run BEFORE the heavy field datasources: quakes/storms/
-        volcanoes/satellites/markers/sst/clouds each take seconds, while gfs/rtofs field
-        ingestion can take tens of minutes on a cold start. Running fields first would
-        head-of-line block every fast collector's "zero hour" run behind that, leaving
-        them showing no data for as long as the field ingest takes even though nothing
-        about them is actually slow."""
-        # File-cache collectors: sst (OISST netCDF), clouds (GIBS image). Each self-gates
-        # on its own cadence (is_stale) and freshness (remote_is_newer / expiry_hours).
-        collect_file_caches(self.config, self._cache_last_runs)
-
-        # Event feeds: quakes, storms, volcanoes, satellites, markers. Each runs at its
-        # own schedule via is_stale(); has_new_data() skips unchanged remotes (HEAD/ETag).
+          1. Event feeds (quakes, storms, volcanoes, fires, satellites, markers, world
+             events): seconds each.
+          2. File caches (sst, clouds, GHG, air quality, flood risk, vegetation mask):
+             CDS/ADS requests take minutes, and a flood-risk-live tile refresh took 23
+             minutes before it was capped per cycle -- measured live, it held every
+             event feed behind it for the whole time when file caches ran first.
+          3. Field ingestion (gfs/rtofs): tens of minutes on a cold start."""
+        # Event feeds: each runs at its own schedule via is_stale(); has_new_data()
+        # skips unchanged remotes (HEAD/ETag/listing diff).
         collect_event_feeds(self.config, self._event_last_runs)
+
+        # File-cache collectors: each self-gates on its own cadence (is_stale) and
+        # freshness (has_new_data); slow ones bound their own per-cycle work.
+        collect_file_caches(self.config, self._cache_last_runs)
 
         # Heavy field datasources (gfs atmos+waves, rtofs currents): fieldstore-backed,
         # baseline-resolved, per-hour skip-if-present.

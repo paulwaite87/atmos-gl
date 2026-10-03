@@ -14,7 +14,7 @@ rows into the `earthquakes` table via `QuakeAdapter`. That's the entire backend 
 no `"quakes"` key anywhere in `layer_builder.py`'s `TASK_CLASSES`, because there's nothing
 to render.
 
-This is the shape shared by volcanoes, world_events, troublespots, lightning, storms,
+This is the shape shared by volcanoes, world_events, lightning, storms,
 shipping, satellites, flightradar, terminator, and landmass — each a collector-only DB
 sync, no render task, differing only in their data source and DB schema (see
 `src/atmos_gl/db/models.py`'s `Earthquake`, `VolcanicActivity`, `Fire`, etc.).

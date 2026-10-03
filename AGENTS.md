@@ -34,6 +34,7 @@ shipping, lightning, and more.
 | Lint (check only) | `make lint` |
 | Lint + format + autofix | `make lint-fix` |
 | Apply DB migrations | `make migrate` |
+| Run one collector now, outside its schedule | `make collect name=<section> [force=1]` |
 | Shell into the app container | `make bash` |
 | Full command list | `make help` |
 

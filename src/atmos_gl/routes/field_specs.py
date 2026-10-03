@@ -469,6 +469,9 @@ FIELD_SPECS = {
     # time, every detection is always stored), min_mentions gates what
     # WorldEventsCollector.collect() stores in the first place -- a real,
     # shared collection-cost control, not a per-viewer display preference.
+    # max_conflict_tone is read-time like expiry_days (personalizable for the same
+    # reason): conflict-category events whose GDELT coverage tone is above it are
+    # hidden as likely figurative false positives -- see WorldEventAdapter.
     ("world_events", "enabled"): _ENABLED_PERSONALIZABLE,
     ("world_events", "opacity"): _OPACITY,
     ("world_events", "marker_size"): SliderSpec(
@@ -478,6 +481,9 @@ FIELD_SPECS = {
         min=1, max=14, step=1, suffix=" day", pluralize=True, personalizable=True
     ),
     ("world_events", "min_mentions"): SliderSpec(min=0, max=100, step=5),
+    ("world_events", "max_conflict_tone"): SliderSpec(
+        min=-10, max=15, step=0.5, decimals=1, personalizable=True
+    ),
     ("world_events", "backfill_days"): SliderSpec(
         min=1, max=14, step=1, suffix=" day", pluralize=True
     ),
@@ -485,21 +491,6 @@ FIELD_SPECS = {
     ("world_events", "show_warfare"): ToggleSpec(personalizable=True),
     ("world_events", "show_targeted_violence"): ToggleSpec(personalizable=True),
     ("world_events", "show_diplomacy"): ToggleSpec(personalizable=True),
-    # Troublespots (issue #366) -- a derived multi-domain convergence layer over
-    # World Events/Earthquakes/Fires/Volcanic Activity, computed live per request (no
-    # table, no collector of its own). cell_size_deg/window_hours are NOT
-    # personalizable, unlike every other layer's opacity/expiry: they control the
-    # underlying convergence computation itself, which is meant to be one objective,
-    # shared signal every viewer sees the same way -- letting each user tune their own
-    # severity map would undermine that (see the design's roster/config decision).
-    ("troublespots", "enabled"): _ENABLED_PERSONALIZABLE,
-    ("troublespots", "opacity"): _OPACITY,
-    ("troublespots", "cell_size_deg"): SliderSpec(
-        min=1.0, max=5.0, step=0.5, decimals=1, suffix=" deg"
-    ),
-    ("troublespots", "window_hours"): SliderSpec(
-        min=12, max=168, step=12, suffix="h"
-    ),
     # --- Misc (satellites, terminator, markers, flightradar) ---
     ("satellites", "enabled"): _ENABLED_PERSONALIZABLE,
     ("satellites", "sat_names"): _SAT_NAMES,
@@ -838,11 +829,10 @@ _LABEL_OVERRIDES = {
     ("volcanoes", "smoke_opacity"): "Smoke Plume Opacity",
     ("volcanoes", "so2_min"): "Smoke Plume Threshold",
     ("world_events", "min_mentions"): "Minimum corroborating sources",
-    ("world_events", "backfill_days"): "Initial backfill window",
+    ("world_events", "backfill_days"): "Backfill window",
     ("world_events", "show_warfare"): "Show conflict",
     ("world_events", "show_targeted_violence"): "Show targeted / mass violence",
-    ("troublespots", "cell_size_deg"): "Cell size (degrees)",
-    ("troublespots", "window_hours"): "Convergence window",
+    ("world_events", "max_conflict_tone"): "Max coverage tone (conflict events)",
 }
 
 
@@ -879,7 +869,6 @@ SECTION_LABELS = {
     "volcanoes": "Volcanoes",
     "fires": "Wildfires",
     "world_events": "World Events",
-    "troublespots": "Troublespots",
     "satellites": "Satellites",
     "terminator": "Terminator Night/day Shade",
     "markers": "Place Markers",

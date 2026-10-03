@@ -276,3 +276,52 @@ def test_collect_refetches_the_listing_when_has_new_data_was_not_called_first(tm
         c.collect()
 
     assert os.path.exists(modis_flood_mosaic_cache_path(str(tmp_path)))
+
+
+def test_collect_downloads_at_most_the_per_cycle_budget_and_still_rebuilds(tmp_path, monkeypatch):
+    """Regression guard: refreshing every changed tile in one collect() was measured
+    live at 23 minutes, holding up every collector behind it in the sequential sweep.
+    With the budget set to 1, only the first changed tile is fetched this cycle --
+    the mosaic is still rebuilt from it, and the deferred tile stays "changed" so
+    has_new_data() picks it up next cycle."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("EARTHDATA_TOKEN", "tok")
+    monkeypatch.setattr(FloodRiskLiveCollector, "_MAX_TILE_DOWNLOADS_PER_CYCLE", 1)
+    c = make_bare_live_collector(workdir=str(tmp_path))
+    c._listing = [_TILE_A, _TILE_B]
+    fetched = []
+
+    def fake_ensure(tile, token):
+        fetched.append((tile["h"], tile["v"]))
+        return _cache_tile(tile["h"], tile["v"], 0, tile["filename"])
+
+    with patch("atmos_gl.collectors.flood_risk.ensure_modis_flood_tile_cached",
+               side_effect=fake_ensure):
+        c.collect()
+
+    assert fetched == [(_TILE_A["h"], _TILE_A["v"])]
+    assert os.path.exists(modis_flood_mosaic_cache_path(str(tmp_path)))
+    with patch("atmos_gl.collectors.flood_risk.fetch_modis_flood_listing",
+               return_value=[_TILE_A, _TILE_B]), \
+         patch("atmos_gl.collectors.flood_risk.prune_stale_modis_flood_tiles", return_value=False):
+        assert c.has_new_data() is True  # _TILE_B is still pending
+
+
+def test_a_failed_download_counts_against_the_budget(tmp_path, monkeypatch):
+    """A timeout costs as much wall-clock time as a download, so it uses budget too."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("EARTHDATA_TOKEN", "tok")
+    monkeypatch.setattr(FloodRiskLiveCollector, "_MAX_TILE_DOWNLOADS_PER_CYCLE", 1)
+    c = make_bare_live_collector(workdir=str(tmp_path))
+    c._listing = [_TILE_A, _TILE_B]
+    attempts = []
+
+    def failing_ensure(tile, token):
+        attempts.append(tile["h"])
+        raise TimeoutError("LANCE slow")
+
+    with patch("atmos_gl.collectors.flood_risk.ensure_modis_flood_tile_cached",
+               side_effect=failing_ensure):
+        c.collect()
+
+    assert attempts == [_TILE_A["h"]]

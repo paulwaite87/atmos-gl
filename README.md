@@ -324,7 +324,6 @@ The full list is:
 * Volcanoes (with a Smoke Plume/SO2 overlay)
 * Wildfires
 * World Events (conflict, explosions and high-level diplomacy)
-* Troublespots (multi-source convergence zones)
 * Air Quality (PM2.5/PM10/Smoke/SO2)
 * Flood Risk (live observed inundation / historical hazard)
 * Shipping
@@ -537,30 +536,21 @@ curated, high-signal set of four categories:
 
 Each category has its own marker colour, and can be individually shown or hidden in
 `World Events Properties`, alongside marker size, opacity, and how many days of history
-to display. Hovering a marker shows who was involved, where, when, how many sources
-reported it, and a link to read the original article. On first setup the layer
-backfills a configurable window of recent history (three days by default) so it isn't
-empty while waiting for new data to arrive, and self-heals if the collector is ever
-offline for a while.
-
-#### Troublespots
-A derived layer, not its own data source: it flags areas where at least two of four
-independently-collected feeds converge within the same geographic cell and time window —
-
-* **Earthquakes**
-* **Wildfires**
-* **Volcanic Activity**
-* **World Events** (any of the four categories above, counted once regardless of category)
-
-Convergence is banded by how many of the four types overlap in a cell — **Elevated** (2),
-**High** (3), **Severe** (4) — each rendered as a smooth, hatched boundary outlined in
-that band's colour, so it reads as a heatmap-style zone rather than a hard grid. Hovering
-a zone breaks down exactly which sources contributed and how many reports came from each.
-Cell size and time window are both configurable.
-
-Because it has no collector of its own, the `Show` checkbox is only available (not greyed
-out) once at least two of its four source layers' Data Collectors are enabled — with only
-zero or one contributing, a troublespot can never form.
+to display. A `Max coverage tone` filter hides Explosion/Conflict/Targeted-violence
+events whose news coverage reads more positively than the threshold (0 by default) —
+GDELT's automated coding regularly files figurative "battle"/"fight" language from
+sport, business or entertainment stories under conflict, and those stories' upbeat
+tone gives them away. Diplomatic Meetings are never tone-filtered. Hovering a marker
+shows the source article's headline and summary (taken from the publisher's own page
+metadata, fetched in the background once per article), who was involved, where, when,
+how many sources reported it, and a link to read the full article. Articles that block
+automated access simply show the link alone. Each story appears once: GDELT often codes one
+article as several events, and syndicated copies of a story run at different outlets, so
+these collapse into a single marker (the most widely reported copy), with the other
+outlets listed underneath as "Also reported by". On first setup the layer backfills a
+configurable window of recent history (three days by default) so it isn't empty while
+waiting for new data to arrive, and self-heals if the collector is ever offline for a
+while.
 
 #### Air Quality
 Needs a [Copernicus CDS/ADS API Key](#copernicus-cdsads-api-key), the same one used by
@@ -899,6 +889,19 @@ Reset back to the default order:
 
 This is in-memory only — it resets to the default order whenever `layer_builder`
 restarts (e.g. after `make reload`).
+
+### Running a collector now
+Each data collector runs on its own schedule inside `data_collector`. When you're waiting on
+one to test something, run it immediately instead:
+
+    make collect name=world_events
+
+It runs inside the running `data_collector` container, so it uses your live code, config and
+database, and shows up on the Data Status page like a scheduled run. Like a scheduled run, it
+skips if nothing has changed upstream and won't run a channel you've disabled — add `force=1`
+to override both. If a scheduled run of the same collector is already in progress it waits
+for it to finish, and the schedule skips that collector while yours runs, so the two never
+overlap. `make collect name=?` lists the collector names.
 
 ### Everything Else
 `make test`, `make lint` and `make bash` are all there for you too — run `make help` for

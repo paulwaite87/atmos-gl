@@ -39,13 +39,16 @@ def _row(adapter, event_id, real_db):
         return dict(result)
 
 
-def _event_row(event_id, category, lat, lon, event_date_iso, num_mentions=20, event_code="183"):
+def _event_row(
+    event_id, category, lat, lon, event_date_iso, num_mentions=20, event_code="183",
+    avg_tone=None,
+):
     return {
         "id": event_id, "category": category, "event_code": event_code,
         "actor1_name": None, "actor2_name": None, "action_geo_full_name": None,
         "lat": lat, "lon": lon, "event_date": event_date_iso,
         "num_mentions": num_mentions, "num_sources": 1,
-        "goldstein_scale": None, "avg_tone": None, "source_url": None,
+        "goldstein_scale": None, "avg_tone": avg_tone, "source_url": None,
     }
 
 
@@ -123,3 +126,320 @@ def test_delete_expired_prunes_only_rows_older_than_expiry_days(kind, real_db):
     ids = {f["properties"]["id"] for f in geojson["features"]}
     assert f"keep-{suffix}" in ids
     assert f"prune-{suffix}" not in ids
+
+
+@pytest.mark.parametrize("kind", ["real", "fake"])
+def test_get_events_as_geojson_tone_filter_matches_between_real_and_fake(kind, real_db):
+    # max_conflict_tone drops conflict-category events whose coverage reads MORE
+    # positively than the threshold (GDELT's figurative "battle"/"fight" false
+    # positives), but never diplomacy (whose tone is naturally either sign) and never
+    # an event with no tone at all (nothing to judge it by).
+    suffix = kind
+    adapter, ctx = _make_adapter(kind, real_db)
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    with ctx:
+        adapter.upsert_events([
+            _event_row(f"neg-war-{suffix}", "warfare", 10.0, 20.0, now_iso, avg_tone=-4.0),
+            _event_row(f"at-war-{suffix}", "warfare", 10.0, 20.0, now_iso, avg_tone=0.0),
+            _event_row(f"pos-war-{suffix}", "warfare", 10.0, 20.0, now_iso, avg_tone=3.5),
+            _event_row(f"pos-boom-{suffix}", "explosion", 10.0, 20.0, now_iso, avg_tone=0.1),
+            _event_row(f"pos-tv-{suffix}", "targeted_violence", 10.0, 20.0, now_iso, avg_tone=2.0),
+            _event_row(f"pos-dip-{suffix}", "diplomacy", 10.0, 20.0, now_iso, avg_tone=5.0),
+            _event_row(f"null-war-{suffix}", "warfare", 10.0, 20.0, now_iso, avg_tone=None),
+        ])
+        filtered = json.loads(adapter.get_events_as_geojson(expiry_days=7, max_conflict_tone=0.0))
+        unfiltered = json.loads(adapter.get_events_as_geojson(expiry_days=7))
+
+    ids = {f["properties"]["id"] for f in filtered["features"]}
+    assert {f"neg-war-{suffix}", f"at-war-{suffix}", f"pos-dip-{suffix}", f"null-war-{suffix}"} <= ids
+    assert not {f"pos-war-{suffix}", f"pos-boom-{suffix}", f"pos-tv-{suffix}"} & ids
+
+    all_ids = {f["properties"]["id"] for f in unfiltered["features"]}
+    assert {f"pos-war-{suffix}", f"pos-boom-{suffix}", f"pos-tv-{suffix}"} <= all_ids
+
+
+@pytest.mark.parametrize("kind", ["real", "fake"])
+def test_export_slot_bookkeeping_matches_between_real_and_fake(kind, real_db):
+    # Slots are offset per kind (and far from "now") so the real and fake runs, which
+    # share one session-scoped table on the real side, can't see each other's rows.
+    base = datetime(2001 if kind == "real" else 2002, 1, 1, tzinfo=timezone.utc)
+    old, mid, new = base, base + timedelta(minutes=15), base + timedelta(minutes=30)
+    adapter, ctx = _make_adapter(kind, real_db)
+
+    with ctx:
+        adapter.mark_export_processed(old, "ok", 4)
+        adapter.mark_export_processed(mid, "missing")
+        adapter.mark_export_processed(new, "ok", 1)
+        adapter.mark_export_processed(new, "ok", 2)  # re-marking is idempotent
+        assert adapter.processed_export_slots(mid) == {mid, new}
+
+        pruned = adapter.prune_export_slots(mid)
+        assert adapter.processed_export_slots(base - timedelta(days=1)) == {mid, new}
+
+    assert pruned >= 1
+
+
+def _age_article(adapter, url, real_db, hours):
+    """Backdates an article's last attempt so its retry becomes due."""
+    if isinstance(adapter, FakeWorldEventAdapter):
+        adapter._articles[url]["fetched_at"] -= timedelta(hours=hours)
+        return
+    with real_db.begin() as conn:
+        conn.execute(
+            text("UPDATE world_event_articles SET fetched_at = fetched_at - make_interval(hours => :h) WHERE url = :u"),
+            {"h": hours, "u": url},
+        )
+
+
+def _preview(url, status, headline=None, summary=None, http_status=200):
+    return {"url": url, "status": status, "http_status": http_status,
+            "headline": headline, "summary": summary}
+
+
+@pytest.mark.parametrize("kind", ["real", "fake"])
+def test_urls_needing_preview_matches_between_real_and_fake(kind, real_db):
+    adapter, ctx = _make_adapter(kind, real_db)
+    now = datetime.now(timezone.utc)
+    u = {name: f"https://news.example/{kind}/{name}" for name in
+         ("new", "older", "ok", "failed", "retry_recent", "retry_due", "retry_exhausted", "stale")}
+
+    def ev(event_id, url, hours_ago):
+        row = _event_row(f"{kind}-{event_id}", "warfare", 10.0, 20.0,
+                         (now - timedelta(hours=hours_ago)).isoformat())
+        row["source_url"] = url
+        return row
+
+    with ctx:
+        adapter.upsert_events([
+            ev("new", u["new"], 1),
+            ev("new-dup", u["new"], 2),  # same article coded as two events
+            ev("older", u["older"], 5),
+            ev("ok", u["ok"], 1),
+            ev("failed", u["failed"], 1),
+            ev("retry_recent", u["retry_recent"], 1),
+            ev("retry_due", u["retry_due"], 1),
+            ev("retry_exhausted", u["retry_exhausted"], 1),
+            ev("stale", u["stale"], 24 * 10),  # outside `since`
+        ])
+        adapter.save_article_previews([
+            _preview(u["ok"], "ok", "H"),
+            _preview(u["failed"], "failed", http_status=403),
+            _preview(u["retry_recent"], "retry", http_status=429),
+            _preview(u["retry_due"], "retry", http_status=503),
+        ])
+        for _ in range(3):
+            adapter.save_article_previews([_preview(u["retry_exhausted"], "retry", http_status=500)])
+        _age_article(adapter, u["retry_due"], real_db, hours=2)
+        _age_article(adapter, u["retry_exhausted"], real_db, hours=2)
+
+        needed = adapter.urls_needing_preview(now - timedelta(days=3), limit=100)
+
+    # The real table is shared across this module's tests, so look only at this run's URLs.
+    mine = [url for url in needed if f"/{kind}/" in url]
+    assert set(mine) == {u["new"], u["older"], u["retry_due"]}
+    assert mine.index(u["older"]) > mine.index(u["new"])  # most recent event first
+
+
+@pytest.mark.parametrize("kind", ["real", "fake"])
+def test_geojson_carries_headline_and_summary_only_for_ok_articles(kind, real_db):
+    adapter, ctx = _make_adapter(kind, real_db)
+    now_iso = datetime.now(timezone.utc).isoformat()
+    ok_url, retry_url = f"https://news.example/{kind}/geo-ok", f"https://news.example/{kind}/geo-retry"
+
+    def ev(event_id, url):
+        row = _event_row(f"geo-{kind}-{event_id}", "warfare", 10.0, 20.0, now_iso)
+        row["source_url"] = url
+        return row
+
+    with ctx:
+        adapter.upsert_events([ev("ok", ok_url), ev("retry", retry_url), ev("none", None)])
+        adapter.save_article_previews([
+            _preview(ok_url, "ok", "Strikes hit Kabul", "Twenty-two killed."),
+            _preview(retry_url, "retry", "should not show", http_status=503),
+        ])
+        geojson = json.loads(adapter.get_events_as_geojson(expiry_days=7))
+
+    props = {f["properties"]["id"]: f["properties"] for f in geojson["features"]}
+    assert props[f"geo-{kind}-ok"]["headline"] == "Strikes hit Kabul"
+    assert props[f"geo-{kind}-ok"]["summary"] == "Twenty-two killed."
+    assert props[f"geo-{kind}-retry"]["headline"] is None
+    assert props[f"geo-{kind}-none"]["headline"] is None
+
+
+@pytest.mark.parametrize("kind", ["real", "fake"])
+def test_prune_orphaned_articles_matches_between_real_and_fake(kind, real_db):
+    adapter, ctx = _make_adapter(kind, real_db)
+    now = datetime.now(timezone.utc)
+    kept_url = f"https://news.example/{kind}/orphan-kept"
+    shared_url = f"https://news.example/{kind}/orphan-shared"
+    gone_url = f"https://news.example/{kind}/orphan-gone"
+
+    def ev(event_id, url, days_ago):  # ids must fit world_events.id's varchar(20)
+        row = _event_row(f"o-{kind}-{event_id}", "warfare", 10.0, 20.0,
+                         (now - timedelta(days=days_ago)).isoformat())
+        row["source_url"] = url
+        return row
+
+    with ctx:
+        adapter.upsert_events([
+            ev("kept", kept_url, 1),
+            ev("shared-old", shared_url, 30),  # one old + one recent event, same article
+            ev("shared-new", shared_url, 1),
+            ev("gone", gone_url, 30),
+        ])
+        adapter.save_article_previews([
+            _preview(kept_url, "ok", "Kept"),
+            _preview(shared_url, "ok", "Shared"),
+            _preview(gone_url, "ok", "Gone"),
+        ])
+        adapter.delete_expired(expiry_days=14)
+        pruned = adapter.prune_orphaned_articles()
+        geojson = json.loads(adapter.get_events_as_geojson(expiry_days=36500))
+
+    headlines = {f["properties"]["id"]: f["properties"]["headline"] for f in geojson["features"]}
+    assert headlines[f"o-{kind}-kept"] == "Kept"
+    assert headlines[f"o-{kind}-shared-new"] == "Shared"  # still referenced
+    assert f"o-{kind}-gone" not in headlines
+    assert pruned >= 1
+    if kind == "fake":
+        assert gone_url not in adapter._articles
+    else:
+        with real_db.connect() as conn:
+            remaining = conn.execute(
+                text("SELECT url FROM world_event_articles WHERE url = ANY(:urls)"),
+                {"urls": [kept_url, shared_url, gone_url]},
+            ).scalars().all()
+        assert set(remaining) == {kept_url, shared_url}
+
+
+# ---- duplicate collapsing (read time) ----------------------------------------------
+
+def _dedupe_features(kind, real_db, events, previews, **geojson_kwargs):
+    adapter, ctx = _make_adapter(kind, real_db)
+    with ctx:
+        adapter.upsert_events(events)
+        adapter.save_article_previews(previews)
+        geojson = json.loads(adapter.get_events_as_geojson(expiry_days=7, **geojson_kwargs))
+    # The real table is shared across this module's tests: look only at this call's events.
+    mine = {e["id"] for e in events}
+    return {f["properties"]["id"]: f["properties"] for f in geojson["features"]
+            if f["properties"]["id"] in mine}
+
+
+def _dev(kind, event_id, url, mentions=20, hours_ago=1, category="warfare", avg_tone=None):
+    # ids must fit world_events.id's varchar(20); "dr"/"df" prefix scopes them per kind
+    row = _event_row(f"d{kind[0]}-{event_id}", category, 10.0, 20.0,
+                     (datetime.now(timezone.utc) - timedelta(hours=hours_ago)).isoformat(),
+                     num_mentions=mentions, avg_tone=avg_tone)
+    row["source_url"] = url
+    return row
+
+
+@pytest.mark.parametrize("kind", ["real", "fake"])
+def test_one_marker_per_article_keeping_the_most_mentioned_event(kind, real_db):
+    url = f"https://a.example/{kind}/same-article"
+    props = _dedupe_features(kind, real_db, [
+        _dev(kind, "low", url, mentions=10),
+        _dev(kind, "high", url, mentions=40),
+        _dev(kind, "mid", url, mentions=25),
+    ], [_preview(url, "ok", "Strikes hit Kabul", f"Lede {kind} one.")])
+    assert set(props) == {f"d{kind[0]}-high"}
+    assert props[f"d{kind[0]}-high"]["also_reported_by"] == []
+
+
+@pytest.mark.parametrize("kind", ["real", "fake"])
+def test_ties_on_mentions_go_to_the_most_recent_event(kind, real_db):
+    url = f"https://a.example/{kind}/tie"
+    props = _dedupe_features(kind, real_db, [
+        _dev(kind, "older", url, mentions=20, hours_ago=5),
+        _dev(kind, "newer", url, mentions=20, hours_ago=1),
+    ], [])
+    assert set(props) == {f"d{kind[0]}-newer"}
+
+
+@pytest.mark.parametrize("kind", ["real", "fake"])
+def test_syndicated_copies_collapse_and_list_the_other_outlets(kind, real_db):
+    summary = f"The fatal shooting of Renee Good ({kind}) prompted lawsuits."
+    npr, wutc, wysu = (f"https://www.{s}.example/{kind}/renee-good" for s in ("npr", "wutc", "wysu"))
+    props = _dedupe_features(kind, real_db, [
+        _dev(kind, "npr", npr, mentions=50),
+        _dev(kind, "wutc", wutc, mentions=12),
+        _dev(kind, "wysu", wysu, mentions=11),
+    ], [
+        _preview(npr, "ok", "Renee Good's family sues", summary),
+        _preview(wutc, "ok", "The family of Renee Good files lawsuits", summary),  # retitled
+        _preview(wysu, "ok", "The family of Renee Good files lawsuits", summary),
+    ])
+    assert set(props) == {f"d{kind[0]}-npr"}
+    assert props[f"d{kind[0]}-npr"]["summary"] == summary
+    assert sorted(props[f"d{kind[0]}-npr"]["also_reported_by"]) == sorted([wutc, wysu])
+
+
+@pytest.mark.parametrize("kind", ["real", "fake"])
+def test_a_sites_boilerplate_summary_is_dropped_and_never_merges_stories(kind, real_db):
+    # One site reusing its generic description on DIFFERENT stories ("News in
+    # real-time" on 5 different newsroomamerica.com tags, seen live).
+    boiler = f"News in real-time ({kind})"
+    a, b = (f"https://newsroom.example/{kind}/{s}" for s in ("armed-robbery", "fire-academy"))
+    props = _dedupe_features(kind, real_db, [
+        _dev(kind, "a", a), _dev(kind, "b", b),
+    ], [
+        _preview(a, "ok", "Tag: armed_robbery", boiler),
+        _preview(b, "ok", "Tag: national_fire_academy", boiler),
+    ])
+    assert set(props) == {f"d{kind[0]}-a", f"d{kind[0]}-b"}
+    assert props[f"d{kind[0]}-a"]["summary"] is None
+    assert props[f"d{kind[0]}-a"]["headline"] == "Tag: armed_robbery"
+
+
+@pytest.mark.parametrize("kind", ["real", "fake"])
+def test_events_without_a_preview_only_merge_on_the_same_url(kind, real_db):
+    props = _dedupe_features(kind, real_db, [
+        _dev(kind, "x", f"https://a.example/{kind}/x"),
+        _dev(kind, "y", f"https://a.example/{kind}/y"),
+        _dev(kind, "nourl", None),
+    ], [])
+    assert set(props) == {f"d{kind[0]}-x", f"d{kind[0]}-y", f"d{kind[0]}-nourl"}
+
+
+@pytest.mark.parametrize("kind", ["real", "fake"])
+def test_the_tone_filter_applies_before_collapsing(kind, real_db):
+    # The most-mentioned copy is a positive-tone false positive: once filtered, the
+    # next copy must win rather than the whole story vanishing.
+    url = f"https://a.example/{kind}/tone"
+    props = _dedupe_features(kind, real_db, [
+        _dev(kind, "upbeat", url, mentions=90, avg_tone=4.0),
+        _dev(kind, "grim", url, mentions=15, avg_tone=-5.0),
+    ], [], max_conflict_tone=0.0)
+    assert set(props) == {f"d{kind[0]}-grim"}
+
+
+def _dev_at(kind, event_id, url, place, mentions=20, hours_ago=1):
+    row = _dev(kind, event_id, url, mentions=mentions, hours_ago=hours_ago)
+    row["action_geo_full_name"] = place
+    return row
+
+
+@pytest.mark.parametrize("kind", ["real", "fake"])
+def test_the_event_whose_place_the_headline_names_wins(kind, real_db):
+    # Seen live: RNZ's Coca-Cola fire in Auckland's Mount Wellington suburb was coded
+    # as one Auckland and one "Wellington (general)" event, tied on mentions and time;
+    # the collapse kept Wellington by id order and the Auckland marker vanished.
+    url = f"https://rnz.example/{kind}/coca-cola-fire"
+    props = _dedupe_features(kind, real_db, [
+        _dev_at(kind, "wlg", url, "Wellington, New Zealand (general), New Zealand", mentions=30),
+        _dev_at(kind, "akl", url, "Auckland, Auckland, New Zealand", mentions=10),
+    ], [_preview(url, "ok", "Firefighters battle blaze at Auckland Coca-Cola factory",
+                 f"About 50 firefighters were deployed in Auckland's Mount Wellington ({kind}).")])
+    assert set(props) == {f"d{kind[0]}-akl"}  # beats higher mentions; summary not consulted
+
+
+@pytest.mark.parametrize("kind", ["real", "fake"])
+def test_place_matching_is_whole_word(kind, real_db):
+    url = f"https://a.example/{kind}/oman"
+    props = _dedupe_features(kind, real_db, [
+        _dev_at(kind, "oman", url, "Oman", mentions=10),
+        _dev_at(kind, "uk", url, "United Kingdom", mentions=30),
+    ], [_preview(url, "ok", "Woman arrested after protest", f"Lede ({kind}).")])
+    assert set(props) == {f"d{kind[0]}-uk"}  # "Oman" is not in "Woman"; mentions decide

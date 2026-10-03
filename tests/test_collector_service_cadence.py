@@ -58,3 +58,22 @@ def test_service_period_s_matches_refresh_settings_formula():
 def test_service_period_s_defaults_to_96_runs_per_day():
     c = make_bare_field_collector({})
     assert c._service_period_s() == 900.0
+
+
+def test_collect_once_runs_event_feeds_before_file_caches_before_fields():
+    """Collectors run strictly one after another, so a slow family delays everything
+    behind it. Event feeds take seconds and must never wait behind the file caches
+    (measured live: a flood-risk-live tile refresh held them for 23 minutes)."""
+    from unittest.mock import patch
+
+    svc = make_bare_service({})
+    svc._event_last_runs, svc._cache_last_runs = {}, {}
+    calls = []
+    with patch("atmos_gl.collectors.service.collect_event_feeds",
+               side_effect=lambda *a: calls.append("event_feeds")), \
+         patch("atmos_gl.collectors.service.collect_file_caches",
+               side_effect=lambda *a: calls.append("file_caches")), \
+         patch.object(CollectorService, "_collect_fields",
+                      side_effect=lambda *a: calls.append("fields"), autospec=True):
+        svc.collect_once()
+    assert calls == ["event_feeds", "file_caches", "fields"]

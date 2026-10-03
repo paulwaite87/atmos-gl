@@ -106,6 +106,17 @@ class FloodRiskLiveCollector(CollectorBase):
     channel_key = "flood_risk_live"
     display_label = "NASA MODIS Flood (Live)"
 
+    # Same head-of-line-blocking guard as FloodRiskHistoricalCollector's budget below:
+    # collect() runs inside CollectorService.collect_once()'s single sequential sweep,
+    # and refreshing every changed tile in one call was measured live at 23 minutes
+    # (287 tiles, ~4.8 s each), holding up every collector behind it. 48 attempts
+    # (~4 min) per hourly run spreads a full daily refresh over ~6 runs, well inside
+    # MODIS_FLOOD_STALE_S (48h) -- tiles past the budget keep contributing their
+    # last-known-good copy and are picked up next run, since has_new_data() keeps
+    # reporting them as changed. A failed attempt counts too: a timeout costs as
+    # much wall-clock time as a download.
+    _MAX_TILE_DOWNLOADS_PER_CYCLE = 48
+
     def source_url(self) -> str | None:
         """Overridden: hardcoded LANCE endpoint, not a data_collector.datasources
         entry -- same "no config datasource, one real endpoint" convention as
@@ -144,10 +155,10 @@ class FloodRiskLiveCollector(CollectorBase):
                 logger.warning(f"{self.channel_key}: tile listing unavailable ({e}); skipping.")
                 return
 
+        changed = [tile for tile in listing if not modis_flood_tile_is_current(tile)]
+        batch = changed[: self._MAX_TILE_DOWNLOADS_PER_CYCLE]
         downloaded = 0
-        for tile in listing:
-            if modis_flood_tile_is_current(tile):
-                continue
+        for tile in batch:
             try:
                 ensure_modis_flood_tile_cached(tile, token)
                 downloaded += 1
@@ -173,7 +184,8 @@ class FloodRiskLiveCollector(CollectorBase):
         save_jrc_hazard_mosaic(modis_flood_mosaic_cache_path(self.workdir), mosaic, lat, lon)
         logger.info(
             f"{self.channel_key}: mosaic rebuilt ({len(cached_tiles)} tile(s) cached, "
-            f"{downloaded} newly downloaded this cycle)."
+            f"{downloaded} newly downloaded this cycle, "
+            f"{len(changed) - len(batch)} changed tile(s) deferred to later cycles)."
         )
 
 
@@ -202,7 +214,7 @@ class FloodRiskHistoricalCollector(CollectorBase):
 
     # collect() runs synchronously inside CollectorService.collect_once()'s single
     # sequential sweep (collectors/service.py) -- everything after this collector in
-    # that sweep (event feeds, then GFS/RTOFS field ingestion), AND the
+    # that sweep (later file caches, then GFS/RTOFS field ingestion), AND the
     # "data_collector" service heartbeat itself, all wait for collect() to return.
     # Downloading every remaining tile in one call can take long enough (network
     # latency x up to 271 tiles, ~515MB total -- ensure_jrc_tile_cached()'s own

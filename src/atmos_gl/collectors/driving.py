@@ -65,9 +65,15 @@ class EventFeedDriver(CollectorDriver):
     collect_event_feeds() and collect_file_caches(), differing only in which tuple and
     which last_runs dict get passed in."""
 
-    def __init__(self, config, last_runs: dict, process_status_adapter=None):
+    def __init__(self, config, last_runs: dict, process_status_adapter=None, lock=None):
         super().__init__(config, process_status_adapter)
         self.last_runs = last_runs
+        # Per-collector cross-process lock shared with collectors/run_once.py (`make
+        # collect`), so a manual run and this sweep never run the same collector at
+        # once. Injectable so tests needn't reach a database.
+        if lock is None:
+            from atmos_gl.db.collector_lock import collector_lock as lock
+        self.lock = lock
 
     def _gate_key(self, CollectorCls):
         return CollectorCls.channel_key
@@ -86,15 +92,22 @@ class EventFeedDriver(CollectorDriver):
                 f"next in {feed.period_s - (time.monotonic() - (self.last_runs.get(key) or 0)):.0f}s)."
             )
             return
-        if not feed.has_new_data():
+        with self.lock(key) as acquired:
+            if not acquired:
+                # A manual run (`make collect`) is in progress; it records its own
+                # status. Leave last_runs alone so this collector is due again next
+                # cycle rather than waiting a whole period.
+                logger.info(f"{key}: manual run in progress; skipping this cycle.")
+                return
+            if not feed.has_new_data():
+                self.last_runs[key] = now
+                self.process_status_adapter.record_process_run(key, "collector", success=True)
+                return
+            logger.info(f"{key}: collecting...")
+            self.process_status_adapter.record_process_start(key, "collector")
+            feed.collect()
             self.last_runs[key] = now
             self.process_status_adapter.record_process_run(key, "collector", success=True)
-            return
-        logger.info(f"{key}: collecting...")
-        self.process_status_adapter.record_process_start(key, "collector")
-        feed.collect()
-        self.last_runs[key] = now
-        self.process_status_adapter.record_process_run(key, "collector", success=True)
 
 
 class FieldCollectorDriver(CollectorDriver):

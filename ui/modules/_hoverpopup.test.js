@@ -65,23 +65,23 @@ describe('hoverPopup', () => {
         map._handlers['mouseenter:quakes-layer']({ features: [feature] });
 
         expect(map.getCanvas().style.cursor).toBe('pointer');
-        expect(html).toHaveBeenCalledWith(feature);
+        expect(html).toHaveBeenCalledWith(feature, [feature]);
         const popup = globalThis.maplibregl.Popup.mock.results[0].value;
         expect(popup.setLngLat).toHaveBeenCalledWith([1, 2]);
         expect(popup.setHTML).toHaveBeenCalledWith('<strong>M 4.2</strong>');
         expect(popup.addTo).toHaveBeenCalledWith(map);
     });
 
-    test('mouseenter on a non-Point feature (e.g. a Troublespots polygon) anchors the popup to the mouse position, not the geometry', () => {
+    test('mouseenter on a non-Point feature (e.g. a polygon) anchors the popup to the mouse position, not the geometry', () => {
         const map = fakeMap();
         const html = vi.fn(() => '<div/>');
-        hoverPopup(map, 'troublespots-fill', { html });
+        hoverPopup(map, 'zones-fill', { html });
 
         const feature = {
             properties: { band: 'severe' },
             geometry: { type: 'Polygon', coordinates: [[[1, 2], [3, 4], [5, 6], [1, 2]]] },
         };
-        map._handlers['mouseenter:troublespots-fill']({ features: [feature], lngLat: [9, 10] });
+        map._handlers['mouseenter:zones-fill']({ features: [feature], lngLat: [9, 10] });
 
         const popup = globalThis.maplibregl.Popup.mock.results[0].value;
         expect(popup.setLngLat).toHaveBeenCalledWith([9, 10]);

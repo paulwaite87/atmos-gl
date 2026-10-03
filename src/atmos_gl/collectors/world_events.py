@@ -26,24 +26,39 @@ such an article's actors don't resolve to anything in CAMEO's country/military/g
 dictionaries the way a real conflict's actors do, so requiring that resolution filters
 the false positive at the source instead of guessing at tone/mention thresholds.
 
-has_new_data() diffs lastupdate.txt's named export file against the last one actually
-processed, so an unchanged 15-min window costs only a small text fetch. Backfill is
-coverage-based, not empty-table-gated: every collect() compares the oldest stored
-event against now - backfill_days and walks masterfilelist.txt for whatever gap
-remains, running each missing file through the same fetch/parse/filter/upsert path a
-normal cycle uses -- a collector that was down for a day self-heals the gap on its
-next successful cycle, rather than only ever seeding once.
+Coverage is tracked per export FILE, not inferred from stored events: GDELT publishes
+one export file per 15-minute slot (verified live: :00/:15/:30/:45 exist, an off-grid
+timestamp 404s), and every processed slot gets a world_event_export_files row. A cycle
+reads lastupdate.txt for the newest published slot, enumerates every slot back to
+now - backfill_days, and fetches whichever have no row -- newest first, capped at
+_MAX_FILES_PER_CYCLE so a long outage's gap can't monopolise the shared collector loop.
+So a gap anywhere in the window (not just at its old end) self-heals over the next few
+cycles, a file yielding zero curated events still counts as covered, and the export
+URL is computed from the slot directly -- no scan of the 128 MB masterfilelist.txt. A
+404 slot is recorded "missing" and not retried; any other failure leaves the slot
+unrecorded, so it's retried next cycle.
+
+After ingesting, each cycle also fetches a headline + summary for source articles that
+don't have one yet (lib/article_preview.py -- the publisher's og:/twitter:/<meta>
+tags), newest events first, at most _MAX_PREVIEWS_PER_CYCLE URLs across
+_PREVIEW_WORKERS threads. Keyed by URL, since GDELT often codes one article into
+several events. ~760 distinct URLs/day at ~2 s each (measured) is ~8 per 15-min cycle
+in steady state; the cap only bites while a backlog drains. has_new_data() is "any
+slot or article preview pending".
 """
 import io
 import logging
 import re
 import zipfile
+from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 
 import requests
 
 from atmos_gl.collectors.base import CollectorBase
 from atmos_gl.db.world_event_adapter import WorldEventAdapter
+from atmos_gl.lib.article_preview import fetch_article_preview
 
 logger = logging.getLogger(__name__)
 
@@ -88,6 +103,18 @@ _DIPLOMACY_ORGS = (
 )
 
 _EXPORT_FILE_RE = re.compile(r"(\d{14})\.export\.CSV\.zip$")
+_SLOT = timedelta(minutes=15)
+# 48 files = 12 hours of GDELT per cycle (~65 KB each, a few seconds per file at most).
+_MAX_FILES_PER_CYCLE = 48
+# Article previews: network-bound, so threaded; 120 URLs / 8 workers at ~2 s each
+# (up to 10 s timeout) keeps a backlog-draining cycle to roughly 30-150 s.
+_MAX_PREVIEWS_PER_CYCLE = 120
+_PREVIEW_WORKERS = 8
+
+
+class ExportFileMissing(Exception):
+    """GDELT returned 404 for an export slot -- distinct from a transient failure,
+    since a genuinely absent file should be recorded and never re-requested."""
 
 
 def _has_state_actor(*codes: str | None) -> bool:
@@ -190,14 +217,14 @@ def _fetch_export_csv(url: str) -> str:
     text. GDELT's export files are latin-1 (confirmed against a live file: several
     actor/place names carry raw high-byte characters that aren't valid UTF-8).
 
-    Raises (rather than returning a sentinel) on fetch failure -- collect()'s single
-    call site has no try/except of its own and relies on the driver's outer catch,
-    while _backfill_gap's per-file loop wraps each call in its own try/except and
-    skips just that file. CollectorBase._get() is a classmethod, called directly
-    since this is a module-level function, not a CollectorBase method."""
-    r = CollectorBase._get(url, timeout=30)
-    if r is None:
-        raise requests.ConnectionError(f"GET {url!r} failed")
+    Raises ExportFileMissing on a 404 and requests.RequestException on any other
+    failure. Uses requests directly rather than CollectorBase._get(), which collapses
+    every failure into None -- the 404-vs-transient distinction is the whole point
+    here (see the module docstring)."""
+    r = requests.get(url, timeout=30, headers={"User-Agent": "AtmosGL-Collector/1.0"})
+    if r.status_code == 404:
+        raise ExportFileMissing(url)
+    r.raise_for_status()
     with zipfile.ZipFile(io.BytesIO(r.content)) as zf:
         name = zf.namelist()[0]
         return zf.read(name).decode("latin-1")
@@ -212,6 +239,29 @@ def _export_url_from_lastupdate(text: str) -> str | None:
     return None
 
 
+def _slot_from_export_url(url: str) -> datetime | None:
+    m = _EXPORT_FILE_RE.search(url)
+    if not m:
+        return None
+    return datetime.strptime(m.group(1), "%Y%m%d%H%M%S").replace(tzinfo=timezone.utc)
+
+
+def _floor_to_slot(t: datetime) -> datetime:
+    return t.replace(minute=t.minute - t.minute % 15, second=0, microsecond=0)
+
+
+def _expected_slots(window_start: datetime, latest: datetime) -> list[datetime]:
+    """Every 15-minute slot from window_start (floored onto the grid) through latest
+    inclusive, newest first."""
+    slots = []
+    slot = latest
+    start = _floor_to_slot(window_start)
+    while slot >= start:
+        slots.append(slot)
+        slot -= _SLOT
+    return slots
+
+
 class WorldEventsCollector(CollectorBase):
     section = "world_events"
     channel_key = "world_events"
@@ -224,107 +274,114 @@ class WorldEventsCollector(CollectorBase):
     def _lastupdate_url(self) -> str:
         return f"{self.datasource_url('world_events').rstrip('/')}/lastupdate.txt"
 
-    def _masterfilelist_url(self) -> str:
-        return f"{self.datasource_url('world_events').rstrip('/')}/masterfilelist.txt"
+    def _export_url(self, slot: datetime) -> str:
+        base = self.datasource_url("world_events").rstrip("/")
+        return f"{base}/{slot.strftime('%Y%m%d%H%M%S')}.export.CSV.zip"
+
+    def _window_start(self) -> datetime:
+        backfill_days = int(self.settings.get("backfill_days", 3))
+        return datetime.now(timezone.utc) - timedelta(days=backfill_days)
+
+    def _latest_slot(self) -> datetime | None:
+        """The newest published slot, per lastupdate.txt -- the upper bound on what can
+        be fetched (a slot past it may not exist yet). None if it can't be read."""
+        r = self._get(self._lastupdate_url(), timeout=10)
+        if r is None:
+            return None
+        url = _export_url_from_lastupdate(r.text)
+        return _slot_from_export_url(url) if url else None
+
+    def _pending_slots(self, latest: datetime) -> list[datetime]:
+        """Slots in the backfill window with no processed record, newest first."""
+        window_start = self._window_start()
+        done = self.world_event_adapter.processed_export_slots(_floor_to_slot(window_start))
+        return [s for s in _expected_slots(window_start, latest) if s not in done]
 
     def has_new_data(self) -> bool:
-        """Cheap freshness check: lastupdate.txt always names the current export file
-        -- compare against the last one actually processed (cached by URL, like
-        CollectorBase's own HEAD-based ETag cache) rather than re-downloading/parsing
-        on every driver poll faster than GDELT's own 15-min cadence."""
-        lastupdate_url = self._lastupdate_url()
-        r = self._get(lastupdate_url, timeout=10)
-        if r is None:
-            return True  # can't tell -> collect anyway, safe fallback
-        url = _export_url_from_lastupdate(r.text)
-
-        if not url:
+        """True when any slot in the backfill window is still unprocessed -- the newest
+        one GDELT just published, or an older gap -- or any article preview is pending.
+        lastupdate.txt is small, so this is cheap; on a failed read, collect anyway
+        (safe fallback)."""
+        latest = self._latest_slot()
+        if latest is None:
             return True
-        if self._etag_cache.get(lastupdate_url) == url:
-            return False
-        return True
+        if self._pending_slots(latest):
+            return True
+        return bool(self.world_event_adapter.urls_needing_preview(self._window_start(), 1))
 
-    def _backfill_gap(self, backfill_days: int, min_mentions: int) -> None:
-        """Walks masterfilelist.txt for whatever part of the backfill_days window
-        isn't covered yet by the oldest stored event, running each missing export
-        file through the same fetch/parse/filter/upsert path collect() uses.
+    def _fetch_article_previews(self) -> None:
+        """Fetches and stores headline/summary previews for the next batch of source
+        URLs that need one. A failure here is logged, never raised -- the cycle's
+        event ingestion has already succeeded and shouldn't be reported as failed."""
+        try:
+            urls = self.world_event_adapter.urls_needing_preview(
+                self._window_start(), _MAX_PREVIEWS_PER_CYCLE
+            )
+            if not urls:
+                return
+            with ThreadPoolExecutor(max_workers=_PREVIEW_WORKERS) as pool:
+                previews = list(pool.map(fetch_article_preview, urls))
+            self.world_event_adapter.save_article_previews([
+                {
+                    "url": url,
+                    "status": p.status,
+                    "http_status": p.http_status,
+                    "headline": p.headline,
+                    "summary": p.summary,
+                }
+                for url, p in zip(urls, previews)
+            ])
+            counts = Counter(p.status for p in previews)
+            logger.info(
+                f"World Events: fetched {len(urls)} article preview(s): "
+                + ", ".join(f"{n} {status}" for status, n in sorted(counts.items()))
+            )
+        except Exception as e:
+            logger.error(f"World Events: article preview pass failed: {e}")
 
-        masterfilelist.txt is chronologically ascending back to 2015, so the very
-        first backfill (an empty table) scans from the start of that huge file up to
-        where the window begins -- a one-time cost accepted for simplicity rather
-        than an HTTP Range-based tail-seek; every subsequent cycle is a fast no-op
-        once expiry_days' worth of retained data already exceeds backfill_days.
-        """
-        now = datetime.now(timezone.utc)
-        target_start = now - timedelta(days=backfill_days)
-
-        oldest = self.world_event_adapter.oldest_event_date()
-        if oldest is not None and oldest <= target_start:
-            return  # already have full coverage
-
-        gap_end = oldest if oldest is not None else now
-        logger.info(
-            f"World Events: backfilling coverage from {target_start.isoformat()} "
-            f"to {gap_end.isoformat()}."
-        )
-
-        r = self._get(self._masterfilelist_url(), timeout=60, stream=True)
-        if r is None:
-            logger.error("World Events: masterfilelist.txt fetch failed.")
-            return
-
-        urls = []
-        for line in r.iter_lines(decode_unicode=True):
-            if not line or ".export.CSV.zip" not in line:
-                continue
-            parts = line.split()
-            if not parts:
-                continue
-            m = _EXPORT_FILE_RE.search(parts[-1])
-            if not m:
-                continue
-            ts = datetime.strptime(m.group(1), "%Y%m%d%H%M%S").replace(tzinfo=timezone.utc)
-            if ts < target_start:
-                continue
-            if ts >= gap_end:
-                break  # ascending order -- nothing further is needed
-            urls.append(parts[-1])
-
-        upserted = 0
-        for url in urls:
-            try:
-                rows = _parse_export_rows(_fetch_export_csv(url))
-                rows = [row for row in rows if row["num_mentions"] >= min_mentions]
-                self.world_event_adapter.upsert_events(rows)
-                upserted += len(rows)
-            except Exception as e:
-                logger.warning(f"World Events: backfill file {url} failed, skipping: {e}")
-                continue
-
-        logger.info(
-            f"World Events: backfill complete, upserted {upserted} event(s) "
-            f"across {len(urls)} file(s)."
-        )
+    def _ingest_slot(self, slot: datetime, min_mentions: int) -> int | None:
+        """Fetches, filters and upserts one slot's export file, then records it.
+        Returns rows upserted, or None if the slot was left pending for a retry."""
+        url = self._export_url(slot)
+        try:
+            rows = _parse_export_rows(_fetch_export_csv(url))
+        except ExportFileMissing:
+            logger.info(f"World Events: {url} does not exist (404); recording as missing.")
+            self.world_event_adapter.mark_export_processed(slot, "missing")
+            return 0
+        except Exception as e:
+            logger.warning(f"World Events: fetching {url} failed, will retry: {e}")
+            return None
+        rows = [row for row in rows if row["num_mentions"] >= min_mentions]
+        if not self.world_event_adapter.upsert_events(rows):
+            return None
+        self.world_event_adapter.mark_export_processed(slot, "ok", len(rows))
+        return len(rows)
 
     def collect(self) -> None:
         min_mentions = int(self.settings.get("min_mentions", 10))
-        backfill_days = int(self.settings.get("backfill_days", 3))
 
-        self._backfill_gap(backfill_days, min_mentions)
-
-        lastupdate_url = self._lastupdate_url()
-        r = self._get(lastupdate_url, timeout=10)
-        if r is None:
-            logger.error(f"World Events: lastupdate.txt fetch failed for {lastupdate_url!r}.")
-            return
-        url = _export_url_from_lastupdate(r.text)
-
-        if not url:
-            logger.warning("World Events: lastupdate.txt has no export.CSV.zip entry; skipping.")
+        latest = self._latest_slot()
+        if latest is None:
+            logger.error("World Events: could not read the newest slot from lastupdate.txt.")
             return
 
-        rows = _parse_export_rows(_fetch_export_csv(url))
-        rows = [row for row in rows if row["num_mentions"] >= min_mentions]
-        self.world_event_adapter.upsert_events(rows)
-        self._etag_cache[lastupdate_url] = url
-        logger.info(f"World Events: upserted {len(rows)} event(s) from {url}.")
+        pending = self._pending_slots(latest)
+        batch = pending[:_MAX_FILES_PER_CYCLE]
+        upserted = 0
+        retry_later = 0
+        for slot in batch:
+            n = self._ingest_slot(slot, min_mentions)
+            if n is None:
+                retry_later += 1
+            else:
+                upserted += n
+
+        self.world_event_adapter.prune_export_slots(_floor_to_slot(self._window_start()))
+        logger.info(
+            f"World Events: processed {len(batch) - retry_later}/{len(batch)} export "
+            f"file(s), upserted {upserted} event(s); {len(pending) - len(batch)} more "
+            f"slot(s) pending for later cycles, {retry_later} to retry."
+        )
+
+        self._fetch_article_previews()

@@ -20,8 +20,8 @@ layer you're about to touch.
 | **Point-feed layer** | Discrete point/symbol features with no server-side render task at all — pure DB-backed GeoJSON. | `_feedhelpers.js` + `_hoverpopup.js` | A collector only; no `TASK_CLASSES` entry | [quakes.md](quakes.md) |
 | **Markers** (one instance) | A hybrid: backend-enriched like a render task, but frontend-consumed as a plain point feed like shape 4. | `_layerstack.js` + `_hoverpopup.js` | `MarkerUpdater` — no image render, writes live weather into the DB row | [markers.md](markers.md) |
 
-11 of the 28 `ALL_LAYERS` entries are Point-feed layers (quakes, volcanoes, world_events,
-troublespots, lightning, storms, shipping, satellites, flightradar, terminator, landmass);
+10 of the 27 `ALL_LAYERS` entries are Point-feed layers (quakes, volcanoes, world_events,
+lightning, storms, shipping, satellites, flightradar, terminator, landmass);
 `markers` is the only layer of its shape. The rest split across the first three shapes, with
 several — wind chief among them — combining more than one.
 

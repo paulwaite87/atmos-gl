@@ -36,6 +36,44 @@ const CATEGORY_TOGGLE_KEYS = {
 const visibleCategories = (cfg) => Object.keys(CATEGORY_TOGGLE_KEYS)
     .filter((cat) => cfg[CATEGORY_TOGGLE_KEYS[cat]] !== false);
 
+// Other outlets' copies of the same story (the backend collapses duplicates to one
+// marker -- see WorldEventAdapter.get_events_as_geojson), labelled by domain.
+const MAX_OTHER_OUTLETS = 5;
+
+const outletLabel = (url) => {
+    try {
+        return new URL(url).hostname.replace(/^www\./, '');
+    } catch {
+        return url;
+    }
+};
+
+export function alsoReportedByHtml(urls) {
+    if (!Array.isArray(urls) || urls.length === 0) return '';
+    const links = urls.slice(0, MAX_OTHER_OUTLETS).map((u) =>
+        `<a href="${escapeHtml(u)}" target="_blank" rel="noopener noreferrer">${escapeHtml(outletLabel(u))}</a>`);
+    const more = urls.length > MAX_OTHER_OUTLETS ? ` +${urls.length - MAX_OTHER_OUTLETS} more` : '';
+    return `Also reported by: ${links.join(', ')}${more}`;
+}
+
+// Stories GDELT geocodes to the same place (often a city's or country's centroid)
+// land on exactly the same coordinate, so all but the topmost marker would be
+// unreachable -- the popup lists every distinct story at the hovered marker's point
+// instead. e.features can repeat a feature (tile overlap), hence the id dedupe.
+export function coincidentFeatures(top, features) {
+    const [lon, lat] = top.geometry.coordinates;
+    const seen = new Set();
+    return [top, ...(features || [])].filter((f) => {
+        const [flon, flat] = f.geometry.coordinates;
+        const key = f.properties.id ?? f.id;
+        if (flon !== lon || flat !== lat || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+    });
+}
+
+const STACK_SEPARATOR = '<hr style="border:0;border-top:2px solid #999;margin:6px 0;">';
+
 const filterFor = (cfg) => ['in', ['get', 'category'], ['literal', visibleCategories(cfg)]];
 
 export function loadLayer(map, config) {
@@ -44,7 +82,8 @@ export function loadLayer(map, config) {
     let stopPopup = null;
 
     const urlFor = (cfg) => `${window.WM_API}/world_events/geojson`
-        + `?expiry_days=${cfg.expiry_days ?? 7}&t=${Date.now()}`;
+        + `?expiry_days=${cfg.expiry_days ?? 7}`
+        + `&max_conflict_tone=${cfg.max_conflict_tone ?? 0}&t=${Date.now()}`;
 
     const fetchData = (cfg) => fetchOrThrow(urlFor(cfg));
 
@@ -54,7 +93,7 @@ export function loadLayer(map, config) {
         Number(cfg.marker_size) || 1.0,
     ];
 
-    const popupHtml = (f) => {
+    const storyHtml = (f) => {
         const d = f.properties;
         const rows = [];
         if (d.actor1_name && d.actor2_name) {
@@ -73,7 +112,13 @@ export function loadLayer(map, config) {
             rows.push({ label: 'Sources', value: `Reported by ${d.num_sources} source${plural}`, width: 60 });
         }
 
-        const blocks = [{ type: 'divider' }];
+        // headline/summary are scraped from the source article's own metadata
+        // (lib/article_preview.py) and only present once that fetch succeeded --
+        // otherwise the popup is exactly the pre-preview layout. 'text' blocks escape.
+        const blocks = [];
+        if (d.headline) blocks.push({ type: 'text', text: d.headline, bold: true });
+        if (d.summary) blocks.push({ type: 'text', text: d.summary });
+        blocks.push({ type: 'divider' });
         if (rows.length) blocks.push({ type: 'rows', rows });
         if (d.source_url) {
             const href = escapeHtml(d.source_url);
@@ -81,14 +126,24 @@ export function loadLayer(map, config) {
                 type: 'notice',
                 raw: true,
                 color: '#6c757d',
-                text: `<a href="${href}" target="_blank" rel="noopener noreferrer">Read more →</a>`,
+                text: `<a href="${href}" target="_blank" rel="noopener noreferrer">Read full article →</a>`,
             });
         }
+        const also = alsoReportedByHtml(d.also_reported_by);
+        if (also) blocks.push({ type: 'notice', raw: true, color: '#6c757d', text: also });
 
         return buildPopupHtml({
             title: { text: CATEGORY_LABELS[d.category] || d.category, variant: d.category },
             blocks,
         });
+    };
+
+    const popupHtml = (top, features) => {
+        const stories = coincidentFeatures(top, features);
+        if (stories.length === 1) return storyHtml(top);
+        const header = `<div style="font-family:sans-serif;font-size:11px;color:#6c757d;padding:5px 5px 0;">`
+            + `${stories.length} stories at this location</div>`;
+        return header + stories.map(storyHtml).join(STACK_SEPARATOR);
     };
 
     const mount = async (cfg) => {
@@ -113,7 +168,8 @@ export function loadLayer(map, config) {
                 'circle-stroke-color': 'rgba(0,0,0,0.6)',
             },
         });
-        stopPopup = hoverPopup(map, layerId, { html: popupHtml });
+        // Wider than the default 240px: the scraped headline/summary read as prose.
+        stopPopup = hoverPopup(map, layerId, { html: popupHtml, maxWidth: '320px' });
     };
 
     const refresh = async (cfg) => {

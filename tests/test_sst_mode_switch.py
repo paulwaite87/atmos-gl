@@ -22,8 +22,14 @@ Original two compounding causes:
 import os
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from atmos_gl.collectors.sst import SstCollector
 from atmos_gl.tasks.sst import SSTUpdater
+
+
+# EventFeedDriver takes a Postgres advisory lock per collector; no DB here.
+pytestmark = pytest.mark.usefixtures("no_collector_lock")
 
 
 def make_bare_sst_collector(settings=None, workdir="."):
