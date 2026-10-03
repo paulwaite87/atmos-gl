@@ -101,6 +101,7 @@ from atmos_gl.collectors.gfs_waves import GfsWavesCollector
 from atmos_gl.collectors.rtofs_currents import RtofsCurrentsCollector
 from atmos_gl.collectors.flood_risk import FloodRiskHistoricalCollector, FloodRiskLiveCollector
 from atmos_gl.collectors.vegetation_mask import VegetationMaskCollector
+from atmos_gl.collectors.frontline import FrontlineCollector
 from atmos_gl.collectors.driving import EventFeedDriver
 
 logger = logging.getLogger(__name__)
@@ -114,6 +115,7 @@ COLLECTORS = (
     SatellitesCollector,
     MarkersSyncCollector,
     WorldEventsCollector,
+    FrontlineCollector,
 )
 
 # Synchronous file-cache collectors (image/netCDF under {workdir}/data), driven by
