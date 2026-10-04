@@ -556,8 +556,9 @@ while.
 #### Ukraine Frontline
 Shades the Russo-Ukrainian front line as published by
 [DeepStateMap.live](https://deepstatemap.live/en), checked hourly by default: territory
-occupied by Russia in red, the contested "grey zone" in grey, and (optionally) areas
-Ukraine has liberated in green. Ukrainian-held territory is everything left unshaded.
+occupied by Russia since the full-scale invasion of February 2022 in red, the areas it
+has held since 2014 (Crimea and parts of Donetsk and Luhansk oblasts) in violet, the
+contested "grey zone" in grey, and (optionally) areas Ukraine has liberated in green. Ukrainian-held territory is everything left unshaded.
 Hovering an area shows when DeepState last updated the map and that update's note
 (e.g. "The enemy has occupied Svyatopetrivka…"); the places it names are links —
 click one to fly the map there. The popup follows the cursor, so click once to pin it

@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import {
     arrowSize, changeDays, changeSummaryRows, compassPoint, descriptionHtml, linkifyHtml, parseFlyTarget,
-    visibleStatuses,
+    statusLabel, visibleStatuses,
 } from './frontline.js';
 
 describe('visibleStatuses', () => {
@@ -109,4 +109,13 @@ describe('arrowSize', () => {
 
 test('visibleStatuses never includes attack arrows (their own symbol layer draws them)', () => {
     expect(visibleStatuses({ show_contested: true, show_liberated: true })).not.toContain('attack_direction');
+});
+
+describe('statusLabel', () => {
+    test('separates land occupied since 2014 from since 2022', () => {
+        expect(statusLabel({ status: 'occupied', occupied_since: 2014, area_name: 'Crimea' }))
+            .toBe('Occupied by Russia since 2014');
+        expect(statusLabel({ status: 'occupied' })).toBe('Occupied by Russia since 2022');
+        expect(statusLabel({ status: 'contested' })).toBe('Contested (grey zone)');
+    });
 });

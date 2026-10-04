@@ -44,6 +44,15 @@ _STATUS_BY_TAG = {
     "status.dismissed": "liberated",
     "status.dismissed_at": "liberated",
 }
+# The areas Russia has held since 2014 -- DeepState maps them as named territories,
+# separate from (and never overlapping, checked live) the land occupied since the
+# full-scale invasion of 24 Feb 2022. Still status "occupied" (the gains/losses diff
+# counts all occupied land); occupied_since/area_name let the map tell them apart.
+_OCCUPIED_SINCE_2014 = {
+    "territories.crimea": "Crimea",
+    "territories.ordlo": "Parts of Donetsk and Luhansk oblasts",
+    "territories.tuzla": "Tuzla Island",
+}
 _TAG_RE = re.compile(r"geoJSON\.([\w.]+)")
 # A liberated area's date(s), e.g. "{{at:27.03 - 29.03}}" -- day.month, no year.
 _LIBERATED_AT_RE = re.compile(r"\{\{at:([^}]*)\}\}")
@@ -126,8 +135,8 @@ def _round_coords(coords):
 
 def frontline_features(raw: dict) -> dict:
     """DeepState's raw FeatureCollection -> the classified area polygons (status:
-    occupied / contested / liberated) and direction-of-attack points (status:
-    attack_direction, with bearing)."""
+    occupied / contested / liberated; 2014-occupied areas also carry occupied_since and
+    area_name) and direction-of-attack points (status: attack_direction, with bearing)."""
     features = []
     for f in raw.get("features") or []:
         geometry = f.get("geometry") or {}
@@ -144,10 +153,13 @@ def frontline_features(raw: dict) -> dict:
         if status is None or geometry.get("type") not in _AREA_TYPES:
             continue
         properties = {"status": status}
+        source = f.get("properties") or {}
         if status == "liberated":
-            raw = f.get("properties") or {}
-            properties["liberated_on"] = _liberated_on(raw.get("name") or "")
-            properties["note"] = area_note(raw.get("description"))
+            properties["liberated_on"] = _liberated_on(source.get("name") or "")
+            properties["note"] = area_note(source.get("description"))
+        elif (area_name := _OCCUPIED_SINCE_2014.get(_tag(f))):
+            properties["occupied_since"] = 2014
+            properties["area_name"] = area_name
         features.append({
             "type": "Feature",
             "geometry": {"type": geometry["type"], "coordinates": _round_coords(geometry["coordinates"])},
