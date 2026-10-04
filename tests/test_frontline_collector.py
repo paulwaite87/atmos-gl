@@ -280,3 +280,18 @@ def test_snapshots_stored_before_versioning_are_refetched_once():
     fetched.clear()
     c.collect()
     assert fetched == ["https://deepstate.example/api/history/public"]
+
+
+def test_areas_occupied_since_2014_are_tagged_and_named():
+    raw = {"features": [
+        _feature("Окупований Крим /// Occupied Crimea\xa0/// geoJSON.territories.crimea"),
+        _feature("ОРДЛО /// CADR and CALR\xa0/// geoJSON.territories.ordlo"),
+        _feature("Острів Тузла /// Occupied Tuzla Island /// geoJSON.territories.tuzla"),
+        _feature("Окуповано /// Occupied /// geoJSON.status.occupied"),
+    ]}
+    assert [f["properties"] for f in frontline_features(raw)["features"]] == [
+        {"status": "occupied", "occupied_since": 2014, "area_name": "Crimea"},
+        {"status": "occupied", "occupied_since": 2014, "area_name": "Parts of Donetsk and Luhansk oblasts"},
+        {"status": "occupied", "occupied_since": 2014, "area_name": "Tuzla Island"},
+        {"status": "occupied"},
+    ]

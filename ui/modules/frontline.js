@@ -6,7 +6,7 @@ import { fetchOrThrow, buildPopupHtml, escapeHtml } from './_feedhelpers.js';
 // ("grey zone") and liberated polygons from DeepState's latest update. Ukrainian-held
 // territory has no polygon of its own -- it's everything not shaded here.
 const STATUS_LABELS = {
-    occupied: 'Occupied by Russia',
+    occupied: 'Occupied by Russia since 2022',
     contested: 'Contested (grey zone)',
     liberated: 'Liberated by Ukraine',
     attack_direction: 'Direction of attack',
@@ -49,6 +49,11 @@ function arrowImage() {
     ctx.stroke();
     return ctx.getImageData(0, 0, ARROW_PX, ARROW_PX);
 }
+
+// Crimea, Tuzla and the 2014 parts of Donetsk/Luhansk (collectors/frontline.py's
+// occupied_since) -- violet, distinct from the 2022 red and from every other colour here.
+const OCCUPIED_2014_COLOR = '#8e24aa';
+const OCCUPIED_2014_LABEL = 'Occupied by Russia since 2014';
 
 const STATUS_COLORS = {
     occupied: '#c62828',
@@ -139,12 +144,19 @@ export function visibleStatuses(cfg) {
 const filterFor = (cfg) => ['in', ['get', 'status'], ['literal', visibleStatuses(cfg)]];
 
 const colorExpr = [
-    'match', ['get', 'status'],
-    'occupied', STATUS_COLORS.occupied,
-    'contested', STATUS_COLORS.contested,
-    'liberated', STATUS_COLORS.liberated,
-    '#888888',
+    'case',
+    ['==', ['get', 'occupied_since'], 2014], OCCUPIED_2014_COLOR,
+    ['match', ['get', 'status'],
+        'occupied', STATUS_COLORS.occupied,
+        'contested', STATUS_COLORS.contested,
+        'liberated', STATUS_COLORS.liberated,
+        '#888888'],
 ];
+
+// The popup title for an area: 2014-occupied areas get their own label.
+export const statusLabel = (properties) => (properties.occupied_since === 2014
+    ? OCCUPIED_2014_LABEL
+    : STATUS_LABELS[properties.status] || properties.status);
 
 export function loadLayer(map, config) {
     const sourceId = 'frontline-source';
@@ -182,8 +194,12 @@ export function loadLayer(map, config) {
     const arrowIconSize = (cfg) => 0.5 * arrowSize(cfg);
 
     const statusHtml = (f) => {
-        const { status, liberated_on: liberatedOn, note, bearing } = f.properties;
+        const { status, liberated_on: liberatedOn, note, bearing, area_name: areaName } = f.properties;
         const blocks = [];
+        if (areaName) {
+            blocks.push({ type: 'text', text: areaName, bold: true });
+            blocks.push({ type: 'divider' });
+        }
         if (status === 'attack_direction') {
             blocks.push({ type: 'rows', rows: [{ label: 'Heading', value: `${compassPoint(bearing)} (${Math.round(bearing)}°)`, width: 60 }] });
             blocks.push({ type: 'divider' });
@@ -200,7 +216,7 @@ export function loadLayer(map, config) {
             if (description) blocks.push({ type: 'text', text: description, raw: true });
         }
         blocks.push({ type: 'notice', raw: true, color: '#6c757d', text: `Source: ${ATTRIBUTION}` });
-        return buildPopupHtml({ title: { text: STATUS_LABELS[status] || status }, blocks });
+        return buildPopupHtml({ title: { text: statusLabel(f.properties) }, blocks });
     };
 
     const changeHtml = (f) => {
