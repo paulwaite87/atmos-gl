@@ -13,8 +13,9 @@ logger = logging.getLogger(__name__)
 
 
 def _as_dict(row) -> dict:
-    return {"id": row.id, "created_at": row.created_at, "description": row.description,
-            "description_segments": row.description_segments, "geojson": row.geojson}
+    return {"id": row.id, "created_at": row.created_at, "source_updated_at": row.source_updated_at,
+            "description": row.description, "description_segments": row.description_segments,
+            "geojson": row.geojson}
 
 
 def _with_snapshot(row: dict) -> str:
@@ -38,13 +39,26 @@ class FrontlineAdapter:
         with Session() as session:
             return session.get(FrontlineSnapshot, snapshot_id) is not None
 
+    def get_source_updated_at(self, snapshot_id: int):
+        """DeepState's updatedAt as stored with the snapshot; None if the snapshot isn't
+        stored or predates the column."""
+        with Session() as session:
+            return session.execute(
+                select(FrontlineSnapshot.source_updated_at).where(FrontlineSnapshot.id == snapshot_id)
+            ).scalar()
+
     def save_snapshot(
-        self, snapshot_id: int, created_at, description, geojson: dict, description_segments=None,
+        self, snapshot_id: int, created_at, description, geojson: dict,
+        description_segments=None, source_updated_at=None,
     ) -> None:
-        stmt = pg_insert(FrontlineSnapshot).values(
-            id=snapshot_id, created_at=created_at, description=description, geojson=geojson,
-            description_segments=description_segments,
-        ).on_conflict_do_nothing(index_elements=[FrontlineSnapshot.id])
+        """Stores the snapshot, replacing any stored copy of the same update (a
+        re-fetch after DeepState edited it)."""
+        values = dict(
+            created_at=created_at, description=description, geojson=geojson,
+            description_segments=description_segments, source_updated_at=source_updated_at,
+        )
+        stmt = pg_insert(FrontlineSnapshot).values(id=snapshot_id, **values)
+        stmt = stmt.on_conflict_do_update(index_elements=[FrontlineSnapshot.id], set_=values)
         with Session() as session:
             session.execute(stmt)
             session.commit()
@@ -106,13 +120,18 @@ class FakeFrontlineAdapter:
     def has_snapshot(self, snapshot_id: int) -> bool:
         return snapshot_id in self._snapshots
 
+    def get_source_updated_at(self, snapshot_id: int):
+        return (self._snapshots.get(snapshot_id) or {}).get("source_updated_at")
+
     def save_snapshot(
-        self, snapshot_id: int, created_at, description, geojson: dict, description_segments=None,
+        self, snapshot_id: int, created_at, description, geojson: dict,
+        description_segments=None, source_updated_at=None,
     ) -> None:
-        self._snapshots.setdefault(snapshot_id, {
-            "id": snapshot_id, "created_at": created_at, "description": description,
-            "description_segments": description_segments, "geojson": geojson,
-        })
+        self._snapshots[snapshot_id] = {
+            "id": snapshot_id, "created_at": created_at, "source_updated_at": source_updated_at,
+            "description": description, "description_segments": description_segments,
+            "geojson": geojson,
+        }
 
     def get_snapshot_at(self, at=None) -> dict | None:
         rows = [r for r in self._snapshots.values() if at is None or r["created_at"] <= at]

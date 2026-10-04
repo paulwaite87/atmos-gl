@@ -55,3 +55,20 @@ def test_frontline_changes_before_any_baseline_has_no_comparison(client):
     fake.save_snapshot(3, datetime(2026, 10, 1, tzinfo=timezone.utc), None, _box_fc(37.3))
     app.dependency_overrides[get_frontline_adapter] = lambda: fake
     assert client.get("/api/frontline/changes?days=7").json()["comparison"] is None
+
+
+def test_frontline_changes_are_recomputed_when_deepstate_edits_an_update(client):
+    fake = FakeFrontlineAdapter()
+    week_ago = datetime(2026, 9, 24, tzinfo=timezone.utc)
+    latest = datetime(2026, 10, 1, tzinfo=timezone.utc)
+    fake.save_snapshot(1, week_ago, None, _box_fc(37.1))
+    fake.save_snapshot(2, latest, None, _box_fc(37.2), source_updated_at=latest)
+    app.dependency_overrides[get_frontline_adapter] = lambda: fake
+    before = client.get("/api/frontline/changes?days=7").json()["comparison"]["totals_km2"]
+
+    # DeepState redraws update 2 (same id) further east; the collector stores over it.
+    fake.save_snapshot(2, latest, None, _box_fc(37.3),
+                       source_updated_at=datetime(2026, 10, 2, tzinfo=timezone.utc))
+    after = client.get("/api/frontline/changes?days=7").json()["comparison"]["totals_km2"]
+
+    assert after["russian_gain"] == pytest.approx(2 * before["russian_gain"], rel=0.02)

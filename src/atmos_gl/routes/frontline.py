@@ -8,8 +8,10 @@ from atmos_gl.lib.frontline_changes import CHANGE_WINDOWS_DAYS, changes_feature_
 
 router = APIRouter(prefix="/api", tags=["Frontline"])
 
-# (latest id, baseline id) -> response body. A pair's diff never changes, and only a
-# handful of pairs are live at once (one per window), so this stays tiny.
+# (latest, baseline, days) -> response body, each snapshot keyed by id AND DeepState's
+# updatedAt: the collector re-fetches an update DeepState edits under the same id, and
+# that must not keep serving the old diff. Only a handful of entries are live at once
+# (one per window), so this stays tiny.
 _changes_cache: dict[tuple, str] = {}
 _CHANGES_CACHE_MAX = 16
 
@@ -39,7 +41,10 @@ def get_frontline_changes(
         frontline_adapter.get_snapshot_at(latest["created_at"] - timedelta(days=days))
         if latest else None
     )
-    key = (latest and latest["id"], baseline and baseline["id"], days)
+    def version(snapshot):
+        return (snapshot["id"], snapshot["source_updated_at"]) if snapshot else None
+
+    key = (version(latest), version(baseline), days)
     body = _changes_cache.get(key)
     if body is None:
         body = json.dumps(changes_feature_collection(latest, baseline, days))

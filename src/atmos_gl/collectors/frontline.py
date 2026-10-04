@@ -166,6 +166,13 @@ def created_at(entry: dict) -> datetime:
     return datetime.fromisoformat(entry["createdAt"].replace("Z", "+00:00"))
 
 
+def source_updated_at(entry: dict) -> datetime | None:
+    """DeepState's updatedAt for an update -- bumped whenever it edits a published one
+    (seen live: an update revised the day after it went up)."""
+    value = entry.get("updatedAt")
+    return datetime.fromisoformat(value.replace("Z", "+00:00")) if value else None
+
+
 def updates_to_store(history: list) -> list:
     """The latest published update, then the one current CHANGE_WINDOWS_DAYS before
     it, deduplicated (a quiet week can make two windows share one update) -- newest
@@ -285,13 +292,22 @@ class FrontlineCollector(CollectorBase):
     def collect(self) -> None:
         """Stores DeepState's latest update, plus the update that was current 1/7/30
         days before it (CHANGE_WINDOWS_DAYS) -- the baselines the gains/losses view
-        compares against. Each is fetched only once; already-stored ids are skipped."""
+        compares against. Each is fetched once, then again only when DeepState's
+        updatedAt for it moves on from the stored one (it edits published updates)."""
         r = self._get(self._url("history/public"), timeout=30)
         if r is None:
             raise RuntimeError("Frontline: couldn't fetch DeepState's update history")
         history = r.json()
         for entry in updates_to_store(history):
-            if not self.frontline_adapter.has_snapshot(int(entry["id"])):
+            snapshot_id = int(entry["id"])
+            if not self.frontline_adapter.has_snapshot(snapshot_id):
+                self._store(entry)
+                continue
+            edited = source_updated_at(entry)
+            stored = self.frontline_adapter.get_source_updated_at(snapshot_id)
+            if edited is not None and edited != stored:
+                reason = "edited by DeepState" if stored else "stored without a version"
+                logger.info(f"Frontline: update {snapshot_id} {reason}; re-fetching")
                 self._store(entry)
 
     def _store(self, entry: dict) -> None:
@@ -305,6 +321,7 @@ class FrontlineCollector(CollectorBase):
         self.frontline_adapter.save_snapshot(
             snapshot_id, created_at(entry), update_description(entry), geojson,
             description_segments=description_segments(entry),
+            source_updated_at=source_updated_at(entry),
         )
         arrows = sum(1 for f in geojson["features"] if f["properties"]["status"] == ATTACK_DIRECTION)
         logger.info(
