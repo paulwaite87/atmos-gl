@@ -316,7 +316,11 @@
                     console.warn("MapTiler API Key missing! Check your host .env configuration.");
                 }
 
-                const styleUrl = `https://api.maptiler.com/maps/satellite/style.json?key=${maptilerKey}`;
+                // The configured basemap (common.basemap, personal override included) --
+                // the picker below starts out showing this same slug, so the initial
+                // style must match it or re-picking it is a no-op.
+                const initialBasemap = configData.common?.basemap || 'satellite';
+                const styleUrl = `https://api.maptiler.com/maps/${encodeURIComponent(initialBasemap)}/style.json?key=${maptilerKey}`;
                 let mapStyle = styleUrl;
                 try {
                     const styleJson = await (await fetch(styleUrl)).json();
@@ -552,7 +556,7 @@
                 try {
                     const { buildBasemapStyle, mountBasemapPicker } = await import(`/basemap.js`);
                     if (mountBasemapPicker && buildBasemapStyle) {
-                        let currentSlug = configData.common?.basemap || 'satellite';
+                        let currentSlug = initialBasemap;
                         const host = document.getElementById('basemap-picker-host') || document.body;
 
                         mountBasemapPicker(host, currentSlug, async (slug) => {
