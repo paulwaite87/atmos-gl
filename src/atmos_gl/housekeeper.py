@@ -25,6 +25,8 @@ from atmos_gl.db.ship_adapter import ShipAdapter
 from atmos_gl.db.aircraft_adapter import AircraftAdapter
 from atmos_gl.db.volcanic_activity_adapter import VolcanicActivityAdapter
 from atmos_gl.db.world_event_adapter import WorldEventAdapter
+from atmos_gl.db.frontline_adapter import FrontlineAdapter
+from atmos_gl.lib.frontline_changes import CHANGE_WINDOWS_DAYS
 from atmos_gl.db.process_status_adapter import ProcessStatusAdapter
 
 logger = logging.getLogger("atmos_gl.housekeeper")
@@ -230,6 +232,26 @@ class Housekeeper:
         except Exception as e:
             logger.warning(f"Housekeeper: world events prune failed: {e}")
 
+    def prune_frontline_snapshots(self, expiry_days: float):
+        """Prune DeepState front-line snapshots older than expiry_days before the
+        latest one (0/missing -> keep forever) -- FrontlineCollector only ever inserts.
+        Never prunes within the longest gains/losses window (CHANGE_WINDOWS_DAYS): a
+        smaller setting is raised to it, and FrontlineAdapter.prune_older_than keeps the
+        snapshot current at the cutoff, so every baseline the view compares against
+        survives."""
+        if not expiry_days or expiry_days <= 0:
+            return
+        keep_days = max(expiry_days, max(CHANGE_WINDOWS_DAYS))
+        try:
+            deleted = FrontlineAdapter().prune_older_than(keep_days)
+            if deleted:
+                logger.info(
+                    f"Housekeeper pruned {deleted} frontline snapshot(s) older than "
+                    f"{keep_days:g}d before the latest."
+                )
+        except Exception as e:
+            logger.warning(f"Housekeeper: frontline prune failed: {e}")
+
     def prune_orphaned_hour_outputs(self):
         """Delete per-hour render outputs whose (layer, hour) no longer has any
         backing field in the catalog.
@@ -402,6 +424,10 @@ class Housekeeper:
                         self.settings.get("world_events_expiry_days", 14)
                     )
                     self.prune_expired_world_events(world_events_expiry_d)
+                    frontline_expiry_d = float(
+                        self.settings.get("frontline_expiry_days", 60)
+                    )
+                    self.prune_frontline_snapshots(frontline_expiry_d)
                     last_run = now
             else:
                 logger.debug("Housekeeper disabled; skipping.")
