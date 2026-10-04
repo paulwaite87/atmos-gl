@@ -3,10 +3,11 @@
 insert-once semantics and "latest snapshot" ordering independently."""
 import contextlib
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
 import pytest
+from sqlalchemy import text
 from sqlalchemy.orm import sessionmaker
 
 from atmos_gl.db.frontline_adapter import FakeFrontlineAdapter, FrontlineAdapter
@@ -104,3 +105,37 @@ def test_snapshot_at_is_the_newest_at_or_before_the_time(kind, real_db):
     assert at_16 == {"id": base + 1, "created_at": _at(kind, 10), "description": "a",
                      "description_segments": None, "geojson": _fc("occupied")}
     assert before_any is None
+
+
+@pytest.mark.parametrize("kind", ["real", "fake"])
+def test_prune_keeps_recent_snapshots_and_the_one_current_at_the_cutoff(kind, real_db):
+    adapter, ctx = _make_adapter(kind, real_db)
+    base = 9_000_000_040 + (0 if kind == "real" else 100)
+    # Dated after every other test's snapshots so these are the newest in the shared
+    # real table (the prune is relative to the newest); removed again afterwards.
+    def at(day):
+        return datetime(2200, 1, 1, tzinfo=timezone.utc) + timedelta(days=day)
+    ids = {name: base + i for i, name in enumerate(["ancient", "older", "at_cutoff", "recent", "latest"])}
+    days = {"ancient": 0, "older": 10, "at_cutoff": 25, "recent": 70, "latest": 100}
+    try:
+        with ctx:
+            for name, snapshot_id in ids.items():
+                adapter.save_snapshot(snapshot_id, at(days[name]), name, _fc("occupied"))
+            deleted = adapter.prune_older_than(60)   # cutoff: day 40
+            survivors = {name for name, snapshot_id in ids.items() if adapter.has_snapshot(snapshot_id)}
+            assert adapter.prune_older_than(60) == 0   # idempotent
+    finally:
+        if kind == "real":
+            with real_db.begin() as conn:
+                conn.execute(text("DELETE FROM frontline_snapshots WHERE id = ANY(:ids)"),
+                             {"ids": list(ids.values())})
+
+    assert survivors == {"at_cutoff", "recent", "latest"}
+    assert deleted >= 2   # the real table may also hold older rows from other tests
+
+
+def test_prune_with_nothing_old_enough_deletes_nothing():
+    adapter = FakeFrontlineAdapter()
+    adapter.save_snapshot(1, datetime(2026, 10, 1, tzinfo=timezone.utc), None, _fc("occupied"))
+    assert adapter.prune_older_than(60) == 0
+    assert FakeFrontlineAdapter().prune_older_than(60) == 0

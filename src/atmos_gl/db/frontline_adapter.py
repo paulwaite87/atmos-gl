@@ -1,7 +1,8 @@
 import json
 import logging
+from datetime import timedelta
 
-from sqlalchemy import select
+from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from atmos_gl.db.engine import Session
@@ -69,6 +70,32 @@ class FrontlineAdapter:
             return EMPTY_FEATURE_COLLECTION
         return _with_snapshot(row)
 
+    def prune_older_than(self, keep_days: float) -> int:
+        """Deletes snapshots created more than keep_days before the newest one, except
+        the newest of those -- the update that was current at the cutoff, so a
+        gains/losses baseline that far back survives. Measured from the newest snapshot,
+        not from now, matching the gains/losses windows. Returns the number deleted."""
+        with Session() as session:
+            latest = session.execute(select(func.max(FrontlineSnapshot.created_at))).scalar()
+            if latest is None:
+                return 0
+            cutoff = latest - timedelta(days=keep_days)
+            anchor = session.execute(
+                select(FrontlineSnapshot.id)
+                .where(FrontlineSnapshot.created_at <= cutoff)
+                .order_by(FrontlineSnapshot.created_at.desc(), FrontlineSnapshot.id.desc())
+                .limit(1)
+            ).scalar()
+            if anchor is None:
+                return 0
+            result = session.execute(
+                delete(FrontlineSnapshot).where(
+                    FrontlineSnapshot.created_at <= cutoff, FrontlineSnapshot.id != anchor,
+                )
+            )
+            session.commit()
+            return result.rowcount
+
 
 class FakeFrontlineAdapter:
     """In-memory fake matching FrontlineAdapter's method contracts."""
@@ -98,3 +125,17 @@ class FakeFrontlineAdapter:
         if row is None:
             return EMPTY_FEATURE_COLLECTION
         return _with_snapshot(row)
+
+    def prune_older_than(self, keep_days: float) -> int:
+        """Mirrors FrontlineAdapter.prune_older_than."""
+        if not self._snapshots:
+            return 0
+        cutoff = max(r["created_at"] for r in self._snapshots.values()) - timedelta(days=keep_days)
+        old = [r for r in self._snapshots.values() if r["created_at"] <= cutoff]
+        if not old:
+            return 0
+        anchor = max(old, key=lambda r: (r["created_at"], r["id"]))["id"]
+        doomed = [r["id"] for r in old if r["id"] != anchor]
+        for snapshot_id in doomed:
+            del self._snapshots[snapshot_id]
+        return len(doomed)
