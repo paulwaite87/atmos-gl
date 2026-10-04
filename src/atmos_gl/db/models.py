@@ -609,6 +609,10 @@ class FrontlineSnapshot(Base):
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    # DeepState's own updatedAt for this update when it was fetched -- DeepState edits
+    # published updates, and a later updatedAt makes the collector re-fetch it. NULL
+    # for snapshots stored before this column existed (re-fetched once).
+    source_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     description: Mapped[str | None] = mapped_column(Text)
     # The same note as text/link pieces (collectors/frontline.py's
     # description_segments()), so the popup can render DeepState's map links as

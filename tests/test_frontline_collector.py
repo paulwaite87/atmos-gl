@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """FrontlineCollector: DeepState's raw map -> classified polygons, and the
 fetch-only-new-updates flow, against FakeFrontlineAdapter (no network, no DB)."""
+from datetime import datetime, timezone
 from unittest.mock import MagicMock
 
 import pytest
@@ -247,3 +248,35 @@ def test_attack_points_without_a_known_arrow_are_dropped():
     no_icon["properties"]["description"] = None
     raw = {"features": [_arrow(17), _arrow(0), no_icon]}
     assert frontline_features(raw)["features"] == []
+
+
+def _versioned_history(updated_at):
+    return [{"id": 1790879037, "createdAt": "2026-10-01T18:23:57.000Z", "updatedAt": updated_at,
+             "status": True, "descriptionEn": "The enemy has occupied Svyatopetrivka."}]
+
+
+def test_an_update_deepstate_edits_is_fetched_again():
+    c, fetched = _collector(_versioned_history("2026-10-01T18:24:00.000Z"), _RAW)
+    c.collect()
+    fetched.clear()
+
+    c.collect()  # unchanged updatedAt: list only
+    assert fetched == ["https://deepstate.example/api/history/public"]
+
+    edited = _versioned_history("2026-10-02T14:35:27.231Z")
+    c._get = _collector(edited, {"features": [_feature("x /// y /// geoJSON.status.unknown")]})[0]._get
+    c.collect()
+    stored = c.frontline_adapter.get_snapshot_at()
+    assert [f["properties"]["status"] for f in stored["geojson"]["features"]] == ["contested"]
+    assert stored["source_updated_at"].isoformat() == "2026-10-02T14:35:27.231000+00:00"
+
+
+def test_snapshots_stored_before_versioning_are_refetched_once():
+    c, fetched = _collector(_versioned_history("2026-10-02T14:35:27.231Z"), _RAW)
+    c.frontline_adapter.save_snapshot(  # as stored by an older collector: no updatedAt
+        1790879037, datetime(2026, 10, 1, 18, 23, 57, tzinfo=timezone.utc), "old", _RAW)
+    c.collect()
+    assert fetched[-1].endswith("history/1790879037/geojson")
+    fetched.clear()
+    c.collect()
+    assert fetched == ["https://deepstate.example/api/history/public"]

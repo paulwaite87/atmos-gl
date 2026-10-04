@@ -70,18 +70,24 @@ def test_description_segments_round_trip(kind, real_db):
 
 
 @pytest.mark.parametrize("kind", ["real", "fake"])
-def test_saving_a_known_snapshot_is_a_no_op(kind, real_db):
+def test_saving_a_known_snapshot_replaces_it(kind, real_db):
+    """A re-fetch after DeepState edits an update stores over the old copy."""
     adapter, ctx = _make_adapter(kind, real_db)
     snapshot_id = 9_000_000_010 + (0 if kind == "real" else 100)
+    first_edit = datetime(2026, 10, 2, 14, 35, 27, 231000, tzinfo=timezone.utc)
+    second_edit = datetime(2026, 10, 3, 19, 43, 10, 167000, tzinfo=timezone.utc)
     with ctx:
         assert not adapter.has_snapshot(snapshot_id)
-        adapter.save_snapshot(snapshot_id, _at(kind, 3), "First", _fc("occupied"))
-        adapter.save_snapshot(snapshot_id, _at(kind, 3), "Second", _fc("contested"))
+        assert adapter.get_source_updated_at(snapshot_id) is None
+        adapter.save_snapshot(snapshot_id, _at(kind, 3), "First", _fc("occupied"), source_updated_at=first_edit)
+        assert adapter.get_source_updated_at(snapshot_id) == first_edit
+        adapter.save_snapshot(snapshot_id, _at(kind, 3), "Second", _fc("contested"), source_updated_at=second_edit)
         assert adapter.has_snapshot(snapshot_id)
+        assert adapter.get_source_updated_at(snapshot_id) == second_edit
         body = json.loads(adapter.get_latest_geojson())
 
-    assert body["snapshot"]["description"] == "First"
-    assert body["features"][0]["properties"]["status"] == "occupied"
+    assert body["snapshot"]["description"] == "Second"
+    assert body["features"][0]["properties"]["status"] == "contested"
 
 
 def test_no_snapshot_yet_is_an_empty_collection():
@@ -102,8 +108,8 @@ def test_snapshot_at_is_the_newest_at_or_before_the_time(kind, real_db):
         before_any = adapter.get_snapshot_at(datetime(1990, 1, 1, tzinfo=timezone.utc))
 
     assert at_17["id"] == base + 2
-    assert at_16 == {"id": base + 1, "created_at": _at(kind, 10), "description": "a",
-                     "description_segments": None, "geojson": _fc("occupied")}
+    assert at_16 == {"id": base + 1, "created_at": _at(kind, 10), "source_updated_at": None,
+                     "description": "a", "description_segments": None, "geojson": _fc("occupied")}
     assert before_any is None
 
 
