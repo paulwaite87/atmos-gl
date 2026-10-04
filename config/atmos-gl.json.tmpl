@@ -274,6 +274,14 @@
     "linewidth": 1,
     "opacity": 90
   },
+  "population_density": {
+    "enabled": false,
+    "opacity": 70,
+    "palette": "thermal",
+    "min_density": 10,
+    "max_density": 5000,
+    "runs_per_day": 1
+  },
   "data_collector": {
     "enabled": true,
     "datasources": {
@@ -294,7 +302,8 @@
       "lightning": "https://demo.openweathermap.org/lightning/1.0/data",
       "flightradar": "https://api.adsb.lol/v2",
       "flightradar_routeset": "https://adsb.im/api/0/routeset",
-      "frontline": "https://deepstatemap.live/api"
+      "frontline": "https://deepstatemap.live/api",
+      "population_density": "https://jeodpp.jrc.ec.europa.eu/ftp/jrc-opendata/GHSL/GHS_POP_GLOBE_R2023A/GHS_POP_E2025_GLOBE_R2023A_4326_30ss/V1-0/GHS_POP_E2025_GLOBE_R2023A_4326_30ss_V1_0.zip"
     },
     "channel_enabled": {
       "gfs_atmos": true,
@@ -313,7 +322,8 @@
       "world_events": true,
       "satellites": true,
       "storms": true,
-      "frontline": true
+      "frontline": true,
+      "population_density": true
     },
     "runs_per_day": 96,
     "backfill_poll_seconds": 60,

@@ -332,6 +332,7 @@ The full list is:
 * Satellites
 * Place markers
 * Landmass outline (coastlines/lakes)
+* Population density
 
 Each of these has its own configuration options.
 
@@ -844,6 +845,26 @@ the groups currently downloaded from Celestrak: `resource`, `science`, `stations
 with one of those 4 group names:
     https://celestrak.org/NORAD/elements/gp.php?GROUP={group}&FORMAT=tle
 ![Satellites](docs/atmos-gl-satellites.png)
+
+### Population Density
+A heatmap of where people live, from the European Commission JRC's
+[Global Human Settlement Layer](https://human-settlement.emergency.copernicus.eu/ghs_pop2023.php)
+population grid (GHS-POP R2023A, 2025 epoch) — open data under CC BY 4.0, no account needed.
+The ~1km source grid is summed into ~5km cells and shown as people per km² on a log scale,
+since density runs from a handful in farmland to tens of thousands in city cores.
+
+* `Threshold density (hide below)` — cells less dense than this aren't coloured at all, and
+  it's also the bottom of the colour scale.
+* `Colour scale top` — densities at or above this get the palette's top colour.
+* `Palette` and `Opacity` work as on the other heatmap layers. All four apply instantly.
+
+The first fetch is a ~484MB download, spread over a few Data Collector cycles (the JRC's
+server is slow per connection, so it's fetched in parallel pieces) and then summed down
+once, so expect the layer to appear 10–30 minutes after a fresh install. After that the
+collector only checks once a day whether the file has been republished. GHSL is a modelled
+estimate published every few years rather than a live count; a newer release lives at a
+new URL, which you can point the `population_density` entry under the Data Collector's
+datasources at.
 
 ## Developer's Corner
 If you want to tinker with the code (and maybe help improve it with some PRs) this

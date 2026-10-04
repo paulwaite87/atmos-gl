@@ -38,6 +38,7 @@ from atmos_gl.tasks.scalar_field import ScalarFieldUpdater, SPECS
 from atmos_gl.tasks.markers import MarkerUpdater
 from atmos_gl.tasks.fire_weather import FireWeatherUpdater
 from atmos_gl.tasks.flood_risk import FloodRiskUpdater
+from atmos_gl.tasks.population_density import PopulationDensityUpdater
 
 logger = logging.getLogger("atmos_gl.layer_builder")
 
@@ -77,6 +78,7 @@ TASK_CLASSES = {
     "markers": MarkerUpdater,
     "fires": FireWeatherUpdater,
     "flood_risk": FloodRiskUpdater,
+    "population_density": PopulationDensityUpdater,
 }
 
 
