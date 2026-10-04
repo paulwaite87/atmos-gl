@@ -53,6 +53,10 @@ Synchronous file caches  (CACHE_COLLECTORS)  — write an image/netCDF under {wo
                and channel_key with FiresCollector -- it's the burnable-vegetation
                mask the Fire Risk layer (tasks/fire_weather.py) ANDs against the
                Fosberg index, and has no purpose if Fires isn't running.
+  population_density — JRC GHS-POP population grid (one ~484MB global GeoTIFF zip),
+               fetched in parallel byte ranges across cycles and summed into a 0.05deg
+               people-per-km² grid; re-fetched only when the file or its configured
+               URL changes (PopulationDensityCollector, collectors/population_density.py).
 
   These are single fields (one daily netCDF / one global image), not per-forecast-hour
   products, so they live as file caches rather than fieldstore rows. The layer updaters
@@ -101,6 +105,7 @@ from atmos_gl.collectors.gfs_waves import GfsWavesCollector
 from atmos_gl.collectors.rtofs_currents import RtofsCurrentsCollector
 from atmos_gl.collectors.flood_risk import FloodRiskHistoricalCollector, FloodRiskLiveCollector
 from atmos_gl.collectors.vegetation_mask import VegetationMaskCollector
+from atmos_gl.collectors.population_density import PopulationDensityCollector
 from atmos_gl.collectors.frontline import FrontlineCollector
 from atmos_gl.collectors.driving import EventFeedDriver
 
@@ -130,6 +135,7 @@ CACHE_COLLECTORS = (
     FloodRiskHistoricalCollector,
     FloodRiskLiveCollector,
     VegetationMaskCollector,
+    PopulationDensityCollector,
 )
 
 # Field collectors (fieldstore-backed, FieldCollectorBase), driven per-cycle by

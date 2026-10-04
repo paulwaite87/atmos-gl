@@ -31,4 +31,5 @@ OUTFILES = {
     "greenhouse_gases": "data/greenhouse_gases.png",
     "air_quality": "data/air_quality.png",
     "flood_risk": "data/flood_risk.png",
+    "population_density": "data/population_density.png",
 }

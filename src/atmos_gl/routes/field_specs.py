@@ -267,6 +267,14 @@ _AQ_VARIABLE = SelectSpec([
     ("so2", "SO2 (Sulphur Dioxide)"),
 ], personalizable=True)
 
+# people/km², log-spaced -- see population_density's FIELD_SPECS entries.
+_POPULATION_MIN_DENSITY = SelectSpec([
+    (v, f"{v:,} / km²") for v in (1, 5, 10, 25, 50, 100, 250, 500, 1000, 2500)
+], personalizable=True)
+_POPULATION_MAX_DENSITY = SelectSpec([
+    (v, f"{v:,} / km²") for v in (100, 500, 1000, 2500, 5000, 10000, 25000, 50000)
+], personalizable=True)
+
 _LOG_LEVEL = SelectSpec([
     ("DEBUG", "DEBUG"),
     ("INFO", "INFO"),
@@ -539,6 +547,15 @@ FIELD_SPECS = {
     ("landmass", "halo_color"): ColorSpec(personalizable=True),
     ("landmass", "linewidth"): SliderSpec(min=0.2, max=5.0, step=0.1, decimals=1, suffix="px", personalizable=True),
     ("landmass", "opacity"): _OPACITY,
+    # Population Density (GHSL, tasks/population_density.py): a raw data texture
+    # coloured client-side, so every display choice is personalizable. min_density is
+    # the threshold below which nothing is drawn, and also the bottom of the colour
+    # range; both ends are log-spaced choices since density spans six decades.
+    ("population_density", "enabled"): _ENABLED_PERSONALIZABLE,
+    ("population_density", "opacity"): _OPACITY,
+    ("population_density", "palette"): _GHG_PALETTE,
+    ("population_density", "min_density"): _POPULATION_MIN_DENSITY,
+    ("population_density", "max_density"): _POPULATION_MAX_DENSITY,
     # --- Shipping (shipping) ---
     ("shipping", "enabled"): _ENABLED_PERSONALIZABLE,
     ("shipping", "icon_zoom"): _ICON_ZOOM,
@@ -856,6 +873,8 @@ _LABEL_OVERRIDES = {
     ("frontline", "show_attack_directions"): "Show attack directions",
     ("frontline", "show_changes"): "Show gains / losses",
     ("frontline", "change_days"): "Gains / losses over",
+    ("population_density", "min_density"): "Threshold density (hide below)",
+    ("population_density", "max_density"): "Colour scale top",
 }
 
 
@@ -898,6 +917,7 @@ SECTION_LABELS = {
     "markers": "Place Markers",
     "flightradar": "Flight Radar",
     "landmass": "Landmass Outlines",
+    "population_density": "Population Density",
     "shipping": "Shipping",
     "shipping_collector": "Shipping Collector (AIS Loop)",
     "lightning_collector": "Lightning Collector Daemon",

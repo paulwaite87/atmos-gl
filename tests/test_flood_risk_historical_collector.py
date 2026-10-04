@@ -290,3 +290,14 @@ def test_data_status_is_100_once_the_mosaic_is_cached(tmp_path, monkeypatch):
     status = c.data_status()
 
     assert status["percent"] == 100.0
+
+
+def test_data_status_shows_the_next_check_even_with_the_layer_hidden(tmp_path, monkeypatch):
+    # None renders as "Disabled" on the Data Status page, but this collector keeps
+    # running on schedule whether or not the layer is shown.
+    monkeypatch.setenv("HOME", str(tmp_path))
+    c = make_bare_historical_collector(settings={"enabled": False}, workdir=str(tmp_path))
+    c.process_status_adapter = MagicMock()
+    c.process_status_adapter.get_process_status.return_value = None
+
+    assert c.data_status()["next_update"] is not None

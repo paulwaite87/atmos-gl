@@ -41,7 +41,7 @@ from datetime import datetime, timezone
 import numpy as np
 
 from atmos_gl.collectors.base import CollectorBase
-from atmos_gl.lib.data_status import build_status, read_process_status
+from atmos_gl.lib.data_status import build_status, estimate_next_update, read_process_status
 from atmos_gl.lib.flood_risk import (
     JRC_BASE_URL,
     LANCE_BASE_URL,
@@ -318,7 +318,9 @@ class FloodRiskHistoricalCollector(CollectorBase):
             kind="collector",
             percent=percent,
             last_updated=last_updated,
-            next_update=None,
+            # The real periodic check: collect() keeps running on schedule (and
+            # returns early once cached) whether or not the layer is shown.
+            next_update=estimate_next_update(last_updated, self.period_s, True),
             enabled=self.enabled,
             detail=detail,
             status=status,

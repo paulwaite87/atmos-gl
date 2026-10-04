@@ -200,3 +200,14 @@ def test_data_status_reports_coverage_not_time_decay(tmp_path, monkeypatch):
 
     status_after = c.data_status()
     assert status_after["percent"] == 100.0
+
+
+def test_data_status_shows_the_next_check_even_with_the_layer_hidden(tmp_path, monkeypatch):
+    # None renders as "Disabled" on the Data Status page, but this collector keeps
+    # running on schedule whether or not the layer is shown.
+    c = make_bare_egg4_collector(monkeypatch, settings={"enabled": False, "baseline_year": 2003},
+                                 workdir=str(tmp_path))
+    c.process_status_adapter = MagicMock()
+    c.process_status_adapter.get_process_status.return_value = None
+
+    assert c.data_status()["next_update"] is not None
