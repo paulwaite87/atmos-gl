@@ -37,7 +37,7 @@ from atmos_gl.lib.cds_client import (
     retrieve_and_unzip,
     retrieve_with_fallback,
 )
-from atmos_gl.lib.data_status import build_status, read_process_status
+from atmos_gl.lib.data_status import build_status, estimate_next_update, read_process_status
 from atmos_gl.lib.greenhouse_gases import (
     camsforecast_cache_path,
     egg4_baseline_cache_path,
@@ -197,7 +197,9 @@ class CamsEgg4BaselineCollector(CollectorBase):
             kind="collector",
             percent=100.0 if cached else 0.0,
             last_updated=last_updated,
-            next_update=None,
+            # The real periodic check: collect() keeps running on schedule (and
+            # returns early once cached) whether or not the layer is shown.
+            next_update=estimate_next_update(last_updated, self.period_s, True),
             enabled=self.enabled,
             detail=detail,
             status=status,
