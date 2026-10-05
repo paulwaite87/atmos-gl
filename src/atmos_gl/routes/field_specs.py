@@ -26,6 +26,7 @@ Validated with ast.parse.
 """
 from dataclasses import dataclass, field
 
+from atmos_gl.lib.country_stats import INDICATORS
 from atmos_gl.lib.greenhouse_gases import BASELINE_YEAR_MAX, BASELINE_YEAR_MIN
 
 
@@ -556,6 +557,18 @@ FIELD_SPECS = {
     ("population_density", "palette"): _GHG_PALETTE,
     ("population_density", "min_density"): _POPULATION_MIN_DENSITY,
     ("population_density", "max_density"): _POPULATION_MAX_DENSITY,
+    # Country Statistics (OWID, lib/country_stats.py): the indicator options are the
+    # catalog itself. max_age_years is a read-time cutoff (routes/country_stats.py) over
+    # rows every viewer shares, so like every other display choice here it's
+    # personalizable.
+    ("country_stats", "enabled"): _ENABLED_PERSONALIZABLE,
+    ("country_stats", "opacity"): _OPACITY,
+    ("country_stats", "indicator"): SelectSpec(
+        [(i.id, i.label) for i in INDICATORS], personalizable=True
+    ),
+    ("country_stats", "max_age_years"): SliderSpec(
+        min=1, max=30, step=1, suffix=" year", pluralize=True, personalizable=True
+    ),
     # --- Shipping (shipping) ---
     ("shipping", "enabled"): _ENABLED_PERSONALIZABLE,
     ("shipping", "icon_zoom"): _ICON_ZOOM,
@@ -875,6 +888,7 @@ _LABEL_OVERRIDES = {
     ("frontline", "change_days"): "Gains / losses over",
     ("population_density", "min_density"): "Threshold density (hide below)",
     ("population_density", "max_density"): "Colour scale top",
+    ("country_stats", "max_age_years"): "Hide figures older than the newest by",
 }
 
 
@@ -918,6 +932,7 @@ SECTION_LABELS = {
     "flightradar": "Flight Radar",
     "landmass": "Landmass Outlines",
     "population_density": "Population Density",
+    "country_stats": "Country Statistics",
     "shipping": "Shipping",
     "shipping_collector": "Shipping Collector (AIS Loop)",
     "lightning_collector": "Lightning Collector Daemon",
