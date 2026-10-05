@@ -2,15 +2,15 @@
 
 A "layer" is one entry in `ui/index.html`'s `ALL_LAYERS` array — a toggleable item in the
 map's layer list, each dynamically `import()`-ed from its own `ui/modules/<name>.js`. There
-are 28 of them, and despite the variety (weather fields, particle animation, live event
-feeds, place markers), they only come in **five distinct shapes**. This page is the index;
-each shape has a worked example in its own file, tracing one real layer end to end.
+are 30 of them, and despite the variety (weather fields, particle animation, live event
+feeds, place markers, country statistics), they only come in **six distinct shapes**. This
+page is the index; each shape has a worked example in its own file, tracing one real layer end to end.
 
 Read this first if you're new to the codebase and want to understand how a layer gets from a
 data source to a pixel on the globe — then jump to whichever shape's example matches the
 layer you're about to touch.
 
-## The five shapes
+## The six shapes
 
 | Shape | What it is | Frontend | Backend | Worked example |
 | --- | --- | --- | --- | --- |
@@ -19,6 +19,7 @@ layer you're about to touch.
 | **Particle overlay** | A GPU particle/streamline animation layered on top of an Animated fill layer's own vector field. | `_particles_gl.js` (oriented-quad) or `_streamparticles_gl.js` (streamline-ribbon) | Same backend as the fill layer it rides on | [wind.md](wind.md) |
 | **Point-feed layer** | Discrete point/symbol features with no server-side render task at all — pure DB-backed GeoJSON. | `_feedhelpers.js` + `_hoverpopup.js` | A collector only; no `TASK_CLASSES` entry | [quakes.md](quakes.md) |
 | **Markers** (one instance) | A hybrid: backend-enriched like a render task, but frontend-consumed as a plain point feed like shape 4. | `_layerstack.js` + `_hoverpopup.js` | `MarkerUpdater` — no image render, writes live weather into the DB row | [markers.md](markers.md) |
+| **Choropleth layer** (one instance) | Each country coloured by one value, over bundled Natural Earth country polygons. | A MapLibre `fill` + `line` over `ui/geo/countries_50m.json`, coloured by a `match` expression on country code (`country_stats.js`) | A collector + DB table + JSON route; no `TASK_CLASSES` entry, like shape 4 | `country_stats` (see CONTEXT.md's Country Statistics) |
 
 10 of the 27 `ALL_LAYERS` entries are Point-feed layers (quakes, volcanoes, world_events,
 lightning, storms, shipping, satellites, flightradar, terminator, landmass);
