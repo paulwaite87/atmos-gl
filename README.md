@@ -853,20 +853,37 @@ for facts about the world's people rather than its weather or events.
 #### Country Statistics
 Colours every country by one statistic at a time, from
 [Our World in Data](https://ourworldindata.org) (open data under CC BY 4.0, no account
-needed). Pick the statistic with the `Indicator` setting: Population, Life expectancy,
-GDP per capita (PPP) or Oil consumption. Each country shows its own most recent figure
-(hover a country to see it, with its unit and year), so the year can differ from one
-country to the next.
+needed). Turn the layer on and a `World Data` dropdown appears on the map, under the
+basemap picker. Pick any of 41 statistics from it, in three groups:
 
+* **People & Health** — population, median age, fertility, population growth, net
+  migration, urban share, life expectancy, child mortality, obesity, health spending,
+  HIV, suicide, smoking, undernourishment.
+* **Economy & Society** — GDP per capita and total GDP, the Human Development Index,
+  unemployment, extreme poverty, income inequality, internet and mobile use, democracy,
+  corruption perceptions, military spending, homicide, life satisfaction.
+* **Energy & Environment** — CO₂ emissions, oil, gas and coal consumption, energy use,
+  renewable and nuclear electricity, access to electricity, forest cover, protected
+  land, safe drinking water, calorie and meat supply.
+
+A pick lasts until you reload (like the basemap picker); `None` hides the map colours
+but keeps the dropdown. Each country shows its figure as close to now as its data gets
+(hover a country for the value, unit and year) — never a projected future year — and
+the legend shows how recent the newest figures are.
+
+* `Starting indicator` — what the dropdown starts on each time the globe loads.
+* `Show People & Health` / `Show Economy & Society` / `Show Energy & Environment` —
+  which groups the dropdown offers.
 * `Hide figures older than the newest by` — a country whose latest figure is more than
   this many years older than the newest figure for that statistic is greyed out as "No
-  recent data" rather than compared against current ones (default 5 years). Applies
-  instantly, no re-fetch.
+  recent data" rather than compared against current ones (default 5 years; poverty and
+  inequality, measured by surveys every few years, allow 10). Applies instantly.
 * `Opacity` works as on the other layers.
 
 Countries with no figure at all are drawn in a see-through grey. The colour scale runs
 over the middle 96% of the values shown, so one or two extreme countries don't wash
-everyone else out; the legend names the statistic, its unit, and the original source.
+everyone else out; statistics that can be negative (population growth, migration) use a
+two-colour scale centred on zero.
 
 The Data Collector checks Our World in Data once a day and only re-downloads a statistic
 when they've published an update. Country borders are Natural Earth's 1:50m countries,
