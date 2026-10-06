@@ -6,6 +6,7 @@ import os
 from unittest.mock import MagicMock, patch
 
 import numpy as np
+import pytest
 from PIL import Image
 
 from atmos_gl.collectors import population_density as mod
@@ -155,7 +156,8 @@ def test_data_status_shows_the_next_check_even_with_the_layer_hidden(tmp_path):
 
 def test_log_density_is_nan_where_nobody_lives():
     got = log_density(np.array([0.0, 1.0, 1000.0], dtype=np.float32))
-    assert np.isnan(got[0]) and got[1] == 0.0 and got[2] == 3.0
+    # float32 log10 can land an ULP off (3.0000002) depending on the CPU's SIMD path.
+    assert np.isnan(got[0]) and got[1:] == pytest.approx([0.0, 3.0], abs=1e-6)
 
 
 def _bare_updater(workdir, output_path):
