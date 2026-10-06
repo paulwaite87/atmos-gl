@@ -17,6 +17,8 @@ Synchronous event feeds  (COLLECTORS)        — write straight to the DB
   markers    — LOCAL markers.geojson -> DB 'markers' table (mtime-gated, not remote)
   world_events — GDELT Event Database 2.0 export files, runs_per_day=96 (every ~15min,
                matching GDELT's own update cadence), curated CAMEO code allowlist
+  country_stats — Our World in Data chart metadata + CSVs, runs_per_day=1; each
+               indicator's CSV re-downloaded only when OWID's lastUpdated moves
 
 Synchronous file caches  (CACHE_COLLECTORS)  — write an image/netCDF under {workdir}/data
 --------------------------------------------------------------------------
@@ -107,6 +109,7 @@ from atmos_gl.collectors.flood_risk import FloodRiskHistoricalCollector, FloodRi
 from atmos_gl.collectors.vegetation_mask import VegetationMaskCollector
 from atmos_gl.collectors.population_density import PopulationDensityCollector
 from atmos_gl.collectors.frontline import FrontlineCollector
+from atmos_gl.collectors.country_stats import CountryStatsCollector
 from atmos_gl.collectors.driving import EventFeedDriver
 
 logger = logging.getLogger(__name__)
@@ -121,6 +124,7 @@ COLLECTORS = (
     MarkersSyncCollector,
     WorldEventsCollector,
     FrontlineCollector,
+    CountryStatsCollector,
 )
 
 # Synchronous file-cache collectors (image/netCDF under {workdir}/data), driven by

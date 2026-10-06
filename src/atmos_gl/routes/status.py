@@ -51,7 +51,7 @@ def _display_name(key: str) -> str:
 RUNS_PER_DAY_SECTIONS = {
     "quakes", "volcanoes", "storms", "fires", "markers", "sst",
     "clouds", "satellites_collector", "world_events", "air_quality", "frontline",
-    "population_density",
+    "population_density", "country_stats",
 }
 
 

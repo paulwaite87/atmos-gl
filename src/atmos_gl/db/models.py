@@ -5,6 +5,7 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     DateTime,
+    Double,
     Enum,
     ForeignKey,
     Index,
@@ -658,3 +659,36 @@ class WorldEventArticle(Base):
     fetched_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+
+
+class CountryIndicator(Base):
+    """One Country Statistics indicator as last fetched from Our World in Data (see
+    collectors/country_stats.py) -- OWID's own metadata for it. source_last_updated is
+    OWID's lastUpdated, compared each cycle to decide whether to re-download the CSV."""
+
+    __tablename__ = "country_indicators"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    unit: Mapped[str | None] = mapped_column(Text)
+    short_unit: Mapped[str | None] = mapped_column(Text)
+    citation: Mapped[str | None] = mapped_column(Text)
+    source_last_updated: Mapped[str | None] = mapped_column(String(32))
+    next_update: Mapped[str | None] = mapped_column(String(32))
+    fetched_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class CountryIndicatorValue(Base):
+    """A country's most recent value for one CountryIndicator -- only the latest year
+    is kept; a re-fetched indicator's rows are replaced wholesale."""
+
+    __tablename__ = "country_indicator_values"
+
+    indicator_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("country_indicators.id", ondelete="CASCADE"), primary_key=True
+    )
+    country_code: Mapped[str] = mapped_column(String(3), primary_key=True)
+    year: Mapped[int] = mapped_column(Integer, nullable=False)
+    value: Mapped[float] = mapped_column(Double, nullable=False)

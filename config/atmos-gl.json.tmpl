@@ -282,6 +282,13 @@
     "max_density": 5000,
     "runs_per_day": 1
   },
+  "country_stats": {
+    "enabled": false,
+    "opacity": 70,
+    "indicator": "population",
+    "max_age_years": 5,
+    "runs_per_day": 1
+  },
   "data_collector": {
     "enabled": true,
     "datasources": {
@@ -303,6 +310,7 @@
       "flightradar": "https://api.adsb.lol/v2",
       "flightradar_routeset": "https://adsb.im/api/0/routeset",
       "frontline": "https://deepstatemap.live/api",
+      "country_stats": "https://ourworldindata.org/grapher",
       "population_density": "https://jeodpp.jrc.ec.europa.eu/ftp/jrc-opendata/GHSL/GHS_POP_GLOBE_R2023A/GHS_POP_E2025_GLOBE_R2023A_4326_30ss/V1-0/GHS_POP_E2025_GLOBE_R2023A_4326_30ss_V1_0.zip"
     },
     "channel_enabled": {
@@ -323,7 +331,8 @@
       "satellites": true,
       "storms": true,
       "frontline": true,
-      "population_density": true
+      "population_density": true,
+      "country_stats": true
     },
     "runs_per_day": 96,
     "backfill_poll_seconds": 60,

@@ -846,7 +846,34 @@ with one of those 4 group names:
     https://celestrak.org/NORAD/elements/gp.php?GROUP={group}&FORMAT=tle
 ![Satellites](docs/atmos-gl-satellites.png)
 
-### Population Density
+### World Data
+The `World Data` section (its own group in the `Show` tab, and its own settings tab) is
+for facts about the world's people rather than its weather or events.
+
+#### Country Statistics
+Colours every country by one statistic at a time, from
+[Our World in Data](https://ourworldindata.org) (open data under CC BY 4.0, no account
+needed). Pick the statistic with the `Indicator` setting: Population, Life expectancy,
+GDP per capita (PPP) or Oil consumption. Each country shows its own most recent figure
+(hover a country to see it, with its unit and year), so the year can differ from one
+country to the next.
+
+* `Hide figures older than the newest by` — a country whose latest figure is more than
+  this many years older than the newest figure for that statistic is greyed out as "No
+  recent data" rather than compared against current ones (default 5 years). Applies
+  instantly, no re-fetch.
+* `Opacity` works as on the other layers.
+
+Countries with no figure at all are drawn in a see-through grey. The colour scale runs
+over the middle 96% of the values shown, so one or two extreme countries don't wash
+everyone else out; the legend names the statistic, its unit, and the original source.
+
+The Data Collector checks Our World in Data once a day and only re-downloads a statistic
+when they've published an update. Country borders are Natural Earth's 1:50m countries,
+bundled with the app; disputed borders follow Natural Earth's own default (de facto) point
+of view.
+
+#### Population Density
 A heatmap of where people live, from the European Commission JRC's
 [Global Human Settlement Layer](https://human-settlement.emergency.copernicus.eu/ghs_pop2023.php)
 population grid (GHS-POP R2023A, 2025 epoch) — open data under CC BY 4.0, no account needed.
