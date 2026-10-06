@@ -7,6 +7,8 @@ Two anonymous endpoints per OWID grapher chart, under
 data_collector.datasources["country_stats"]:
   * <slug>.metadata.json -- per-column title, unit, citation, lastUpdated
   * <slug>.csv           -- the whole chart, every country and year (~0.3-1.6 MB)
+Both carry the indicator's own `params` too, picking one series of a multi-metric
+chart (fossil-fuels, energy-mix, electricity-mix, net-migration-metrics).
 
 The metadata is fetched every cycle; the CSV only when its lastUpdated differs from the
 stored one. OWID's `time=latest` CSV filter can't replace the full download: it returns
@@ -35,9 +37,10 @@ class CountryStatsCollector(CollectorBase):
         super().__init__(config)
         self.country_stats_adapter = CountryStatsAdapter()
 
-    def _url(self, slug: str, kind: str) -> str:
+    def _url(self, indicator, kind: str) -> str:
         base = self.datasource_url(self.datasource_key) or OWID_GRAPHER_URL
-        return f"{base}/{slug}.{kind}?{_QUERY}"
+        params = f"{indicator.params}&" if indicator.params else ""
+        return f"{base}/{indicator.slug}.{kind}?{params}{_QUERY}"
 
     def collect(self) -> None:
         """Refreshes every indicator OWID has updated. One failing indicator doesn't
@@ -54,7 +57,7 @@ class CountryStatsCollector(CollectorBase):
             raise RuntimeError(f"Country Statistics: couldn't refresh {', '.join(failed)}")
 
     def _collect_one(self, indicator) -> None:
-        r = self._get(self._url(indicator.slug, "metadata.json"), timeout=30)
+        r = self._get(self._url(indicator, "metadata.json"), timeout=30)
         if r is None:
             raise RuntimeError("couldn't fetch its metadata")
         column = (r.json().get("columns") or {}).get(indicator.column)
@@ -64,7 +67,7 @@ class CountryStatsCollector(CollectorBase):
         if last_updated and last_updated == self.country_stats_adapter.get_source_last_updated(indicator.id):
             return
 
-        r = self._get(self._url(indicator.slug, "csv"), timeout=60)
+        r = self._get(self._url(indicator, "csv"), timeout=60)
         if r is None:
             raise RuntimeError("couldn't fetch its CSV")
         rows, unmatched = latest_by_country(r.text, indicator.column)
