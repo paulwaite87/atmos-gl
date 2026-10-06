@@ -12,7 +12,8 @@ from tests.test_me_settings_route import _sign_in
 from atmos_gl.db.user_settings_adapter import FakeUserSettingsAdapter
 
 _SECTIONS = {
-    "country_stats": {"enabled": False, "opacity": 70, "indicator": "population",
+    "country_stats": {"enabled": False, "opacity": 70, "start_indicator": "population",
+                      "show_people": True, "show_economy": True, "show_environment": True,
                       "max_age_years": 5, "runs_per_day": 1},
     "population_density": {"enabled": False, "opacity": 70, "palette": "thermal",
                            "min_density": 10, "max_density": 5000, "runs_per_day": 1},
@@ -57,19 +58,35 @@ def test_world_data_show_tab_group_toggles_both_layers(admin_client, tmp_path, m
     assert html.count('id="population_density__enabled"') == 1
 
 
-def test_indicator_options_come_from_the_catalog(admin_client, tmp_path, monkeypatch):
+def test_starting_indicator_offers_none_and_the_whole_catalog(admin_client, tmp_path, monkeypatch):
     html = _config_page(admin_client, tmp_path, monkeypatch)
-    select = _between(html, 'id="country_stats__indicator"', "</select>")
+    select = _between(html, 'id="country_stats__start_indicator"', "</select>")
+    assert 'value="none"' in select
     for indicator in INDICATORS:
         assert f'value="{indicator.id}"' in select
-        assert indicator.label in select
+    assert select.count("<option") == len(INDICATORS) + 1
 
 
-def test_indicator_and_cutoff_are_validated():
-    assert validate_against_specs({"country_stats": {"indicator": "life_expectancy",
-                                                     "max_age_years": 10}}) == []
-    assert validate_against_specs({"country_stats": {"indicator": "nope"}})
+def test_the_picker_groups_can_each_be_switched_off(admin_client, tmp_path, monkeypatch):
+    html = _config_page(admin_client, tmp_path, monkeypatch)
+    for group in ("people", "economy", "environment"):
+        assert f'id="country_stats__show_{group}"' in html
+    assert 'id="country_stats__indicator"' not in html
+
+
+def test_settings_are_validated():
+    assert validate_against_specs({"country_stats": {
+        "start_indicator": "net_migration_rate", "show_economy": False, "max_age_years": 10}}) == []
+    assert validate_against_specs({"country_stats": {"start_indicator": "none"}}) == []
+    assert validate_against_specs({"country_stats": {"start_indicator": "nope"}})
+    assert validate_against_specs({"country_stats": {"show_people": "yes"}})
     assert validate_against_specs({"country_stats": {"max_age_years": 99}})
+
+
+def test_the_globes_config_data_carries_the_catalog(client):
+    groups = client.get("/api/config").json()["data"]["country_stats_catalog"]
+    assert [g["id"] for g in groups] == ["people", "economy", "environment"]
+    assert [i["id"] for g in groups for i in g["indicators"]] == [i.id for i in INDICATORS]
 
 
 def test_me_settings_groups_world_data(client, tmp_path):
@@ -79,5 +96,6 @@ def test_me_settings_groups_world_data(client, tmp_path):
     with patch("atmos_gl.routes.me_settings.load_config", return_value=AtmosGLConfig(str(path))):
         html = client.get("/me/settings").text
     assert "World Data" in html
-    assert 'id="country_stats__indicator"' in html
+    assert 'id="country_stats__start_indicator"' in html
+    assert 'id="country_stats__show_people"' in html
     assert 'id="country_stats__max_age_years"' in html

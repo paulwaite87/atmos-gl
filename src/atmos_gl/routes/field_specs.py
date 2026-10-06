@@ -557,15 +557,19 @@ FIELD_SPECS = {
     ("population_density", "palette"): _GHG_PALETTE,
     ("population_density", "min_density"): _POPULATION_MIN_DENSITY,
     ("population_density", "max_density"): _POPULATION_MAX_DENSITY,
-    # Country Statistics (OWID, lib/country_stats.py): the indicator options are the
-    # catalog itself. max_age_years is a read-time cutoff (routes/country_stats.py) over
-    # rows every viewer shares, so like every other display choice here it's
-    # personalizable.
+    # Country Statistics (OWID, lib/country_stats.py): the indicator itself is picked on
+    # the map (the World Data picker, session-only); start_indicator is where each page
+    # load starts, and the show_* toggles pick which catalog groups the picker offers.
+    # max_age_years is a read-time cutoff (routes/country_stats.py) over rows every
+    # viewer shares, so like every other display choice here it's personalizable.
     ("country_stats", "enabled"): _ENABLED_PERSONALIZABLE,
     ("country_stats", "opacity"): _OPACITY,
-    ("country_stats", "indicator"): SelectSpec(
-        [(i.id, i.label) for i in INDICATORS], personalizable=True
+    ("country_stats", "start_indicator"): SelectSpec(
+        [("none", "None")] + [(i.id, i.label) for i in INDICATORS], personalizable=True
     ),
+    ("country_stats", "show_people"): ToggleSpec(personalizable=True),
+    ("country_stats", "show_economy"): ToggleSpec(personalizable=True),
+    ("country_stats", "show_environment"): ToggleSpec(personalizable=True),
     ("country_stats", "max_age_years"): SliderSpec(
         min=1, max=30, step=1, suffix=" year", pluralize=True, personalizable=True
     ),
@@ -889,6 +893,10 @@ _LABEL_OVERRIDES = {
     ("population_density", "min_density"): "Threshold density (hide below)",
     ("population_density", "max_density"): "Colour scale top",
     ("country_stats", "max_age_years"): "Hide figures older than the newest by",
+    ("country_stats", "start_indicator"): "Starting indicator",
+    ("country_stats", "show_people"): "Show People & Health",
+    ("country_stats", "show_economy"): "Show Economy & Society",
+    ("country_stats", "show_environment"): "Show Energy & Environment",
 }
 
 
