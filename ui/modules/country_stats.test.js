@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
     NO_DATA_COLOR, colorDomain, rampPosition, fillColorExpression, formatValue, withUnit,
-    countryLine, attributionHtml, legendTicks, legendTitle,
+    countryLine, attributionHtml, legendTicks, legendTitle, pickerGroups, initialIndicator,
 } from './country_stats.js';
 
 const LOG = { scale: 'log', colormap: 'viridis', title: 'Population', unit: 'people', short_unit: null };
@@ -37,6 +37,11 @@ describe('colour domain', () => {
         expect(colorDomain({}, { ...LOG, domain: [10, 1e9] })).toEqual([1, 9]);
     });
 
+    it('is symmetric about zero for a diverging indicator', () => {
+        const countries = spread((i) => i - 20);       // -20 .. 80
+        expect(colorDomain(countries, { ...LINEAR, diverging: true })).toEqual([-78, 78]);
+    });
+
     it('keeps a usable range with one value or none', () => {
         expect(colorDomain({ A: { year: 2023, value: 5 } }, LINEAR)).toEqual([4.5, 5.5]);
         expect(colorDomain({}, LINEAR)).toEqual([0, 1]);
@@ -52,7 +57,15 @@ describe('ramp position', () => {
 
     it('places log values by their power of ten', () => {
         expect(rampPosition(1000, LOG, [2, 4])).toBe(0.5);
-        expect(rampPosition(0, LOG, [2, 4])).toBeNull();
+    });
+
+    it('puts a zero on a log scale at the bottom, not in "no data"', () => {
+        expect(rampPosition(0, LOG, [2, 4])).toBe(0);
+        const expr = fillColorExpression({
+            indicator: { ...LOG, colormap: 'magma' },
+            countries: { AAA: { year: 2025, value: 0 }, BBB: { year: 2025, value: 100 }, CCC: { year: 2025, value: 1e4 } },
+        });
+        expect(expr[expr.indexOf('AAA') + 1]).toBe('rgb(0,0,4)');
     });
 });
 
@@ -114,8 +127,42 @@ describe('legend', () => {
         expect([5, 82.5, 1234, 41454761, 8.09e9].map(formatValue)).toEqual(['5', '82.5', '1,234', '41.5M', '8.09B']);
     });
 
-    it('titles the key with the indicator and its unit', () => {
-        expect(legendTitle(LOG)).toBe('Population (people)');
-        expect(legendTitle({ title: 'Index', unit: null, short_unit: null })).toBe('Index');
+    it('titles the key with the indicator, its unit and the year of its newest figures', () => {
+        expect(legendTitle(LOG, 2023)).toBe('Population (people) · 2023');
+        expect(legendTitle({ title: 'Index', unit: null, short_unit: null }, 2025)).toBe('Index · 2025');
+        expect(legendTitle(LOG, null)).toBe('Population (people)');
+    });
+});
+
+const CATALOG = [
+    { id: 'people', label: 'People & Health', indicators: [{ id: 'population', label: 'Population' }, { id: 'median_age', label: 'Median age' }] },
+    { id: 'economy', label: 'Economy & Society', indicators: [{ id: 'gdp_per_capita', label: 'GDP per capita (PPP)' }] },
+    { id: 'environment', label: 'Energy & Environment', indicators: [{ id: 'co2_per_capita', label: 'CO₂ emissions per capita' }] },
+];
+
+describe('World Data picker', () => {
+    it('offers every group unless its show setting is off', () => {
+        expect(pickerGroups(CATALOG, {}).map((g) => g.id)).toEqual(['people', 'economy', 'environment']);
+        expect(pickerGroups(CATALOG, { show_economy: false }).map((g) => g.id)).toEqual(['people', 'environment']);
+    });
+
+    it('starts on the configured starting indicator', () => {
+        expect(initialIndicator(CATALOG, { start_indicator: 'median_age' })).toBe('median_age');
+        expect(initialIndicator(CATALOG, {})).toBe('population');
+    });
+
+    it('starts on nothing when the starting indicator is None', () => {
+        expect(initialIndicator(CATALOG, { start_indicator: 'none' })).toBeNull();
+    });
+
+    it("falls back to the first shown group's first indicator when the start's group is off", () => {
+        expect(initialIndicator(CATALOG, { start_indicator: 'median_age', show_people: false })).toBe('gdp_per_capita');
+        expect(initialIndicator(CATALOG, { start_indicator: 'not_a_thing' })).toBe('population');
+    });
+
+    it('has nothing to offer when every group is off', () => {
+        const cfg = { show_people: false, show_economy: false, show_environment: false };
+        expect(pickerGroups(CATALOG, cfg)).toEqual([]);
+        expect(initialIndicator(CATALOG, cfg)).toBeNull();
     });
 });

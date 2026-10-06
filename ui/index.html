@@ -18,6 +18,9 @@
         }
         #basemap-picker-host {
             position: absolute; top: 65px; right: 12px; z-index: 5;
+            /* The basemap picker, then the World Data picker (country_stats.js)
+               beneath it whichever mounts first. */
+            display: flex; flex-direction: column;
         }
         .basemap-picker {
             display: flex; flex-direction: column; gap: 2px;
