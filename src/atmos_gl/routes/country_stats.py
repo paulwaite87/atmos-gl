@@ -35,13 +35,16 @@ def get_country_stats(
     return {
         "indicator": {
             "id": spec.id,
-            "title": metadata.get("title") or spec.label,
+            # The catalog's own label, not OWID's: some of OWID's "short" titles run
+            # to a sentence ("Obesity among adults, BMI >= 30 kg/m2 (crude ...").
+            "title": spec.label,
             "unit": metadata.get("unit"),
             "short_unit": metadata.get("short_unit"),
             "citation": metadata.get("citation"),
             "last_updated": metadata.get("source_last_updated"),
             "scale": spec.scale,
             "colormap": spec.colormap,
+            "diverging": spec.diverging,
             "domain": list(spec.domain) if spec.domain else None,
         },
         "newest_year": newest,

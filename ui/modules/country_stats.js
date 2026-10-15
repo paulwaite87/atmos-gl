@@ -6,7 +6,10 @@ import { opacityUniform } from './_opacity.js';
 import { CMAP_VIRIDIS, CMAP_MAGMA, CMAP_INFERNO, CMAP_YLORRD, CMAP_COOLWARM, CMAP_TURBO } from './_colormaps.js';
 
 // Country Statistics (collectors/country_stats.py, lib/country_stats.py): one Our World
-// in Data indicator at a time, each country coloured by its own most recent value.
+// in Data indicator at a time, each country coloured by its value as close to now as
+// its data gets. Which indicator is chosen on the map itself, with the World Data
+// picker (session-only, like the basemap picker; each page load starts on
+// start_indicator).
 // Countries are Natural Earth 1:50m polygons bundled as /geo/countries_50m.json
 // (tools/build_country_geometry.py), each carrying the `code` the route's values are
 // keyed by; the colours are one 'match' expression over those codes, rebuilt whenever
@@ -52,14 +55,21 @@ export function colorDomain(countries, indicator) {
     if (!scaled.length) return [0, 1];
     const lo = quantile(scaled, PERCENTILE_LO);
     const hi = quantile(scaled, PERCENTILE_HI);
+    // Diverging (growth, migration): symmetric about zero, so zero sits at the
+    // colormap's neutral middle and shrinking/growing read as opposite colours.
+    if (indicator.diverging) {
+        const m = Math.max(Math.abs(lo), Math.abs(hi)) || 1;
+        return [-m, m];
+    }
     return hi > lo ? [lo, hi] : [lo - 0.5, lo + 0.5];
 }
 
-// 0..1 along the ramp, values beyond the domain clipped to its ends; null if the value
-// can't be placed.
+// 0..1 along the ramp, values beyond the domain clipped to its ends. A zero (or
+// negative) value on a log scale -- a country burning no coal -- sits at the bottom
+// rather than being dropped: zero is data, not "no data".
 export function rampPosition(value, indicator, [lo, hi]) {
     const v = toScale(value, indicator);
-    if (v === null) return null;
+    if (v === null) return 0;
     return Math.max(0, Math.min(1, (v - lo) / (hi - lo)));
 }
 
@@ -135,21 +145,87 @@ export function legendTicks(indicator, [lo, hi]) {
     return ticks.map(fromScale);
 }
 
-export function legendTitle(indicator) {
+// The key's title: the indicator, its unit, and the year of its newest figures --
+// how close to "now" the map is.
+export function legendTitle(indicator, newestYear) {
     const unit = indicator.unit || indicator.short_unit;
-    return unit ? `${indicator.title} (${unit})` : indicator.title;
+    const title = unit ? `${indicator.title} (${unit})` : indicator.title;
+    return newestYear ? `${title} · ${newestYear}` : title;
 }
 
-export function loadLayer(map, config) {
+// The World Data picker's option groups: the catalog's groups (served in the globe's
+// config data as country_stats_catalog) that the show_* settings leave on.
+const SHOW_SETTING = { people: 'show_people', economy: 'show_economy', environment: 'show_environment' };
+
+export function pickerGroups(catalog, cfg) {
+    return (catalog || []).filter((g) => cfg[SHOW_SETTING[g.id]] !== false && g.indicators.length);
+}
+
+// Where the picker starts: start_indicator if its group is shown; null for "none";
+// otherwise the first indicator of the first shown group, so the map never starts
+// blank by accident. null too when no group is shown.
+export function initialIndicator(catalog, cfg) {
+    const groups = pickerGroups(catalog, cfg);
+    if (!groups.length) return null;
+    const start = cfg.start_indicator ?? 'population';
+    if (start === 'none') return null;
+    const shown = groups.some((g) => g.indicators.some((i) => i.id === start));
+    return shown ? start : groups[0].indicators[0].id;
+}
+
+const NONE = '';
+
+function buildPicker(onChange) {
+    const wrap = document.createElement('div');
+    // The basemap picker's own panel styling, so the two read as one control strip.
+    wrap.className = 'basemap-picker';
+    wrap.id = 'world-data-picker';
+    wrap.style.marginTop = '6px';
+    wrap.style.order = '1';           // below the basemap picker in the same host
+    const label = document.createElement('label');
+    label.className = 'basemap-picker__label';
+    label.textContent = 'World Data';
+    const select = document.createElement('select');
+    select.className = 'basemap-picker__select';
+    select.addEventListener('change', () => onChange(select.value || null));
+    wrap.appendChild(label);
+    wrap.appendChild(select);
+    return { wrap, select };
+}
+
+function fillPickerOptions(select, groups, selected) {
+    select.replaceChildren();
+    const none = document.createElement('option');
+    none.value = NONE; none.textContent = 'None';
+    select.appendChild(none);
+    for (const g of groups) {
+        const optgroup = document.createElement('optgroup');
+        optgroup.label = g.label;
+        for (const i of g.indicators) {
+            const opt = document.createElement('option');
+            opt.value = i.id; opt.textContent = i.label;
+            optgroup.appendChild(opt);
+        }
+        select.appendChild(optgroup);
+    }
+    select.value = selected || NONE;
+}
+
+export function loadLayer(map, config, fullConfig = {}) {
     const sourceId = 'country-stats-source';
     const fillId = 'country-stats-fill';
     const lineId = 'country-stats-line';
+    const catalog = fullConfig.country_stats_catalog || [];
     let stopPopup = null;
     let geometry = null;      // fetched once; the polygons never change
-    let data = null;          // the route's latest response
+    let data = null;          // the selected indicator's latest route response
+    let selected = null;      // the indicator id the picker shows; null: "None"
+    let userPicked = false;   // a pick on the map outlives settings changes this session
+    let currentCfg = config;
+    let picker = null;
 
     const fetchData = (cfg) => {
-        const params = new URLSearchParams({ indicator: cfg.indicator || 'population', t: Date.now() });
+        const params = new URLSearchParams({ indicator: selected, t: Date.now() });
         if (cfg.max_age_years !== undefined && cfg.max_age_years !== null) {
             params.set('max_age_years', cfg.max_age_years);
         }
@@ -157,14 +233,14 @@ export function loadLayer(map, config) {
     };
 
     const legend = standardLegend('country-stats-legend-slot', () => {
-        const { indicator, countries } = data;
+        const { indicator, countries, newest_year: newestYear } = data;
         const domain = colorDomain(countries, indicator);
         return {
             lut: lutOf(indicator),
             stride: 3,
-            toPos: (v) => rampPosition(v, indicator, domain) ?? 0,
+            toPos: (v) => rampPosition(v, indicator, domain),
             ticks: legendTicks(indicator, domain),
-            title: legendTitle(indicator),
+            title: legendTitle(indicator, newestYear),
             tickFormat: formatValue,
         };
     }, 0.7);
@@ -172,9 +248,10 @@ export function loadLayer(map, config) {
     // The citation isn't part of the canvas key, so it's appended as a line of text
     // under it, inside the same slot.
     const showLegend = (cfg) => {
+        if (!data) { legend.removeLegend(); return; }
         legend.addLegend(cfg);
         const slot = document.getElementById('country-stats-legend-slot');
-        if (!slot || !data) return;
+        if (!slot) return;
         const note = document.createElement('div');
         note.className = 'legend-attribution';
         note.style.cssText = 'font-size:10px;color:#ddd;max-width:200px;line-height:1.25;margin-top:2px;';
@@ -196,39 +273,79 @@ export function loadLayer(map, config) {
         });
     };
 
-    const mount = async (cfg) => {
-        [geometry, data] = await Promise.all([
-            geometry ? Promise.resolve(geometry) : fetchOrThrow(`${window.MAP_UI}/geo/countries_50m.json`),
-            fetchData(cfg),
-        ]);
-        if (map.getSource(sourceId)) return;          // guard against races
-        map.addSource(sourceId, { type: 'geojson', data: geometry });
-        map.addLayer({
-            id: fillId, type: 'fill', source: sourceId,
-            paint: { 'fill-color': fillColorExpression(data), 'fill-opacity': opacity(cfg) },
-        });
-        map.addLayer({
-            id: lineId, type: 'line', source: sourceId,
-            paint: { 'line-color': OUTLINE_COLOR, 'line-width': 0.5 },
-        });
-        // 'move': neighbouring countries share one fill layer, so mouseenter alone
-        // wouldn't update crossing a border.
-        stopPopup = hoverPopup(map, fillId, { html: popupHtml, maxWidth: '300px', event: 'move' });
-        showLegend(cfg);
-    };
-
-    const refresh = async (cfg) => {
-        data = await fetchData(cfg);
-        if (map.getLayer(fillId)) {
+    // Draws whatever `selected` is now: its colours and legend, or -- for "None" --
+    // nothing at all but the picker.
+    const applySelection = async (cfg) => {
+        data = selected ? await fetchData(cfg) : null;
+        const visibility = data ? 'visible' : 'none';
+        for (const id of [fillId, lineId]) {
+            if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', visibility);
+        }
+        if (data && map.getLayer(fillId)) {
             map.setPaintProperty(fillId, 'fill-color', fillColorExpression(data));
             map.setPaintProperty(fillId, 'fill-opacity', opacity(cfg));
         }
         showLegend(cfg);
     };
 
+    const onPick = async (id) => {
+        selected = id;
+        userPicked = true;
+        picker.select.disabled = true;
+        try { await applySelection(currentCfg); }
+        catch (err) { console.warn('[country_stats] indicator fetch failed', err); }
+        finally { picker.select.disabled = false; }
+    };
+
+    // The picker shows only while a group is on; it re-reads the groups (and, until
+    // the viewer has picked something themselves, the starting indicator) on every
+    // settings change.
+    const syncPicker = (cfg) => {
+        const groups = pickerGroups(catalog, cfg);
+        const offered = groups.some((g) => g.indicators.some((i) => i.id === selected));
+        if (!userPicked || (selected && !offered)) selected = initialIndicator(catalog, cfg);
+        if (!groups.length) {
+            picker?.wrap.remove();
+            return;
+        }
+        if (!picker) picker = buildPicker(onPick);
+        const host = document.getElementById('basemap-picker-host') || document.body;
+        if (!picker.wrap.isConnected) host.appendChild(picker.wrap);
+        fillPickerOptions(picker.select, groups, selected);
+    };
+
+    const mount = async (cfg) => {
+        currentCfg = cfg;
+        syncPicker(cfg);
+        geometry = geometry || await fetchOrThrow(`${window.MAP_UI}/geo/countries_50m.json`);
+        if (map.getSource(sourceId)) return;          // guard against races
+        map.addSource(sourceId, { type: 'geojson', data: geometry });
+        map.addLayer({
+            id: fillId, type: 'fill', source: sourceId,
+            paint: { 'fill-color': NO_DATA_COLOR, 'fill-opacity': opacity(cfg) },
+        });
+        map.addLayer({
+            id: lineId, type: 'line', source: sourceId,
+            paint: { 'line-color': OUTLINE_COLOR, 'line-width': 0.5 },
+        });
+        // 'move': neighbouring countries share one fill layer, so mouseenter alone
+        // wouldn't update crossing a border. Off while "None" is picked.
+        stopPopup = hoverPopup(map, fillId, {
+            html: popupHtml, maxWidth: '300px', event: 'move', enabled: () => data !== null,
+        });
+        await applySelection(cfg);
+    };
+
+    const refresh = async (cfg) => {
+        currentCfg = cfg;
+        syncPicker(cfg);
+        await applySelection(cfg);
+    };
+
     const unmount = () => {
         stopPopup?.();
         legend.removeLegend();
+        picker?.wrap.remove();
         for (const id of [lineId, fillId]) {
             if (map.getLayer(id)) map.removeLayer(id);
         }

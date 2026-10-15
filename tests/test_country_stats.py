@@ -11,6 +11,7 @@ import pytest
 from atmos_gl.api import app
 from atmos_gl.collectors.country_stats import CountryStatsCollector
 from atmos_gl.db.country_stats_adapter import FakeCountryStatsAdapter
+from atmos_gl.lib.country_stats import INDICATORS, INDICATORS_BY_ID
 from atmos_gl.routes.country_stats import get_country_stats_adapter
 
 _BASE = "https://owid.example/grapher"
@@ -43,26 +44,40 @@ def _metadata(column, last_updated, title, unit, short_unit, citation="Some Sour
     }}}
 
 
+_STANDARD_QUERY = "v=1&csvType=full&useColumnShortNames=true"
+
+
+def _chart_key(indicator):
+    """A stubbed chart's key: its slug, plus the params picking one series of a
+    multi-metric chart (oil, gas and coal all live in fossil-fuels)."""
+    return f"{indicator.slug}?{indicator.params}" if indicator.params else indicator.slug
+
+
 class _Owid:
-    """Stub OWID: slug -> (metadata JSON, CSV text). A missing slug fails like _get()."""
+    """Stub OWID: chart key -> (metadata JSON, CSV text). A missing chart fails like
+    _get()."""
 
     def __init__(self):
         self.charts = {
-            "population": (_metadata("population_historical", "2024-07-15", "Population",
-                                     "people", ""), _POPULATION_CSV),
-            "oil-consumption-by-country": (_metadata("oil_consumption_twh", "2026-06-30",
-                                                     "Oil consumption", "terawatt-hours", "TWh"),
-                                           _OIL_CSV),
+            _chart_key(INDICATORS_BY_ID["population"]): (
+                _metadata("population_historical", "2024-07-15", "Population", "people", ""),
+                _POPULATION_CSV),
+            _chart_key(INDICATORS_BY_ID["oil_consumption"]): (
+                _metadata("oil_consumption_twh", "2026-06-30", "Oil consumption",
+                          "terawatt-hours", "TWh"),
+                _OIL_CSV),
         }
         self.fetched = []
 
     def get(self, url, timeout=15, **kwargs):
         self.fetched.append(url)
-        path = url.removeprefix(f"{_BASE}/").split("?")[0]
+        path, _, query = url.removeprefix(f"{_BASE}/").partition("?")
         slug, _, kind = path.partition(".")
-        if slug not in self.charts:
+        params = query.removesuffix(_STANDARD_QUERY).rstrip("&")
+        key = f"{slug}?{params}" if params else slug
+        if key not in self.charts:
             return None
-        metadata, csv_text = self.charts[slug]
+        metadata, csv_text = self.charts[key]
         r = MagicMock()
         if kind == "metadata.json":
             r.json.return_value = metadata
@@ -218,22 +233,22 @@ def test_an_unknown_indicator_is_rejected(client):
     assert client.get("/api/country_stats", params={"indicator": "nope"}).status_code == 422
 
 
-def test_every_catalog_indicator_is_fetched(owid):
-    from atmos_gl.lib.country_stats import INDICATORS
+def test_every_catalog_indicator_is_fetched_with_its_own_params(owid):
     c = _collector(owid)
     with pytest.raises(RuntimeError):
         c.collect()
     for indicator in INDICATORS:
-        assert f"{_BASE}/{indicator.slug}.metadata.json?v=1&csvType=full&useColumnShortNames=true" \
-            in owid.fetched
+        params = f"{indicator.params}&" if indicator.params else ""
+        assert f"{_BASE}/{indicator.slug}.metadata.json?{params}{_STANDARD_QUERY}" in owid.fetched
+    assert (f"{_BASE}/fossil-fuels.csv?fuel=oil&metric=consumption&per_capita=total&"
+            f"{_STANDARD_QUERY}") in owid.fetched
 
 
 def test_collect_succeeds_when_every_indicator_is_fetched(owid):
-    from atmos_gl.lib.country_stats import INDICATORS
     for indicator in INDICATORS:
-        if indicator.slug not in owid.charts:
+        if _chart_key(indicator) not in owid.charts:
             csv_text = f"entity,code,year,{indicator.column}\nFrance,FRA,2024,1.5\n"
-            owid.charts[indicator.slug] = (
+            owid.charts[_chart_key(indicator)] = (
                 _metadata(indicator.column, "2026-01-01", indicator.label, "u", "u"), csv_text)
     c = _collector(owid)
     c.collect()
@@ -247,3 +262,61 @@ def test_owid_is_the_default_source_when_none_is_configured(owid):
         c.collect()
     assert owid.fetched[0] == (
         "https://ourworldindata.org/grapher/population.metadata.json?v=1&csvType=full&useColumnShortNames=true")
+
+
+def test_a_projected_future_year_never_counts_as_now(owid):
+    from datetime import date
+    future = date.today().year + 1
+    metadata, _ = owid.charts["population"]
+    owid.charts["population"] = (metadata, (
+        "entity,code,year,population_historical\n"
+        "France,FRA,2023,66438826\n"
+        f"France,FRA,{future},70000000\n"
+        "France,FRA,2100,80000000\n"
+        "Norway,NOR,2100,6000000\n"))
+    c = _collector(owid)
+    with pytest.raises(RuntimeError):
+        c.collect()
+    rows = c.country_stats_adapter.get_indicator("population")["rows"]
+    assert rows["FRA"] == (2023, 66438826)
+    # A country with only projections has no "now" at all.
+    assert "NOR" not in rows
+
+
+def _survey_chart(owid, indicator_id):
+    indicator = INDICATORS_BY_ID[indicator_id]
+    owid.charts[_chart_key(indicator)] = (
+        _metadata(indicator.column, "2026-01-01", indicator.label, "%", "%"),
+        f"entity,code,year,{indicator.column}\nFrance,FRA,2025,1.0\nNorway,NOR,2016,2.0\n"
+        "Afghanistan,AFG,2014,3.0\n")
+
+
+@pytest.mark.parametrize("indicator_id", ["extreme_poverty", "gini"])
+def test_survey_indicators_tolerate_ten_year_old_figures(client, owid, indicator_id):
+    _survey_chart(owid, indicator_id)
+    c = _collector(owid)
+    with pytest.raises(RuntimeError):
+        c.collect()
+    app.dependency_overrides[get_country_stats_adapter] = lambda: c.country_stats_adapter
+    countries = _get(client, indicator=indicator_id, max_age_years=5)["countries"]
+    assert countries["NOR"] == {"year": 2016, "value": 2.0}
+    assert countries["AFG"] == {"year": 2014, "stale": True}
+
+
+def test_the_title_is_the_catalog_label_not_owids_long_one(client, owid):
+    indicator = INDICATORS_BY_ID["adult_obesity"]
+    owid.charts[_chart_key(indicator)] = (
+        _metadata(indicator.column, "2026-01-01",
+                  "Obesity among adults, BMI >= 30 kg/m2 (crude estimate) (%) - Sex: both sexes", "%", None),
+        f"entity,code,year,{indicator.column}\nFrance,FRA,2024,10.0\n")
+    c = _collector(owid)
+    with pytest.raises(RuntimeError):
+        c.collect()
+    app.dependency_overrides[get_country_stats_adapter] = lambda: c.country_stats_adapter
+    assert _get(client, indicator="adult_obesity")["indicator"]["title"] == "Adult obesity"
+
+
+def test_diverging_indicators_say_so(client):
+    app.dependency_overrides[get_country_stats_adapter] = lambda: FakeCountryStatsAdapter()
+    assert _get(client, indicator="net_migration_rate")["indicator"]["diverging"] is True
+    assert _get(client, indicator="population")["indicator"]["diverging"] is False

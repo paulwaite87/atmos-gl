@@ -8,6 +8,7 @@ from atmos_gl.db.field_catalog_adapter import FieldCatalogAdapter
 from atmos_gl.db.user_adapter import UserAdapter
 from atmos_gl.db.user_settings_adapter import UserSettingsAdapter
 from atmos_gl.lib.config import AtmosGLConfig
+from atmos_gl.lib.country_stats import catalog as country_stats_catalog
 from atmos_gl.lib.data_status import resolve_run_epoch_utc
 from atmos_gl.lib.output_files import OUTFILES
 from atmos_gl.routes.auth import current_user_optional, get_user_adapter, require_admin
@@ -268,6 +269,10 @@ def _build_config_data() -> dict:
         name: {"vmin": s.vmin, "vmax": s.vmax, "ticks": s.ticks, "title": s.title}
         for name, s in SCALAR_FIELD_SPECS.items()
     }
+
+    # The World Data picker's options (lib/country_stats.py's catalog, grouped), same
+    # reasoning: country_stats.js builds its dropdown from this, never a copy.
+    data["country_stats_catalog"] = country_stats_catalog()
 
     return data
 
