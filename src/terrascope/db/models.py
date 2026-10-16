@@ -200,6 +200,69 @@ class GdacsFootprint(Base):
     )
 
 
+class TsunamiEvent(Base):
+    """A tsunami warning centre event (one earthquake), one row per (centre, event_id).
+    The centres' feeds hold only the latest bulletin, so each poll upserts it in place:
+    the latest category, bulletin number and expiry win. Visibility and pruning are driven
+    by expires."""
+
+    __tablename__ = "tsunami_events"
+    __table_args__ = (
+        Index("idx_tsunami_events_geom", "geom", postgresql_using="gist"),
+        Index("idx_tsunami_events_expires", "expires"),
+    )
+
+    centre: Mapped[str] = mapped_column(String(4), primary_key=True)
+    event_id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    category: Mapped[str | None] = mapped_column(String(12))
+    bulletin_number: Mapped[int | None] = mapped_column(Integer)
+    location_name: Mapped[str | None] = mapped_column(Text)
+    magnitude: Mapped[float | None] = mapped_column(Double)
+    magnitude_type: Mapped[str | None] = mapped_column(String(8))
+    depth_km: Mapped[float | None] = mapped_column(Double)
+    origin_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    expires: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    bulletin_url: Mapped[str | None] = mapped_column(Text)
+    note: Mapped[str | None] = mapped_column(Text)
+    lat: Mapped[float | None] = mapped_column()
+    lon: Mapped[float | None] = mapped_column()
+    geom: Mapped[str | None] = mapped_column(
+        Geometry("POINT", srid=4326, spatial_index=False)
+    )
+
+
+class TsunamiEventZone(Base):
+    """One NWS forecast zone named by an event's latest bulletin, with the highest
+    category of the bulletin's products that list it. Replaced wholesale on every upsert
+    of the event; deleted with it."""
+
+    __tablename__ = "tsunami_event_zones"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["centre", "event_id"],
+            ["tsunami_events.centre", "tsunami_events.event_id"],
+            ondelete="CASCADE",
+        ),
+    )
+
+    centre: Mapped[str] = mapped_column(String(4), primary_key=True)
+    event_id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    zone_code: Mapped[str] = mapped_column(String(8), primary_key=True)
+    category: Mapped[str] = mapped_column(String(12), nullable=False)
+
+
+class TsunamiZone(Base):
+    """Cached, simplified geometry of an NWS forecast zone, shared by all events and never
+    pruned -- zones barely change and each is ~350 KB to download."""
+
+    __tablename__ = "tsunami_zones"
+
+    zone_code: Mapped[str] = mapped_column(String(8), primary_key=True)
+    geom: Mapped[str | None] = mapped_column(
+        Geometry("GEOMETRY", srid=4326, spatial_index=False)
+    )
+
+
 class VolcanicActivity(Base):
     """Current-state volcanic activity, one row per volcano, upserted from two live
     sources joined on the shared Smithsonian VNUM (confirmed identical scheme in both):

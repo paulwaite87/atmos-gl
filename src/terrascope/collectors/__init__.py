@@ -18,6 +18,7 @@ Synchronous event feeds  (COLLECTORS)        — write straight to the DB
   world_events — GDELT Event Database 2.0 export files, runs_per_day=96 (every ~15min,
                matching GDELT's own update cadence), curated CAMEO code allowlist
   gdacs      — GDACS disaster alerts (EQ/TC/FL/VO/DR/WF) with impact footprints, runs_per_day=48
+  tsunami    — NOAA tsunami warning centre CAP bulletins + NWS zone geometry, runs_per_day=288
   country_stats — Our World in Data chart metadata + CSVs, runs_per_day=1; each
                indicator's CSV re-downloaded only when OWID's lastUpdated moves
 
@@ -97,6 +98,7 @@ from .satellites import SatellitesCollector
 from .markers_sync import MarkersSyncCollector
 from .world_events import WorldEventsCollector
 from .gdacs import GdacsCollector
+from .tsunami import TsunamiCollector
 from terrascope.collectors.sst import SstCollector
 from terrascope.collectors.clouds import CloudsCollector
 from terrascope.collectors.greenhouse_gases import (
@@ -126,6 +128,7 @@ COLLECTORS = (
     MarkersSyncCollector,
     WorldEventsCollector,
     GdacsCollector,
+    TsunamiCollector,
     FrontlineCollector,
     CountryStatsCollector,
 )

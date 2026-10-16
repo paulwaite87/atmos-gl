@@ -1,0 +1,35 @@
+{
+ "type": "Feature",
+ "geometry": {
+  "type": "Polygon",
+  "coordinates": [
+   [
+    [
+     -122,
+     36
+    ],
+    [
+     -121,
+     36
+    ],
+    [
+     -121,
+     37
+    ],
+    [
+     -122,
+     37
+    ],
+    [
+     -122,
+     36
+    ]
+   ]
+  ]
+ },
+ "properties": {
+  "id": "PZZ530",
+  "@type": "wx:Zone",
+  "name": "fixture"
+ }
+}

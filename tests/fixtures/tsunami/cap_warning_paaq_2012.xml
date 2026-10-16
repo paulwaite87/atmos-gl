@@ -1,0 +1,1662 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?><alert xmlns="urn:oasis:names:tc:emergency:cap:1.2">
+  <identifier>PAAQ-2-maiqdx</identifier>
+  <sender>ntwc@noaa.gov</sender>
+  <sent>2012-09-18T00:59:00-00:00</sent>
+  <status>Actual</status>
+  <msgType>Update</msgType>
+  <source>WCATWC</source>
+  <scope>Public</scope>
+  <code>profile:CAP-TSU:1.1</code>
+  <references>ntwc@noaa.gov,PAAQ-1-maiqdx,2012-09-18T00:58:37-00:00</references>
+  <incidents>maiqdx</incidents>
+  <info>
+    <category>Geo</category>
+    <event>Tsunami</event>
+    <responseType>Prepare</responseType>
+    <urgency>Immediate</urgency>
+    <severity>Extreme</severity>
+    <certainty>Observed</certainty>
+    <eventCode>
+      <valueName>TsunamiSystemCategory</valueName>
+      <value>Warning</value>
+    </eventCode>
+    <onset>2012-09-18T00:59:00-00:00</onset>
+    <expires>2012-09-18T02:48:00-00:00</expires>
+    <senderName>NWS West Coast/Alaska Tsunami Warning Center Palmer AK</senderName>
+    <headline>The tsunami Warning continues in effect for the coastal areas of California from the California-Mexico border to Ragged Point, California (45 miles NW of San Luis Obispo).</headline>
+    <description>The tsunami Warning continues in effect for the coastal areas of California from the California-Mexico border to Ragged Point, California (45 miles NW of San Luis Obispo). - Event details: Preliminary magnitude 8.4 (Ml) earthquake / Lat: 32.776, Lon: -115.633 at 2012-09-17T23:53:57Z Tsunami warnings mean that a tsunami with significant widespread inundation is expected, or occurring.  Warnings indicate that widespread dangerous coastal flooding accompanied by powerful currents is possible and may continue for several hours after the initial wave arrival. </description>
+    <instruction>Recommended Actions: People in low-lying coastal areas should be alert to instructions from their local emergency officials. Evacuations are only ordered by emergency response agencies.  If in a tsunami warning coastal area, move inland to higher ground. If in a tsunami advisory coastal area, move out of the water, off the beach, and out of harbors and marinas.  If in a tsunami watch coastal area, stay alert for supplemental information.  Next update and additional information:   This message will be updated in 30 minutes or sooner if the situation warrants.   The tsunami message will remain in effect until further notice.   Refer to the internet site wcatwc.arh.noaa.gov for more information.</instruction>
+    <web>http://ntwc.arh.noaa.gov/events/PAAQ/2012/09/17/maiqdx/2/WEPA41/WEPA41.txt</web>
+    <parameter>
+      <valueName>EventLocationName</valueName>
+      <value>5 miles SW of El Centro, California</value>
+    </parameter>
+    <parameter>
+      <valueName>EventPreliminaryMagnitude</valueName>
+      <value>8.4</value>
+    </parameter>
+    <parameter>
+      <valueName>EventPreliminaryMagnitudeType</valueName>
+      <value>Ml</value>
+    </parameter>
+    <parameter>
+      <valueName>EventOriginTime</valueName>
+      <value>2012-09-17T23:53:57-00:00</value>
+    </parameter>
+    <parameter>
+      <valueName>EventDepth</valueName>
+      <value>6 kilometers</value>
+    </parameter>
+    <parameter>
+      <valueName>EventLatLon</valueName>
+      <value>32.776,-115.633 0.000</value>
+    </parameter>
+    <parameter>
+      <valueName>VTEC</valueName>
+      <value>/T.CON.PAAQ.TS.W.0075.000000T0000Z-000000T0000Z/</value>
+    </parameter>
+    <parameter>
+      <valueName>NWSUGC</valueName>
+      <value>CAZ042-043-040-041-087-039-034-035-180148-</value>
+    </parameter>
+    <parameter>
+      <valueName>ProductDefinition</valueName>
+      <value>Tsunami warnings mean that a tsunami with significant widespread inundation is expected, or occurring.  Warnings indicate that widespread dangerous coastal flooding accompanied by powerful currents is possible and may continue for several hours after the initial wave arrival. </value>
+    </parameter>
+    <parameter>
+      <valueName>WEPA41</valueName>
+      <value>Tsunami Warnings, Watches, and Advisories for AK, BC, and US West Coast</value>
+    </parameter>
+    <parameter>
+      <valueName>CMAMtext</valueName>
+      <value>Tsunami danger on the coast. Go to high ground or move inland. Listen to local news. –NWS</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: "La Jolla, California"</valueName>
+      <value>2012-09-17T17:10:00-07:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: "Newport Beach, California"</valueName>
+      <value>2012-09-17T17:14:00-07:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: "the California-Mexico border"</valueName>
+      <value>2012-09-17T17:21:00-07:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: "San Pedro, California"</valueName>
+      <value>2012-09-17T17:24:00-07:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: "Alamitos Bay, California (20 miles SE of L.A.)"</valueName>
+      <value>2012-09-17T17:33:00-07:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: "Santa Monica, California"</valueName>
+      <value>2012-09-17T17:36:00-07:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: ""</valueName>
+      <value>2012-09-17T17:39:00-07:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: "Rincon Point, California (15 miles SE of Santa Barbara)"</valueName>
+      <value>2012-09-17T18:00:00-07:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: "Santa Barbara, California"</valueName>
+      <value>2012-09-17T18:01:00-07:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: "Point Conception, California"</valueName>
+      <value>2012-09-17T18:09:00-07:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: "Ragged Point, California (45 miles NW of San Luis Obispo)"</valueName>
+      <value>2012-09-17T18:27:00-07:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: "Port San Luis, California"</valueName>
+      <value>2012-09-17T18:29:00-07:00</value>
+    </parameter>
+    <resource>
+      <resourceDesc>Energy Map</resourceDesc>
+      <mimeType>image/jpeg</mimeType>
+      <uri>http://ntwc.arh.noaa.gov/events/PAAQ/2012/09/17/maiqdx/2/WEPA41/energymaiqdx.jpg</uri>
+    </resource>
+    <resource>
+      <resourceDesc>Tsunami Travel Time Map</resourceDesc>
+      <mimeType>image/jpeg</mimeType>
+      <uri>http://ntwc.arh.noaa.gov/events/PAAQ/2012/09/17/maiqdx/2/WEPA41/ttvumaiqdx-02.jpg</uri>
+    </resource>
+    <resource>
+      <resourceDesc>Event Data as a JSON document</resourceDesc>
+      <mimeType>application/json</mimeType>
+      <uri>http://ntwc.arh.noaa.gov/events/PAAQ/2012/09/17/maiqdx/2/WEPA41/PAAQ.json</uri>
+    </resource>
+    <area>
+      <areaDesc>Coastal areas between and including the California-Mexico border to Ragged Point, California (45 miles NW of San Luis Obispo)</areaDesc>
+      <circle>32.776,-115.633 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>CAZ042</value>
+      </geocode>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>CAZ043</value>
+      </geocode>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>CAZ040</value>
+      </geocode>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>CAZ041</value>
+      </geocode>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>CAZ087</value>
+      </geocode>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>CAZ039</value>
+      </geocode>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>CAZ034</value>
+      </geocode>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>CAZ035</value>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc>La Jolla, California</areaDesc>
+      <circle>32.866001,-117.266998 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>CAZ043</value>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc>Newport Beach, California</areaDesc>
+      <circle>33.599998,-117.919998 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>CAZ042</value>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc>the California-Mexico border</areaDesc>
+      <circle>32.52,-117.130005 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>PZZ750</value>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc>San Pedro, California</areaDesc>
+      <circle>33.7033,-118.2733 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>PZZ655</value>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc>Alamitos Bay, California (20 miles SE of L.A.)</areaDesc>
+      <circle>33.733501,-118.124496 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>CAZ041</value>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc>Santa Monica, California</areaDesc>
+      <circle>34.0,-118.5 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>PZZ655</value>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc/>
+      <circle>32.455002,-120.557007 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value/>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc>Rincon Point, California (15 miles SE of Santa Barbara)</areaDesc>
+      <circle>34.371799,-119.478302 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>PZZ650</value>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc>Santa Barbara, California</areaDesc>
+      <circle>34.400002,-119.699997 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>CAZ039</value>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc>Point Conception, California</areaDesc>
+      <circle>34.549999,-120.616699 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>CAZ035</value>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc>Ragged Point, California (45 miles NW of San Luis Obispo)</areaDesc>
+      <circle>35.759201,-121.330994 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>PZZ565</value>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc>Port San Luis, California</areaDesc>
+      <circle>35.16,-120.763306 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>CAZ034</value>
+      </geocode>
+    </area>
+  </info>
+  <info>
+    <category>Geo</category>
+    <event>Tsunami</event>
+    <responseType>Prepare</responseType>
+    <urgency>Immediate</urgency>
+    <severity>Moderate</severity>
+    <certainty>Observed</certainty>
+    <eventCode>
+      <valueName>TsunamiSystemCategory</valueName>
+      <value>Advisory</value>
+    </eventCode>
+    <onset>2012-09-18T00:59:00-00:00</onset>
+    <expires>2012-09-18T02:48:00-00:00</expires>
+    <senderName>NWS West Coast/Alaska Tsunami Warning Center Palmer AK</senderName>
+    <headline>The tsunami Advisory continues in effect for the coastal areas of California from Ragged Point, California (45 miles NW of San Luis Obispo) to Horse Mountain, California (50 miles SW of Eureka).</headline>
+    <description>The tsunami Advisory continues in effect for the coastal areas of California from Ragged Point, California (45 miles NW of San Luis Obispo) to Horse Mountain, California (50 miles SW of Eureka). - Event details: Preliminary magnitude 8.4 (Ml) earthquake / Lat: 32.776, Lon: -115.633 at 2012-09-17T23:53:57Z Tsunami advisories mean that a tsunami capable of producing strong currents or waves dangerous to people in or very near the water is expected.  Significant widespread inundation is not expected for areas under an advisory.  Currents may be hazardous to swimmers, boats, and coastal structures and may continue for several hours after the initial wave arrival. </description>
+    <instruction>Recommended Actions: People in low-lying coastal areas should be alert to instructions from their local emergency officials. Evacuations are only ordered by emergency response agencies.  If in a tsunami warning coastal area, move inland to higher ground. If in a tsunami advisory coastal area, move out of the water, off the beach, and out of harbors and marinas.  If in a tsunami watch coastal area, stay alert for supplemental information.  Next update and additional information:   This message will be updated in 30 minutes or sooner if the situation warrants.   The tsunami message will remain in effect until further notice.   Refer to the internet site wcatwc.arh.noaa.gov for more information.</instruction>
+    <web>http://ntwc.arh.noaa.gov/events/PAAQ/2012/09/17/maiqdx/2/WEPA41/WEPA41.txt</web>
+    <parameter>
+      <valueName>EventLocationName</valueName>
+      <value>5 miles SW of El Centro, California</value>
+    </parameter>
+    <parameter>
+      <valueName>EventPreliminaryMagnitude</valueName>
+      <value>8.4</value>
+    </parameter>
+    <parameter>
+      <valueName>EventPreliminaryMagnitudeType</valueName>
+      <value>Ml</value>
+    </parameter>
+    <parameter>
+      <valueName>EventOriginTime</valueName>
+      <value>2012-09-17T23:53:57-00:00</value>
+    </parameter>
+    <parameter>
+      <valueName>EventDepth</valueName>
+      <value>6 kilometers</value>
+    </parameter>
+    <parameter>
+      <valueName>EventLatLon</valueName>
+      <value>32.776,-115.633 0.000</value>
+    </parameter>
+    <parameter>
+      <valueName>VTEC</valueName>
+      <value>/T.CON.PAAQ.TS.Y.0075.000000T0000Z-000000T0000Z/</value>
+    </parameter>
+    <parameter>
+      <valueName>NWSUGC</valueName>
+      <value>PZZ530-CAZ529-530-006-505-506-508-509-002-180148-</value>
+    </parameter>
+    <parameter>
+      <valueName>ProductDefinition</valueName>
+      <value>Tsunami advisories mean that a tsunami capable of producing strong currents or waves dangerous to people in or very near the water is expected.  Significant widespread inundation is not expected for areas under an advisory.  Currents may be hazardous to swimmers, boats, and coastal structures and may continue for several hours after the initial wave arrival. </value>
+    </parameter>
+    <parameter>
+      <valueName>WEPA41</valueName>
+      <value>Tsunami Warnings, Watches, and Advisories for AK, BC, and US West Coast</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: "Point Sur, California"</valueName>
+      <value>2012-09-17T18:26:00-07:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: "Davenport, California (10 miles NW of Santa Cruz)"</valueName>
+      <value>2012-09-17T18:35:00-07:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: "Monterey, California"</valueName>
+      <value>2012-09-17T18:38:00-07:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: "Point Reyes, California"</valueName>
+      <value>2012-09-17T18:56:00-07:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: ""</valueName>
+      <value>2012-09-17T18:58:00-07:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: "Gualala Point, California (80 miles NW of San Francisco)"</valueName>
+      <value>2012-09-17T18:58:00-07:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: "Point Arena, California"</valueName>
+      <value>2012-09-17T19:02:00-07:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: "Fort Bragg, California"</valueName>
+      <value>2012-09-17T19:04:00-07:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: "Horse Mountain, California (50 miles SW of Eureka)"</valueName>
+      <value>2012-09-17T19:10:00-07:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: "Fort Point, New Hampshire"</valueName>
+      <value>2012-09-17T19:23:00-07:00</value>
+    </parameter>
+    <resource>
+      <resourceDesc>Energy Map</resourceDesc>
+      <mimeType>image/jpeg</mimeType>
+      <uri>http://ntwc.arh.noaa.gov/events/PAAQ/2012/09/17/maiqdx/2/WEPA41/energymaiqdx.jpg</uri>
+    </resource>
+    <resource>
+      <resourceDesc>Tsunami Travel Time Map</resourceDesc>
+      <mimeType>image/jpeg</mimeType>
+      <uri>http://ntwc.arh.noaa.gov/events/PAAQ/2012/09/17/maiqdx/2/WEPA41/ttvumaiqdx-02.jpg</uri>
+    </resource>
+    <resource>
+      <resourceDesc>Event Data as a JSON document</resourceDesc>
+      <mimeType>application/json</mimeType>
+      <uri>http://ntwc.arh.noaa.gov/events/PAAQ/2012/09/17/maiqdx/2/WEPA41/PAAQ.json</uri>
+    </resource>
+    <area>
+      <areaDesc>Coastal areas between and including Ragged Point, California (45 miles NW of San Luis Obispo) to Horse Mountain, California (50 miles SW of Eureka)</areaDesc>
+      <circle>32.776,-115.633 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>PZZ530</value>
+      </geocode>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>CAZ529</value>
+      </geocode>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>CAZ530</value>
+      </geocode>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>CAZ006</value>
+      </geocode>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>CAZ505</value>
+      </geocode>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>CAZ506</value>
+      </geocode>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>CAZ508</value>
+      </geocode>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>CAZ509</value>
+      </geocode>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>CAZ002</value>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc>Point Sur, California</areaDesc>
+      <circle>36.310001,-121.899994 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>CAZ530</value>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc>Davenport, California (10 miles NW of Santa Cruz)</areaDesc>
+      <circle>37.005299,-122.196503 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>PZZ560</value>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc>Monterey, California</areaDesc>
+      <circle>36.605,-121.889999 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>CAZ530</value>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc>Point Reyes, California</areaDesc>
+      <circle>38.0,-123.033295 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>PZZ545</value>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc/>
+      <circle>39.327999,-127.013 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value/>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc>Gualala Point, California (80 miles NW of San Francisco)</areaDesc>
+      <circle>38.752399,-123.528198 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>CAZ002</value>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc>Point Arena, California</areaDesc>
+      <circle>38.966702,-123.733307 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>PZZ455</value>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc>Fort Bragg, California</areaDesc>
+      <circle>39.4333,-123.833298 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>CAZ002</value>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc>Horse Mountain, California (50 miles SW of Eureka)</areaDesc>
+      <circle>40.0811,-124.0952 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>PZZ455</value>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc>Fort Point, New Hampshire</areaDesc>
+      <circle>37.810001,-122.479996 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>ANZ154</value>
+      </geocode>
+    </area>
+  </info>
+  <info>
+    <category>Geo</category>
+    <event>Tsunami</event>
+    <responseType>Prepare</responseType>
+    <urgency>Expected</urgency>
+    <severity>Moderate</severity>
+    <certainty>Possible</certainty>
+    <eventCode>
+      <valueName>TsunamiSystemCategory</valueName>
+      <value>Watch</value>
+    </eventCode>
+    <onset>2012-09-18T00:59:00-00:00</onset>
+    <expires>2012-09-18T02:48:00-00:00</expires>
+    <senderName>NWS West Coast/Alaska Tsunami Warning Center Palmer AK</senderName>
+    <headline>The tsunami Watch continues in effect for the coastal areas of California, Oregon, Washington, British Columbia and Alaska from Horse Mountain, California (50 miles SW of Eureka) to Attu, Alaska.</headline>
+    <description>The tsunami Watch continues in effect for the coastal areas of California, Oregon, Washington, British Columbia and Alaska from Horse Mountain, California (50 miles SW of Eureka) to Attu, Alaska. - Event details: Preliminary magnitude 8.4 (Ml) earthquake / Lat: 32.776, Lon: -115.633 at 2012-09-17T23:53:57Z Tsunami watches are an advance notice to areas that could be impacted by a tsunami at a later time.  Watch areas may be upgraded to warning or advisory status, or canceled, based on new information or analysis. People in a watch area should closelyfollow subsequent tsunami messages. </description>
+    <instruction>Recommended Actions: People in low-lying coastal areas should be alert to instructions from their local emergency officials. Evacuations are only ordered by emergency response agencies.  If in a tsunami warning coastal area, move inland to higher ground. If in a tsunami advisory coastal area, move out of the water, off the beach, and out of harbors and marinas.  If in a tsunami watch coastal area, stay alert for supplemental information.  Next update and additional information:   This message will be updated in 30 minutes or sooner if the situation warrants.   The tsunami message will remain in effect until further notice.   Refer to the internet site wcatwc.arh.noaa.gov for more information.</instruction>
+    <web>http://ntwc.arh.noaa.gov/events/PAAQ/2012/09/17/maiqdx/2/WEPA41/WEPA41.txt</web>
+    <parameter>
+      <valueName>EventLocationName</valueName>
+      <value>5 miles SW of El Centro, California</value>
+    </parameter>
+    <parameter>
+      <valueName>EventPreliminaryMagnitude</valueName>
+      <value>8.4</value>
+    </parameter>
+    <parameter>
+      <valueName>EventPreliminaryMagnitudeType</valueName>
+      <value>Ml</value>
+    </parameter>
+    <parameter>
+      <valueName>EventOriginTime</valueName>
+      <value>2012-09-17T23:53:57-00:00</value>
+    </parameter>
+    <parameter>
+      <valueName>EventDepth</valueName>
+      <value>6 kilometers</value>
+    </parameter>
+    <parameter>
+      <valueName>EventLatLon</valueName>
+      <value>32.776,-115.633 0.000</value>
+    </parameter>
+    <parameter>
+      <valueName>VTEC</valueName>
+      <value>/T.CON.PAAQ.TS.A.0075.000000T0000Z-000000T0000Z/</value>
+    </parameter>
+    <parameter>
+      <valueName>NWSUGC</valueName>
+      <value>CAZ001-ORZ021-022-002-001-WAZ001-021-510-514&gt;517-BCZ130-230-250-260-280-160-142-141-150-121-122-220-210-922-912-921-911-110-AKZ026&gt;029-023-024-019&gt;022-025-017-131-135-125-121-171-181-185-187-191-180148-</value>
+    </parameter>
+    <parameter>
+      <valueName>ProductDefinition</valueName>
+      <value>Tsunami watches are an advance notice to areas that could be impacted by a tsunami at a later time.  Watch areas may be upgraded to warning or advisory status, or canceled, based on new information or analysis. People in a watch area should closelyfollow subsequent tsunami messages. </value>
+    </parameter>
+    <parameter>
+      <valueName>WEPA41</valueName>
+      <value>Tsunami Warnings, Watches, and Advisories for AK, BC, and US West Coast</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: "Cape Mendocino, California"</valueName>
+      <value>2012-09-17T19:20:00-07:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: "Humboldt Bay, California"</valueName>
+      <value>2012-09-17T19:32:00-07:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: ""</valueName>
+      <value>2012-09-17T19:34:00-07:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: "Crescent City, California"</valueName>
+      <value>2012-09-17T19:45:00-07:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: "Cape Blanco, Oregon"</valueName>
+      <value>2012-09-17T19:50:00-07:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: "the Oregon-California border"</valueName>
+      <value>2012-09-17T19:50:00-07:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: "Charleston, Oregon"</valueName>
+      <value>2012-09-17T20:02:00-07:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: ""</valueName>
+      <value>2012-09-17T20:08:00-07:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: "Douglas/Lane County Line, Oregon (10 miles SW of Florence)"</valueName>
+      <value>2012-09-17T20:09:00-07:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: "Cascade Head, Oregon (70 miles SW of Portland)"</valueName>
+      <value>2012-09-17T20:25:00-07:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: "Newport, Oregon"</valueName>
+      <value>2012-09-17T20:29:00-07:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: "Tillamook Bay, Oregon"</valueName>
+      <value>2012-09-17T20:34:00-07:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: "Clatsop Spit, Oregon"</valueName>
+      <value>2012-09-17T20:38:00-07:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: "the Oregon-Washington border"</valueName>
+      <value>2012-09-17T20:39:00-07:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: ""</valueName>
+      <value>2012-09-17T20:42:00-07:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: "Seaside, Oregon"</valueName>
+      <value>2012-09-17T20:46:00-07:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: "La Push, Washington"</valueName>
+      <value>2012-09-17T20:56:00-07:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: "Westport, Washington"</valueName>
+      <value>2012-09-17T20:57:00-07:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: "Point Grenville, Washington"</valueName>
+      <value>2012-09-17T20:59:00-07:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: "the Washington-British Columbia border"</valueName>
+      <value>2012-09-17T21:01:00-07:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: "Neah Bay, Washington"</valueName>
+      <value>2012-09-17T21:07:00-07:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: "Astoria, Oregon"</valueName>
+      <value>2012-09-17T21:11:00-07:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: "Tofino, British Columbia"</valueName>
+      <value>2012-09-17T21:16:00-07:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: "the north tip of Vancouver Island, British Columbia"</valueName>
+      <value>2012-09-17T21:17:00-07:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: "Port Angeles, Washington"</valueName>
+      <value>2012-09-17T21:44:00-07:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: "the Alaska/British Columbia border"</valueName>
+      <value>2012-09-17T21:55:00-07:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: "Langara Island, British Columbia"</valueName>
+      <value>2012-09-17T21:56:00-07:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: ""</valueName>
+      <value>2012-09-17T21:19:00-08:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: "Port Alexander, Alaska"</valueName>
+      <value>2012-09-17T21:21:00-08:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: ""</valueName>
+      <value>2012-09-17T21:25:00-08:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: ""</valueName>
+      <value>2012-09-17T21:32:00-08:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: "Sitka, Alaska"</valueName>
+      <value>2012-09-17T21:34:00-08:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: "Cape Decision, Alaska (85 miles SE of Sitka)"</valueName>
+      <value>2012-09-17T21:41:00-08:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: "Seattle, Washington"</valueName>
+      <value>2012-09-17T22:41:00-07:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: "South Santee River, South Carolina"</valueName>
+      <value>2012-09-17T21:42:00-08:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: "Elfin Cove, Alaska"</valueName>
+      <value>2012-09-17T21:44:00-08:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: "Ketchikan, Alaska"</valueName>
+      <value>2012-09-17T21:54:00-08:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: ""</valueName>
+      <value>2012-09-17T21:56:00-08:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: "Cape Fairweather, Alaska (80 miles SE of Yakutat)"</valueName>
+      <value>2012-09-17T22:03:00-08:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: "Craig, Alaska"</valueName>
+      <value>2012-09-17T22:06:00-08:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: "Cape Suckling, Alaska (75 miles SE of Cordova)"</valueName>
+      <value>2012-09-17T22:10:00-08:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: ""</valueName>
+      <value>2012-09-17T22:21:00-08:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: "Yakutat, Alaska"</valueName>
+      <value>2012-09-17T22:25:00-08:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: "Prince Rupert, British Columbia"</valueName>
+      <value>2012-09-17T23:25:00-07:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: "Bella Bella, British Columbia"</valueName>
+      <value>2012-09-17T23:29:00-07:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: "Hinchinbrook Entrance, Alaska (90 miles E of Seward)"</valueName>
+      <value>2012-09-17T22:31:00-08:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: "Juneau, Alaska"</valueName>
+      <value>2012-09-17T22:41:00-08:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: ""</valueName>
+      <value>2012-09-17T22:42:00-08:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: "Kodiak, Alaska"</valueName>
+      <value>2012-09-17T22:42:00-08:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: "Seward, Alaska"</valueName>
+      <value>2012-09-17T22:47:00-08:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: "Sand Point, Alaska"</valueName>
+      <value>2012-09-17T22:53:00-08:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: "Akutan, Alaska"</valueName>
+      <value>2012-09-17T22:54:00-08:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: "Old Harbor, Alaska"</valueName>
+      <value>2012-09-17T22:55:00-08:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: "Nikolski, Alaska"</valueName>
+      <value>2012-09-17T22:57:00-08:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: "Unimak Pass, Alaska (80 miles NE of Dutch Harbor)"</valueName>
+      <value>2012-09-17T22:58:00-08:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: "Perryville, Alaska"</valueName>
+      <value>2012-09-17T22:59:00-08:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: "King Cove, Alaska"</valueName>
+      <value>2012-09-17T23:00:00-08:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: "Kennedy Entrance, Alaska (40 miles SW of Homer)"</valueName>
+      <value>2012-09-17T23:03:00-08:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: "Atka, Alaska"</valueName>
+      <value>2012-09-17T23:03:00-08:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: "Valdez, Alaska"</valueName>
+      <value>2012-09-17T23:05:00-08:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: "Dutch Harbor, Alaska"</valueName>
+      <value>2012-09-17T23:07:00-08:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: "Chignik Bay, Alaska"</valueName>
+      <value>2012-09-17T23:13:00-08:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: "Cordova, Alaska"</valueName>
+      <value>2012-09-17T23:14:00-08:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: "Amchitka Pass, Alaska (125 miles W of Adak)"</valueName>
+      <value>2012-09-17T23:15:00-08:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: ""</valueName>
+      <value>2012-09-17T23:23:00-08:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: "Amchitka, Alaska"</valueName>
+      <value>2012-09-17T23:25:00-08:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: "Adak, Alaska"</valueName>
+      <value>2012-09-17T23:25:00-08:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: "Alitak, Alaska"</valueName>
+      <value>2012-09-17T23:27:00-08:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: "Cold Bay, Alaska"</valueName>
+      <value>2012-09-17T23:35:00-08:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: ""</valueName>
+      <value>2012-09-17T23:52:00-08:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: "Homer, Alaska"</valueName>
+      <value>2012-09-17T23:52:00-08:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: "Shemya, Alaska"</valueName>
+      <value>2012-09-18T00:08:00-08:00</value>
+    </parameter>
+    <parameter>
+      <valueName>predictedArrivalTime: "Attu, Alaska"</valueName>
+      <value>2012-09-18T00:14:00-08:00</value>
+    </parameter>
+    <resource>
+      <resourceDesc>Energy Map</resourceDesc>
+      <mimeType>image/jpeg</mimeType>
+      <uri>http://ntwc.arh.noaa.gov/events/PAAQ/2012/09/17/maiqdx/2/WEPA41/energymaiqdx.jpg</uri>
+    </resource>
+    <resource>
+      <resourceDesc>Tsunami Travel Time Map</resourceDesc>
+      <mimeType>image/jpeg</mimeType>
+      <uri>http://ntwc.arh.noaa.gov/events/PAAQ/2012/09/17/maiqdx/2/WEPA41/ttvumaiqdx-02.jpg</uri>
+    </resource>
+    <resource>
+      <resourceDesc>Event Data as a JSON document</resourceDesc>
+      <mimeType>application/json</mimeType>
+      <uri>http://ntwc.arh.noaa.gov/events/PAAQ/2012/09/17/maiqdx/2/WEPA41/PAAQ.json</uri>
+    </resource>
+    <area>
+      <areaDesc>Coastal areas between and including Horse Mountain, California (50 miles SW of Eureka) to Attu, Alaska</areaDesc>
+      <circle>32.776,-115.633 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>CAZ001</value>
+      </geocode>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>ORZ021</value>
+      </geocode>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>ORZ022</value>
+      </geocode>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>ORZ002</value>
+      </geocode>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>ORZ001</value>
+      </geocode>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>WAZ001</value>
+      </geocode>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>WAZ021</value>
+      </geocode>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>WAZ510</value>
+      </geocode>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>WAZ514</value>
+      </geocode>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>WAZ515</value>
+      </geocode>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>WAZ516</value>
+      </geocode>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>WAZ517</value>
+      </geocode>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>BCZ130</value>
+      </geocode>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>BCZ230</value>
+      </geocode>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>BCZ250</value>
+      </geocode>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>BCZ260</value>
+      </geocode>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>BCZ280</value>
+      </geocode>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>BCZ160</value>
+      </geocode>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>BCZ142</value>
+      </geocode>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>BCZ141</value>
+      </geocode>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>BCZ150</value>
+      </geocode>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>BCZ121</value>
+      </geocode>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>BCZ122</value>
+      </geocode>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>BCZ220</value>
+      </geocode>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>BCZ210</value>
+      </geocode>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>BCZ922</value>
+      </geocode>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>BCZ912</value>
+      </geocode>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>BCZ921</value>
+      </geocode>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>BCZ911</value>
+      </geocode>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>BCZ110</value>
+      </geocode>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>AKZ026</value>
+      </geocode>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>AKZ027</value>
+      </geocode>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>AKZ028</value>
+      </geocode>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>AKZ029</value>
+      </geocode>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>AKZ023</value>
+      </geocode>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>AKZ024</value>
+      </geocode>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>AKZ019</value>
+      </geocode>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>AKZ020</value>
+      </geocode>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>AKZ021</value>
+      </geocode>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>AKZ022</value>
+      </geocode>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>AKZ025</value>
+      </geocode>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>AKZ017</value>
+      </geocode>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>AKZ131</value>
+      </geocode>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>AKZ135</value>
+      </geocode>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>AKZ125</value>
+      </geocode>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>AKZ121</value>
+      </geocode>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>AKZ171</value>
+      </geocode>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>AKZ181</value>
+      </geocode>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>AKZ185</value>
+      </geocode>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>AKZ187</value>
+      </geocode>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>AKZ191</value>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc>Cape Mendocino, California</areaDesc>
+      <circle>40.516701,-124.399994 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>CAZ001</value>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc>Humboldt Bay, California</areaDesc>
+      <circle>40.759998,-124.2267 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>PZZ410</value>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc/>
+      <circle>42.595001,-128.893997 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value/>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc>Crescent City, California</areaDesc>
+      <circle>41.7467,-124.183304 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>CAZ001</value>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc>Cape Blanco, Oregon</areaDesc>
+      <circle>42.849998,-124.550003 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>ORZ021</value>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc>the Oregon-California border</areaDesc>
+      <circle>42.0,-124.216705 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>PZZ330</value>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc>Charleston, Oregon</areaDesc>
+      <circle>43.349998,-124.330002 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>PZZ310</value>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc/>
+      <circle>45.858002,-128.796997 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value/>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc>Douglas/Lane County Line, Oregon (10 miles SW of Florence)</areaDesc>
+      <circle>43.863098,-124.167892 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>PZZ350</value>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc>Cascade Head, Oregon (70 miles SW of Portland)</areaDesc>
+      <circle>44.983299,-124.016693 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>PZZ255</value>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc>Newport, Oregon</areaDesc>
+      <circle>44.616699,-124.066696 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>PZZ255</value>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc>Tillamook Bay, Oregon</areaDesc>
+      <circle>45.5667,-123.949997 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>PZZ250</value>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc>Clatsop Spit, Oregon</areaDesc>
+      <circle>46.220001,-124.070007 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>ORZ001</value>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc>the Oregon-Washington border</areaDesc>
+      <circle>46.254002,-124.076294 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>PZZ250</value>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc/>
+      <circle>48.758999,-129.610001 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value/>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc>Seaside, Oregon</areaDesc>
+      <circle>46.0,-123.933304 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>ORZ001</value>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc>La Push, Washington</areaDesc>
+      <circle>47.544701,-124.389999 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>PZZ153</value>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc>Westport, Washington</areaDesc>
+      <circle>46.906601,-124.106705 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>WAZ517</value>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc>Point Grenville, Washington</areaDesc>
+      <circle>47.310001,-124.279999 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>PZZ153</value>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc>the Washington-British Columbia border</areaDesc>
+      <circle>48.380001,-124.716705 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>PZZ130</value>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc>Neah Bay, Washington</areaDesc>
+      <circle>48.366699,-124.616699 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>PZZ130</value>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc>Astoria, Oregon</areaDesc>
+      <circle>46.193298,-123.809998 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>ORZ001</value>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc>Tofino, British Columbia</areaDesc>
+      <circle>49.150002,-125.916702 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>BCZ141</value>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc>the north tip of Vancouver Island, British Columbia</areaDesc>
+      <circle>50.766701,-128.416702 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>BCZ121</value>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc>Port Angeles, Washington</areaDesc>
+      <circle>48.125,-123.440002 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>WAZ514</value>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc>the Alaska/British Columbia border</areaDesc>
+      <circle>54.427898,-133.4039 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>BCZ110</value>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc>Langara Island, British Columbia</areaDesc>
+      <circle>54.266701,-133.066696 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>BCZ110</value>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc/>
+      <circle>55.299999,-148.492004 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value/>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc>Port Alexander, Alaska</areaDesc>
+      <circle>56.25,-134.649994 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>PKZ033</value>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc/>
+      <circle>57.617001,-143.800003 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value/>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc/>
+      <circle>52.648998,-156.921005 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value/>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc>Sitka, Alaska</areaDesc>
+      <circle>57.053299,-135.346695 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>PKZ042</value>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc>Cape Decision, Alaska (85 miles SE of Sitka)</areaDesc>
+      <circle>56.005798,-134.139801 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>PKZ041</value>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc>Seattle, Washington</areaDesc>
+      <circle>47.602001,-122.335007 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>PZZ135</value>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc>South Santee River, South Carolina</areaDesc>
+      <circle>57.366901,-135.790695 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>AMZ350</value>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc>Elfin Cove, Alaska</areaDesc>
+      <circle>58.200001,-136.350006 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>AKZ022</value>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc>Ketchikan, Alaska</areaDesc>
+      <circle>55.333302,-131.666702 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>AKZ028</value>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc/>
+      <circle>51.068001,-164.005005 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value/>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc>Cape Fairweather, Alaska (80 miles SE of Yakutat)</areaDesc>
+      <circle>58.805401,-137.948502 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>PKZ043</value>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc>Craig, Alaska</areaDesc>
+      <circle>55.477001,-133.147995 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>PKZ041</value>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc>Cape Suckling, Alaska (75 miles SE of Cordova)</areaDesc>
+      <circle>59.9814,-143.882507 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>PKZ120</value>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc/>
+      <circle>49.624001,-169.852997 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value/>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc>Yakutat, Alaska</areaDesc>
+      <circle>59.5467,-139.729996 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>PKZ053</value>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc>Prince Rupert, British Columbia</areaDesc>
+      <circle>54.317001,-130.317001 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>BCZ911</value>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc>Bella Bella, British Columbia</areaDesc>
+      <circle>52.146999,-128.089996 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>BCZ210</value>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc>Hinchinbrook Entrance, Alaska (90 miles E of Seward)</areaDesc>
+      <circle>60.269199,-146.798294 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>PKZ120</value>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc>Juneau, Alaska</areaDesc>
+      <circle>58.298302,-134.399994 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>PKZ031</value>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc/>
+      <circle>48.299,-174.225998 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value/>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc>Kodiak, Alaska</areaDesc>
+      <circle>57.736698,-152.513306 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>AKZ171</value>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc>Seward, Alaska</areaDesc>
+      <circle>60.099998,-149.433304 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>AKZ125</value>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc>Sand Point, Alaska</areaDesc>
+      <circle>55.333302,-160.503296 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>AKZ181</value>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc>Akutan, Alaska</areaDesc>
+      <circle>54.133301,-165.7733 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>AKZ185</value>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc>Old Harbor, Alaska</areaDesc>
+      <circle>57.200001,-153.309998 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>AKZ171</value>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc>Nikolski, Alaska</areaDesc>
+      <circle>52.950001,-168.866699 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>PKZ170</value>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc>Unimak Pass, Alaska (80 miles NE of Dutch Harbor)</areaDesc>
+      <circle>54.333599,-164.920593 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>AKZ181</value>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc>Perryville, Alaska</areaDesc>
+      <circle>55.900002,-159.149994 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>PKZ155</value>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc>King Cove, Alaska</areaDesc>
+      <circle>55.060001,-162.324005 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>PKZ155</value>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc>Kennedy Entrance, Alaska (40 miles SW of Homer)</areaDesc>
+      <circle>59.008301,-152.0 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>AKZ171</value>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc>Atka, Alaska</areaDesc>
+      <circle>52.099998,-174.399994 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>AKZ187</value>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc>Valdez, Alaska</areaDesc>
+      <circle>61.133301,-146.316696 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>AKZ131</value>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc>Dutch Harbor, Alaska</areaDesc>
+      <circle>53.876701,-166.533295 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>PKZ171</value>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc>Chignik Bay, Alaska</areaDesc>
+      <circle>56.380199,-158.243393 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>PKZ150</value>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc>Cordova, Alaska</areaDesc>
+      <circle>60.549999,-145.766693 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>PKZ125</value>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc>Amchitka Pass, Alaska (125 miles W of Adak)</areaDesc>
+      <circle>51.3064,-179.796997 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>AKZ191</value>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc/>
+      <circle>48.937,178.251007 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value/>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc>Amchitka, Alaska</areaDesc>
+      <circle>51.377998,179.301895 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>AKZ191</value>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc>Adak, Alaska</areaDesc>
+      <circle>51.8633,-176.633301 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>AKZ187</value>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc>Alitak, Alaska</areaDesc>
+      <circle>56.882999,-154.117004 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>AKZ171</value>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc>Cold Bay, Alaska</areaDesc>
+      <circle>55.216702,-162.716705 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>AKZ181</value>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc/>
+      <circle>50.175999,171.848999 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value/>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc>Homer, Alaska</areaDesc>
+      <circle>59.599998,-151.433304 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>AKZ121</value>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc>Shemya, Alaska</areaDesc>
+      <circle>52.73,174.070007 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>AKZ191</value>
+      </geocode>
+    </area>
+    <area>
+      <areaDesc>Attu, Alaska</areaDesc>
+      <circle>52.849998,173.216705 0.0</circle>
+      <geocode>
+        <valueName>UGC</valueName>
+        <value>AKZ191</value>
+      </geocode>
+    </area>
+  </info>
+</alert>

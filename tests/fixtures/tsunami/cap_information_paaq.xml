@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?><alert xmlns="urn:oasis:names:tc:emergency:cap:1.2">
+  <identifier>PAAQ-1-tmzdyc</identifier>
+  <sender>ntwc@noaa.gov</sender>
+  <sent>2026-10-16T03:47:16-00:00</sent>
+  <status>Actual</status>
+  <msgType>Alert</msgType>
+  <source>NTWC</source>
+  <scope>Public</scope>
+  <code>IPAWSv1.0</code>
+  <incidents>tmzdyc</incidents>
+  <info>
+    <category>Geo</category>
+    <event>Tsunami Information</event>
+    <responseType>None</responseType>
+    <urgency>Unknown</urgency>
+    <severity>Minor</severity>
+    <certainty>Unlikely</certainty>
+    <expires>2026-10-16T04:47:16-00:00</expires>
+    <senderName>NWS National Tsunami Warning Center Palmer AK</senderName>
+    <headline>This is a Tsunami Information Statement for Alaska, British Columbia, Washington, Oregon, and California. </headline>
+    <description>This is a Tsunami Information Statement for Alaska, British Columbia, Washington, Oregon, and California.  - Event details: Preliminary magnitude 7.0 (Mwp) earthquake / Lat: 51.900, Lon: 157.400 at 2026-10-16T03:35:00 UTC An information statement indicates that an earthquake has occurred, but does not pose a tsunami threat, or that a tsunami warning, advisory, or watch has been issued for another section of the ocean. </description>
+    <instruction>  There is no tsunami danger for the U.S. West Coast, British    Columbia, or Alaska.   Based on the depth of the earthquake, a tsunami is not    expected.   This will be the only U.S. National Tsunami Warning Center    message for this event unless additional information becomes    available. Refer to the internet site tsunami.gov for    more information. </instruction>
+    <web>http://www.tsunami.gov/events/PAAQ/2026/10/16/tmzdyc/1/WEAK53/WEAK53.txt</web>
+    <parameter>
+      <valueName>EventLocationName</valueName>
+      <value>415 miles SW of Bering I., Komandorski</value>
+    </parameter>
+    <parameter>
+      <valueName>EventPreliminaryMagnitude</valueName>
+      <value>7.0</value>
+    </parameter>
+    <parameter>
+      <valueName>EventPreliminaryMagnitudeType</valueName>
+      <value>Mwp</value>
+    </parameter>
+    <parameter>
+      <valueName>EventOriginTime</valueName>
+      <value>2026-10-16T03:35:00-00:00</value>
+    </parameter>
+    <parameter>
+      <valueName>EventDepth</valueName>
+      <value>148 kilometers</value>
+    </parameter>
+    <parameter>
+      <valueName>EventLatLon</valueName>
+      <value>51.900,157.400 0.000</value>
+    </parameter>
+    <parameter>
+      <valueName>WEAK53</valueName>
+      <value>Public Tsunami Information Statements for AK, BC, and US West Coast</value>
+    </parameter>
+    <parameter>
+      <valueName>EAS-ORG</valueName>
+      <value>WXR</value>
+    </parameter>
+    <resource>
+      <resourceDesc>Energy Map</resourceDesc>
+      <mimeType>image/jpeg</mimeType>
+      <uri>http://www.tsunami.gov/events/PAAQ/2026/10/16/tmzdyc/1/WEAK53/energytmzdyc.jpg</uri>
+    </resource>
+    <resource>
+      <resourceDesc>Tsunami Travel Time Map</resourceDesc>
+      <mimeType>image/jpeg</mimeType>
+      <uri>http://www.tsunami.gov/events/PAAQ/2026/10/16/tmzdyc/1/WEAK53/ttvutmzdyc-01.jpg</uri>
+    </resource>
+    <resource>
+      <resourceDesc>Event Data as a JSON document</resourceDesc>
+      <mimeType>application/json</mimeType>
+      <uri>http://www.tsunami.gov/events/PAAQ/2026/10/16/tmzdyc/1/WEAK53/PAAQ.json</uri>
+    </resource>
+    <area>
+      <areaDesc>415 miles SW of Bering I., Komandorski</areaDesc>
+      <circle>51.9,157.4 0.0</circle>
+    </area>
+  </info>
+</alert>
