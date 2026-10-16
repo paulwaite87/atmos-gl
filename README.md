@@ -484,7 +484,9 @@ a green circle, an orange diamond or a red octagon. No API key is needed.
 
 Hover a badge for the details and a link to the full GDACS report; **click it** to draw
 that event's impact footprint (affected areas, wind-band polygons, forecast tracks,
-earthquake alert circle and shaking contours, burned area, ...). Click empty map to clear it.
+earthquake alert circle and shaking contours, burned area, ...). The selected badge gets a
+white ring so you can tell whose footprint it is; the popup is hover-only, so it never sits on
+top of the footprint. Click empty map to clear it.
 The footprints are fetched by the data collector and stored in simplified form, so the
 browser never talks to GDACS itself.
 

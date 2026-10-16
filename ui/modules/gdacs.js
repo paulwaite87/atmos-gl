@@ -102,9 +102,22 @@ export function styleFootprint(collection) {
 
 const EMPTY = { type: 'FeatureCollection', features: [] };
 
+// Filter for the highlight ring: matches only the selected event's marker (and nothing
+// at all when no event is selected -- no real GDACS event has id -1).
+export function selectionFilter(selection) {
+    if (!selection) return ['==', ['get', 'event_id'], -1];
+    return [
+        'all',
+        ['==', ['get', 'event_type'], selection.event_type],
+        ['==', ['get', 'event_id'], selection.event_id],
+    ];
+}
+
 // One selected footprint at a time. A response for a superseded selection (or one that
 // lands after clear()) is dropped so a slow request can't redraw over a newer choice.
-export function createFootprintSelector({ apiBase, fetchJson, setData }) {
+// `onSelect` (optional) is told the selected {event_type, event_id} once its footprint is
+// drawn, and null when cleared -- it drives the highlight ring on the selected marker.
+export function createFootprintSelector({ apiBase, fetchJson, setData, onSelect }) {
     let seq = 0;
     return {
         async select({ event_type, event_id }) {
@@ -113,6 +126,7 @@ export function createFootprintSelector({ apiBase, fetchJson, setData }) {
                 const data = await fetchJson(`${apiBase}/gdacs/${event_type}/${event_id}/footprint`);
                 if (mine !== seq) return;
                 setData(styleFootprint(data));
+                onSelect?.({ event_type, event_id });
             } catch (err) {
                 console.warn(`[gdacs] footprint for ${event_type}/${event_id} failed`, err);
             }
@@ -120,6 +134,7 @@ export function createFootprintSelector({ apiBase, fetchJson, setData }) {
         clear() {
             seq++;
             setData(EMPTY);
+            onSelect?.(null);
         },
     };
 }
@@ -177,6 +192,7 @@ export function loadLayer(map, config) {
     const footprintSourceId = 'gdacs-footprint-source';
     const fillLayerId = 'gdacs-footprint-fill';
     const lineLayerId = 'gdacs-footprint-line';
+    const selectedLayerId = 'gdacs-selected';
     let stopPopup = null;
 
     const urlFor = (cfg) => `${window.WM_API}/gdacs/geojson`
@@ -187,6 +203,9 @@ export function loadLayer(map, config) {
         apiBase: window.WM_API,
         fetchJson: fetchOrThrow,
         setData: (data) => map.getSource(footprintSourceId)?.setData(data),
+        onSelect: (selection) => {
+            if (map.getLayer(selectedLayerId)) map.setFilter(selectedLayerId, selectionFilter(selection));
+        },
     });
     const onMarkerClick = (e) => {
         if (e.features && e.features.length) selector.select(e.features[0].properties);
@@ -221,7 +240,22 @@ export function loadLayer(map, config) {
                 'symbol-sort-key': ['get', 'alert_score'],
             },
         });
-        stopPopup = hoverPopup(map, layerId, { html: popupHtml, pinOnClick: true, maxWidth: '300px' });
+        // Ring around the selected event's badge, so you can tell whose footprint is drawn
+        // once the (hover-only) popup has gone.
+        map.addLayer({
+            id: selectedLayerId, type: 'circle', source: sourceId,
+            filter: selectionFilter(null),
+            paint: {
+                'circle-radius': 19 * (cfg.icon_zoom ?? 1.0),
+                'circle-color': 'rgba(0,0,0,0)',
+                'circle-stroke-color': '#ffffff',
+                'circle-stroke-width': 3,
+            },
+        });
+        // Hover-only popup: click just draws the footprint, so the popup never has to
+        // sit on top of it. The report link stays reachable because hoverPopup keeps the
+        // popup open while the cursor travels from the badge into it.
+        stopPopup = hoverPopup(map, layerId, { html: popupHtml, maxWidth: '300px' });
         map.on('click', layerId, onMarkerClick);
         map.on('click', onMapClick);
     };
@@ -235,7 +269,7 @@ export function loadLayer(map, config) {
         stopPopup?.();
         map.off('click', layerId, onMarkerClick);
         map.off('click', onMapClick);
-        for (const id of [layerId, lineLayerId, fillLayerId]) {
+        for (const id of [selectedLayerId, layerId, lineLayerId, fillLayerId]) {
             if (map.getLayer(id)) map.removeLayer(id);
         }
         for (const id of [sourceId, footprintSourceId]) {
