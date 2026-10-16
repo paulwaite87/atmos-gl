@@ -11,7 +11,7 @@ drives both.
 
 1. **The fill itself** — `createFillLayer` (`ui/modules/_webglfill.js`), exactly like
    temperature: an hour-animated GPU texture of wind speed/direction, backed by
-   `WindUpdater.plot()` (`src/atmos_gl/tasks/wind.py`).
+   `WindUpdater.plot()` (`src/terrascope/tasks/wind.py`).
 2. **Oriented-quad particles** — `_particles_gl.js`, the same engine `waves.js` uses. Each
    particle is a small oriented quad (an arrow/streak sprite) whose rotation tracks the
    local wind direction, advected across the GPU each frame.
@@ -34,7 +34,7 @@ once (`lib/unpack.py`).
 
 ## Backend
 
-`WindUpdater` (`src/atmos_gl/tasks/wind.py`) is its own bespoke `plot()` — not
+`WindUpdater` (`src/terrascope/tasks/wind.py`) is its own bespoke `plot()` — not
 `ScalarFieldUpdater` — since wind is a vector field (u/v components), not a single scalar.
 It shares `Updater.regrid_for_lod` and the antimeridian seam-closing helper
 (`close_lon_seam_for_contour`) with every other Animated fill layer, but its own encode

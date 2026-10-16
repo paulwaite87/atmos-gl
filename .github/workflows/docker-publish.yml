@@ -14,7 +14,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  # This automatically evaluates to paulwaite87/atmos-gl
+  # This automatically evaluates to paulwaite87/terrascope
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:

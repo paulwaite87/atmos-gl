@@ -8,8 +8,8 @@ HTTP throughout -- no live network calls.
 import os
 from unittest.mock import MagicMock, patch
 
-from atmos_gl.collectors.vegetation_mask import VegetationMaskCollector
-from atmos_gl.lib.vegetation_mask import (
+from terrascope.collectors.vegetation_mask import VegetationMaskCollector
+from terrascope.lib.vegetation_mask import (
     ZENODO_RECORD_HTML_URL,
     cached_version_id,
     vegetation_mask_geotiff_cache_path,
@@ -74,7 +74,7 @@ def test_has_new_data_is_false_when_version_check_fails(tmp_path):
     c = make_bare_vegetation_mask_collector(workdir=str(tmp_path))
 
     with patch(
-        "atmos_gl.collectors.vegetation_mask.fetch_latest_zenodo_version",
+        "terrascope.collectors.vegetation_mask.fetch_latest_zenodo_version",
         side_effect=Exception("network down"),
     ):
         assert c.has_new_data() is False
@@ -86,7 +86,7 @@ def test_has_new_data_is_true_when_nothing_cached_yet(tmp_path):
     c = make_bare_vegetation_mask_collector(workdir=str(tmp_path))
 
     with patch(
-        "atmos_gl.collectors.vegetation_mask.fetch_latest_zenodo_version",
+        "terrascope.collectors.vegetation_mask.fetch_latest_zenodo_version",
         return_value=_VERSION_A,
     ):
         assert c.has_new_data() is True
@@ -95,26 +95,26 @@ def test_has_new_data_is_true_when_nothing_cached_yet(tmp_path):
 
 
 def test_has_new_data_is_false_when_version_id_matches_cached(tmp_path):
-    from atmos_gl.lib.vegetation_mask import save_cached_version_id
+    from terrascope.lib.vegetation_mask import save_cached_version_id
 
     save_cached_version_id(str(tmp_path), _VERSION_A["id"])
     c = make_bare_vegetation_mask_collector(workdir=str(tmp_path))
 
     with patch(
-        "atmos_gl.collectors.vegetation_mask.fetch_latest_zenodo_version",
+        "terrascope.collectors.vegetation_mask.fetch_latest_zenodo_version",
         return_value=_VERSION_A,
     ):
         assert c.has_new_data() is False
 
 
 def test_has_new_data_is_true_when_a_newer_version_is_published(tmp_path):
-    from atmos_gl.lib.vegetation_mask import save_cached_version_id
+    from terrascope.lib.vegetation_mask import save_cached_version_id
 
     save_cached_version_id(str(tmp_path), _VERSION_A["id"])
     c = make_bare_vegetation_mask_collector(workdir=str(tmp_path))
 
     with patch(
-        "atmos_gl.collectors.vegetation_mask.fetch_latest_zenodo_version",
+        "terrascope.collectors.vegetation_mask.fetch_latest_zenodo_version",
         return_value=_VERSION_B,
     ):
         assert c.has_new_data() is True
@@ -128,7 +128,7 @@ def test_collect_downloads_and_caches_the_new_version(tmp_path):
     c._latest_version = _VERSION_A
 
     with patch(
-        "atmos_gl.collectors.vegetation_mask.download_landcover_geotiff"
+        "terrascope.collectors.vegetation_mask.download_landcover_geotiff"
     ) as mock_dl:
         c.collect()
 
@@ -146,9 +146,9 @@ def test_collect_refetches_the_version_when_has_new_data_was_not_called_first(tm
     assert not hasattr(c, "_latest_version")
 
     with patch(
-        "atmos_gl.collectors.vegetation_mask.fetch_latest_zenodo_version",
+        "terrascope.collectors.vegetation_mask.fetch_latest_zenodo_version",
         return_value=_VERSION_A,
-    ), patch("atmos_gl.collectors.vegetation_mask.download_landcover_geotiff") as mock_dl:
+    ), patch("terrascope.collectors.vegetation_mask.download_landcover_geotiff") as mock_dl:
         c.collect()
 
     mock_dl.assert_called_once()
@@ -159,9 +159,9 @@ def test_collect_skips_gracefully_when_version_check_fails_and_was_not_cached(tm
     c = make_bare_vegetation_mask_collector(workdir=str(tmp_path))
 
     with patch(
-        "atmos_gl.collectors.vegetation_mask.fetch_latest_zenodo_version",
+        "terrascope.collectors.vegetation_mask.fetch_latest_zenodo_version",
         side_effect=Exception("network down"),
-    ), patch("atmos_gl.collectors.vegetation_mask.download_landcover_geotiff") as mock_dl:
+    ), patch("terrascope.collectors.vegetation_mask.download_landcover_geotiff") as mock_dl:
         c.collect()  # must not raise
 
     mock_dl.assert_not_called()
@@ -172,7 +172,7 @@ def test_collect_skips_when_no_t1_asset_found_in_the_version(tmp_path):
     c = make_bare_vegetation_mask_collector(workdir=str(tmp_path))
     c._latest_version = {"id": 123, "files": [{"key": "unrelated.tif", "links": {"self": "x"}}]}
 
-    with patch("atmos_gl.collectors.vegetation_mask.download_landcover_geotiff") as mock_dl:
+    with patch("terrascope.collectors.vegetation_mask.download_landcover_geotiff") as mock_dl:
         c.collect()  # must not raise
 
     mock_dl.assert_not_called()
@@ -184,7 +184,7 @@ def test_collect_does_not_advance_the_cached_version_when_download_fails(tmp_pat
     c._latest_version = _VERSION_A
 
     with patch(
-        "atmos_gl.collectors.vegetation_mask.download_landcover_geotiff",
+        "terrascope.collectors.vegetation_mask.download_landcover_geotiff",
         side_effect=Exception("network down"),
     ):
         c.collect()  # must not raise

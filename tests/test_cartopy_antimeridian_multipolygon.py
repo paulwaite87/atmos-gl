@@ -31,7 +31,7 @@ ring split into two by the domain boundary" branch described above.
 """
 import shapely.geometry as sgeom
 
-from atmos_gl.tasks.plotting import WEB_MERCATOR
+from terrascope.tasks.plotting import WEB_MERCATOR
 
 
 def _domain_splitting_ring():

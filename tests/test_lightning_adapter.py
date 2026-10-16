@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone
 
-from atmos_gl.db.lightning_adapter import FakeLightningAdapter
+from terrascope.db.lightning_adapter import FakeLightningAdapter
 
 
 def _iso(dt):

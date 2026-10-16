@@ -1,4 +1,4 @@
-# CLAUDE.md — atmos-gl
+# CLAUDE.md — terrascope
 
 Claude Code reads this file automatically, but the actual conventions and architectural
 invariants for this repo live in **[AGENTS.md](AGENTS.md)** and its linked topic files under
@@ -16,7 +16,7 @@ is a pointer, not a second copy: don't add instructions here that belong in one 
 - [Tooling](docs/conventions/tooling.md) — uv, Docker Compose, Makefile, CodeGraph
 - [Testing & validation](docs/conventions/testing.md) — validating collector code without a running stack
 - [Docker conventions](docs/conventions/docker.md)
-- [Settings / config changes](docs/conventions/settings.md) — `config/atmos-gl.json` vs `.tmpl`
+- [Settings / config changes](docs/conventions/settings.md) — `config/terrascope.json` vs `.tmpl`
 - [Git workflow](docs/conventions/git-workflow.md)
 - [Things to avoid](docs/conventions/things-to-avoid.md) — quick-reference checklist
 - [Agent skills & PRD workflow](docs/conventions/agent-skills.md) — issue tracker, triage labels,

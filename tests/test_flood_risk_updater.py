@@ -13,12 +13,12 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 
-from atmos_gl.lib.flood_risk import (
+from terrascope.lib.flood_risk import (
     jrc_hazard_mosaic_cache_path,
     modis_flood_mosaic_cache_path,
     save_jrc_hazard_mosaic,
 )
-from atmos_gl.tasks.flood_risk import (
+from terrascope.tasks.flood_risk import (
     _HISTORICAL_ENCODE_DOMAIN,
     _LIVE_ENCODE_DOMAIN,
     FloodRiskUpdater,
@@ -180,7 +180,7 @@ def test_render_live_zeroes_non_land_cells_when_a_land_mask_is_available(tmp_pat
     land = np.array([[True, False], [False, True]])
     u._land_mask_cache.get.return_value = land
 
-    with patch("atmos_gl.tasks.flood_risk.encode_frames") as mock_encode:
+    with patch("terrascope.tasks.flood_risk.encode_frames") as mock_encode:
         u._render_live()
 
     encoded_band = mock_encode.call_args.args[0][0]
@@ -208,7 +208,7 @@ def test_render_live_leaves_band_unmasked_when_land_mask_is_unavailable(tmp_path
     save_jrc_hazard_mosaic(mosaic_path, band, np.array([1.0, 0.0]), np.array([0.0, 1.0]))
     u._land_mask_cache.get.return_value = None
 
-    with patch("atmos_gl.tasks.flood_risk.encode_frames") as mock_encode:
+    with patch("terrascope.tasks.flood_risk.encode_frames") as mock_encode:
         u._render_live()
 
     encoded_band = mock_encode.call_args.args[0][0]

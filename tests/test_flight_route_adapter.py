@@ -5,7 +5,7 @@ AircraftAdapter.get_active_flight_positions for the priority-ordered candidate f
 this adapter's filter_stale() narrows down)."""
 from datetime import datetime, timedelta, timezone
 
-from atmos_gl.db.flight_route_adapter import FakeFlightRouteAdapter
+from terrascope.db.flight_route_adapter import FakeFlightRouteAdapter
 
 
 def test_filter_stale_treats_an_unknown_callsign_as_stale():

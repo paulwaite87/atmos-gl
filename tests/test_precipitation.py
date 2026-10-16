@@ -4,7 +4,7 @@ entirely client-side now (issue #302, see ui/modules/precipitation.js's own
 PALETTES/lutFor) -- PrecipitationUpdater no longer renders one at all."""
 import numpy as np
 
-from atmos_gl.tasks.precipitation import PrecipitationUpdater
+from terrascope.tasks.precipitation import PrecipitationUpdater
 
 
 def make_floor_updater(sigma_cells=1.2):

@@ -8,11 +8,11 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from atmos_gl.api import app
-from atmos_gl.collectors.country_stats import CountryStatsCollector
-from atmos_gl.db.country_stats_adapter import FakeCountryStatsAdapter
-from atmos_gl.lib.country_stats import INDICATORS, INDICATORS_BY_ID
-from atmos_gl.routes.country_stats import get_country_stats_adapter
+from terrascope.api import app
+from terrascope.collectors.country_stats import CountryStatsCollector
+from terrascope.db.country_stats_adapter import FakeCountryStatsAdapter
+from terrascope.lib.country_stats import INDICATORS, INDICATORS_BY_ID
+from terrascope.routes.country_stats import get_country_stats_adapter
 
 _BASE = "https://owid.example/grapher"
 
@@ -166,7 +166,7 @@ def test_the_cutoff_defaults_to_five_years(client, collected):
 
 
 def test_an_indicators_own_cutoff_overrides_the_setting(client, collected, monkeypatch):
-    from atmos_gl.lib import country_stats
+    from terrascope.lib import country_stats
     oil = country_stats.INDICATORS_BY_ID["oil_consumption"]
     monkeypatch.setitem(country_stats.INDICATORS_BY_ID, "oil_consumption",
                         country_stats.Indicator(**{**oil.__dict__, "max_age_years": 10}))

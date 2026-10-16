@@ -11,12 +11,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from atmos_gl.collectors.greenhouse_gases import (
+from terrascope.collectors.greenhouse_gases import (
     CamsEgg4BaselineCollector,
     build_egg4_request,
 )
-from atmos_gl.lib.cds_client import retrieve_with_timeout
-from atmos_gl.lib.greenhouse_gases import egg4_baseline_cache_path
+from terrascope.lib.cds_client import retrieve_with_timeout
+from terrascope.lib.greenhouse_gases import egg4_baseline_cache_path
 
 
 def make_bare_egg4_collector(
@@ -74,7 +74,7 @@ def test_collect_skips_when_configured_year_already_cached(tmp_path, monkeypatch
     with open(dest, "wb") as f:
         f.write(b"already-cached")
 
-    with patch("atmos_gl.collectors.greenhouse_gases.cdsapi.Client") as mock_client_cls:
+    with patch("terrascope.collectors.greenhouse_gases.cdsapi.Client") as mock_client_cls:
         c.collect()
 
     mock_client_cls.assert_not_called()
@@ -89,7 +89,7 @@ def test_collect_fetches_unzips_and_caches_when_missing(tmp_path, monkeypatch, m
     mock_client.retrieve.side_effect = _fake_retrieve_writing_zip(make_netcdf_zip_bytes, b"fake-egg4-netcdf")
 
     with patch(
-        "atmos_gl.collectors.greenhouse_gases.cdsapi.Client", return_value=mock_client
+        "terrascope.collectors.greenhouse_gases.cdsapi.Client", return_value=mock_client
     ) as mock_client_cls:
         c.collect()
 
@@ -105,7 +105,7 @@ def test_collect_clamps_baseline_year_outside_egg4_coverage(tmp_path, monkeypatc
     mock_client.retrieve.side_effect = _fake_retrieve_writing_zip(make_netcdf_zip_bytes, b"fake-egg4-netcdf")
 
     with patch(
-        "atmos_gl.collectors.greenhouse_gases.cdsapi.Client", return_value=mock_client
+        "terrascope.collectors.greenhouse_gases.cdsapi.Client", return_value=mock_client
     ):
         c.collect()
 
@@ -118,8 +118,8 @@ def test_collect_returns_gracefully_without_raising_on_timeout(tmp_path, monkeyp
     year = 2005
     c = make_bare_egg4_collector(monkeypatch, settings={"baseline_year": year}, workdir=str(tmp_path))
 
-    with patch("atmos_gl.collectors.greenhouse_gases.cdsapi.Client"), patch(
-        "atmos_gl.lib.cds_client.retrieve_with_timeout",
+    with patch("terrascope.collectors.greenhouse_gases.cdsapi.Client"), patch(
+        "terrascope.lib.cds_client.retrieve_with_timeout",
         side_effect=concurrent.futures.TimeoutError,
     ):
         c.collect()  # must not raise
@@ -132,7 +132,7 @@ def test_collect_skips_without_raising_when_no_api_key(tmp_path, monkeypatch):
         monkeypatch, settings={"baseline_year": 2003}, workdir=str(tmp_path), api_key=None
     )
 
-    with patch("atmos_gl.collectors.greenhouse_gases.cdsapi.Client") as mock_client_cls:
+    with patch("terrascope.collectors.greenhouse_gases.cdsapi.Client") as mock_client_cls:
         c.collect()
 
     mock_client_cls.assert_not_called()

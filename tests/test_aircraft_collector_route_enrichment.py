@@ -6,9 +6,9 @@ test_aircraft_collector_data_status.py use, so no real config file or DB connect
 is needed."""
 import pytest
 
-from atmos_gl.collectors.aircraft import AircraftCollector
-from atmos_gl.db.aircraft_adapter import FakeAircraftAdapter
-from atmos_gl.db.flight_route_adapter import FakeFlightRouteAdapter
+from terrascope.collectors.aircraft import AircraftCollector
+from terrascope.db.aircraft_adapter import FakeAircraftAdapter
+from terrascope.db.flight_route_adapter import FakeFlightRouteAdapter
 
 
 def make_collector(settings=None):

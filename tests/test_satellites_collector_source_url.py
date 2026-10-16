@@ -8,8 +8,8 @@ directly instead of maintaining a separate _base_url().
 """
 from unittest.mock import MagicMock, patch
 
-from atmos_gl.collectors.base import CollectorBase
-from atmos_gl.collectors.satellites import SatellitesCollector
+from terrascope.collectors.base import CollectorBase
+from terrascope.collectors.satellites import SatellitesCollector
 
 
 def make_collector(url=None):

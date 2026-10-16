@@ -12,8 +12,8 @@ import numpy as np
 import rasterio
 from rasterio import Affine
 
-from atmos_gl.collectors.flood_risk import FloodRiskHistoricalCollector
-from atmos_gl.lib.flood_risk import (
+from terrascope.collectors.flood_risk import FloodRiskHistoricalCollector
+from terrascope.lib.flood_risk import (
     jrc_hazard_mosaic_cache_path,
     jrc_tile_extents_cache_path,
     load_jrc_hazard_mosaic,
@@ -62,7 +62,7 @@ def test_collect_skips_entirely_when_mosaic_already_cached(tmp_path):
     with open(dest, "wb") as f:
         f.write(b"already-cached")
 
-    with patch("atmos_gl.collectors.flood_risk.ensure_jrc_tile_extents_cached") as mock_index:
+    with patch("terrascope.collectors.flood_risk.ensure_jrc_tile_extents_cached") as mock_index:
         c.collect()
 
     mock_index.assert_not_called()
@@ -73,7 +73,7 @@ def test_collect_returns_gracefully_when_tile_index_unavailable(tmp_path):
     c = make_bare_historical_collector(workdir=str(tmp_path))
 
     with patch(
-        "atmos_gl.collectors.flood_risk.ensure_jrc_tile_extents_cached",
+        "terrascope.collectors.flood_risk.ensure_jrc_tile_extents_cached",
         side_effect=Exception("network down"),
     ):
         c.collect()  # must not raise
@@ -96,12 +96,12 @@ def test_collect_does_not_write_a_mosaic_when_only_some_tiles_are_cached_this_cy
         raise Exception("truncated download")
 
     with patch(
-        "atmos_gl.collectors.flood_risk.ensure_jrc_tile_extents_cached",
+        "terrascope.collectors.flood_risk.ensure_jrc_tile_extents_cached",
         return_value="fake-index-path",
     ), patch(
-        "atmos_gl.collectors.flood_risk.load_jrc_tile_index", return_value=_TILES
+        "terrascope.collectors.flood_risk.load_jrc_tile_index", return_value=_TILES
     ), patch(
-        "atmos_gl.collectors.flood_risk.ensure_jrc_tile_cached", side_effect=fake_ensure_tile
+        "terrascope.collectors.flood_risk.ensure_jrc_tile_cached", side_effect=fake_ensure_tile
     ):
         c.collect()
 
@@ -117,12 +117,12 @@ def test_collect_builds_and_caches_the_mosaic_once_every_tile_succeeds(tmp_path)
         tile_paths[tile["id"]] = path
 
     with patch(
-        "atmos_gl.collectors.flood_risk.ensure_jrc_tile_extents_cached",
+        "terrascope.collectors.flood_risk.ensure_jrc_tile_extents_cached",
         return_value="fake-index-path",
     ), patch(
-        "atmos_gl.collectors.flood_risk.load_jrc_tile_index", return_value=_TILES
+        "terrascope.collectors.flood_risk.load_jrc_tile_index", return_value=_TILES
     ), patch(
-        "atmos_gl.collectors.flood_risk.ensure_jrc_tile_cached",
+        "terrascope.collectors.flood_risk.ensure_jrc_tile_cached",
         side_effect=lambda tile_id, tile_name: tile_paths[tile_id],
     ):
         c.collect()
@@ -148,7 +148,7 @@ def test_collect_stops_downloading_new_tiles_once_the_per_cycle_budget_is_reache
     and return without building the mosaic, leaving the second tile for next time."""
     c = make_bare_historical_collector(workdir=str(tmp_path))
     monkeypatch.setattr(
-        "atmos_gl.collectors.flood_risk.FloodRiskHistoricalCollector"
+        "terrascope.collectors.flood_risk.FloodRiskHistoricalCollector"
         "._MAX_NEW_TILE_DOWNLOADS_PER_CYCLE",
         1,
     )
@@ -161,15 +161,15 @@ def test_collect_stops_downloading_new_tiles_once_the_per_cycle_budget_is_reache
         return good_tile_path
 
     with patch(
-        "atmos_gl.collectors.flood_risk.ensure_jrc_tile_extents_cached",
+        "terrascope.collectors.flood_risk.ensure_jrc_tile_extents_cached",
         return_value="fake-index-path",
     ), patch(
-        "atmos_gl.collectors.flood_risk.load_jrc_tile_index", return_value=_TILES
+        "terrascope.collectors.flood_risk.load_jrc_tile_index", return_value=_TILES
     ), patch(
-        "atmos_gl.collectors.flood_risk.jrc_tile_cache_path",
+        "terrascope.collectors.flood_risk.jrc_tile_cache_path",
         return_value=str(tmp_path / "not-cached-yet.tif"),
     ), patch(
-        "atmos_gl.collectors.flood_risk.ensure_jrc_tile_cached", side_effect=fake_ensure_tile
+        "terrascope.collectors.flood_risk.ensure_jrc_tile_cached", side_effect=fake_ensure_tile
     ):
         c.collect()
 
@@ -184,7 +184,7 @@ def test_collect_does_not_count_already_cached_tiles_against_the_download_budget
     (the only new one) still gets fetched and the mosaic completes this cycle."""
     c = make_bare_historical_collector(workdir=str(tmp_path))
     monkeypatch.setattr(
-        "atmos_gl.collectors.flood_risk.FloodRiskHistoricalCollector"
+        "terrascope.collectors.flood_risk.FloodRiskHistoricalCollector"
         "._MAX_NEW_TILE_DOWNLOADS_PER_CYCLE",
         1,
     )
@@ -199,15 +199,15 @@ def test_collect_does_not_count_already_cached_tiles_against_the_download_budget
         return tile_paths[1] if tile_id == 1 else str(tmp_path / "not-cached-yet.tif")
 
     with patch(
-        "atmos_gl.collectors.flood_risk.ensure_jrc_tile_extents_cached",
+        "terrascope.collectors.flood_risk.ensure_jrc_tile_extents_cached",
         return_value="fake-index-path",
     ), patch(
-        "atmos_gl.collectors.flood_risk.load_jrc_tile_index", return_value=_TILES
+        "terrascope.collectors.flood_risk.load_jrc_tile_index", return_value=_TILES
     ), patch(
-        "atmos_gl.collectors.flood_risk.jrc_tile_cache_path",
+        "terrascope.collectors.flood_risk.jrc_tile_cache_path",
         side_effect=fake_jrc_tile_cache_path,
     ), patch(
-        "atmos_gl.collectors.flood_risk.ensure_jrc_tile_cached",
+        "terrascope.collectors.flood_risk.ensure_jrc_tile_cached",
         side_effect=lambda tile_id, tile_name: tile_paths[tile_id],
     ):
         c.collect()
@@ -264,7 +264,7 @@ def test_data_status_reflects_tile_download_progress_before_the_mosaic_exists(tm
             f,
         )
 
-    from atmos_gl.lib.flood_risk import jrc_tile_cache_path
+    from terrascope.lib.flood_risk import jrc_tile_cache_path
 
     cached_tile = jrc_tile_cache_path(_TILES[0]["id"], _TILES[0]["name"])
     os.makedirs(os.path.dirname(cached_tile), exist_ok=True)

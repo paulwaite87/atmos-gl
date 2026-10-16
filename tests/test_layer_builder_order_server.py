@@ -7,8 +7,8 @@ locking the actual request/response wire format routes/layer_builder.py proxies.
 """
 import requests
 
-from atmos_gl.layer_builder import _start_order_server
-from atmos_gl.round_robin_order import RoundRobinOrder
+from terrascope.layer_builder import _start_order_server
+from terrascope.round_robin_order import RoundRobinOrder
 
 
 def make_running_server():

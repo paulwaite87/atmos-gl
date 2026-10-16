@@ -13,8 +13,8 @@ import pytest
 import numpy as np
 from shapely.geometry import Point, box
 
-from atmos_gl.lib import coastline as coastline_mod
-from atmos_gl.lib.coastline import (
+from terrascope.lib import coastline as coastline_mod
+from terrascope.lib.coastline import (
     LandMaskCache,
     coastline_land_mask,
     nearest_fill_and_regrid_uv,
@@ -39,7 +39,7 @@ def test_get_caches_per_key():
     cache = LandMaskCache("Test")
     sentinel = np.array([[True, False]])
     with patch(
-        "atmos_gl.lib.coastline.coastline_land_mask", return_value=sentinel
+        "terrascope.lib.coastline.coastline_land_mask", return_value=sentinel
     ) as mock_coast:
         first = cache.get(lat=[0.0], lon=[0.0, 1.0], key=(1, 2))
         second = cache.get(lat=[0.0], lon=[0.0, 1.0], key=(1, 2))
@@ -52,7 +52,7 @@ def test_get_caches_per_key():
 def test_get_uses_a_separate_cache_entry_per_distinct_key():
     cache = LandMaskCache("Test")
     with patch(
-        "atmos_gl.lib.coastline.coastline_land_mask",
+        "terrascope.lib.coastline.coastline_land_mask",
         side_effect=[np.array([[True]]), np.array([[False, False]])],
     ) as mock_coast:
         cache.get(lat=[0.0], lon=[0.0], key=(1, 1))
@@ -64,7 +64,7 @@ def test_get_uses_a_separate_cache_entry_per_distinct_key():
 def test_get_passes_the_global_bbox():
     cache = LandMaskCache("Test")
     with patch(
-        "atmos_gl.lib.coastline.coastline_land_mask", return_value=None
+        "terrascope.lib.coastline.coastline_land_mask", return_value=None
     ) as mock_coast:
         cache.get(lat=[0.0], lon=[0.0], key=(1, 1))
 
@@ -75,7 +75,7 @@ def test_get_passes_the_global_bbox():
 def test_get_defaults_to_dilate_true_and_exclude_lakes_false():
     cache = LandMaskCache("Test")
     with patch(
-        "atmos_gl.lib.coastline.coastline_land_mask", return_value=None
+        "terrascope.lib.coastline.coastline_land_mask", return_value=None
     ) as mock_coast:
         cache.get(lat=[0.0], lon=[0.0], key=(1, 1))
 
@@ -88,7 +88,7 @@ def test_get_forwards_dilate_false():
     (e.g. the Marlborough Sounds) get reclassified as land."""
     cache = LandMaskCache("Test")
     with patch(
-        "atmos_gl.lib.coastline.coastline_land_mask", return_value=None
+        "terrascope.lib.coastline.coastline_land_mask", return_value=None
     ) as mock_coast:
         cache.get(lat=[0.0], lon=[0.0], key=(1, 1), dilate=False)
 
@@ -101,7 +101,7 @@ def test_get_forwards_exclude_lakes_true():
     survives the flood-risk mask unmasked."""
     cache = LandMaskCache("Test")
     with patch(
-        "atmos_gl.lib.coastline.coastline_land_mask", return_value=None
+        "terrascope.lib.coastline.coastline_land_mask", return_value=None
     ) as mock_coast:
         cache.get(lat=[0.0], lon=[0.0], key=(1, 1), dilate=False, exclude_lakes=True)
 
@@ -114,7 +114,7 @@ def test_get_caches_none_too_when_geometry_is_unavailable():
     retry every subsequent call within the same run."""
     cache = LandMaskCache("Test")
     with patch(
-        "atmos_gl.lib.coastline.coastline_land_mask", return_value=None
+        "terrascope.lib.coastline.coastline_land_mask", return_value=None
     ) as mock_coast:
         first = cache.get(lat=[0.0], lon=[0.0], key=(1, 1))
         second = cache.get(lat=[0.0], lon=[0.0], key=(1, 1))
@@ -142,7 +142,7 @@ def test_coastline_land_mask_classifies_points_against_the_gshhg_union():
     # dilate=False: isolate the raw rasterize/classify step from the dilation
     # post-process (covered separately below) -- on this 2x2 mesh the default dilation
     # would spread the single land corner into its neighbours too.
-    with patch("atmos_gl.lib.coastline._load_gshhg_land_union", return_value=land):
+    with patch("terrascope.lib.coastline._load_gshhg_land_union", return_value=land):
         mask = coastline_land_mask(
             mesh_lon, mesh_lat, -180.0, -90.0, 180.0, 90.0, dilate=False
         )
@@ -164,7 +164,7 @@ def test_coastline_land_mask_dilates_by_default():
     # far corner two steps away.
     land = _square_land(5.0, 5.0, 15.0, 15.0)
     mesh_lon, mesh_lat = np.meshgrid([0.0, 10.0, 20.0, 30.0], [0.0, 10.0, 20.0, 30.0])
-    with patch("atmos_gl.lib.coastline._load_gshhg_land_union", return_value=land):
+    with patch("terrascope.lib.coastline._load_gshhg_land_union", return_value=land):
         mask = coastline_land_mask(mesh_lon, mesh_lat, -180.0, -90.0, 180.0, 90.0)
 
     assert mask[1, 1] == True  # noqa: E712 -- the original land cell
@@ -178,7 +178,7 @@ def test_coastline_land_mask_dilates_by_default():
 def test_coastline_land_mask_dilate_false_skips_it():
     land = _square_land(5.0, 5.0, 15.0, 15.0)
     mesh_lon, mesh_lat = np.meshgrid([0.0, 10.0, 20.0, 30.0], [0.0, 10.0, 20.0, 30.0])
-    with patch("atmos_gl.lib.coastline._load_gshhg_land_union", return_value=land):
+    with patch("terrascope.lib.coastline._load_gshhg_land_union", return_value=land):
         mask = coastline_land_mask(
             mesh_lon, mesh_lat, -180.0, -90.0, 180.0, 90.0, dilate=False
         )
@@ -191,7 +191,7 @@ def test_coastline_land_mask_caches_the_union_per_bbox():
     land = _square_land(0.0, 0.0, 1.0, 1.0)
     mesh_lon, mesh_lat = np.meshgrid([0.5], [0.5])
     with patch(
-        "atmos_gl.lib.coastline._load_gshhg_land_union", return_value=land
+        "terrascope.lib.coastline._load_gshhg_land_union", return_value=land
     ) as mock_load:
         coastline_land_mask(mesh_lon, mesh_lat, -180.0, -90.0, 180.0, 90.0)
         coastline_land_mask(mesh_lon, mesh_lat, -180.0, -90.0, 180.0, 90.0)
@@ -205,7 +205,7 @@ def test_coastline_land_mask_skips_intersection_for_the_global_bbox():
     the global path never calls .intersection() on the loaded union."""
     land = MagicMock(wraps=_square_land(0.0, 0.0, 10.0, 10.0))
     mesh_lon, mesh_lat = np.meshgrid([5.0], [5.0])
-    with patch("atmos_gl.lib.coastline._load_gshhg_land_union", return_value=land):
+    with patch("terrascope.lib.coastline._load_gshhg_land_union", return_value=land):
         coastline_land_mask(mesh_lon, mesh_lat, -180.0, -90.0, 180.0, 90.0)
 
     land.intersection.assert_not_called()
@@ -214,7 +214,7 @@ def test_coastline_land_mask_skips_intersection_for_the_global_bbox():
 def test_coastline_land_mask_clips_to_a_non_global_bbox():
     land = _square_land(-100.0, -100.0, 100.0, 100.0)
     mesh_lon, mesh_lat = np.meshgrid([5.0], [5.0])
-    with patch("atmos_gl.lib.coastline._load_gshhg_land_union", return_value=land):
+    with patch("terrascope.lib.coastline._load_gshhg_land_union", return_value=land):
         mask = coastline_land_mask(mesh_lon, mesh_lat, 0.0, 0.0, 10.0, 10.0)
 
     assert mask.tolist() == [[True]]
@@ -223,7 +223,7 @@ def test_coastline_land_mask_clips_to_a_non_global_bbox():
 def test_coastline_land_mask_returns_none_on_load_failure():
     mesh_lon, mesh_lat = np.meshgrid([0.0], [0.0])
     with patch(
-        "atmos_gl.lib.coastline._load_gshhg_land_union",
+        "terrascope.lib.coastline._load_gshhg_land_union",
         side_effect=RuntimeError("no network"),
     ):
         result = coastline_land_mask(mesh_lon, mesh_lat, -180.0, -90.0, 180.0, 90.0)
@@ -238,9 +238,9 @@ def test_coastline_land_mask_exclude_lakes_false_uses_plain_land_union():
     land = _square_land(0.0, 0.0, 10.0, 10.0)
     mesh_lon, mesh_lat = np.meshgrid([5.0], [5.0])
     with patch(
-        "atmos_gl.lib.coastline._load_gshhg_land_union", return_value=land
+        "terrascope.lib.coastline._load_gshhg_land_union", return_value=land
     ) as mock_land, patch(
-        "atmos_gl.lib.coastline._load_gshhg_land_minus_lakes"
+        "terrascope.lib.coastline._load_gshhg_land_minus_lakes"
     ) as mock_land_minus_lakes:
         mask = coastline_land_mask(
             mesh_lon, mesh_lat, -180.0, -90.0, 180.0, 90.0, dilate=False
@@ -258,8 +258,8 @@ def test_coastline_land_mask_exclude_lakes_true_uses_land_minus_lakes():
     # Lake carved out of the middle of the land square -- (5,5) is inside the lake.
     lake_hole = land.difference(_square_land(4.0, 4.0, 6.0, 6.0))
     mesh_lon, mesh_lat = np.meshgrid([2.0, 5.0], [2.0, 5.0])
-    with patch("atmos_gl.lib.coastline._load_gshhg_land_union") as mock_land, patch(
-        "atmos_gl.lib.coastline._load_gshhg_land_minus_lakes", return_value=lake_hole
+    with patch("terrascope.lib.coastline._load_gshhg_land_union") as mock_land, patch(
+        "terrascope.lib.coastline._load_gshhg_land_minus_lakes", return_value=lake_hole
     ):
         mask = coastline_land_mask(
             mesh_lon, mesh_lat, -180.0, -90.0, 180.0, 90.0,
@@ -279,9 +279,9 @@ def test_coastline_land_mask_caches_exclude_lakes_separately_from_plain():
     minus_lakes = _square_land(0.0, 0.0, 5.0, 5.0)
     mesh_lon, mesh_lat = np.meshgrid([1.0], [1.0])
     with patch(
-        "atmos_gl.lib.coastline._load_gshhg_land_union", return_value=plain
+        "terrascope.lib.coastline._load_gshhg_land_union", return_value=plain
     ) as mock_land, patch(
-        "atmos_gl.lib.coastline._load_gshhg_land_minus_lakes", return_value=minus_lakes
+        "terrascope.lib.coastline._load_gshhg_land_minus_lakes", return_value=minus_lakes
     ) as mock_minus_lakes:
         coastline_land_mask(mesh_lon, mesh_lat, -180.0, -90.0, 180.0, 90.0)
         coastline_land_mask(
@@ -324,7 +324,7 @@ def test_load_gshhg_land_union_repairs_invalid_geometries_before_union():
 
     with patch("os.path.exists", return_value=False), \
          patch(
-             "atmos_gl.lib.coastline._download_gshhg_if_needed",
+             "terrascope.lib.coastline._download_gshhg_if_needed",
              return_value="/fake/GSHHS_h_L1.shp",
          ), \
          patch("cartopy.io.shapereader.Reader", return_value=mock_reader), \
@@ -360,7 +360,7 @@ def test_load_gshhg_lake_union_downloads_and_unions_when_not_cached():
 
     with patch("os.path.exists", return_value=False), \
          patch(
-             "atmos_gl.lib.coastline._download_gshhg_if_needed"
+             "terrascope.lib.coastline._download_gshhg_if_needed"
          ) as mock_download, \
          patch("cartopy.io.shapereader.Reader", return_value=mock_reader), \
          patch("builtins.open", mock_open()):
@@ -376,8 +376,8 @@ def test_load_gshhg_land_minus_lakes_reads_from_disk_cache_if_present():
     with patch("os.path.exists", return_value=True), \
          patch("builtins.open", mock_open(read_data=b"fake-diff-wkb")), \
          patch("shapely.from_wkb", return_value=cached) as mock_from_wkb, \
-         patch("atmos_gl.lib.coastline._load_gshhg_land_union") as mock_land, \
-         patch("atmos_gl.lib.coastline._load_gshhg_lake_union") as mock_lakes:
+         patch("terrascope.lib.coastline._load_gshhg_land_union") as mock_land, \
+         patch("terrascope.lib.coastline._load_gshhg_lake_union") as mock_lakes:
         result = coastline_mod._load_gshhg_land_minus_lakes()
 
     assert result is cached
@@ -391,8 +391,8 @@ def test_load_gshhg_land_minus_lakes_subtracts_lakes_from_land_when_not_cached()
     lake = _square_land(4.0, 4.0, 6.0, 6.0)
 
     with patch("os.path.exists", return_value=False), \
-         patch("atmos_gl.lib.coastline._load_gshhg_land_union", return_value=land), \
-         patch("atmos_gl.lib.coastline._load_gshhg_lake_union", return_value=lake), \
+         patch("terrascope.lib.coastline._load_gshhg_land_union", return_value=land), \
+         patch("terrascope.lib.coastline._load_gshhg_lake_union", return_value=lake), \
          patch("builtins.open", mock_open()):
         result = coastline_mod._load_gshhg_land_minus_lakes()
 
@@ -406,7 +406,7 @@ def test_load_gshhg_land_minus_lakes_subtracts_lakes_from_land_when_not_cached()
 
 def test_download_gshhg_if_needed_skips_download_when_both_tiers_cached():
     with patch("os.path.exists", return_value=True), \
-         patch("atmos_gl.lib.gfs.download_whole") as mock_download:
+         patch("terrascope.lib.gfs.download_whole") as mock_download:
         coastline_mod._download_gshhg_if_needed()
 
     mock_download.assert_not_called()
@@ -424,7 +424,7 @@ def test_download_gshhg_if_needed_downloads_when_the_lake_tier_is_missing():
 
     with patch("os.path.exists", side_effect=fake_exists), \
          patch("os.makedirs"), \
-         patch("atmos_gl.lib.gfs.download_whole", return_value=b"PK\x03\x04") as mock_download, \
+         patch("terrascope.lib.gfs.download_whole", return_value=b"PK\x03\x04") as mock_download, \
          patch("zipfile.ZipFile") as mock_zip:
         mock_zip.return_value.__enter__.return_value.namelist.return_value = [
             "GSHHS_shp/h/GSHHS_h_L1.shp",

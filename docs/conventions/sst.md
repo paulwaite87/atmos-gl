@@ -8,7 +8,7 @@ each: SST's absolute/anomaly, GHG's species×mode, Flood Risk's Live/Historical)
 ## What makes it "static"
 
 Unlike an Animated fill layer, there's no forecast-hour dimension — no scrubber, no
-per-hour texture series. `SSTUpdater.run()` (`src/atmos_gl/tasks/sst.py`) renders once per
+per-hour texture series. `SSTUpdater.run()` (`src/terrascope/tasks/sst.py`) renders once per
 cycle and republishes to one fixed output path each time it's stale, the same "render
 everything, publish only what's selected" shape `GhgUpdater` uses for its species/mode
 combinations.

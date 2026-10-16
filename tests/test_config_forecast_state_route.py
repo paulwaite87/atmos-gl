@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Route-level tests for GET /api/forecast_state (architecture review candidate "Give
 routers the seam the Fakes are waiting for")."""
-from atmos_gl.db.field_catalog_adapter import FakeFieldCatalogAdapter
-from atmos_gl.routes.config import get_field_catalog_adapter
-from atmos_gl.api import app
+from terrascope.db.field_catalog_adapter import FakeFieldCatalogAdapter
+from terrascope.routes.config import get_field_catalog_adapter
+from terrascope.api import app
 
 
 def test_forecast_state_reflects_the_overridden_fake(client):

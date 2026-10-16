@@ -5,14 +5,14 @@ RtofsCurrentsCollector's nowcast (waves has no equivalent "present conditions" f
 """
 from unittest.mock import patch
 
-from atmos_gl.collectors.gfs_waves import GfsWavesCollector
+from terrascope.collectors.gfs_waves import GfsWavesCollector
 
 
 def make_collector():
     return GfsWavesCollector.__new__(GfsWavesCollector)
 
 
-@patch("atmos_gl.collectors.gfs_waves.remote_exists", return_value=True)
+@patch("terrascope.collectors.gfs_waves.remote_exists", return_value=True)
 def test_returns_url_when_published(mock_exists):
     c = make_collector()
 
@@ -23,7 +23,7 @@ def test_returns_url_when_published(mock_exists):
     mock_exists.assert_called_once()
 
 
-@patch("atmos_gl.collectors.gfs_waves.remote_exists", return_value=False)
+@patch("terrascope.collectors.gfs_waves.remote_exists", return_value=False)
 def test_returns_none_when_not_published(mock_exists):
     c = make_collector()
 

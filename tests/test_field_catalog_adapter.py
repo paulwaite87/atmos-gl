@@ -1,6 +1,6 @@
 from datetime import date, datetime, timedelta, timezone
 
-from atmos_gl.db.field_catalog_adapter import FakeFieldCatalogAdapter
+from terrascope.db.field_catalog_adapter import FakeFieldCatalogAdapter
 
 
 def _upsert(adapter, run_date, run_id, fhour, product, **kw):

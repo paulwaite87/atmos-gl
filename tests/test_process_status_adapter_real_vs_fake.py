@@ -13,13 +13,13 @@ from unittest.mock import patch
 import pytest
 from sqlalchemy.orm import sessionmaker
 
-from atmos_gl.db.process_status_adapter import ProcessStatusAdapter, FakeProcessStatusAdapter
+from terrascope.db.process_status_adapter import ProcessStatusAdapter, FakeProcessStatusAdapter
 
 
 def _make_adapter(kind, real_db):
     if kind == "real":
         TestSession = sessionmaker(bind=real_db)
-        return ProcessStatusAdapter(), patch("atmos_gl.db.process_status_adapter.Session", TestSession)
+        return ProcessStatusAdapter(), patch("terrascope.db.process_status_adapter.Session", TestSession)
     return FakeProcessStatusAdapter(), contextlib.nullcontext()
 
 

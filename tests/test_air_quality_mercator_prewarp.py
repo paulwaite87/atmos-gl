@@ -10,8 +10,8 @@ import cartopy.crs as ccrs
 import numpy as np
 import pytest
 
-from atmos_gl.tasks.air_quality import _MERCATOR_R
-from atmos_gl.tasks.plotting import MERCATOR_LAT_LIMIT
+from terrascope.tasks.air_quality import _MERCATOR_R
+from terrascope.tasks.plotting import MERCATOR_LAT_LIMIT
 
 
 def _closed_form_merc_y(lat_deg):

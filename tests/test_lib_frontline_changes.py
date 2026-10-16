@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from atmos_gl.lib.frontline_changes import (
+from terrascope.lib.frontline_changes import (
     MIN_AREA_KM2,
     changes_feature_collection,
     occupied_changes,

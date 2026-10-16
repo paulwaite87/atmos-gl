@@ -14,7 +14,7 @@ import pytest
 import rasterio
 from rasterio import Affine
 
-from atmos_gl.lib.vegetation_mask import (
+from terrascope.lib.vegetation_mask import (
     BURNABLE_IGBP_CLASSES,
     VegetationMaskCache,
     ZENODO_VERSIONS_LATEST_URL,
@@ -108,7 +108,7 @@ def test_fetch_latest_zenodo_version_raises_on_http_error():
 
 def test_download_landcover_geotiff_writes_the_downloaded_bytes(tmp_path):
     dest = str(tmp_path / "sub" / "landcover.tif")
-    with patch("atmos_gl.lib.gfs.download_whole", return_value=b"fake-tif-bytes") as mock_dl:
+    with patch("terrascope.lib.gfs.download_whole", return_value=b"fake-tif-bytes") as mock_dl:
         download_landcover_geotiff("https://example.test/x.tif", dest)
 
     mock_dl.assert_called_once_with("https://example.test/x.tif", timeout=300)
@@ -217,7 +217,7 @@ def test_vegetation_mask_cache_caches_per_key(tmp_path):
     cache = VegetationMaskCache("Test", str(tmp_path))
     first = cache.get([15.0, 5.0], [5.0, 15.0], "key-a")
     with patch(
-        "atmos_gl.lib.vegetation_mask.burnable_vegetation_mask"
+        "terrascope.lib.vegetation_mask.burnable_vegetation_mask"
     ) as mock_build:
         second = cache.get([15.0, 5.0], [5.0, 15.0], "key-a")
         mock_build.assert_not_called()
@@ -233,7 +233,7 @@ def test_vegetation_mask_cache_treats_different_keys_independently(tmp_path):
     cache = VegetationMaskCache("Test", str(tmp_path))
     cache.get([15.0, 5.0], [5.0, 15.0], "key-a")
     with patch(
-        "atmos_gl.lib.vegetation_mask.burnable_vegetation_mask", return_value=None
+        "terrascope.lib.vegetation_mask.burnable_vegetation_mask", return_value=None
     ) as mock_build:
         cache.get([15.0, 5.0], [5.0, 15.0], "key-b")
         mock_build.assert_called_once()

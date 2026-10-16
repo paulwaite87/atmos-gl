@@ -11,13 +11,13 @@ from unittest.mock import patch
 import pytest
 from sqlalchemy.orm import sessionmaker
 
-from atmos_gl.db.flight_route_adapter import FlightRouteAdapter, FakeFlightRouteAdapter
+from terrascope.db.flight_route_adapter import FlightRouteAdapter, FakeFlightRouteAdapter
 
 
 def _make_adapter(kind, real_db):
     if kind == "real":
         TestSession = sessionmaker(bind=real_db)
-        return FlightRouteAdapter(), patch("atmos_gl.db.flight_route_adapter.Session", TestSession)
+        return FlightRouteAdapter(), patch("terrascope.db.flight_route_adapter.Session", TestSession)
     return FakeFlightRouteAdapter(), contextlib.nullcontext()
 
 

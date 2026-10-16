@@ -81,4 +81,4 @@ ARG APP_VERSION=unknown
 ENV APP_VERSION=$APP_VERSION
 
 # Updated fallback command to use the new 'builder' script entry point
-CMD ["builder", "--config", "config/atmos-gl.json"]
+CMD ["builder", "--config", "config/terrascope.json"]

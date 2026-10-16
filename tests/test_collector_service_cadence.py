@@ -8,8 +8,8 @@ sync with each other.
 """
 from unittest.mock import MagicMock
 
-from atmos_gl.collectors.service import CollectorService
-from atmos_gl.collectors.field_base import FieldCollectorBase
+from terrascope.collectors.service import CollectorService
+from terrascope.collectors.field_base import FieldCollectorBase
 
 
 def make_bare_service(settings):
@@ -69,9 +69,9 @@ def test_collect_once_runs_event_feeds_before_file_caches_before_fields():
     svc = make_bare_service({})
     svc._event_last_runs, svc._cache_last_runs = {}, {}
     calls = []
-    with patch("atmos_gl.collectors.service.collect_event_feeds",
+    with patch("terrascope.collectors.service.collect_event_feeds",
                side_effect=lambda *a: calls.append("event_feeds")), \
-         patch("atmos_gl.collectors.service.collect_file_caches",
+         patch("terrascope.collectors.service.collect_file_caches",
                side_effect=lambda *a: calls.append("file_caches")), \
          patch.object(CollectorService, "_collect_fields",
                       side_effect=lambda *a: calls.append("fields"), autospec=True):

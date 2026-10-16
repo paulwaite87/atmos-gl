@@ -225,7 +225,7 @@ describe('initLegendToggle', () => {
     });
 
     test('restores a previously hidden state from localStorage on init', () => {
-        localStorage.setItem('atmosgl.legendsHidden', 'true');
+        localStorage.setItem('terrascope.legendsHidden', 'true');
         initLegendToggle();
         const btn = document.getElementById('legend-toggle');
         expect(document._stack.classList.contains('legends-hidden')).toBe(true);
@@ -241,12 +241,12 @@ describe('initLegendToggle', () => {
         btn._listeners.click();
         expect(stack.classList.contains('legends-hidden')).toBe(true);
         expect(btn.textContent).toBe('+');
-        expect(localStorage.getItem('atmosgl.legendsHidden')).toBe('true');
+        expect(localStorage.getItem('terrascope.legendsHidden')).toBe('true');
 
         btn._listeners.click();
         expect(stack.classList.contains('legends-hidden')).toBe(false);
         expect(btn.textContent).toBe('−');
-        expect(localStorage.getItem('atmosgl.legendsHidden')).toBe('false');
+        expect(localStorage.getItem('terrascope.legendsHidden')).toBe('false');
     });
 
     test('is idempotent -- calling it again does not create a second toggle', () => {

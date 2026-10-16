@@ -18,7 +18,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from atmos_gl.routes.status import (
+from terrascope.routes.status import (
     get_collector_classes,
     get_cache_collector_classes,
     get_field_collector_classes,
@@ -30,8 +30,8 @@ from atmos_gl.routes.status import (
     _display_name,
     RUNS_PER_DAY_SECTIONS,
 )
-from atmos_gl.api import app
-from atmos_gl.db.process_status_adapter import FakeProcessStatusAdapter
+from terrascope.api import app
+from terrascope.db.process_status_adapter import FakeProcessStatusAdapter
 
 
 @pytest.fixture(autouse=True)
@@ -401,7 +401,7 @@ def test_serialize_channel_on_reflects_an_explicit_true():
 
 
 def _write_temp_config(tmp_path, data_collector_extra=None):
-    path = tmp_path / "atmos-gl.json"
+    path = tmp_path / "terrascope.json"
     config = {
         "common": {"workdir": "."},
         "data_collector": {"channel_enabled": {"quakes": True}, **(data_collector_extra or {})},
@@ -466,9 +466,9 @@ def test_display_name_no_longer_special_cases_field_collector_status_names():
 
 
 def test_field_collectors_carry_the_proper_acronym_display_label():
-    from atmos_gl.collectors.gfs_atmos import GfsAtmosCollector
-    from atmos_gl.collectors.gfs_waves import GfsWavesCollector
-    from atmos_gl.collectors.rtofs_currents import RtofsCurrentsCollector
+    from terrascope.collectors.gfs_atmos import GfsAtmosCollector
+    from terrascope.collectors.gfs_waves import GfsWavesCollector
+    from terrascope.collectors.rtofs_currents import RtofsCurrentsCollector
 
     assert GfsAtmosCollector.display_label == "GFS Atmos"
     assert GfsWavesCollector.display_label == "GFS Waves"
@@ -550,7 +550,7 @@ def test_serialize_falls_back_to_display_name_without_a_display_label():
 
 
 def _write_runs_per_day_config(tmp_path, **extra_sections):
-    path = tmp_path / "atmos-gl.json"
+    path = tmp_path / "terrascope.json"
     config = {
         "common": {"workdir": "."},
         "data_collector": {"channel_enabled": {}, "runs_per_day": 96},
@@ -824,7 +824,7 @@ def test_set_runs_per_day_rejects_a_value_outside_the_choice_set(client, tmp_pat
 def test_set_runs_per_day_rejects_a_boolean():
     """1 == True in Python -- guard against a JSON boolean silently passing the `in
     RUNS_PER_DAY_CHOICES` membership check."""
-    from atmos_gl.routes.status import set_runs_per_day
+    from terrascope.routes.status import set_runs_per_day
     from fastapi import HTTPException
     import pytest
 

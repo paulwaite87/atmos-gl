@@ -18,11 +18,11 @@ Layers with no collector dependency at all (terminator, landmass, ...) are absen
 from the result entirely -- the frontend/consumer treats a missing key as always
 collecting.
 """
-from atmos_gl.lib.layer_availability import compute_layer_availability, REASON_PAUSED
+from terrascope.lib.layer_availability import compute_layer_availability, REASON_PAUSED
 
 
 class FakeConfig:
-    """Minimal AtmosGLConfig stand-in: only section_enabled()/get_setting(), the two
+    """Minimal TerrascopeConfig stand-in: only section_enabled()/get_setting(), the two
     methods compute_layer_availability actually calls."""
 
     def __init__(self, config: dict):

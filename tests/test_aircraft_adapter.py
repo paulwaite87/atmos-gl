@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone
 
-from atmos_gl.db.aircraft_adapter import FakeAircraftAdapter
+from terrascope.db.aircraft_adapter import FakeAircraftAdapter
 
 
 def _record(hex="a1b2c3", **overrides):

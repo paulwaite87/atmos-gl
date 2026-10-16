@@ -7,7 +7,7 @@ multi-product byte-range shape is untouched and not covered here.
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
-from atmos_gl.collectors.field_base import SingleFileFieldCollector, CycleContext
+from terrascope.collectors.field_base import SingleFileFieldCollector, CycleContext
 
 
 def make_collector(resolve_url=None, guard_cycle=None, cache_hours=4, cleanup_idx=False):
@@ -29,7 +29,7 @@ def make_collector(resolve_url=None, guard_cycle=None, cache_hours=4, cleanup_id
     return c
 
 
-@patch("atmos_gl.collectors.field_base.download_whole")
+@patch("terrascope.collectors.field_base.download_whole")
 def test_collect_skips_hours_where_field_exists(mock_download):
     run_ts = datetime.now(timezone.utc) - timedelta(hours=2)
     baseline = {"date_str": "2026-07-15", "run": "00", "timestamp": run_ts}
@@ -44,7 +44,7 @@ def test_collect_skips_hours_where_field_exists(mock_download):
     c.store.store_field.assert_not_called()
 
 
-@patch("atmos_gl.collectors.field_base.download_whole")
+@patch("terrascope.collectors.field_base.download_whole")
 def test_collect_downloads_unpacks_and_stores_missing_hours(mock_download):
     run_ts = datetime.now(timezone.utc) - timedelta(hours=1)
     baseline = {"date_str": "2026-07-15", "run": "00", "timestamp": run_ts}
@@ -95,7 +95,7 @@ def test_collect_only_allows_fallback_on_the_first_hour():
     assert calls[2].kwargs["allow_fallback"] is False
 
 
-@patch("atmos_gl.collectors.field_base.download_whole")
+@patch("terrascope.collectors.field_base.download_whole")
 def test_backfill_hour_always_allows_fallback(mock_download):
     mock_download.return_value = b"payload"
     resolve_url = MagicMock(return_value="https://example.test/f005")

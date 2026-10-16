@@ -9,7 +9,7 @@ replaced the WS route as adsb.lol's sole consumer -- see docs/adr/0010 and
 tests/test_global_sample_scheduler.py for their replacement, GlobalSampleScheduler."""
 import pytest
 
-from atmos_gl.lib.flight_radar import circle_for_region_key, fetch_aircraft_near, fetch_routes
+from terrascope.lib.flight_radar import circle_for_region_key, fetch_aircraft_near, fetch_routes
 
 
 class _FakeResponse:

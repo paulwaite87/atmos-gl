@@ -10,7 +10,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from atmos_gl.tasks.vector_field import VectorFieldUpdater
+from terrascope.tasks.vector_field import VectorFieldUpdater
 
 
 def make_bare_base():

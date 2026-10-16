@@ -7,8 +7,8 @@ MagicMock, asserting the resulting upsert_activity calls).
 import json
 from unittest.mock import MagicMock, patch
 
-from atmos_gl.collectors.base import CollectorBase
-from atmos_gl.collectors.volcanoes import (
+from terrascope.collectors.base import CollectorBase
+from terrascope.collectors.volcanoes import (
     VolcanicActivityCollector,
     _fix_mangled_punctuation,
     _parse_georss_point,

@@ -10,17 +10,17 @@ modules now read instead, sourced directly from tasks/scalar_field.py's SPECS.
 import json
 from unittest.mock import patch
 
-from atmos_gl.lib.config import AtmosGLConfig
-from atmos_gl.tasks.scalar_field import SPECS
+from terrascope.lib.config import TerrascopeConfig
+from terrascope.tasks.scalar_field import SPECS
 
 
 def test_get_config_exposes_scalar_field_specs_for_every_field(client, tmp_path):
-    tmp_config = tmp_path / "atmos-gl.json"
+    tmp_config = tmp_path / "terrascope.json"
     tmp_config.write_text(json.dumps({"common": {}}))
 
     with patch(
-        "atmos_gl.routes.config.load_config",
-        return_value=AtmosGLConfig(str(tmp_config)),
+        "terrascope.routes.config.load_config",
+        return_value=TerrascopeConfig(str(tmp_config)),
     ):
         resp = client.get("/api/config")
 
@@ -29,12 +29,12 @@ def test_get_config_exposes_scalar_field_specs_for_every_field(client, tmp_path)
 
 
 def test_get_config_scalar_field_specs_match_the_backend_spec_exactly(client, tmp_path):
-    tmp_config = tmp_path / "atmos-gl.json"
+    tmp_config = tmp_path / "terrascope.json"
     tmp_config.write_text(json.dumps({"common": {}}))
 
     with patch(
-        "atmos_gl.routes.config.load_config",
-        return_value=AtmosGLConfig(str(tmp_config)),
+        "terrascope.routes.config.load_config",
+        return_value=TerrascopeConfig(str(tmp_config)),
     ):
         resp = client.get("/api/config")
 

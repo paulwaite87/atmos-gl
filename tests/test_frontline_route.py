@@ -4,9 +4,9 @@ from datetime import datetime, timezone
 
 import pytest
 
-from atmos_gl.api import app
-from atmos_gl.db.frontline_adapter import FakeFrontlineAdapter
-from atmos_gl.routes.frontline import get_frontline_adapter
+from terrascope.api import app
+from terrascope.db.frontline_adapter import FakeFrontlineAdapter
+from terrascope.routes.frontline import get_frontline_adapter
 
 
 def test_frontline_geojson_serves_the_latest_snapshot(client):

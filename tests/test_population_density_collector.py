@@ -9,17 +9,17 @@ import numpy as np
 import pytest
 from PIL import Image
 
-from atmos_gl.collectors import population_density as mod
-from atmos_gl.collectors.population_density import PopulationDensityCollector
-from atmos_gl.db.process_status_adapter import FakeProcessStatusAdapter
-from atmos_gl.lib.population_density import (
+from terrascope.collectors import population_density as mod
+from terrascope.collectors.population_density import PopulationDensityCollector
+from terrascope.db.process_status_adapter import FakeProcessStatusAdapter
+from terrascope.lib.population_density import (
     GHSL_POP_PAGE_URL,
     GHSL_POP_URL,
     cached_source,
     density_grid_cache_path,
     save_density_grid,
 )
-from atmos_gl.tasks.population_density import ENCODE_DOMAIN, PopulationDensityUpdater, log_density
+from terrascope.tasks.population_density import ENCODE_DOMAIN, PopulationDensityUpdater, log_density
 
 _REMOTE = {"url": GHSL_POP_URL, "size": 1000, "marker": '"etag-1"'}
 

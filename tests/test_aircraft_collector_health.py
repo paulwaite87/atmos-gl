@@ -3,8 +3,8 @@
 #215's Data Status health-icon feature) -- the same narrow, __new__-bypassing
 construction shipping/lightning's own collector tests use, so this doesn't need a real
 config file or DB connection."""
-from atmos_gl.collectors.aircraft import AircraftCollector
-from atmos_gl.db.process_status_adapter import FakeProcessStatusAdapter
+from terrascope.collectors.aircraft import AircraftCollector
+from terrascope.db.process_status_adapter import FakeProcessStatusAdapter
 
 
 def make_collector():

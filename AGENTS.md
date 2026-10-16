@@ -1,4 +1,4 @@
-# AGENTS.md — atmos-gl
+# AGENTS.md — terrascope
 
 A Docker Compose–based system that renders a live, interactive 3D globe (MapLibre GL JS
 frontend, Python/FastAPI/PostGIS backend) showing real-time and forecast weather and world
@@ -49,7 +49,7 @@ shipping, lightning, and more.
 - [Tooling](docs/conventions/tooling.md) — uv, Docker Compose, Makefile, CodeGraph
 - [Testing & validation](docs/conventions/testing.md) — validating collector code without a running stack
 - [Docker conventions](docs/conventions/docker.md)
-- [Settings / config changes](docs/conventions/settings.md) — `config/atmos-gl.json` vs `.tmpl`
+- [Settings / config changes](docs/conventions/settings.md) — `config/terrascope.json` vs `.tmpl`
 - [Git workflow](docs/conventions/git-workflow.md)
 - [Agent skills & PRD workflow](docs/conventions/agent-skills.md) — issue tracker, triage labels,
   domain docs, skill catalog

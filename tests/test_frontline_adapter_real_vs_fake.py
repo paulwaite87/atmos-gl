@@ -10,13 +10,13 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.orm import sessionmaker
 
-from atmos_gl.db.frontline_adapter import FakeFrontlineAdapter, FrontlineAdapter
+from terrascope.db.frontline_adapter import FakeFrontlineAdapter, FrontlineAdapter
 
 
 def _make_adapter(kind, real_db):
     if kind == "real":
         TestSession = sessionmaker(bind=real_db)
-        return FrontlineAdapter(), patch("atmos_gl.db.frontline_adapter.Session", TestSession)
+        return FrontlineAdapter(), patch("terrascope.db.frontline_adapter.Session", TestSession)
     return FakeFrontlineAdapter(), contextlib.nullcontext()
 
 

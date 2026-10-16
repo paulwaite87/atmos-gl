@@ -8,11 +8,11 @@ import concurrent.futures
 import os
 from unittest.mock import MagicMock, patch
 
-from atmos_gl.collectors.air_quality import (
+from terrascope.collectors.air_quality import (
     AirQualityCollector,
     build_air_quality_request,
 )
-from atmos_gl.lib.air_quality import camsforecast_cache_path
+from terrascope.lib.air_quality import camsforecast_cache_path
 
 
 def make_bare_air_quality_collector(settings=None, workdir=".", api_key="secret-token", monkeypatch=None):
@@ -62,7 +62,7 @@ def test_collect_fetches_unzips_and_caches(tmp_path, monkeypatch, make_netcdf_zi
     mock_client.retrieve.side_effect = fake_retrieve
 
     with patch(
-        "atmos_gl.collectors.air_quality.cdsapi.Client", return_value=mock_client
+        "terrascope.collectors.air_quality.cdsapi.Client", return_value=mock_client
     ) as mock_client_cls:
         c.collect()
 
@@ -75,8 +75,8 @@ def test_collect_fetches_unzips_and_caches(tmp_path, monkeypatch, make_netcdf_zi
 def test_collect_returns_gracefully_without_raising_on_timeout(tmp_path, monkeypatch):
     c = make_bare_air_quality_collector(workdir=str(tmp_path), monkeypatch=monkeypatch)
 
-    with patch("atmos_gl.collectors.air_quality.cdsapi.Client"), patch(
-        "atmos_gl.lib.cds_client.retrieve_with_timeout",
+    with patch("terrascope.collectors.air_quality.cdsapi.Client"), patch(
+        "terrascope.lib.cds_client.retrieve_with_timeout",
         side_effect=concurrent.futures.TimeoutError,
     ):
         c.collect()  # must not raise
@@ -89,7 +89,7 @@ def test_collect_skips_without_raising_when_no_api_key(tmp_path, monkeypatch):
         workdir=str(tmp_path), api_key=None, monkeypatch=monkeypatch
     )
 
-    with patch("atmos_gl.collectors.air_quality.cdsapi.Client") as mock_client_cls:
+    with patch("terrascope.collectors.air_quality.cdsapi.Client") as mock_client_cls:
         c.collect()
 
     mock_client_cls.assert_not_called()
@@ -115,7 +115,7 @@ def test_collect_refetches_every_call(tmp_path, monkeypatch, make_netcdf_zip_byt
         f.write(b"stale-data")
 
     with patch(
-        "atmos_gl.collectors.air_quality.cdsapi.Client", return_value=mock_client
+        "terrascope.collectors.air_quality.cdsapi.Client", return_value=mock_client
     ):
         c.collect()
 
@@ -144,7 +144,7 @@ def test_collect_falls_back_to_the_next_run_when_the_first_is_not_yet_published(
     mock_client.retrieve.side_effect = fake_retrieve
 
     with patch(
-        "atmos_gl.collectors.air_quality.cdsapi.Client", return_value=mock_client
+        "terrascope.collectors.air_quality.cdsapi.Client", return_value=mock_client
     ):
         c.collect()
 
@@ -161,7 +161,7 @@ def test_collect_gives_up_gracefully_when_no_recent_run_is_available(tmp_path, m
     mock_client.retrieve.side_effect = RuntimeError("400 Client Error")
 
     with patch(
-        "atmos_gl.collectors.air_quality.cdsapi.Client", return_value=mock_client
+        "terrascope.collectors.air_quality.cdsapi.Client", return_value=mock_client
     ):
         c.collect()  # must not raise
 

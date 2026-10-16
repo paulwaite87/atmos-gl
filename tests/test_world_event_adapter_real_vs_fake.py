@@ -17,13 +17,13 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.orm import sessionmaker
 
-from atmos_gl.db.world_event_adapter import WorldEventAdapter, FakeWorldEventAdapter
+from terrascope.db.world_event_adapter import WorldEventAdapter, FakeWorldEventAdapter
 
 
 def _make_adapter(kind, real_db):
     if kind == "real":
         TestSession = sessionmaker(bind=real_db)
-        return WorldEventAdapter(), patch("atmos_gl.db.world_event_adapter.Session", TestSession)
+        return WorldEventAdapter(), patch("terrascope.db.world_event_adapter.Session", TestSession)
     return FakeWorldEventAdapter(), contextlib.nullcontext()
 
 

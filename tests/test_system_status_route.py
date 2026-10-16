@@ -8,8 +8,8 @@ stack, consistent with this repo's "heavy deps unavailable in dev" testing appro
 from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
-from atmos_gl.db.process_status_adapter import FakeProcessStatusAdapter
-from atmos_gl.routes.system_status import (
+from terrascope.db.process_status_adapter import FakeProcessStatusAdapter
+from terrascope.routes.system_status import (
     SERVICE_HEARTBEATS,
     _service_status,
     _database_status,
@@ -56,7 +56,7 @@ def test_service_status_unknown_with_no_heartbeat_ever():
 
 
 def test_database_status_ok_on_successful_ping():
-    with patch("atmos_gl.routes.system_status.Session") as mock_session_cls:
+    with patch("terrascope.routes.system_status.Session") as mock_session_cls:
         mock_session = mock_session_cls.return_value.__enter__.return_value
         mock_session.execute.return_value = None
         result = _database_status()
@@ -66,7 +66,7 @@ def test_database_status_ok_on_successful_ping():
 
 
 def test_database_status_reports_error_on_failure():
-    with patch("atmos_gl.routes.system_status.Session") as mock_session_cls:
+    with patch("terrascope.routes.system_status.Session") as mock_session_cls:
         mock_session_cls.return_value.__enter__.side_effect = RuntimeError("connection refused")
         result = _database_status()
     assert result["ok"] is False
@@ -74,12 +74,12 @@ def test_database_status_reports_error_on_failure():
 
 
 def test_disk_status_reports_percent_used():
-    with patch("atmos_gl.routes.system_status.load_config") as mock_load_config:
+    with patch("terrascope.routes.system_status.load_config") as mock_load_config:
         mock_load_config.return_value.get_setting.return_value = "."
-        with patch("atmos_gl.routes.system_status.shutil.disk_usage") as mock_disk_usage:
+        with patch("terrascope.routes.system_status.shutil.disk_usage") as mock_disk_usage:
             mock_disk_usage.return_value = (1000, 400, 600)
             with patch(
-                "atmos_gl.routes.system_status._dir_size_bytes", return_value=250
+                "terrascope.routes.system_status._dir_size_bytes", return_value=250
             ):
                 result = _disk_status()
     assert result["percent_used"] == 40.0
@@ -88,10 +88,10 @@ def test_disk_status_reports_percent_used():
 
 
 def test_disk_status_handles_missing_path_gracefully():
-    with patch("atmos_gl.routes.system_status.load_config") as mock_load_config:
+    with patch("terrascope.routes.system_status.load_config") as mock_load_config:
         mock_load_config.return_value.get_setting.return_value = "/nonexistent"
         with patch(
-            "atmos_gl.routes.system_status.shutil.disk_usage",
+            "terrascope.routes.system_status.shutil.disk_usage",
             side_effect=OSError("no such path"),
         ):
             result = _disk_status()

@@ -1,4 +1,4 @@
-from atmos_gl.lib.text_sanitize import strip_html
+from terrascope.lib.text_sanitize import strip_html
 
 
 def test_strips_a_single_tag_and_collapses_the_leading_space():

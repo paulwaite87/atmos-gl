@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 
-from atmos_gl.tasks.sst import SSTUpdater, _ABS_ENCODE_VMIN, _ABS_ENCODE_VMAX, \
+from terrascope.tasks.sst import SSTUpdater, _ABS_ENCODE_VMIN, _ABS_ENCODE_VMAX, \
     _ANOMALY_ENCODE_VMIN, _ANOMALY_ENCODE_VMAX
 
 
@@ -53,17 +53,17 @@ class _StackedMocks:
 
         mocks = {
             "open_dataset": self.stack.enter_context(
-                patch("atmos_gl.tasks.sst.xr.open_dataset", return_value=ds)
+                patch("terrascope.tasks.sst.xr.open_dataset", return_value=ds)
             ),
             "distance_transform_edt": self.stack.enter_context(
-                patch("atmos_gl.tasks.sst.distance_transform_edt",
+                patch("terrascope.tasks.sst.distance_transform_edt",
                       side_effect=lambda bad, **kw: np.indices(bad.shape))
             ),
             "coastline_land_mask": self.stack.enter_context(
-                patch("atmos_gl.tasks.sst.coastline_land_mask", return_value=self.mock_land)
+                patch("terrascope.tasks.sst.coastline_land_mask", return_value=self.mock_land)
             ),
             "encode_frames": self.stack.enter_context(
-                patch("atmos_gl.tasks.sst.encode_frames", return_value=True)
+                patch("terrascope.tasks.sst.encode_frames", return_value=True)
             ),
         }
         return mocks

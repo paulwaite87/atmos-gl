@@ -24,7 +24,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from atmos_gl.lib.cds_client import (
+from terrascope.lib.cds_client import (
     retrieve_and_unzip,
     retrieve_with_fallback,
 )
@@ -128,7 +128,7 @@ def test_retrieve_with_fallback_stops_at_a_timeout_without_trying_later_candidat
     dest = str(tmp_path / "data" / "cached.nc")
 
     with patch(
-        "atmos_gl.lib.cds_client.retrieve_with_timeout",
+        "terrascope.lib.cds_client.retrieve_with_timeout",
         side_effect=concurrent.futures.TimeoutError,
     ):
         ok = retrieve_with_fallback(
@@ -187,7 +187,7 @@ def test_retrieve_with_fallback_unzip_false_leaves_no_partial_file_on_timeout(tm
     dest = str(tmp_path / "data" / "cached.nc")
 
     with patch(
-        "atmos_gl.lib.cds_client.retrieve_with_timeout",
+        "terrascope.lib.cds_client.retrieve_with_timeout",
         side_effect=concurrent.futures.TimeoutError,
     ):
         ok = retrieve_with_fallback(
@@ -215,7 +215,7 @@ def test_retrieve_with_fallback_unzip_false_uses_a_unique_tmp_path_per_call(tmp_
         seen_targets.append(target)
         raise concurrent.futures.TimeoutError
 
-    with patch("atmos_gl.lib.cds_client.retrieve_with_timeout", side_effect=fake_timeout):
+    with patch("terrascope.lib.cds_client.retrieve_with_timeout", side_effect=fake_timeout):
         retrieve_with_fallback(
             client, "cems-glofas-forecast", _requests("2026-07-29"), dest,
             timeout_s=5, label="test", unzip=False,

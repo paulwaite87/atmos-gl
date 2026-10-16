@@ -1,13 +1,13 @@
-name: atmos-gl
+name: terrascope
 services:
   data_collector:
-    image: ghcr.io/paulwaite87/atmos-gl:${IMAGE_TAG:-latest}
-    # Matches the host's real user, same reasoning as atmos_gl_db's `user:` below --
+    image: ghcr.io/paulwaite87/terrascope:${IMAGE_TAG:-latest}
+    # Matches the host's real user, same reasoning as terrascope_db's `user:` below --
     # ./data and ./config are host bind-mounts, not container-owned volumes, so this
     # container needs to write as whoever owns them on the host, not the image's
     # baked-in agluser (UID 1000, fixed at CI build time -- see Dockerfile).
     user: "${DOCKER_UID:-1000}:${DOCKER_GID:-1000}"
-    command: python -m atmos_gl.collectors.service --config /opt/project/config/atmos-gl.json
+    command: python -m terrascope.collectors.service --config /opt/project/config/terrascope.json
     env_file:
       - .env
     environment:
@@ -24,16 +24,16 @@ services:
       # whether DOCKER_UID/GID happens to match the image's baked-in agluser, unlike
       # /home/agluser which is owned by (and only writable by) the image's fixed UID.
       - HOME=/tmp
-      - POSTGRES_HOST=atmos_gl_db
+      - POSTGRES_HOST=terrascope_db
       - POSTGRES_PORT=5432
       - POSTGRES_DB=${POSTGRES_DB}
       - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
     restart: unless-stopped
     depends_on:
-      atmos_gl_db:
+      terrascope_db:
         condition: service_healthy
-      atmos_gl_db_migrate:
+      terrascope_db_migrate:
         condition: service_completed_successfully
     volumes:
       - ./data:/opt/project/data
@@ -42,10 +42,10 @@ services:
       - agl
 
   layer_builder:
-    image: ghcr.io/paulwaite87/atmos-gl:${IMAGE_TAG:-latest}
+    image: ghcr.io/paulwaite87/terrascope:${IMAGE_TAG:-latest}
     # See data_collector's user: comment above -- same host bind-mount ownership reasoning.
     user: "${DOCKER_UID:-1000}:${DOCKER_GID:-1000}"
-    command: python -m atmos_gl.layer_builder --config /opt/project/config/atmos-gl.json
+    command: python -m terrascope.layer_builder --config /opt/project/config/terrascope.json
     env_file:
       - .env
     environment:
@@ -54,16 +54,16 @@ services:
       - PYTHONPATH=/opt/project/src
       - PYTHONUNBUFFERED=1
       - HOME=/tmp
-      - POSTGRES_HOST=atmos_gl_db
+      - POSTGRES_HOST=terrascope_db
       - POSTGRES_PORT=5432
       - POSTGRES_DB=${POSTGRES_DB}
       - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
     restart: unless-stopped
     depends_on:
-      atmos_gl_db:
+      terrascope_db:
         condition: service_healthy
-      atmos_gl_db_migrate:
+      terrascope_db_migrate:
         condition: service_completed_successfully
     volumes:
       - ./data:/opt/project/data
@@ -78,10 +78,10 @@ services:
       - agl
 
   housekeeper:
-    image: ghcr.io/paulwaite87/atmos-gl:${IMAGE_TAG:-latest}
+    image: ghcr.io/paulwaite87/terrascope:${IMAGE_TAG:-latest}
     # See data_collector's user: comment above -- same host bind-mount ownership reasoning.
     user: "${DOCKER_UID:-1000}:${DOCKER_GID:-1000}"
-    command: python -m atmos_gl.housekeeper --config /opt/project/config/atmos-gl.json
+    command: python -m terrascope.housekeeper --config /opt/project/config/terrascope.json
     env_file:
       - .env
     environment:
@@ -98,7 +98,7 @@ services:
       - agl
 
   map_api:
-    image: ghcr.io/paulwaite87/atmos-gl:${IMAGE_TAG:-latest}
+    image: ghcr.io/paulwaite87/terrascope:${IMAGE_TAG:-latest}
     # See data_collector's user: comment above -- same host bind-mount ownership reasoning.
     user: "${DOCKER_UID:-1000}:${DOCKER_GID:-1000}"
     # Reverted to a simpler runtime installation since agluser now owns the virtual environment
@@ -110,7 +110,7 @@ services:
     # straight to the host below, and '*' would let anyone hitting it directly spoof
     # X-Forwarded-Proto/Host and steer the OAuth redirect_uri.
     command: >
-      bash -c "uv pip install fastapi uvicorn authlib itsdangerous httpx && python -m uvicorn atmos_gl.api:app --host 0.0.0.0 --port 9000 --proxy-headers --forwarded-allow-ips='172.16.0.0/12'"
+      bash -c "uv pip install fastapi uvicorn authlib itsdangerous httpx && python -m uvicorn terrascope.api:app --host 0.0.0.0 --port 9000 --proxy-headers --forwarded-allow-ips='172.16.0.0/12'"
     ports:
       - "9000:9000"
     env_file:
@@ -121,12 +121,12 @@ services:
       - PYTHONPATH=/opt/project/src
       - PYTHONUNBUFFERED=1
       - HOME=/tmp
-      - POSTGRES_HOST=atmos_gl_db
+      - POSTGRES_HOST=terrascope_db
       - POSTGRES_PORT=5432
       - POSTGRES_DB=${POSTGRES_DB}
       - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - CONFIG_PATH=/opt/project/config/atmos-gl.json
+      - CONFIG_PATH=/opt/project/config/terrascope.json
       - MAPTILER_API_KEY=${MAPTILER_API_KEY}
       - FIRMS_API_KEY=${FIRMS_API_KEY}
       - LAYER_BUILDER_ORDER_URL=http://layer_builder:9100
@@ -139,9 +139,9 @@ services:
       - PUBLIC_ORIGIN=${PUBLIC_ORIGIN:-http://localhost:8180}
     restart: unless-stopped
     depends_on:
-      atmos_gl_db:
+      terrascope_db:
         condition: service_healthy
-      atmos_gl_db_migrate:
+      terrascope_db_migrate:
         condition: service_completed_successfully
     volumes:
       - ./data:/opt/project/data
@@ -150,7 +150,7 @@ services:
       - agl
 
   map_ui:
-    image: ghcr.io/paulwaite87/atmos-gl-ui:${IMAGE_TAG:-latest}
+    image: ghcr.io/paulwaite87/terrascope-ui:${IMAGE_TAG:-latest}
     ports:
       # Loopback-only: OAuth sign-in (routes/auth.py) sets a Secure session cookie, which
       # only survives over HTTPS, so external access needs a TLS-terminating reverse
@@ -163,7 +163,7 @@ services:
     networks:
       - agl
 
-  atmos_gl_db_init:
+  terrascope_db_init:
     image: alpine:latest
     command: >
       sh -c "chown ${DOCKER_UID:-1000}:${DOCKER_GID:-1000} /var/lib/postgresql/data &&
@@ -174,13 +174,13 @@ services:
     networks:
       - agl
 
-  atmos_gl_db:
+  terrascope_db:
     image: postgis/postgis:15-3.3
     # The database STILL needs the user directive because it uses a pre-built image,
     # not your custom Dockerfile
     user: "${DOCKER_UID:-1000}:${DOCKER_GID:-1000}"
     depends_on:
-      atmos_gl_db_init:
+      terrascope_db_init:
         condition: service_completed_successfully
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
@@ -235,20 +235,20 @@ services:
     networks:
       - agl
 
-  atmos_gl_db_migrate:
-    image: ghcr.io/paulwaite87/atmos-gl:${IMAGE_TAG:-latest}
+  terrascope_db_migrate:
+    image: ghcr.io/paulwaite87/terrascope:${IMAGE_TAG:-latest}
     command: alembic upgrade head
     env_file:
       - .env
     environment:
       - PYTHONPATH=/opt/project/src
-      - POSTGRES_HOST=atmos_gl_db
+      - POSTGRES_HOST=terrascope_db
       - POSTGRES_PORT=5432
       - POSTGRES_DB=${POSTGRES_DB}
       - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
     depends_on:
-      atmos_gl_db:
+      terrascope_db:
         condition: service_healthy
     networks:
       - agl

@@ -14,7 +14,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from atmos_gl.collectors.driving import CollectorDriver, EventFeedDriver, FieldCollectorDriver
+from terrascope.collectors.driving import CollectorDriver, EventFeedDriver, FieldCollectorDriver
 
 
 # EventFeedDriver takes a Postgres advisory lock per collector; no DB here.
@@ -217,18 +217,18 @@ def test_event_feed_driver_updates_last_runs_after_collecting():
 
 
 def test_collect_event_feeds_drives_the_COLLECTORS_tuple():
-    from atmos_gl import collectors
+    from terrascope import collectors
 
-    with patch("atmos_gl.collectors.EventFeedDriver") as MockDriver:
+    with patch("terrascope.collectors.EventFeedDriver") as MockDriver:
         collectors.collect_event_feeds(make_config(), {})
 
     MockDriver.return_value.drive.assert_called_once_with(collectors.COLLECTORS)
 
 
 def test_collect_file_caches_drives_the_CACHE_COLLECTORS_tuple():
-    from atmos_gl import collectors
+    from terrascope import collectors
 
-    with patch("atmos_gl.collectors.EventFeedDriver") as MockDriver:
+    with patch("terrascope.collectors.EventFeedDriver") as MockDriver:
         collectors.collect_file_caches(make_config(), {})
 
     MockDriver.return_value.drive.assert_called_once_with(collectors.CACHE_COLLECTORS)
@@ -291,7 +291,7 @@ def test_field_collector_driver_calls_start_then_collect_then_record_in_order():
 
 
 def make_bare_service():
-    from atmos_gl.collectors.service import CollectorService
+    from terrascope.collectors.service import CollectorService
 
     svc = CollectorService.__new__(CollectorService)
     svc.config = make_config()
@@ -301,11 +301,11 @@ def make_bare_service():
 
 
 def test_collect_fields_drives_FIELD_COLLECTOR_CLASSES_via_field_collector_driver():
-    from atmos_gl.collectors import FIELD_COLLECTOR_CLASSES
+    from terrascope.collectors import FIELD_COLLECTOR_CLASSES
 
     svc = make_bare_service()
 
-    with patch("atmos_gl.collectors.service.FieldCollectorDriver") as MockDriver:
+    with patch("terrascope.collectors.service.FieldCollectorDriver") as MockDriver:
         svc._collect_fields()
 
     MockDriver.assert_called_once()

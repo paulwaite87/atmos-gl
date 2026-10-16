@@ -4,7 +4,7 @@ Linked from [AGENTS.md](../../AGENTS.md).
 
 ## Issue tracker
 
-Issues are tracked in this repo's GitHub Issues (paulwaite87/atmos-gl), via the `gh` CLI.
+Issues are tracked in this repo's GitHub Issues (paulwaite87/terrascope), via the `gh` CLI.
 External PRs are not treated as a triage surface. See `docs/agents/issue-tracker.md`.
 
 ## Triage labels

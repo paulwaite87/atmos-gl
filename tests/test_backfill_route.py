@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Route-level test for POST /api/request_backfill (architecture review candidate
 "Give routers the seam the Fakes are waiting for")."""
-from atmos_gl.db.field_catalog_adapter import FakeFieldCatalogAdapter
-from atmos_gl.routes.backfill import get_field_catalog_adapter
-from atmos_gl.api import app
+from terrascope.db.field_catalog_adapter import FakeFieldCatalogAdapter
+from terrascope.routes.backfill import get_field_catalog_adapter
+from terrascope.api import app
 
 
 def test_request_backfill_enqueues_via_the_overridden_fake(client):

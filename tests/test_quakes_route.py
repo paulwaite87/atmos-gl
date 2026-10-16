@@ -7,9 +7,9 @@ adapter's own logic was tested (tests/test_quake_adapter.py), never this HTTP la
 """
 from datetime import datetime, timezone
 
-from atmos_gl.db.quake_adapter import FakeQuakeAdapter
-from atmos_gl.routes.quakes import get_quake_adapter
-from atmos_gl.api import app
+from terrascope.db.quake_adapter import FakeQuakeAdapter
+from terrascope.routes.quakes import get_quake_adapter
+from terrascope.api import app
 
 
 def test_quakes_geojson_reflects_the_overridden_fake(client):

@@ -14,8 +14,8 @@ import numpy as np
 import rasterio
 from rasterio import Affine
 
-from atmos_gl.collectors.flood_risk import FloodRiskLiveCollector
-from atmos_gl.lib.flood_risk import (
+from terrascope.collectors.flood_risk import FloodRiskLiveCollector
+from terrascope.lib.flood_risk import (
     load_jrc_hazard_mosaic,
     modis_flood_mosaic_cache_path,
     modis_flood_tile_bounds,
@@ -95,7 +95,7 @@ def test_has_new_data_is_false_when_no_token_configured(tmp_path, monkeypatch):
     monkeypatch.delenv("EARTHDATA_TOKEN", raising=False)
     c = make_bare_live_collector(workdir=str(tmp_path))
 
-    with patch("atmos_gl.collectors.flood_risk.fetch_modis_flood_listing") as mock_fetch:
+    with patch("terrascope.collectors.flood_risk.fetch_modis_flood_listing") as mock_fetch:
         assert c.has_new_data() is False
 
     mock_fetch.assert_not_called()
@@ -106,7 +106,7 @@ def test_has_new_data_is_false_when_listing_unreachable(tmp_path, monkeypatch):
     c = make_bare_live_collector(workdir=str(tmp_path))
 
     with patch(
-        "atmos_gl.collectors.flood_risk.fetch_modis_flood_listing",
+        "terrascope.collectors.flood_risk.fetch_modis_flood_listing",
         side_effect=Exception("network down"),
     ):
         assert c.has_new_data() is False
@@ -118,7 +118,7 @@ def test_has_new_data_is_true_when_a_tile_is_new(tmp_path, monkeypatch):
     c = make_bare_live_collector(workdir=str(tmp_path))
 
     with patch(
-        "atmos_gl.collectors.flood_risk.fetch_modis_flood_listing", return_value=[_TILE_A]
+        "terrascope.collectors.flood_risk.fetch_modis_flood_listing", return_value=[_TILE_A]
     ):
         assert c.has_new_data() is True
 
@@ -132,7 +132,7 @@ def test_has_new_data_is_false_when_every_tile_is_already_current(tmp_path, monk
     _cache_tile(_TILE_A["h"], _TILE_A["v"], 0, _TILE_A["filename"])
 
     with patch(
-        "atmos_gl.collectors.flood_risk.fetch_modis_flood_listing", return_value=[_TILE_A]
+        "terrascope.collectors.flood_risk.fetch_modis_flood_listing", return_value=[_TILE_A]
     ):
         assert c.has_new_data() is False
 
@@ -141,14 +141,14 @@ def test_has_new_data_is_true_when_pruning_removed_a_stale_tile(tmp_path, monkey
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("EARTHDATA_TOKEN", "tok")
     c = make_bare_live_collector(workdir=str(tmp_path))
-    from atmos_gl.lib.flood_risk import MODIS_FLOOD_STALE_S
+    from terrascope.lib.flood_risk import MODIS_FLOOD_STALE_S
 
     tile_path = _cache_tile(_TILE_A["h"], _TILE_A["v"], 0, _TILE_A["filename"])
     old = time.time() - (MODIS_FLOOD_STALE_S + 3600)
     os.utime(tile_path, (old, old))
     os.utime(tile_path + ".name", (old, old))
 
-    with patch("atmos_gl.collectors.flood_risk.fetch_modis_flood_listing", return_value=[]):
+    with patch("terrascope.collectors.flood_risk.fetch_modis_flood_listing", return_value=[]):
         assert c.has_new_data() is True
 
     assert not os.path.exists(tile_path)
@@ -186,7 +186,7 @@ def test_collect_downloads_changed_tiles_and_rebuilds_the_mosaic(tmp_path, monke
     def fake_download(url, headers=None):
         return fixture_bytes[url]
 
-    with patch("atmos_gl.lib.gfs.download_whole", side_effect=fake_download):
+    with patch("terrascope.lib.gfs.download_whole", side_effect=fake_download):
         c.collect()
 
     dest = modis_flood_mosaic_cache_path(str(tmp_path))
@@ -209,7 +209,7 @@ def test_collect_skips_a_tile_thats_already_current_but_still_mosaics_it(tmp_pat
     c._listing = [_TILE_A]
     _cache_tile(_TILE_A["h"], _TILE_A["v"], 3, _TILE_A["filename"])
 
-    with patch("atmos_gl.lib.gfs.download_whole") as mock_download:
+    with patch("terrascope.lib.gfs.download_whole") as mock_download:
         c.collect()
 
     mock_download.assert_not_called()
@@ -232,7 +232,7 @@ def test_collect_keeps_a_tiles_previous_content_when_its_refresh_fails(tmp_path,
     c._listing = [{**_TILE_A, "filename": "MCDWD_L3_F1C_NRT.A2026242.h19v06.061.999.tif"}]
     _cache_tile(_TILE_A["h"], _TILE_A["v"], 3, stale_filename)
 
-    with patch("atmos_gl.lib.gfs.download_whole", side_effect=Exception("network down")):
+    with patch("terrascope.lib.gfs.download_whole", side_effect=Exception("network down")):
         c.collect()
 
     dest = modis_flood_mosaic_cache_path(str(tmp_path))
@@ -249,7 +249,7 @@ def test_collect_writes_no_mosaic_when_nothing_has_ever_been_cached(tmp_path, mo
     c = make_bare_live_collector(workdir=str(tmp_path))
     c._listing = [_TILE_A]
 
-    with patch("atmos_gl.lib.gfs.download_whole", side_effect=Exception("network down")):
+    with patch("terrascope.lib.gfs.download_whole", side_effect=Exception("network down")):
         c.collect()
 
     assert not os.path.exists(modis_flood_mosaic_cache_path(str(tmp_path)))
@@ -271,8 +271,8 @@ def test_collect_refetches_the_listing_when_has_new_data_was_not_called_first(tm
     )
 
     with patch(
-        "atmos_gl.collectors.flood_risk.fetch_modis_flood_listing", return_value=[_TILE_A]
-    ), patch("atmos_gl.lib.gfs.download_whole", return_value=tif_path.read_bytes()):
+        "terrascope.collectors.flood_risk.fetch_modis_flood_listing", return_value=[_TILE_A]
+    ), patch("terrascope.lib.gfs.download_whole", return_value=tif_path.read_bytes()):
         c.collect()
 
     assert os.path.exists(modis_flood_mosaic_cache_path(str(tmp_path)))
@@ -295,15 +295,15 @@ def test_collect_downloads_at_most_the_per_cycle_budget_and_still_rebuilds(tmp_p
         fetched.append((tile["h"], tile["v"]))
         return _cache_tile(tile["h"], tile["v"], 0, tile["filename"])
 
-    with patch("atmos_gl.collectors.flood_risk.ensure_modis_flood_tile_cached",
+    with patch("terrascope.collectors.flood_risk.ensure_modis_flood_tile_cached",
                side_effect=fake_ensure):
         c.collect()
 
     assert fetched == [(_TILE_A["h"], _TILE_A["v"])]
     assert os.path.exists(modis_flood_mosaic_cache_path(str(tmp_path)))
-    with patch("atmos_gl.collectors.flood_risk.fetch_modis_flood_listing",
+    with patch("terrascope.collectors.flood_risk.fetch_modis_flood_listing",
                return_value=[_TILE_A, _TILE_B]), \
-         patch("atmos_gl.collectors.flood_risk.prune_stale_modis_flood_tiles", return_value=False):
+         patch("terrascope.collectors.flood_risk.prune_stale_modis_flood_tiles", return_value=False):
         assert c.has_new_data() is True  # _TILE_B is still pending
 
 
@@ -320,7 +320,7 @@ def test_a_failed_download_counts_against_the_budget(tmp_path, monkeypatch):
         attempts.append(tile["h"])
         raise TimeoutError("LANCE slow")
 
-    with patch("atmos_gl.collectors.flood_risk.ensure_modis_flood_tile_cached",
+    with patch("terrascope.collectors.flood_risk.ensure_modis_flood_tile_cached",
                side_effect=failing_ensure):
         c.collect()
 

@@ -6,7 +6,7 @@ Kept separate from the actual OAuth token exchange/HTTP fetch, which stays untes
 this repo's existing convention (see test_auth_route.py's docstring) -- these are the
 part of that flow that's genuinely a pure function over already-fetched data.
 """
-from atmos_gl.routes.auth import _github_identity, _google_identity, _primary_github_email
+from terrascope.routes.auth import _github_identity, _google_identity, _primary_github_email
 
 
 # --- _google_identity ---

@@ -5,7 +5,7 @@ Linked from [AGENTS.md](../../AGENTS.md).
 ## Repository layout
 
 ```
-src/atmos_gl/               ← PYTHONPATH root (PYTHONPATH=/opt/project/src)
+src/terrascope/               ← PYTHONPATH root (PYTHONPATH=/opt/project/src)
   collectors/               ← ALL data-collection code lives here
     base.py                 ← CollectorBase, AsyncCollectorBase
     field_base.py           ← FieldCollectorBase(CollectorBase), SingleFileFieldCollector,
@@ -31,7 +31,7 @@ unreachable inside the container and will silently fail. Never create collector 
 at the repo root.
 
 **No `data_collector.py` shim exists.** `docker-compose.yml`'s `data_collector` service
-invokes `CollectorService` directly (`python -m atmos_gl.collectors.service`), so nothing
+invokes `CollectorService` directly (`python -m terrascope.collectors.service`), so nothing
 depends on a shim module at runtime. `pyproject.toml`'s `[project.scripts]` no longer
 declares a `datacollector` entry point (it pointed at this now-nonexistent module).
 
@@ -70,9 +70,9 @@ They are *not* separate Docker services. The `_supervise_collector()` wrapper in
 (`AIS_API_KEY`, `OPENWEATHER_API_KEY`) are environment variables on the
 `data_collector` Docker service only.
 
-### 5. Package path is `src/atmos_gl/collectors/`
+### 5. Package path is `src/terrascope/collectors/`
 
-Imports must be `from atmos_gl.collectors.xyz import ...`, never relative imports
+Imports must be `from terrascope.collectors.xyz import ...`, never relative imports
 from a root-level `collectors/` directory.
 
 ## Collector class hierarchy

@@ -7,8 +7,8 @@ from unittest.mock import patch
 import pytest
 import requests
 
-from atmos_gl.lib import article_preview
-from atmos_gl.lib.article_preview import (
+from terrascope.lib import article_preview
+from terrascope.lib.article_preview import (
     STATUS_FAILED,
     STATUS_OK,
     STATUS_RETRY,

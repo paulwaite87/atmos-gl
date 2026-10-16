@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Shared by Makefile (dev) and Makefile.prod's `bootstrap-config` targets. Ensures the
-# live config/atmos-gl.json and .env exist, and keeps atmos-gl.json's shape synced with
+# live config/terrascope.json and .env exist, and keeps terrascope.json's shape synced with
 # its template (tools/sync_config.py) -- the single place this logic lives now, so it
 # can never again exist only in one Makefile and silently miss the other, the way
 # Makefile.prod's own copy of this target never picked up the config-sync step at all.
@@ -9,9 +9,9 @@
 # prod deliberately has no override-file concept).
 set -euo pipefail
 
-if [ ! -f config/atmos-gl.json ]; then
-    cp config/atmos-gl.json.tmpl config/atmos-gl.json
-    echo "Created config/atmos-gl.json from config/atmos-gl.json.tmpl"
+if [ ! -f config/terrascope.json ]; then
+    cp config/terrascope.json.tmpl config/terrascope.json
+    echo "Created config/terrascope.json from config/terrascope.json.tmpl"
 else
     python3 tools/sync_config.py
 fi

@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 
-from atmos_gl.tasks.greenhouse_gases import GhgUpdater, _ABS_ENCODE_DOMAIN, _ANOMALY_ENCODE_DOMAIN
+from terrascope.tasks.greenhouse_gases import GhgUpdater, _ABS_ENCODE_DOMAIN, _ANOMALY_ENCODE_DOMAIN
 
 
 def make_bare_updater(settings=None, output_path="/data/greenhouse_gases.png"):
@@ -32,14 +32,14 @@ def _patched():
     stack = ExitStack()
     mocks = {
         "load_field": stack.enter_context(
-            patch("atmos_gl.tasks.greenhouse_gases.load_field",
+            patch("terrascope.tasks.greenhouse_gases.load_field",
                   return_value=(_DISPLAY_DATA.copy(), _NEW_LATS, _NEW_LONS))
         ),
         "compute_anomaly": stack.enter_context(
-            patch("atmos_gl.tasks.greenhouse_gases.compute_anomaly", return_value=_DISPLAY_DATA.copy())
+            patch("terrascope.tasks.greenhouse_gases.compute_anomaly", return_value=_DISPLAY_DATA.copy())
         ),
         "encode_frames": stack.enter_context(
-            patch("atmos_gl.tasks.greenhouse_gases.encode_frames", return_value=True)
+            patch("terrascope.tasks.greenhouse_gases.encode_frames", return_value=True)
         ),
     }
     return stack, mocks

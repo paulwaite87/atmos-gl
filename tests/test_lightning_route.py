@@ -3,10 +3,10 @@
 (architecture review candidate "Give routers the seam the Fakes are waiting for")."""
 from datetime import datetime, timezone
 
-from atmos_gl.db.lightning_adapter import FakeLightningAdapter
-from atmos_gl.db.viewport_adapter import FakeViewportAdapter
-from atmos_gl.routes.lightning import get_lightning_adapter, get_viewport_adapter
-from atmos_gl.api import app
+from terrascope.db.lightning_adapter import FakeLightningAdapter
+from terrascope.db.viewport_adapter import FakeViewportAdapter
+from terrascope.routes.lightning import get_lightning_adapter, get_viewport_adapter
+from terrascope.api import app
 
 
 def test_lightning_geojson_reflects_the_overridden_fake(client):

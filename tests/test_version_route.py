@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-from atmos_gl.api import app
+from terrascope.api import app
 from fastapi.testclient import TestClient
 
 

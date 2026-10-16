@@ -5,7 +5,7 @@ mocking time.monotonic, so these run instantly and deterministically."""
 import pytest
 from fastapi import HTTPException
 
-from atmos_gl.lib.rate_limit import RateLimiter
+from terrascope.lib.rate_limit import RateLimiter
 
 
 class _FakeClock:

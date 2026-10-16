@@ -4,8 +4,8 @@ percent reflects GlobalSampleScheduler's global background-grid freshness
 (progress_current/progress_total, written every tick by run() via
 record_progress(self.section, ...)), not AsyncCollectorBase's default liveness
 heartbeat. Same __new__-bypassing construction test_aircraft_collector_health.py uses."""
-from atmos_gl.collectors.aircraft import AircraftCollector
-from atmos_gl.db.process_status_adapter import FakeProcessStatusAdapter
+from terrascope.collectors.aircraft import AircraftCollector
+from terrascope.db.process_status_adapter import FakeProcessStatusAdapter
 
 
 def make_collector(*, enabled=True):

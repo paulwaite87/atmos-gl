@@ -5,7 +5,7 @@ behaviour (delete_expired, prune_orphaned_articles) is covered by
 test_world_event_adapter_real_vs_fake.py."""
 from unittest.mock import MagicMock, patch
 
-from atmos_gl.housekeeper import Housekeeper
+from terrascope.housekeeper import Housekeeper
 
 
 def make_bare_housekeeper():
@@ -14,7 +14,7 @@ def make_bare_housekeeper():
 
 def test_prune_expired_world_events_noop_on_falsy_expiry():
     hk = make_bare_housekeeper()
-    with patch("atmos_gl.housekeeper.WorldEventAdapter") as MockAdapter:
+    with patch("terrascope.housekeeper.WorldEventAdapter") as MockAdapter:
         hk.prune_expired_world_events(0)
     MockAdapter.assert_not_called()
 
@@ -24,7 +24,7 @@ def test_prune_expired_world_events_prunes_events_then_orphaned_articles():
     adapter = MagicMock()
     adapter.delete_expired.return_value = 5
     adapter.prune_orphaned_articles.return_value = 2
-    with patch("atmos_gl.housekeeper.WorldEventAdapter", return_value=adapter):
+    with patch("terrascope.housekeeper.WorldEventAdapter", return_value=adapter):
         hk.prune_expired_world_events(14)
     adapter.delete_expired.assert_called_once_with(14)
     adapter.prune_orphaned_articles.assert_called_once_with()
@@ -36,5 +36,5 @@ def test_prune_expired_world_events_swallows_adapter_errors():
     hk = make_bare_housekeeper()
     adapter = MagicMock()
     adapter.delete_expired.side_effect = RuntimeError("db down")
-    with patch("atmos_gl.housekeeper.WorldEventAdapter", return_value=adapter):
+    with patch("terrascope.housekeeper.WorldEventAdapter", return_value=adapter):
         hk.prune_expired_world_events(14)  # must not raise

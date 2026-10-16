@@ -121,7 +121,7 @@ function renderVersionFooter(panel, version) {
 
     const footer = document.createElement('div');
     footer.className = 'auth-menu__version';
-    footer.textContent = `atmos-gl ${version}`;
+    footer.textContent = `terrascope ${version}`;
     panel.appendChild(footer);
 }
 

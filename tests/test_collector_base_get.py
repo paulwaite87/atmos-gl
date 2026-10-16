@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 
 import requests
 
-from atmos_gl.collectors.base import CollectorBase
+from terrascope.collectors.base import CollectorBase
 
 
 def _fake_response(status_code=200):
@@ -34,7 +34,7 @@ def test_sets_the_standard_user_agent():
     with patch("requests.get", return_value=_fake_response()) as mock_get:
         CollectorBase._get("http://example.com")
 
-    assert mock_get.call_args.kwargs["headers"]["User-Agent"] == "AtmosGL-Collector/1.0"
+    assert mock_get.call_args.kwargs["headers"]["User-Agent"] == "Terrascope-Collector/1.0"
 
 
 def test_caller_supplied_headers_are_merged_not_replaced():
@@ -42,7 +42,7 @@ def test_caller_supplied_headers_are_merged_not_replaced():
         CollectorBase._get("http://example.com", headers={"Accept": "application/json"})
 
     assert mock_get.call_args.kwargs["headers"] == {
-        "User-Agent": "AtmosGL-Collector/1.0",
+        "User-Agent": "Terrascope-Collector/1.0",
         "Accept": "application/json",
     }
 
@@ -64,7 +64,7 @@ def test_timeout_and_other_kwargs_pass_through():
 
 def test_returns_none_and_logs_on_connection_error(caplog):
     with patch("requests.get", side_effect=requests.ConnectionError("down")):
-        with caplog.at_level(logging.ERROR, logger="atmos_gl.collectors.base"):
+        with caplog.at_level(logging.ERROR, logger="terrascope.collectors.base"):
             result = CollectorBase._get("http://example.com")
 
     assert result is None

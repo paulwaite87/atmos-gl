@@ -13,7 +13,7 @@ actually forwards it to render_all_hours.
 """
 from unittest.mock import MagicMock
 
-from atmos_gl.tasks.isobars import IsobarUpdater
+from terrascope.tasks.isobars import IsobarUpdater
 
 
 def make_bare_updater(settings=None):

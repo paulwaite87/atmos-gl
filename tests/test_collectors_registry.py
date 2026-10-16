@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """Tests for the canonical collector registry (architecture review candidate #4: "One
 canonical collector registry"). FIELD_COLLECTOR_CLASSES/EMBEDDABLE_COLLECTORS/
-resolve_embeddable now live once in atmos_gl.collectors, and atmos_gl.collectors.service
-and atmos_gl.routes.status both import the same objects -- these tests guard against the
+resolve_embeddable now live once in terrascope.collectors, and terrascope.collectors.service
+and terrascope.routes.status both import the same objects -- these tests guard against the
 two re-diverging into hand-copied lists.
 """
-import atmos_gl.collectors as collectors
-import atmos_gl.collectors.service as service
-import atmos_gl.routes.status as status
+import terrascope.collectors as collectors
+import terrascope.collectors.service as service
+import terrascope.routes.status as status
 
 
 def test_service_shares_the_canonical_field_collector_classes():
@@ -27,8 +27,8 @@ def test_status_shares_the_canonical_embeddable_collectors():
 
 
 def test_resolve_embeddable_resolves_known_names():
-    from atmos_gl.collectors.shipping import ShippingCollector
-    from atmos_gl.collectors.lightning import LightningCollector
+    from terrascope.collectors.shipping import ShippingCollector
+    from terrascope.collectors.lightning import LightningCollector
 
     assert collectors.resolve_embeddable("shipping_collector") is ShippingCollector
     assert collectors.resolve_embeddable("lightning_collector") is LightningCollector

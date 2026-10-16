@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Route-level test for GET /api/markers/geojson (architecture review candidate
 "Give routers the seam the Fakes are waiting for")."""
-from atmos_gl.db.marker_adapter import FakeMarkerAdapter
-from atmos_gl.routes.markers import get_marker_adapter
-from atmos_gl.api import app
+from terrascope.db.marker_adapter import FakeMarkerAdapter
+from terrascope.routes.markers import get_marker_adapter
+from terrascope.api import app
 
 
 def test_markers_geojson_reflects_the_overridden_fake(client):

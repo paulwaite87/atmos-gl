@@ -8,9 +8,9 @@ from unittest.mock import patch, MagicMock
 
 import numpy as np
 
-from atmos_gl.db.fire_adapter import FakeFireAdapter
-from atmos_gl.routes.fires import get_fire_adapter
-from atmos_gl.api import app
+from terrascope.db.fire_adapter import FakeFireAdapter
+from terrascope.routes.fires import get_fire_adapter
+from terrascope.api import app
 
 
 def test_fires_geojson_reflects_the_overridden_fake(client):
@@ -94,8 +94,8 @@ def test_fires_geojson_min_risk_filters_out_low_risk_detections(client):
     ])
     app.dependency_overrides[get_fire_adapter] = lambda: fake_adapter
 
-    with patch("atmos_gl.routes.fires.load_config") as mock_load_config, patch(
-        "atmos_gl.routes.fires.fieldstore.get_store", return_value=_fake_fire_weather_store()
+    with patch("terrascope.routes.fires.load_config") as mock_load_config, patch(
+        "terrascope.routes.fires.fieldstore.get_store", return_value=_fake_fire_weather_store()
     ):
         mock_load_config.return_value.get_setting.return_value = "."
         resp = client.get("/api/fires/geojson", params={"min_risk": 50})
@@ -115,8 +115,8 @@ def test_fires_geojson_attaches_fire_risk_to_every_detection(client):
     ])
     app.dependency_overrides[get_fire_adapter] = lambda: fake_adapter
 
-    with patch("atmos_gl.routes.fires.load_config") as mock_load_config, patch(
-        "atmos_gl.routes.fires.fieldstore.get_store", return_value=_fake_fire_weather_store()
+    with patch("terrascope.routes.fires.load_config") as mock_load_config, patch(
+        "terrascope.routes.fires.fieldstore.get_store", return_value=_fake_fire_weather_store()
     ):
         mock_load_config.return_value.get_setting.return_value = "."
         resp = client.get("/api/fires/geojson")
@@ -139,8 +139,8 @@ def test_fires_geojson_min_risk_zero_does_not_filter_but_still_attaches_risk(cli
     ])
     app.dependency_overrides[get_fire_adapter] = lambda: fake_adapter
 
-    with patch("atmos_gl.routes.fires.load_config") as mock_load_config, patch(
-        "atmos_gl.routes.fires.fieldstore.get_store", return_value=_fake_fire_weather_store()
+    with patch("terrascope.routes.fires.load_config") as mock_load_config, patch(
+        "terrascope.routes.fires.fieldstore.get_store", return_value=_fake_fire_weather_store()
     ):
         mock_load_config.return_value.get_setting.return_value = "."
         resp = client.get("/api/fires/geojson")
@@ -161,7 +161,7 @@ def test_fires_geojson_degrades_gracefully_when_fieldstore_lookup_fails(client):
     ])
     app.dependency_overrides[get_fire_adapter] = lambda: fake_adapter
 
-    with patch("atmos_gl.routes.fires.load_config", side_effect=RuntimeError("boom")):
+    with patch("terrascope.routes.fires.load_config", side_effect=RuntimeError("boom")):
         resp = client.get("/api/fires/geojson")
 
     assert resp.status_code == 200

@@ -9,13 +9,13 @@ from unittest.mock import patch
 import pytest
 from sqlalchemy.orm import sessionmaker
 
-from atmos_gl.db.aircraft_adapter import AircraftAdapter
+from terrascope.db.aircraft_adapter import AircraftAdapter
 
 
 @pytest.fixture
 def aircraft_adapter(real_db):
     TestSession = sessionmaker(bind=real_db)
-    with patch("atmos_gl.db.aircraft_adapter.Session", TestSession):
+    with patch("terrascope.db.aircraft_adapter.Session", TestSession):
         yield AircraftAdapter()
 
 

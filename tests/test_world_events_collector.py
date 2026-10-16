@@ -12,8 +12,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 import requests
 
-from atmos_gl.collectors.base import CollectorBase
-from atmos_gl.collectors.world_events import (
+from terrascope.collectors.base import CollectorBase
+from terrascope.collectors.world_events import (
     _MAX_FILES_PER_CYCLE,
     _MAX_PREVIEWS_PER_CYCLE,
     ExportFileMissing,
@@ -23,8 +23,8 @@ from atmos_gl.collectors.world_events import (
     _floor_to_slot,
     _parse_export_rows,
 )
-from atmos_gl.db.world_event_adapter import FakeWorldEventAdapter
-from atmos_gl.lib.article_preview import STATUS_FAILED, STATUS_OK, STATUS_RETRY, ArticlePreview
+from terrascope.db.world_event_adapter import FakeWorldEventAdapter
+from terrascope.lib.article_preview import STATUS_FAILED, STATUS_OK, STATUS_RETRY, ArticlePreview
 
 _BASE_URL = "http://data.gdeltproject.org/gdeltv2"
 
@@ -34,7 +34,7 @@ def _no_real_article_fetches():
     """collect() ends with an article-preview pass; never let a test hit the network.
     Tests that care about previews re-patch fetch_article_preview themselves."""
     with patch(
-        "atmos_gl.collectors.world_events.fetch_article_preview",
+        "terrascope.collectors.world_events.fetch_article_preview",
         return_value=ArticlePreview(STATUS_FAILED),
     ) as stub:
         yield stub
@@ -262,7 +262,7 @@ def test_collect_upserts_rows_at_or_above_the_mentions_floor_and_records_the_slo
     ])
 
     with patch.object(CollectorBase, "_get", return_value=_lastupdate_for(latest)), \
-         patch("atmos_gl.collectors.world_events._fetch_export_csv", return_value=csv_text):
+         patch("terrascope.collectors.world_events._fetch_export_csv", return_value=csv_text):
         c.collect()
 
     assert set(c.world_event_adapter._events) == {"1"}
@@ -272,7 +272,7 @@ def test_collect_upserts_rows_at_or_above_the_mentions_floor_and_records_the_slo
 def test_collect_skips_when_lastupdate_has_no_export_entry():
     c = make_slot_collector()
     with patch.object(CollectorBase, "_get", return_value=_FakeResponse(text="no export file here")), \
-         patch("atmos_gl.collectors.world_events._fetch_export_csv") as mock_fetch:
+         patch("terrascope.collectors.world_events._fetch_export_csv") as mock_fetch:
         c.collect()
     mock_fetch.assert_not_called()
 
@@ -288,7 +288,7 @@ def test_collect_fills_a_gap_in_the_middle_of_the_window():
     _mark_all(c, [s for s in slots if s not in gap])
 
     with patch.object(CollectorBase, "_get", return_value=_lastupdate_for(latest)), \
-         patch("atmos_gl.collectors.world_events._fetch_export_csv", return_value="") as mock_fetch:
+         patch("terrascope.collectors.world_events._fetch_export_csv", return_value="") as mock_fetch:
         c.collect()
 
     assert {_slot_of(call.args[0]) for call in mock_fetch.call_args_list} == gap
@@ -302,7 +302,7 @@ def test_collect_records_a_404_slot_as_missing_and_never_refetches_it():
     _mark_all(c, _window_slots(c, latest)[1:])
 
     with patch.object(CollectorBase, "_get", return_value=_lastupdate_for(latest)), \
-         patch("atmos_gl.collectors.world_events._fetch_export_csv",
+         patch("terrascope.collectors.world_events._fetch_export_csv",
                side_effect=ExportFileMissing("gone")) as mock_fetch:
         c.collect()
         c.collect()
@@ -324,14 +324,14 @@ def test_collect_leaves_a_transiently_failed_slot_pending_without_blocking_the_r
         return _row(event_code="183", global_event_id="ok", num_mentions="20")
 
     with patch.object(CollectorBase, "_get", return_value=_lastupdate_for(latest)), \
-         patch("atmos_gl.collectors.world_events._fetch_export_csv", side_effect=fake_fetch):
+         patch("terrascope.collectors.world_events._fetch_export_csv", side_effect=fake_fetch):
         c.collect()  # must not raise
 
     assert flaky not in c.world_event_adapter._export_files
     assert c.world_event_adapter._export_files[fine]["status"] == "ok"
 
     with patch.object(CollectorBase, "_get", return_value=_lastupdate_for(latest)), \
-         patch("atmos_gl.collectors.world_events._fetch_export_csv",
+         patch("terrascope.collectors.world_events._fetch_export_csv",
                return_value="") as mock_fetch:
         c.collect()
     assert [_slot_of(call.args[0]) for call in mock_fetch.call_args_list] == [flaky]
@@ -344,7 +344,7 @@ def test_collect_leaves_the_slot_pending_when_the_upsert_fails():
     c.world_event_adapter.upsert_events = MagicMock(return_value=False)
 
     with patch.object(CollectorBase, "_get", return_value=_lastupdate_for(latest)), \
-         patch("atmos_gl.collectors.world_events._fetch_export_csv",
+         patch("terrascope.collectors.world_events._fetch_export_csv",
                return_value=_row(event_code="183", num_mentions="20")):
         c.collect()
 
@@ -358,7 +358,7 @@ def test_collect_caps_files_per_cycle_newest_first():
     assert len(slots) > _MAX_FILES_PER_CYCLE
 
     with patch.object(CollectorBase, "_get", return_value=_lastupdate_for(latest)), \
-         patch("atmos_gl.collectors.world_events._fetch_export_csv", return_value="") as mock_fetch:
+         patch("terrascope.collectors.world_events._fetch_export_csv", return_value="") as mock_fetch:
         c.collect()
 
     fetched = [_slot_of(call.args[0]) for call in mock_fetch.call_args_list]
@@ -369,7 +369,7 @@ def test_collect_never_requests_a_slot_newer_than_lastupdate():
     c = make_slot_collector()
     latest = _latest() - timedelta(hours=1)  # GDELT running an hour behind
     with patch.object(CollectorBase, "_get", return_value=_lastupdate_for(latest)), \
-         patch("atmos_gl.collectors.world_events._fetch_export_csv", return_value="") as mock_fetch:
+         patch("terrascope.collectors.world_events._fetch_export_csv", return_value="") as mock_fetch:
         c.collect()
     assert max(_slot_of(call.args[0]) for call in mock_fetch.call_args_list) == latest
 

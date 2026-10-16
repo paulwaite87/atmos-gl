@@ -11,7 +11,7 @@ honestly and carries little bug risk compared to this math.
 import numpy as np
 import pytest
 
-from atmos_gl.lib.unpack import _swell_uv, _standardize_lon, _regrid_curvilinear, fosberg_ffwi
+from terrascope.lib.unpack import _swell_uv, _standardize_lon, _regrid_curvilinear, fosberg_ffwi
 
 
 # ---- _swell_uv --------------------------------------------------------------

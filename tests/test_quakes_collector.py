@@ -4,8 +4,8 @@ call made it awkward to mock before CollectorBase._get() gave it a shared, patch
 seam (architecture review candidate "shared GET-fetch module")."""
 from unittest.mock import MagicMock, patch
 
-from atmos_gl.collectors.base import CollectorBase
-from atmos_gl.collectors.quakes import QuakeCollector
+from terrascope.collectors.base import CollectorBase
+from terrascope.collectors.quakes import QuakeCollector
 
 _CSV = (
     "id,mag,depth,place,time,latitude,longitude\n"

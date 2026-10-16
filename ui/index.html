@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Atmos GL Live</title>
+    <title>Terrascope Live</title>
     <link href="https://unpkg.com/maplibre-gl@^5.0.0/dist/maplibre-gl.css" rel="stylesheet" />
     <style>
         body { margin: 0; padding: 0; overflow: hidden; background-color: #04040e; }
@@ -292,7 +292,7 @@
     <div id="globeViz"></div>
 
     <script type="module">
-        async function bootstrapAtmosGL() {
+        async function bootstrapTerrascope() {
             try {
                 // 1. Fetch live application configuration block from backend API, plus
                 // (in parallel) which layers are actually collecting data right now --
@@ -589,7 +589,7 @@
         }
 
         // Initialize execution setup
-        bootstrapAtmosGL();
+        bootstrapTerrascope();
     </script>
 </body>
 </html>

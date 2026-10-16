@@ -12,11 +12,11 @@ from unittest.mock import patch
 import pytest
 from fastapi.testclient import TestClient
 
-from atmos_gl.api import app
-from atmos_gl.lib.auth import SESSION_COOKIE_NAME
-from atmos_gl.lib.config import AtmosGLConfig
-from atmos_gl.routes.auth import get_user_adapter
-from atmos_gl.routes.field_specs import (
+from terrascope.api import app
+from terrascope.lib.auth import SESSION_COOKIE_NAME
+from terrascope.lib.config import TerrascopeConfig
+from terrascope.routes.auth import get_user_adapter
+from terrascope.routes.field_specs import (
     SliderSpec,
     FIELD_SPECS,
     field_label,
@@ -290,12 +290,12 @@ def _write_temp_config(tmp_path, **sections):
     CONFIG_PATH at it (same pattern as test_status_route.py's _write_temp_config) --
     render_tab_group's `if section_data is not none` guard skips any section absent
     from the dict, so a fixture only needs the section(s) a given test actually cares
-    about. Isolates a test from whatever the real config/atmos-gl.json currently holds
+    about. Isolates a test from whatever the real config/terrascope.json currently holds
     -- that file is gitignored and "drifts constantly during normal use" (CLAUDE.md's
     Settings changes section), so asserting against its live values (as three tests
     here used to) is inherently flaky: it only passes by coincidence of the dev
     environment's current state, not anything the code under test guarantees."""
-    path = tmp_path / "atmos-gl.json"
+    path = tmp_path / "terrascope.json"
     path.write_text(json.dumps(sections))
     return path
 
@@ -444,13 +444,13 @@ def test_update_config_rejects_invalid_select_option():
 
 
 def test_update_config_accepts_valid_payload(tmp_path):
-    """Uses a throwaway config file so this test can't corrupt config/atmos-gl.json."""
-    tmp_config = tmp_path / "atmos-gl.json"
+    """Uses a throwaway config file so this test can't corrupt config/terrascope.json."""
+    tmp_config = tmp_path / "terrascope.json"
     tmp_config.write_text('{"common": {"auto_rotate_speed": 0.5}}')
 
     with patch(
-        "atmos_gl.routes.config.load_config",
-        return_value=AtmosGLConfig(str(tmp_config)),
+        "terrascope.routes.config.load_config",
+        return_value=TerrascopeConfig(str(tmp_config)),
     ):
         resp = client.post("/api/config", json={"common": {"auto_rotate_speed": 0.5}})
 
@@ -463,12 +463,12 @@ def test_update_config_strips_outfile_before_saving(tmp_path):
     the browser's masterConfigCache echoes it back on every save (it has no
     dynamic-input to override it), so it must be stripped here or it'd get written to
     disk as if it were a real stored setting."""
-    tmp_config = tmp_path / "atmos-gl.json"
+    tmp_config = tmp_path / "terrascope.json"
     tmp_config.write_text('{"isobars": {"opacity": 50}}')
 
     with patch(
-        "atmos_gl.routes.config.load_config",
-        return_value=AtmosGLConfig(str(tmp_config)),
+        "terrascope.routes.config.load_config",
+        return_value=TerrascopeConfig(str(tmp_config)),
     ):
         resp = client.post(
             "/api/config",
@@ -793,7 +793,7 @@ def test_config_page_renders_set_to_defaults_button_opposite_every_section_title
 
 
 def test_section_defaults_route_renders_values_from_the_template_not_the_live_config():
-    """config/atmos-gl.json.tmpl's air_quality.pm2_5_min (35) must come through
+    """config/terrascope.json.tmpl's air_quality.pm2_5_min (35) must come through
     regardless of whatever the live config.json currently holds for that field."""
     resp = client.get("/config/section_defaults/air_quality")
     assert resp.status_code == 200

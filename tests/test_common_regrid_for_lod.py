@@ -9,8 +9,8 @@ resampled domain is simply the input field's own lat/lon span.
 """
 import numpy as np
 
-from atmos_gl.tasks import common
-from atmos_gl.tasks.common import Updater, _MAX_LOD_GRID_POINTS
+from terrascope.tasks import common
+from terrascope.tasks.common import Updater, _MAX_LOD_GRID_POINTS
 
 
 def make_bare_updater(level_of_detail=1):

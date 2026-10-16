@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 
-from atmos_gl.tasks.jetstream import JetStreamUpdater
+from terrascope.tasks.jetstream import JetStreamUpdater
 
 
 def make_bare_updater(settings=None, common=None):
@@ -43,7 +43,7 @@ def test_plot_writes_the_velocity_texture_at_the_configured_vmax():
     }
     state = MagicMock(fhour=24)
 
-    with patch("atmos_gl.tasks.jetstream.encode_uv") as mock_encode:
+    with patch("terrascope.tasks.jetstream.encode_uv") as mock_encode:
         u.plot(field0, state)
 
     mock_encode.assert_called_once()
@@ -67,7 +67,7 @@ def test_plot_writes_no_static_heatmap_png():
     }
     state = MagicMock(fhour=0)
 
-    with patch("atmos_gl.tasks.jetstream.encode_uv") as mock_encode:
+    with patch("terrascope.tasks.jetstream.encode_uv") as mock_encode:
         u.plot(field0, state)
 
     assert mock_encode.call_count == 1

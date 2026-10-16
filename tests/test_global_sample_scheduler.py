@@ -1,4 +1,4 @@
-from atmos_gl.lib.flight_radar import GlobalSampleScheduler
+from terrascope.lib.flight_radar import GlobalSampleScheduler
 
 
 def _make_scheduler(**overrides):

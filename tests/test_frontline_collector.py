@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from atmos_gl.collectors.frontline import (
+from terrascope.collectors.frontline import (
     FrontlineCollector,
     area_note,
     description_segments,
@@ -15,7 +15,7 @@ from atmos_gl.collectors.frontline import (
     update_description,
     updates_to_store,
 )
-from atmos_gl.db.frontline_adapter import FakeFrontlineAdapter
+from terrascope.db.frontline_adapter import FakeFrontlineAdapter
 
 _SQUARE = [[[37.12345678, 48.1, 0], [37.2, 48.1, 0], [37.2, 48.2, 0], [37.12345678, 48.1, 0]]]
 

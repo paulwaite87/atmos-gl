@@ -10,8 +10,8 @@ tests orchestration (what gets rendered/skipped/published), not rendering intern
 import os
 from unittest.mock import MagicMock
 
-from atmos_gl.lib.air_quality import camsforecast_cache_path
-from atmos_gl.tasks.air_quality import AirQualityUpdater
+from terrascope.lib.air_quality import camsforecast_cache_path
+from terrascope.tasks.air_quality import AirQualityUpdater
 
 
 def make_bare_aq_updater(variable, workdir, output_path):

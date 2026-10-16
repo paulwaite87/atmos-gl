@@ -12,11 +12,11 @@ import concurrent.futures
 import os
 from unittest.mock import MagicMock, patch
 
-from atmos_gl.collectors.greenhouse_gases import (
+from terrascope.collectors.greenhouse_gases import (
     CamsGhgForecastCollector,
     build_cams_forecast_request,
 )
-from atmos_gl.lib.greenhouse_gases import camsforecast_cache_path
+from terrascope.lib.greenhouse_gases import camsforecast_cache_path
 
 
 def make_bare_forecast_collector(settings=None, workdir=".", api_key="secret-token", monkeypatch=None):
@@ -62,7 +62,7 @@ def test_collect_fetches_unzips_and_caches(tmp_path, monkeypatch, make_netcdf_zi
     mock_client.retrieve.side_effect = fake_retrieve
 
     with patch(
-        "atmos_gl.collectors.greenhouse_gases.cdsapi.Client", return_value=mock_client
+        "terrascope.collectors.greenhouse_gases.cdsapi.Client", return_value=mock_client
     ) as mock_client_cls:
         c.collect()
 
@@ -75,8 +75,8 @@ def test_collect_fetches_unzips_and_caches(tmp_path, monkeypatch, make_netcdf_zi
 def test_collect_returns_gracefully_without_raising_on_timeout(tmp_path, monkeypatch):
     c = make_bare_forecast_collector(workdir=str(tmp_path), monkeypatch=monkeypatch)
 
-    with patch("atmos_gl.collectors.greenhouse_gases.cdsapi.Client"), patch(
-        "atmos_gl.lib.cds_client.retrieve_with_timeout",
+    with patch("terrascope.collectors.greenhouse_gases.cdsapi.Client"), patch(
+        "terrascope.lib.cds_client.retrieve_with_timeout",
         side_effect=concurrent.futures.TimeoutError,
     ):
         c.collect()  # must not raise
@@ -89,7 +89,7 @@ def test_collect_skips_without_raising_when_no_api_key(tmp_path, monkeypatch):
         workdir=str(tmp_path), api_key=None, monkeypatch=monkeypatch
     )
 
-    with patch("atmos_gl.collectors.greenhouse_gases.cdsapi.Client") as mock_client_cls:
+    with patch("terrascope.collectors.greenhouse_gases.cdsapi.Client") as mock_client_cls:
         c.collect()
 
     mock_client_cls.assert_not_called()
@@ -118,7 +118,7 @@ def test_collect_refetches_every_call_unlike_the_once_per_year_baseline(
         f.write(b"stale-data")
 
     with patch(
-        "atmos_gl.collectors.greenhouse_gases.cdsapi.Client", return_value=mock_client
+        "terrascope.collectors.greenhouse_gases.cdsapi.Client", return_value=mock_client
     ):
         c.collect()
 
@@ -150,7 +150,7 @@ def test_collect_falls_back_to_an_earlier_date_when_todays_run_is_not_yet_publis
     mock_client.retrieve.side_effect = fake_retrieve
 
     with patch(
-        "atmos_gl.collectors.greenhouse_gases.cdsapi.Client", return_value=mock_client
+        "terrascope.collectors.greenhouse_gases.cdsapi.Client", return_value=mock_client
     ):
         c.collect()
 
@@ -166,7 +166,7 @@ def test_collect_gives_up_gracefully_when_no_recent_run_is_available(tmp_path, m
     mock_client.retrieve.side_effect = RuntimeError("400 Client Error")
 
     with patch(
-        "atmos_gl.collectors.greenhouse_gases.cdsapi.Client", return_value=mock_client
+        "terrascope.collectors.greenhouse_gases.cdsapi.Client", return_value=mock_client
     ):
         c.collect()  # must not raise
 

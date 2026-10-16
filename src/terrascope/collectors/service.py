@@ -1,0 +1,258 @@
+#!/usr/bin/env python3
+"""CollectorService — the single orchestrator for all backend data collection.
+
+Owns scheduling and supervision only; every "what to fetch and how" detail lives in a
+collaborator, so adding a source never touches this file:
+
+  * Field ingestion + backfill  -> the FieldCollectorBase subclasses (collectors/gfs_atmos.py,
+                                    gfs_waves.py, rtofs_currents.py), driven via
+                                    _collect_fields() / field_base.drain_backfill()
+  * File-cache sources (sst/clouds) -> collect_file_caches()  (collectors/__init__.py)
+  * DB event feeds              -> collect_event_feeds()       (collectors/__init__.py)
+  * Async collectors (shipping/lightning) -> supervised in-process asyncio tasks
+
+Two cadences (identical semantics to the old DataCollector.run()):
+  * Full refresh every update_period_s (data_collector.runs_per_day, same
+    period_s_from_runs_per_day() formula every other collector uses): the synchronous
+    collectors run in a worker thread (asyncio.to_thread) so their blocking,
+    GIL-releasing downloads don't starve the embedded async collectors' event loop.
+  * Backfill drain every backfill_poll_seconds so frontend-flagged (404) missing hours
+    fill within ~a minute rather than waiting for the next full cycle.
+
+This replaces the legacy DataCollector monolith. No `data_collector.py` shim exists — the
+`data_collector` Docker service invokes this module directly (`python -m
+terrascope.collectors.service`).
+
+Phase 3 is complete: the legacy field_ingest.py monolith (FieldIngest) has been decomposed
+into GfsAtmosCollector/GfsWavesCollector/RtofsCurrentsCollector and deleted. Each cycle
+shares one CycleContext across the three, so GfsAtmosCollector and GfsWavesCollector resolve
+their common GFS baseline only once (see field_base.CycleContext).
+"""
+import asyncio
+import logging
+
+from terrascope.lib.config import TerrascopeConfig
+from terrascope.lib.logging import setup_logging, set_loglevel
+from terrascope.lib import fieldstore
+from terrascope.lib.data_status import period_s_from_runs_per_day
+from terrascope.lib.scheduling import interval_elapsed
+from terrascope.db.process_status_adapter import ProcessStatusAdapter
+from terrascope.db.field_catalog_adapter import FieldCatalogAdapter
+from terrascope.collectors import (
+    collect_event_feeds,
+    collect_file_caches,
+    FIELD_COLLECTOR_CLASSES,
+    EMBEDDABLE_COLLECTORS,
+    resolve_embeddable,
+)
+from terrascope.collectors.driving import FieldCollectorDriver
+from terrascope.collectors.field_base import CycleContext, drain_backfill
+
+logger = logging.getLogger("terrascope.collector_service")
+
+
+class CollectorService:
+    def __init__(self, config_path: str):
+        self.config_path = config_path
+        self.config = TerrascopeConfig(config_path)
+        self.process_status_adapter = ProcessStatusAdapter()
+        self.field_catalog_adapter = FieldCatalogAdapter()
+        self.refresh_settings()
+
+        # Bind the fieldstore to this process's workdir + catalog adapter (bulk field
+        # arrays live under {workdir}/fields; the adapter keeps only the catalog rows).
+        # The field collectors are constructed fresh each cycle (see _collect_fields), so
+        # nothing else needs to be bound here.
+        workdir = self.config.get_setting("common", "workdir", ".")
+        self.workdir = workdir
+        self.store = fieldstore.get_store(
+            workdir, field_catalog_adapter=self.field_catalog_adapter
+        )
+
+        # One last_runs dict per synchronous collector family; each collector's section is
+        # the key, mutated in place so per-collector cadence counts down across cycles.
+        self._event_last_runs: dict[str, float] = {}
+        self._cache_last_runs: dict[str, float] = {}
+        logger.debug("Initializing CollectorService")
+
+    def refresh_settings(self):
+        self.config.load()
+        self.settings = self.config.get_section("data_collector") or {}
+        # Full-refresh cadence, same runs_per_day formula every other collector uses.
+        self.update_period_s = period_s_from_runs_per_day(
+            self.settings.get("runs_per_day", 96)
+        )
+        log_level = self.settings.get("log_level")
+        if log_level:
+            set_loglevel(log_level)
+
+    # ------------------------------------------------------------------
+    # Synchronous full refresh — offloaded to a thread by run()
+    # ------------------------------------------------------------------
+    def collect_once(self):
+        """One full pass over every synchronous collector family, run strictly one
+        after another. Each family self-gates on its own cadence/freshness, so a
+        steady-state cycle is cheap -- but anything slow delays everything behind it,
+        so the order is lightest first:
+
+          1. Event feeds (quakes, storms, volcanoes, fires, satellites, markers, world
+             events): seconds each.
+          2. File caches (sst, clouds, GHG, air quality, flood risk, vegetation mask):
+             CDS/ADS requests take minutes, and a flood-risk-live tile refresh took 23
+             minutes before it was capped per cycle -- measured live, it held every
+             event feed behind it for the whole time when file caches ran first.
+          3. Field ingestion (gfs/rtofs): tens of minutes on a cold start."""
+        # Event feeds: each runs at its own schedule via is_stale(); has_new_data()
+        # skips unchanged remotes (HEAD/ETag/listing diff).
+        collect_event_feeds(self.config, self._event_last_runs)
+
+        # File-cache collectors: each self-gates on its own cadence (is_stale) and
+        # freshness (has_new_data); slow ones bound their own per-cycle work.
+        collect_file_caches(self.config, self._cache_last_runs)
+
+        # Heavy field datasources (gfs atmos+waves, rtofs currents): fieldstore-backed,
+        # baseline-resolved, per-hour skip-if-present.
+        self._collect_fields()
+
+    def _collect_fields(self):
+        """Construct each field collector fresh this cycle (same per-cycle instantiation
+        convention EventFeedDriver uses for the event feeds, so a live config edit — e.g.
+        cache_hours — reaches them without a restart) and share one CycleContext across all
+        of them, so GfsAtmosCollector and GfsWavesCollector resolve their common GFS baseline
+        only once. See collectors/driving.py's FieldCollectorDriver for the shared
+        scheduling contract (channel gating by status_name, process_status recording,
+        one collector failing doesn't abort the others)."""
+        FieldCollectorDriver(
+            self.config, self.store, CycleContext(),
+            process_status_adapter=self.process_status_adapter,
+        ).drive(FIELD_COLLECTOR_CLASSES)
+
+    # ------------------------------------------------------------------
+    # Embedded async collector supervision
+    # ------------------------------------------------------------------
+    async def _supervise_collector(self, collector_cls):
+        """Run one embedded async collector in-process, restarting it on crash.
+
+        Each embedded collector constructs its own adapters and keeps its own `enabled`
+        kill-switch — checked inside its run() loop — so it can still be paused
+        independently (e.g. to back off a rate limit) without touching the service. A
+        crash is logged and the collector is restarted after a short delay rather than
+        taking the whole process down.
+        """
+        name = collector_cls.__name__
+        while True:
+            try:
+                collector = collector_cls(self.config_path)
+                logger.info(f"Embedded collector {name}: started.")
+                await collector.run()
+                # run() is an infinite loop; returning means it exited cleanly somehow.
+                logger.warning(f"Embedded collector {name}: run() returned; restarting.")
+            except asyncio.CancelledError:
+                logger.info(f"Embedded collector {name}: cancelled.")
+                raise
+            except Exception as exc:  # noqa: BLE001
+                logger.error(
+                    f"Embedded collector {name}: crashed ({exc}); restarting in 30s.",
+                    exc_info=True,
+                )
+            await asyncio.sleep(30)
+
+    def _spawn_embedded_collectors(self):
+        """Spawn the configured in-process async collectors as supervised tasks.
+
+        Defaults to ALL known embeddable collectors, so that removing their standalone
+        Docker services doesn't silently stop them. Override via config to run a subset
+        in-process (e.g. [] to run none here and keep them as standalone services). Each
+        collector's own `enabled` flag still gates whether it actually collects, so an
+        embedded-but-disabled collector simply idles.
+        """
+        names = (self.config.get_section("data_collector") or {}).get(
+            "embedded_collectors", list(EMBEDDABLE_COLLECTORS)
+        )
+        tasks = []
+        for name in names:
+            cls = resolve_embeddable(name)
+            if cls is None:
+                logger.warning(f"Unknown embedded collector '{name}'; skipping.")
+                continue
+            tasks.append(
+                asyncio.create_task(self._supervise_collector(cls), name=f"embed:{name}")
+            )
+            logger.info(f"CollectorService: running '{name}' in-process.")
+        return tasks
+
+    # ------------------------------------------------------------------
+    # Async run loop
+    # ------------------------------------------------------------------
+    async def run(self):
+        # collect_once() and the backfill drain are SYNCHRONOUS and do blocking network +
+        # CPU work, so they're offloaded to a worker thread (asyncio.to_thread). That keeps
+        # the event loop free for the embedded async collectors (shipping/lightning), which
+        # would otherwise be starved while a weather cycle runs. The heavy numeric work
+        # (cfgrib decode, numpy) releases the GIL, so the embedded collectors keep ticking.
+        embedded_tasks = self._spawn_embedded_collectors()
+
+        poll_s = int(self.settings.get("backfill_poll_seconds", 60))
+        last_full = None  # None => run a full refresh immediately on first iteration
+        try:
+            while True:
+                self.refresh_settings()  # recomputes update_period_s, fields.refresh(), etc.
+                # Coarse liveness heartbeat for the System Status section (Global tab) --
+                # independent of `enabled`/collect_once, so it keeps ticking even while
+                # collection itself is disabled. Written every loop tick regardless of
+                # outcome below; a dead container simply stops advancing this row.
+                self.process_status_adapter.record_process_run(
+                    "data_collector", "service", success=True
+                )
+                poll_s = int(self.settings.get("backfill_poll_seconds", poll_s))
+                full_period = self.update_period_s
+                enabled = self.settings.get("enabled", False)
+                now = asyncio.get_event_loop().time()
+
+                if enabled and interval_elapsed(last_full, now, full_period):
+                    logger.info("CollectorService: refreshing datasets")
+                    try:
+                        await asyncio.to_thread(self.collect_once)
+                    except Exception as e:
+                        logger.error(f"CollectorService cycle failed: {e}")
+                    last_full = now
+                elif not enabled:
+                    logger.debug("CollectorService disabled. Skipping full refresh.")
+
+                # Backfill drain runs every poll regardless of the full-refresh timer
+                # (still gated on enabled, so a disabled service does nothing).
+                if enabled:
+                    try:
+                        await asyncio.to_thread(
+                            drain_backfill,
+                            self.config,
+                            self.store,
+                            FIELD_COLLECTOR_CLASSES,
+                            self.field_catalog_adapter,
+                        )
+                    except Exception as e:
+                        logger.error(f"backfill drain failed: {e}")
+
+                await asyncio.sleep(max(5, poll_s))
+        finally:
+            for t in embedded_tasks:
+                t.cancel()
+            if embedded_tasks:
+                await asyncio.gather(*embedded_tasks, return_exceptions=True)
+
+
+def main():
+    import argparse
+
+    setup_logging()
+    parser = argparse.ArgumentParser(description="Terrascope Collector Service")
+    parser.add_argument("--config", required=True, help="Path to terrascope.json")
+    args = parser.parse_args()
+    try:
+        asyncio.run(CollectorService(args.config).run())
+    except KeyboardInterrupt:
+        logger.info("CollectorService gracefully stopped.")
+
+
+if __name__ == "__main__":
+    main()

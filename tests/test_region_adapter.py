@@ -1,4 +1,4 @@
-from atmos_gl.db.region_adapter import FakeRegionAdapter
+from terrascope.db.region_adapter import FakeRegionAdapter
 
 
 def _add(adapter, label, lon_min, lat_min, lon_max, lat_max):

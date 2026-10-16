@@ -10,9 +10,9 @@ from unittest.mock import patch, MagicMock
 import numpy as np
 import pytest
 
-from atmos_gl.tasks.common import ForecastState
-from atmos_gl.tasks.fire_weather import FireWeatherUpdater, FIRE_WEATHER_SPEC
-from atmos_gl.tasks.scalar_field import ScalarFieldUpdater
+from terrascope.tasks.common import ForecastState
+from terrascope.tasks.fire_weather import FireWeatherUpdater, FIRE_WEATHER_SPEC
+from terrascope.tasks.scalar_field import ScalarFieldUpdater
 
 
 def make_bare_fire_weather_updater():
@@ -45,8 +45,8 @@ def test_init_decouples_section_from_fieldstore_product():
     config.get_section.return_value = {"level_of_detail": "2"}
     map_data = MagicMock()
 
-    with patch("atmos_gl.tasks.common.fieldstore.make_store"), patch(
-        "atmos_gl.tasks.common.ProcessStatusAdapter"
+    with patch("terrascope.tasks.common.fieldstore.make_store"), patch(
+        "terrascope.tasks.common.ProcessStatusAdapter"
     ):
         u = FireWeatherUpdater(config, map_data)
 
@@ -72,8 +72,8 @@ def test_plot_dispatches_the_fire_weather_spec():
     field0 = {"lat": [0], "lon": [0], "values": [[42.0]]}
     state = ForecastState.at_hour("2026-06-13", "18", 3)
 
-    with patch("atmos_gl.tasks.scalar_field.Plot") as MockPlot, patch(
-        "atmos_gl.tasks.scalar_field.encode_frames"
+    with patch("terrascope.tasks.scalar_field.Plot") as MockPlot, patch(
+        "terrascope.tasks.scalar_field.encode_frames"
     ) as mock_encode:
         u.plot(field0, state)
 
@@ -112,7 +112,7 @@ def test_resolve_cmap_reads_live_min_risk_display_threshold():
 
 
 def test_layer_builder_registers_fires_as_fire_weather_updater():
-    from atmos_gl.layer_builder import TASK_CLASSES
+    from terrascope.layer_builder import TASK_CLASSES
 
     assert TASK_CLASSES["fires"] is FireWeatherUpdater
 
@@ -125,10 +125,10 @@ def test_init_wires_land_and_vegetation_mask_caches():
     config.get_section.return_value = {}
     map_data = MagicMock()
 
-    with patch("atmos_gl.tasks.common.fieldstore.make_store"), patch(
-        "atmos_gl.tasks.common.ProcessStatusAdapter"
-    ), patch("atmos_gl.tasks.fire_weather.LandMaskCache") as MockLandCache, patch(
-        "atmos_gl.tasks.fire_weather.VegetationMaskCache"
+    with patch("terrascope.tasks.common.fieldstore.make_store"), patch(
+        "terrascope.tasks.common.ProcessStatusAdapter"
+    ), patch("terrascope.tasks.fire_weather.LandMaskCache") as MockLandCache, patch(
+        "terrascope.tasks.fire_weather.VegetationMaskCache"
     ) as MockVegCache:
         u = FireWeatherUpdater(config, map_data)
 

@@ -9,7 +9,7 @@ handed to matplotlib weren't clamped, so this fixes that at the source.
 """
 import numpy as np
 
-from atmos_gl.tasks.plotting import clamp_lats_to_mercator_limit, MERCATOR_LAT_LIMIT
+from terrascope.tasks.plotting import clamp_lats_to_mercator_limit, MERCATOR_LAT_LIMIT
 
 
 def test_clamps_exact_poles_to_just_inside_the_limit():

@@ -6,15 +6,15 @@ GET /api/config's merge of a signed-in user's overrides on top of the global def
 import json
 from unittest.mock import patch
 
-from atmos_gl.api import app
-from atmos_gl.db.user_settings_adapter import FakeUserSettingsAdapter
-from atmos_gl.lib.auth import SESSION_COOKIE_NAME
-from atmos_gl.lib.config import AtmosGLConfig
-from atmos_gl.lib.rate_limit import RateLimiter
-from atmos_gl.routes.auth import get_user_adapter
-from atmos_gl.routes.config import get_user_settings_adapter as config_get_user_settings_adapter
-from atmos_gl.routes.me_settings import get_settings_rate_limiter
-from atmos_gl.routes.me_settings import get_user_settings_adapter as me_get_user_settings_adapter
+from terrascope.api import app
+from terrascope.db.user_settings_adapter import FakeUserSettingsAdapter
+from terrascope.lib.auth import SESSION_COOKIE_NAME
+from terrascope.lib.config import TerrascopeConfig
+from terrascope.lib.rate_limit import RateLimiter
+from terrascope.routes.auth import get_user_adapter
+from terrascope.routes.config import get_user_settings_adapter as config_get_user_settings_adapter
+from terrascope.routes.me_settings import get_settings_rate_limiter
+from terrascope.routes.me_settings import get_user_settings_adapter as me_get_user_settings_adapter
 from tests.conftest import make_signed_in_session
 
 
@@ -32,17 +32,17 @@ def _sign_in(client, settings_adapter: FakeUserSettingsAdapter) -> int:
     return next(iter(fake._users))
 
 
-def _with_temp_config(tmp_path, initial: dict, *, target="atmos_gl.routes.config.load_config"):
+def _with_temp_config(tmp_path, initial: dict, *, target="terrascope.routes.config.load_config"):
     """routes/config.py and routes/me_settings.py each import load_config directly
-    (`from atmos_gl.routes.config import load_config`), so patch.object binds it at
+    (`from terrascope.routes.config import load_config`), so patch.object binds it at
     each importer's own name -- `target` picks which one a given test needs patched."""
-    tmp_config = tmp_path / "atmos-gl.json"
+    tmp_config = tmp_path / "terrascope.json"
     tmp_config.write_text(json.dumps(initial))
-    return patch(target, return_value=AtmosGLConfig(str(tmp_config)))
+    return patch(target, return_value=TerrascopeConfig(str(tmp_config)))
 
 
 def _with_temp_config_for_me_settings(tmp_path, initial: dict):
-    return _with_temp_config(tmp_path, initial, target="atmos_gl.routes.me_settings.load_config")
+    return _with_temp_config(tmp_path, initial, target="terrascope.routes.me_settings.load_config")
 
 
 # --- GET /me/settings (the page) ---
@@ -291,7 +291,7 @@ def test_delete_account_requires_sign_in(client):
 
 
 def test_delete_account_removes_the_user_and_revokes_their_session(client):
-    from atmos_gl.db.user_adapter import FakeUserAdapter
+    from terrascope.db.user_adapter import FakeUserAdapter
 
     fake_users = FakeUserAdapter()
     fake_settings = FakeUserSettingsAdapter()
@@ -359,7 +359,7 @@ def test_get_config_isolates_two_different_signed_in_users_overrides(client, tmp
     _sign_in isn't reused here since it only ever creates one user per call against a
     fresh adapter -- this test needs both users resolvable through the SAME adapter
     instance, the way two real concurrent visitors would be."""
-    from atmos_gl.db.user_adapter import FakeUserAdapter
+    from terrascope.db.user_adapter import FakeUserAdapter
 
     fake_users = FakeUserAdapter()
     fake_settings = FakeUserSettingsAdapter()

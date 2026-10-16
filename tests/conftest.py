@@ -7,11 +7,11 @@ test's substituted adapter from leaking into the next.
 `real_db` is for Real/Fake adapter drift tests (architecture review candidate "guard
 against Real/Fake adapter drift") -- a throwaway postgis/postgis container, migrated
 with the SAME `alembic upgrade head` production uses, session-scoped so the container
-only starts once. Matches docker-compose.yml's atmos_gl_db image+version exactly for
+only starts once. Matches docker-compose.yml's terrascope_db image+version exactly for
 fidelity. Adapters under test still need their own `Session` monkeypatched to point at
-this engine (see test_ship_adapter_real_vs_fake.py) -- atmos_gl.db.engine.Session is
+this engine (see test_ship_adapter_real_vs_fake.py) -- terrascope.db.engine.Session is
 bound at import time to the real POSTGRES_HOST/etc., and each adapter module imports that
-name directly, so patching atmos_gl.db.engine alone doesn't reach them.
+name directly, so patching terrascope.db.engine alone doesn't reach them.
 """
 import io
 import os
@@ -23,7 +23,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from testcontainers.postgres import PostgresContainer
 
-from atmos_gl.api import app
+from terrascope.api import app
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -52,9 +52,9 @@ def client():
     unrelated tests could trip each other's rate limit. Kept at the real production
     limits (not disabled outright) so a test that deliberately wants to exercise the
     429 path can just re-override with a tighter one afterward."""
-    from atmos_gl.lib.rate_limit import RateLimiter
-    from atmos_gl.routes.auth import get_login_rate_limiter
-    from atmos_gl.routes.me_settings import get_settings_rate_limiter
+    from terrascope.lib.rate_limit import RateLimiter
+    from terrascope.routes.auth import get_login_rate_limiter
+    from terrascope.routes.me_settings import get_settings_rate_limiter
 
     # Constructed once and captured by reference -- FastAPI calls an override callable
     # fresh on every request, so a lambda that builds a new RateLimiter() inline would
@@ -75,7 +75,7 @@ def make_signed_in_session(*, is_admin: bool = True):
     gate, not admin recognition itself (see tests/test_lib_auth.py for that). Not a
     fixture itself (parametrized by is_admin) -- imported directly by test files that
     need a non-admin session too (e.g. tests/test_admin_gated_routes.py's 403 cases)."""
-    from atmos_gl.db.user_adapter import FakeUserAdapter
+    from terrascope.db.user_adapter import FakeUserAdapter
 
     fake = FakeUserAdapter()
     user = fake.get_or_create_user(
@@ -91,8 +91,8 @@ def make_signed_in_session(*, is_admin: bool = True):
 @pytest.fixture
 def admin_client(client):
     """`client`, pre-authenticated as an admin user (issue #304's admin-gated routes)."""
-    from atmos_gl.lib.auth import SESSION_COOKIE_NAME
-    from atmos_gl.routes.auth import get_user_adapter
+    from terrascope.lib.auth import SESSION_COOKIE_NAME
+    from terrascope.routes.auth import get_user_adapter
 
     fake, token = make_signed_in_session(is_admin=True)
     app.dependency_overrides[get_user_adapter] = lambda: fake
@@ -103,10 +103,10 @@ def admin_client(client):
 @pytest.fixture(scope="session")
 def real_db():
     with PostgresContainer(
-        "postgis/postgis:15-3.3",  # matches docker-compose.yml's atmos_gl_db exactly
+        "postgis/postgis:15-3.3",  # matches docker-compose.yml's terrascope_db exactly
         username="agl_test",
         password="agl_test",
-        dbname="atmos_gl_test",
+        dbname="terrascope_test",
         driver="psycopg2",
     ) as pg:
         env = os.environ.copy()
@@ -115,7 +115,7 @@ def real_db():
             POSTGRES_PORT=str(pg.get_exposed_port(5432)),
             POSTGRES_USER="agl_test",
             POSTGRES_PASSWORD="agl_test",
-            POSTGRES_DB="atmos_gl_test",
+            POSTGRES_DB="terrascope_test",
         )
         subprocess.run(
             ["alembic", "upgrade", "head"], env=env, cwd=REPO_ROOT, check=True
@@ -136,5 +136,5 @@ def no_collector_lock():
     def _always_acquired(name, wait=False, on_wait=None, bind=None):
         yield True
 
-    with patch("atmos_gl.db.collector_lock.collector_lock", _always_acquired):
+    with patch("terrascope.db.collector_lock.collector_lock", _always_acquired):
         yield
