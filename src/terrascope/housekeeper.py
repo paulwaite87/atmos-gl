@@ -26,6 +26,7 @@ from terrascope.db.aircraft_adapter import AircraftAdapter
 from terrascope.db.volcanic_activity_adapter import VolcanicActivityAdapter
 from terrascope.db.world_event_adapter import WorldEventAdapter
 from terrascope.db.frontline_adapter import FrontlineAdapter
+from terrascope.db.gdacs_adapter import GdacsAdapter
 from terrascope.lib.frontline_changes import CHANGE_WINDOWS_DAYS
 from terrascope.db.process_status_adapter import ProcessStatusAdapter
 
@@ -232,6 +233,24 @@ class Housekeeper:
         except Exception as e:
             logger.warning(f"Housekeeper: world events prune failed: {e}")
 
+    def prune_expired_gdacs_events(self, expiry_days: float):
+        """Prune GDACS events GDACS no longer flags current whose end date is more than
+        expiry_days old (0/missing -> keep forever), along with their footprints.
+        GdacsCollector only ever upserts; this is the only place either table shrinks.
+        Defaults to 7 days (see run()) -- the same grace period the layer keeps an ended
+        event visible for, so pruning never removes anything a viewer could still see."""
+        if not expiry_days or expiry_days <= 0:
+            return
+        try:
+            deleted = GdacsAdapter().prune_expired(expiry_days)
+            if deleted:
+                logger.info(
+                    f"Housekeeper pruned {deleted} GDACS event(s) ended more than "
+                    f"{expiry_days:g}d ago (with their footprints)."
+                )
+        except Exception as e:
+            logger.warning(f"Housekeeper: GDACS prune failed: {e}")
+
     def prune_frontline_snapshots(self, expiry_days: float):
         """Prune DeepState front-line snapshots older than expiry_days before the
         latest one (0/missing -> keep forever) -- FrontlineCollector only ever inserts.
@@ -424,6 +443,8 @@ class Housekeeper:
                         self.settings.get("world_events_expiry_days", 14)
                     )
                     self.prune_expired_world_events(world_events_expiry_d)
+                    gdacs_expiry_d = float(self.settings.get("gdacs_expiry_days", 7))
+                    self.prune_expired_gdacs_events(gdacs_expiry_d)
                     frontline_expiry_d = float(
                         self.settings.get("frontline_expiry_days", 60)
                     )

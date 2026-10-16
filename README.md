@@ -321,6 +321,7 @@ The full list is:
 * Lightning strikes
 * Active storms
 * Earthquakes
+* GDACS Alerts (floods, droughts, cyclones and other disasters, rated by impact)
 * Volcanoes (with a Smoke Plume/SO2 overlay)
 * Wildfires
 * World Events (conflict, explosions and high-level diplomacy)
@@ -472,6 +473,35 @@ the configuration UI. The expiry hours can also be set there. Symbols:
 * ![EQ recent](ui/images/earthquake_new.png) Recent earthquake activity
 * ![EQ older](ui/images/earthquake_old.png) Older earthquakes
 ![Earthquakes](docs/terrascope-quakes.png)
+
+#### GDACS Alerts
+The [Global Disaster Alert and Coordination System](https://www.gdacs.org) (GDACS, run by
+the European Commission's Joint Research Centre with the UN) rates disasters by their
+impact on people. This layer puts every current GDACS event on the map as a badge: the
+letters say what it is (`EQ` earthquake, `TC` tropical cyclone, `FL` flood, `VO` volcano,
+`DR` drought, `WF` wildfire) and the alert level is shown by both colour *and* shape —
+a green circle, an orange diamond or a red octagon. No API key is needed.
+
+Hover a badge for the details and a link to the full GDACS report; **click it** to draw
+that event's impact footprint (affected areas, wind-band polygons, forecast tracks,
+earthquake alert circle and shaking contours, burned area, ...). Click empty map to clear it.
+The footprints are fetched by the data collector and stored in simplified form, so the
+browser never talks to GDACS itself.
+
+The `Minimum alert` setting (default Orange) hides lower-rated events, except for the types
+listed in the config file's `alert_overrides` — floods, droughts and cyclones are let
+through at every level by default, since you have no other layer for floods and droughts.
+`Types` chooses which of the six hazards are collected, and `Grace days` is how long an
+ended event stays on the map. Events GDACS no longer flags as current are deleted (with
+their footprints) by the Housekeeper after `housekeeper.gdacs_expiry_days` (default 7).
+
+With the default filters the layer is often sparse — there are only a handful of
+Orange/Red events active in a typical week, and that is accurate, not a fault.
+
+GDACS content is available under the European Commission's reuse terms (generally
+CC BY 4.0), so credit is shown in every popup. GDACS itself describes its information as
+purely indicative and not for decision-making without other sources, and our footprints are
+simplified, so treat this as an overview rather than an authority.
 
 #### Volcanoes
 Rather than a static historical catalog, this is an event-driven feed of currently

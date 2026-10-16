@@ -1,0 +1,295 @@
+{
+ "type": "FeatureCollection",
+ "features": [
+  {
+   "type": "Feature",
+   "bbox": [
+    154.0,
+    11.3,
+    154.0,
+    11.3
+   ],
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     154.0,
+     11.3
+    ]
+   },
+   "properties": {
+    "eventtype": "TC",
+    "eventid": 1001338,
+    "episodeid": 7,
+    "eventname": "CHAMPI-26",
+    "glide": "",
+    "name": "Tropical Cyclone CHAMPI-26",
+    "description": "Tropical Cyclone CHAMPI-26",
+    "htmldescription": "Red Tropical Cyclone CHAMPI-26 in Guam from: 14 Oct 2026  to: 16 Oct 2026 .",
+    "icon": "https://www.gdacs.org/images/gdacs_icons/maps/Red/TC.png",
+    "iconoverall": "https://www.gdacs.org/images/gdacs_icons/maps/Red/TC.png",
+    "url": {
+     "geometry": "https://www.gdacs.org/gdacsapi/api/polygons/getgeometry?eventtype=TC&eventid=1001338&episodeid=7",
+     "report": "https://www.gdacs.org/report.aspx?eventid=1001338&episodeid=7&eventtype=TC",
+     "details": "https://www.gdacs.org/gdacsapi/api/events/geteventdata?eventtype=TC&eventid=1001338"
+    },
+    "alertlevel": "Red",
+    "alertscore": 3,
+    "episodealertlevel": "Red",
+    "episodealertscore": 3.0,
+    "istemporary": "false",
+    "iscurrent": "true",
+    "country": "Guam",
+    "fromdate": "2026-10-14T12:00:00",
+    "todate": "2026-10-16T00:00:00",
+    "datemodified": "2026-10-16T02:08:27",
+    "iso3": "GUM",
+    "source": "JTWC",
+    "sourceid": "",
+    "polygonlabel": "Centroid",
+    "Class": "Point_Centroid",
+    "countryonland": "",
+    "affectedcountries": [
+     {
+      "iso2": "GU",
+      "iso3": "GUM",
+      "countryname": "Guam"
+     }
+    ],
+    "severitydata": {
+     "severity": 240.7392,
+     "severitytext": "Tropical Storm (maximum wind speed of 241 km/h)",
+     "severityunit": "km/h"
+    }
+   }
+  },
+  {
+   "type": "Feature",
+   "bbox": [
+    -108.5,
+    19.5,
+    -108.5,
+    19.5
+   ],
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -108.5,
+     19.5
+    ]
+   },
+   "properties": {
+    "eventtype": "TC",
+    "eventid": 1001335,
+    "episodeid": 35,
+    "eventname": "SIMON-26",
+    "glide": "",
+    "name": "Tropical Cyclone SIMON-26",
+    "description": "Tropical Cyclone SIMON-26",
+    "htmldescription": "Orange Tropical Cyclone SIMON-26 in M\u00e9xico from: 07 Oct 2026  to: 16 Oct 2026 .",
+    "icon": "https://www.gdacs.org/images/gdacs_icons/maps/Green/TC.png",
+    "iconoverall": "https://www.gdacs.org/images/gdacs_icons/maps/Orange/TC.png",
+    "url": {
+     "geometry": "https://www.gdacs.org/gdacsapi/api/polygons/getgeometry?eventtype=TC&eventid=1001335&episodeid=35",
+     "report": "https://www.gdacs.org/report.aspx?eventid=1001335&episodeid=35&eventtype=TC",
+     "details": "https://www.gdacs.org/gdacsapi/api/events/geteventdata?eventtype=TC&eventid=1001335"
+    },
+    "alertlevel": "Orange",
+    "alertscore": 2,
+    "episodealertlevel": "Green",
+    "episodealertscore": 1.0,
+    "istemporary": "false",
+    "iscurrent": "true",
+    "country": "M\u00e9xico",
+    "fromdate": "2026-10-07T15:00:00",
+    "todate": "2026-10-16T03:00:00",
+    "datemodified": "2026-10-16T04:07:25",
+    "iso3": "MEX",
+    "source": "NOAA",
+    "sourceid": "",
+    "polygonlabel": "Centroid",
+    "Class": "Point_Centroid",
+    "countryonland": "",
+    "affectedcountries": [],
+    "severitydata": {
+     "severity": 249.9984,
+     "severitytext": "Tropical Storm (maximum wind speed of 250 km/h)",
+     "severityunit": "km/h"
+    }
+   }
+  },
+  {
+   "type": "Feature",
+   "bbox": [
+    -92.8623,
+    13.934,
+    -92.8623,
+    13.934
+   ],
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -92.8623,
+     13.934
+    ]
+   },
+   "properties": {
+    "eventtype": "EQ",
+    "eventid": 1571932,
+    "episodeid": 1740475,
+    "eventname": "",
+    "glide": "",
+    "name": "Earthquake in M\u00e9xico",
+    "description": "Earthquake in M\u00e9xico",
+    "htmldescription": "Green M 4.7 Earthquake in M\u00e9xico at: 16 Oct 2026 04:42:40.",
+    "icon": "https://www.gdacs.org/images/gdacs_icons/maps/Green/EQ.png",
+    "iconoverall": "https://www.gdacs.org/images/gdacs_icons/maps/Green/EQ.png",
+    "url": {
+     "geometry": "https://www.gdacs.org/gdacsapi/api/polygons/getgeometry?eventtype=EQ&eventid=1571932&episodeid=1740475",
+     "report": "https://www.gdacs.org/report.aspx?eventid=1571932&episodeid=1740475&eventtype=EQ",
+     "details": "https://www.gdacs.org/gdacsapi/api/events/geteventdata?eventtype=EQ&eventid=1571932"
+    },
+    "alertlevel": "Green",
+    "alertscore": 1,
+    "episodealertlevel": "Green",
+    "episodealertscore": 0.0,
+    "istemporary": "false",
+    "iscurrent": "true",
+    "country": "M\u00e9xico",
+    "fromdate": "2026-10-16T04:42:40",
+    "todate": "2026-10-16T04:42:40",
+    "datemodified": "2026-10-16T05:23:29",
+    "iso3": "MEX",
+    "source": "NEIC",
+    "sourceid": "",
+    "polygonlabel": "Centroid",
+    "Class": "Point_Centroid",
+    "affectedcountries": [],
+    "severitydata": {
+     "severity": 4.7,
+     "severitytext": "Magnitude 4.7M, Depth:10km",
+     "severityunit": "M"
+    }
+   }
+  },
+  {
+   "type": "Feature",
+   "bbox": [
+    -73.3711,
+    41.119,
+    -73.3711,
+    41.119
+   ],
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -73.3711,
+     41.119
+    ]
+   },
+   "properties": {
+    "eventtype": "FL",
+    "eventid": 1103888,
+    "episodeid": 91,
+    "eventname": "",
+    "glide": "",
+    "name": "Flood in United States",
+    "description": "Flood in United States",
+    "htmldescription": "Green Flood in United States from: 19 May 2026 01 to: 16 Oct 2026 01.",
+    "icon": "https://www.gdacs.org/images/gdacs_icons/maps/Green/FL.png",
+    "iconoverall": "https://www.gdacs.org/images/gdacs_icons/maps/Green/FL.png",
+    "url": {
+     "geometry": "https://www.gdacs.org/gdacsapi/api/polygons/getgeometry?eventtype=FL&eventid=1103888&episodeid=91",
+     "report": "https://www.gdacs.org/report.aspx?eventid=1103888&episodeid=91&eventtype=FL",
+     "details": "https://www.gdacs.org/gdacsapi/api/events/geteventdata?eventtype=FL&eventid=1103888"
+    },
+    "alertlevel": "Green",
+    "alertscore": 1,
+    "episodealertlevel": "Green",
+    "episodealertscore": 0.5,
+    "istemporary": "false",
+    "iscurrent": "true",
+    "country": "United States",
+    "fromdate": "2026-05-19T01:00:00",
+    "todate": "2026-10-16T01:00:00",
+    "datemodified": "2026-10-16T06:05:08",
+    "iso3": "USA",
+    "source": "GLOFAS",
+    "sourceid": "",
+    "polygonlabel": "Centroid",
+    "Class": "Point_Centroid",
+    "affectedcountries": [
+     {
+      "iso2": "US",
+      "iso3": "USA",
+      "countryname": "United States"
+     }
+    ],
+    "severitydata": {
+     "severity": 0.0,
+     "severitytext": "Magnitude 0 ",
+     "severityunit": ""
+    }
+   }
+  },
+  {
+   "type": "Feature",
+   "bbox": [
+    33.2138,
+    -10.3176,
+    33.2138,
+    -10.3176
+   ],
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     33.2138,
+     -10.3176
+    ]
+   },
+   "properties": {
+    "eventtype": "WF",
+    "eventid": 1032639,
+    "episodeid": 13,
+    "eventname": "",
+    "glide": "",
+    "name": "Forest fires in Zambia",
+    "description": "Forest fires in Zambia",
+    "htmldescription": "Green Forest fires in Zambia from: 06 Oct 2026 to: 15 Oct 2026.",
+    "icon": "https://www.gdacs.org/images/gdacs_icons/maps/Green/WF.png",
+    "iconoverall": "https://www.gdacs.org/images/gdacs_icons/maps/Green/WF.png",
+    "url": {
+     "geometry": "https://www.gdacs.org/gdacsapi/api/polygons/getgeometry?eventtype=WF&eventid=1032639&episodeid=13",
+     "report": "https://www.gdacs.org/report.aspx?eventid=1032639&episodeid=13&eventtype=WF",
+     "details": "https://www.gdacs.org/gdacsapi/api/events/geteventdata?eventtype=WF&eventid=1032639"
+    },
+    "alertlevel": "Green",
+    "alertscore": 1,
+    "episodealertlevel": "Green",
+    "episodealertscore": 0.5,
+    "istemporary": "false",
+    "iscurrent": "true",
+    "country": "Zambia",
+    "fromdate": "2026-10-06T00:00:00",
+    "todate": "2026-10-15T00:00:00",
+    "datemodified": "2026-10-16T03:12:44",
+    "iso3": "ZMB",
+    "source": "GWIS",
+    "sourceid": "",
+    "polygonlabel": "Centroid",
+    "Class": "Point_Centroid",
+    "affectedcountries": [
+     {
+      "iso2": "ZM",
+      "iso3": "ZMB",
+      "countryname": "Zambia"
+     }
+    ],
+    "severitydata": {
+     "severity": 18661.0,
+     "severitytext": "Green impact for forestfire in 18661 ha",
+     "severityunit": "ha"
+    }
+   }
+  }
+ ]
+}

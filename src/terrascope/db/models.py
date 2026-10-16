@@ -8,6 +8,7 @@ from sqlalchemy import (
     Double,
     Enum,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     Integer,
     Numeric,
@@ -131,6 +132,72 @@ class Earthquake(Base):
     lat: Mapped[float | None] = mapped_column()
     lon: Mapped[float | None] = mapped_column()
     geom: Mapped[str | None] = mapped_column(Geometry("POINT", srid=4326, spatial_index=False))
+
+
+class GdacsEvent(Base):
+    """A GDACS (Global Disaster Alert and Coordination System) event, one row per
+    (event_type, event_id). GDACS advances an event's episode_id as it evolves, so rows
+    are upserted in place rather than versioned. to_date is the event's end (or latest
+    observed date while it is still current) -- visibility and pruning are driven by it.
+    """
+
+    __tablename__ = "gdacs_events"
+    __table_args__ = (
+        Index("idx_gdacs_events_geom", "geom", postgresql_using="gist"),
+        Index("idx_gdacs_events_to_date", "to_date"),
+    )
+
+    event_type: Mapped[str] = mapped_column(String(2), primary_key=True)
+    event_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    episode_id: Mapped[int | None] = mapped_column(Integer)
+    name: Mapped[str | None] = mapped_column(Text)
+    alert_level: Mapped[str | None] = mapped_column(String(10))
+    alert_score: Mapped[float | None] = mapped_column(REAL)
+    severity: Mapped[float | None] = mapped_column(Double)
+    severity_text: Mapped[str | None] = mapped_column(Text)
+    severity_unit: Mapped[str | None] = mapped_column(String(20))
+    country: Mapped[str | None] = mapped_column(Text)
+    iso3: Mapped[str | None] = mapped_column(String(3))
+    from_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    to_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    date_modified: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    is_current: Mapped[bool | None] = mapped_column(Boolean)
+    report_url: Mapped[str | None] = mapped_column(Text)
+    # The GDACS modified-timestamp this event's footprint was last fetched at -- on the
+    # event, not its parts, since an event can legitimately have none (GDACS returns only
+    # a centroid for e.g. volcanoes) and must still not be re-fetched every cycle.
+    footprint_modified: Mapped[str | None] = mapped_column(String(32))
+    lat: Mapped[float | None] = mapped_column()
+    lon: Mapped[float | None] = mapped_column()
+    geom: Mapped[str | None] = mapped_column(
+        Geometry("POINT", srid=4326, spatial_index=False)
+    )
+
+
+class GdacsFootprint(Base):
+    """One simplified impact geometry of a GDACS event, one row per GDACS feature
+    (class e.g. Poly_Affected, Poly_Orange, Line_Line_0; may repeat within an
+    event). Replaced wholesale whenever the event is re-fetched; deleted with its event.
+    The fetched-at marker lives on GdacsEvent.footprint_modified."""
+
+    __tablename__ = "gdacs_footprints"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["event_type", "event_id"],
+            ["gdacs_events.event_type", "gdacs_events.event_id"],
+            ondelete="CASCADE",
+        ),
+    )
+
+    event_type: Mapped[str] = mapped_column(String(2), primary_key=True)
+    event_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    # Position within the event's footprint: GDACS repeats class names (a cyclone has
+    # nine Poly_Green polygons), so the class can't be part of the key.
+    part_index: Mapped[int] = mapped_column(Integer, primary_key=True)
+    feature_class: Mapped[str] = mapped_column(String(64), nullable=False)
+    geom: Mapped[str | None] = mapped_column(
+        Geometry("GEOMETRY", srid=4326, spatial_index=False)
+    )
 
 
 class VolcanicActivity(Base):

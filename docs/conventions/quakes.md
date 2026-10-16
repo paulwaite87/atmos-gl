@@ -1,6 +1,6 @@
 # Worked example: Point-feed layer (quakes)
 
-Quakes is one of 11 **Point-feed layer** instances (see [layers.md](layers.md)) — the
+Quakes is one of 12 **Point-feed layer** instances (see [layers.md](layers.md)) — the
 largest group of the five shapes. A Point-feed layer has **no server-side render task at
 all**: no `TASK_CLASSES` entry, no `Updater` subclass, no PNG or texture. The layer is
 just a collector keeping a DB table fresh, read back live as GeoJSON.
@@ -14,7 +14,7 @@ rows into the `earthquakes` table via `QuakeAdapter`. That's the entire backend 
 no `"quakes"` key anywhere in `layer_builder.py`'s `TASK_CLASSES`, because there's nothing
 to render.
 
-This is the shape shared by volcanoes, world_events, lightning, storms,
+This is the shape shared by gdacs, volcanoes, world_events, lightning, storms,
 shipping, satellites, flightradar, terminator, and landmass — each a collector-only DB
 sync, no render task, differing only in their data source and DB schema (see
 `src/terrascope/db/models.py`'s `Earthquake`, `VolcanicActivity`, `Fire`, etc.).
