@@ -5,7 +5,7 @@
 Writes:
   ui/geo/countries_50m.json          -- {code, name} per country, coordinates rounded
                                         to 0.01deg (~1 km, about 1:50m's own precision)
-  src/atmos_gl/lib/country_codes.py  -- COUNTRY_CODES, the codes those polygons carry
+  src/terrascope/lib/country_codes.py  -- COUNTRY_CODES, the codes those polygons carry
 
 A country's code is ISO_A3_EH, falling back to ADM0_A3 where Natural Earth has no
 ISO code (-99): Kosovo (KOS), Somaliland (SOL), Northern Cyprus (CYN), Siachen (KAS).
@@ -22,7 +22,7 @@ SOURCE = ("https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master
           "geojson/ne_50m_admin_0_countries.geojson")
 ROOT = Path(__file__).resolve().parent.parent
 GEOMETRY_OUT = ROOT / "ui" / "geo" / "countries_50m.json"
-CODES_OUT = ROOT / "src" / "atmos_gl" / "lib" / "country_codes.py"
+CODES_OUT = ROOT / "src" / "terrascope" / "lib" / "country_codes.py"
 DECIMALS = 2
 
 

@@ -7,7 +7,7 @@ visible resolution jump when a user switches modes.
 """
 import numpy as np
 
-from atmos_gl.lib.greenhouse_gases import compute_anomaly, regrid_onto, resolve_baseline_year
+from terrascope.lib.greenhouse_gases import compute_anomaly, regrid_onto, resolve_baseline_year
 
 
 def test_regrid_onto_interpolates_baseline_onto_target_grid():

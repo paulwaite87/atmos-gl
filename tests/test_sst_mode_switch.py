@@ -24,8 +24,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from atmos_gl.collectors.sst import SstCollector
-from atmos_gl.tasks.sst import SSTUpdater
+from terrascope.collectors.sst import SstCollector
+from terrascope.tasks.sst import SSTUpdater
 
 
 # EventFeedDriver takes a Postgres advisory lock per collector; no DB here.
@@ -60,8 +60,8 @@ def test_collect_fetches_both_modes_regardless_of_which_is_configured(tmp_path):
         workdir=str(tmp_path),
     )
 
-    with patch("atmos_gl.collectors.sst.remote_is_newer", return_value=True), \
-         patch("atmos_gl.collectors.sst.download_whole", return_value=b"fake-netcdf-bytes"):
+    with patch("terrascope.collectors.sst.remote_is_newer", return_value=True), \
+         patch("terrascope.collectors.sst.download_whole", return_value=b"fake-netcdf-bytes"):
         c.collect()
 
     assert (tmp_path / "data" / "sst_cache_noaa_oisst_mean.nc").exists()
@@ -85,8 +85,8 @@ def test_collect_raises_if_any_mode_fails_so_data_status_reflects_it(tmp_path):
             raise RuntimeError("503 Service Unavailable")
         return b"fake-netcdf-bytes"
 
-    with patch("atmos_gl.collectors.sst.remote_is_newer", return_value=True), \
-         patch("atmos_gl.collectors.sst.download_whole", side_effect=fake_download):
+    with patch("terrascope.collectors.sst.remote_is_newer", return_value=True), \
+         patch("terrascope.collectors.sst.download_whole", side_effect=fake_download):
         try:
             c.collect()
             raised = False
@@ -110,8 +110,8 @@ def test_collect_skips_a_mode_whose_remote_is_not_newer(tmp_path):
     def fake_remote_is_newer(url, dest):
         return "anomaly" in dest  # only anomaly needs fetching
 
-    with patch("atmos_gl.collectors.sst.remote_is_newer", side_effect=fake_remote_is_newer), \
-         patch("atmos_gl.collectors.sst.download_whole", return_value=b"fake-netcdf-bytes") as mock_dl:
+    with patch("terrascope.collectors.sst.remote_is_newer", side_effect=fake_remote_is_newer), \
+         patch("terrascope.collectors.sst.download_whole", return_value=b"fake-netcdf-bytes") as mock_dl:
         c.collect()
 
     assert mock_dl.call_count == 1

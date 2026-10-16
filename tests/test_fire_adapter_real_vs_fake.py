@@ -13,13 +13,13 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.orm import sessionmaker
 
-from atmos_gl.db.fire_adapter import FireAdapter, FakeFireAdapter
+from terrascope.db.fire_adapter import FireAdapter, FakeFireAdapter
 
 
 def _make_adapter(kind, real_db):
     if kind == "real":
         TestSession = sessionmaker(bind=real_db)
-        return FireAdapter(), patch("atmos_gl.db.fire_adapter.Session", TestSession)
+        return FireAdapter(), patch("terrascope.db.fire_adapter.Session", TestSession)
     return FakeFireAdapter(), contextlib.nullcontext()
 
 

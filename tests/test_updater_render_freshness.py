@@ -19,7 +19,7 @@ entirely, so its actual file-copy behaviour is only exercised here.
 """
 import os
 
-from atmos_gl.tasks.common import Updater
+from terrascope.tasks.common import Updater
 
 
 def make_bare_updater():

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Route-level test for GET /api/volcanoes/geojson (issue #253)."""
-from atmos_gl.db.volcanic_activity_adapter import FakeVolcanicActivityAdapter
-from atmos_gl.routes.volcanoes import get_volcano_adapter
-from atmos_gl.api import app
+from terrascope.db.volcanic_activity_adapter import FakeVolcanicActivityAdapter
+from terrascope.routes.volcanoes import get_volcano_adapter
+from terrascope.api import app
 
 
 def test_volcanoes_geojson_reflects_the_overridden_fake(client):

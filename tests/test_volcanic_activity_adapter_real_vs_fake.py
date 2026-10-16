@@ -13,13 +13,13 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.orm import sessionmaker
 
-from atmos_gl.db.volcanic_activity_adapter import VolcanicActivityAdapter, FakeVolcanicActivityAdapter
+from terrascope.db.volcanic_activity_adapter import VolcanicActivityAdapter, FakeVolcanicActivityAdapter
 
 
 def _make_adapter(kind, real_db):
     if kind == "real":
         TestSession = sessionmaker(bind=real_db)
-        return VolcanicActivityAdapter(), patch("atmos_gl.db.volcanic_activity_adapter.Session", TestSession)
+        return VolcanicActivityAdapter(), patch("terrascope.db.volcanic_activity_adapter.Session", TestSession)
     return FakeVolcanicActivityAdapter(), contextlib.nullcontext()
 
 

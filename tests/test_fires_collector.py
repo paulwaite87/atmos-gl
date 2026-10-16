@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 
 import requests
 
-from atmos_gl.collectors.fires import FiresCollector, _SOURCES
+from terrascope.collectors.fires import FiresCollector, _SOURCES
 
 
 def make_collector(settings=None):
@@ -52,7 +52,7 @@ def test_collect_fetches_both_sources_and_upserts_combined_rows():
             return _FakeResponse(noaa21_body)
         raise AssertionError(f"unexpected source in url: {url}")
 
-    with patch("atmos_gl.collectors.fires.requests.get", side_effect=fake_get) as mock_get:
+    with patch("terrascope.collectors.fires.requests.get", side_effect=fake_get) as mock_get:
         c.collect()
 
     assert mock_get.call_count == len(_SOURCES) == 2
@@ -75,7 +75,7 @@ def test_collect_one_source_failing_still_upserts_the_other_but_raises():
             return _FakeResponse(noaa20_body)
         raise requests.ConnectionError("NOAA-21 endpoint unreachable")
 
-    with patch("atmos_gl.collectors.fires.requests.get", side_effect=fake_get):
+    with patch("terrascope.collectors.fires.requests.get", side_effect=fake_get):
         try:
             c.collect()
             assert False, "expected collect() to raise when one source fails"
@@ -93,7 +93,7 @@ def test_collect_both_sources_failing_raises_and_upserts_nothing():
     c = make_collector()
 
     with patch(
-        "atmos_gl.collectors.fires.requests.get",
+        "terrascope.collectors.fires.requests.get",
         side_effect=requests.ConnectionError("FIRMS down"),
     ):
         try:
@@ -109,7 +109,7 @@ def test_collect_both_sources_failing_raises_and_upserts_nothing():
 def test_collect_skips_entirely_without_api_key():
     c = make_collector(settings={})
 
-    with patch("atmos_gl.collectors.fires.requests.get") as mock_get:
+    with patch("terrascope.collectors.fires.requests.get") as mock_get:
         c.collect()
 
     mock_get.assert_not_called()
@@ -128,7 +128,7 @@ def test_collect_bad_csv_body_from_one_source_degrades_without_raising():
             return _FakeResponse("<html>rate limited</html>")
         return _FakeResponse(noaa21_body)
 
-    with patch("atmos_gl.collectors.fires.requests.get", side_effect=fake_get):
+    with patch("terrascope.collectors.fires.requests.get", side_effect=fake_get):
         c.collect()  # must not raise
 
     (upserted_rows,), _ = c.fire_adapter.upsert_fires.call_args

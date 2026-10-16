@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone
 
-from atmos_gl.db.fire_adapter import FakeFireAdapter
+from terrascope.db.fire_adapter import FakeFireAdapter
 
 
 def _iso(dt):

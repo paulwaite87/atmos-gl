@@ -8,7 +8,7 @@ colour-list assertions, no matplotlib figure or netCDF data involved -- see
 test_air_quality_mercator_prewarp.py's docstring for why plot()'s rendering
 internals aren't unit-tested here either.
 """
-from atmos_gl.tasks.air_quality import _AQI_COLORS, _CMAP, _VOLCANIC_SO2_COLORS, _AQI_CMAP
+from terrascope.tasks.air_quality import _AQI_COLORS, _CMAP, _VOLCANIC_SO2_COLORS, _AQI_CMAP
 
 
 def test_so2_volcanic_has_its_own_cmap_entry():

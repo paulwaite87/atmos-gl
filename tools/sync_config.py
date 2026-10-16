@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Reconciles config/atmos-gl.json's SHAPE against config/atmos-gl.json.tmpl:
+"""Reconciles config/terrascope.json's SHAPE against config/terrascope.json.tmpl:
 adds any section/option the template defines that the live file is missing,
 and drops any live section/option the template no longer defines -- without
 touching the VALUE of anything already present in both (a schema sync, not a
@@ -51,8 +51,8 @@ def sync_shape(live: dict, template: dict) -> tuple[dict, list[str], list[str]]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--live", default="config/atmos-gl.json")
-    parser.add_argument("--template", default="config/atmos-gl.json.tmpl")
+    parser.add_argument("--live", default="config/terrascope.json")
+    parser.add_argument("--template", default="config/terrascope.json.tmpl")
     args = parser.parse_args()
 
     with open(args.template) as f:

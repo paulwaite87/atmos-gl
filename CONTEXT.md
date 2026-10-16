@@ -1,4 +1,4 @@
-# Domain context — atmos-gl
+# Domain context — terrascope
 
 Domain language for the map's data layers. Extend as terms are sharpened; keep
 definitions to one sentence.

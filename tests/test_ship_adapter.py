@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone
 
-from atmos_gl.db.ship_adapter import FakeShipAdapter
+from terrascope.db.ship_adapter import FakeShipAdapter
 
 
 def _meta(name="Test Ship", time_utc=""):

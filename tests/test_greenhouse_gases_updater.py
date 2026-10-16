@@ -9,8 +9,8 @@ published), not rendering internals (netCDF parsing, unit conversion, matplotlib
 import os
 from unittest.mock import MagicMock
 
-from atmos_gl.lib.greenhouse_gases import camsforecast_cache_path, egg4_baseline_cache_path
-from atmos_gl.tasks.greenhouse_gases import GhgUpdater
+from terrascope.lib.greenhouse_gases import camsforecast_cache_path, egg4_baseline_cache_path
+from terrascope.tasks.greenhouse_gases import GhgUpdater
 
 
 def make_bare_ghg_updater(species, mode, workdir, output_path, baseline_year=2003):

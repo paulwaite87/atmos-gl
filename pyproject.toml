@@ -1,5 +1,5 @@
 [project]
-name = "atmos_gl"
+name = "terrascope"
 version = "1.0.0"
 description = "Builds overlays and marker files for Xplanet"
 readme = "README.md"
@@ -7,7 +7,7 @@ requires-python = ">=3.12"
 authors = [
     { name = "Paul Waite", email = "paulwaite87@gmail.com" },
 ]
-# Core dependencies for the Atmos GL system
+# Core dependencies for the Terrascope system
 dependencies = [
     "aiohttp>=3.13.5",
     "alembic>=1.18.5",
@@ -63,10 +63,10 @@ dependencies = [
 ]
 
 [project.scripts]
-layerbuilder = "atmos_gl.layer_builder:main"
-housekeeper = "atmos_gl.housekeeper:main"
-shippingcollector = "atmos_gl.collectors.shipping:main"
-lightningcollector = "atmos_gl.collectors.lightning:main"
+layerbuilder = "terrascope.layer_builder:main"
+housekeeper = "terrascope.housekeeper:main"
+shippingcollector = "terrascope.collectors.shipping:main"
+lightningcollector = "terrascope.collectors.lightning:main"
 
 
 [build-system]
@@ -74,7 +74,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/atmos_gl"]
+packages = ["src/terrascope"]
 
 [tool.uv]
 # Moved linting and formatting tools to dev-dependencies

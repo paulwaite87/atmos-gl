@@ -1,4 +1,4 @@
-# Atmos GL
+# Terrascope
 
 ## What is this?
 
@@ -14,7 +14,7 @@ tracks, Smithsonian/USGS volcanic activity data, AIS shipping, lightning strikes
 orbits), storing everything in PostGIS and rendering it onto the globe as you watch.
 
 ### Our Blue Marble
-![Atmos GL Example](docs/atmos-gl-blue-marble.png)
+![Terrascope Example](docs/terrascope-blue-marble.png)
 
 ## Quick Start
 
@@ -41,13 +41,13 @@ wherever Docker Desktop does.
 
 ### Install and Run
 
-Run this to download everything needed and set it up in `~/atmos-gl` (pass a path as
+Run this to download everything needed and set it up in `~/terrascope` (pass a path as
 an argument if you'd rather install somewhere else):
 
-    curl -fsSL https://raw.githubusercontent.com/paulwaite87/atmos-gl/master/install.sh | bash
+    curl -fsSL https://raw.githubusercontent.com/paulwaite87/terrascope/master/install.sh | bash
 
-This fetches `docker-compose.yml`, an `atmos-gl.sh` control script, and the reference
-data the map needs, then creates a `.env` and `config/atmos-gl.json` for you (both
+This fetches `docker-compose.yml`, an `terrascope.sh` control script, and the reference
+data the map needs, then creates a `.env` and `config/terrascope.json` for you (both
 left alone on future re-runs, so it's always safe to run this again later to pick up
 updates to everything else).
 
@@ -63,28 +63,28 @@ are optional (you can enable them later once you have keys).
 
 Then start everything:
 
-    cd ~/atmos-gl
-    ./atmos-gl.sh start
+    cd ~/terrascope
+    ./terrascope.sh start
 
 By default most layers are disabled to begin with — see [Setting it Up](#setting-it-up) below.
 
 To stop everything:
 
-    ./atmos-gl.sh stop
+    ./terrascope.sh stop
 
-`atmos-gl.sh` also has `restart`, `update` (pulls the latest images), `status` (ship/lightning
+`terrascope.sh` also has `restart`, `update` (pulls the latest images), `status` (ship/lightning
 counts per region) and `logs` commands — run it with no arguments for the full list. If you
-ever need to report a problem, `./atmos-gl.sh logs save` writes a timestamped log file with
+ever need to report a problem, `./terrascope.sh logs save` writes a timestamped log file with
 any API keys automatically redacted, safe to attach to a GitHub issue.
 
 (If you've cloned the repo instead of using the installer, the Makefile has equivalents for
 all of this — see [Developer's Corner](#developers-corner) below.)
 
 ### Setting it Up
-The configuration file is called `atmos-gl.json` and it lives in the `config` folder.
+The configuration file is called `terrascope.json` and it lives in the `config` folder.
 You can either edit this file directly, or browse to `http://localhost:9000/config` to use
 the configuration webpage there. If you do use that page, and save some changes they
-will overwrite your `atmos-gl.json` — which is fine, but if you want to preserve your own
+will overwrite your `terrascope.json` — which is fine, but if you want to preserve your own
 hand-edits, make a backup copy of the file first.
 
 The configurator and the Data Status page (below) both require signing in as an admin —
@@ -95,16 +95,16 @@ The live globe itself is at `http://localhost:8180`.
 
 Here is a shot of the homepage for the configurator at `http://localhost:9000/config`
 
-![Configuration Homepage](docs/atmos-gl-conf-home.png)
+![Configuration Homepage](docs/terrascope-conf-home.png)
 
 I would suggest first setting your starting Latitude and Longitude to a view you want to
 see at startup and then in the `Show` tab just enabling some of the atmospheric layers
 like `Isobars`, `Wind` and `Preciptation` as a starting point.
 
-If you change something in `config/atmos-gl.json` by hand rather than through the web UI,
+If you change something in `config/terrascope.json` by hand rather than through the web UI,
 restart the backend to pick it up:
 
-    ./atmos-gl.sh restart
+    ./terrascope.sh restart
 
 ### Account & Personal Settings
 The live globe itself (`http://localhost:8180`) needs no account at all — it's open to
@@ -113,13 +113,13 @@ unlocks two things beyond that:
 
 * **Personal settings** — a signed-in user can save their own overrides for most sliders/
   toggles/colours (camera start position, palettes, opacity, thresholds and the like),
-  layered on top of the shared `config/atmos-gl.json` rather than replacing it: your
+  layered on top of the shared `config/terrascope.json` rather than replacing it: your
   override wins for you, everyone else still gets the shared default. Settings that
   affect what the backend actually renders (not just how it's displayed) stay admin-only,
   shared config.
 * **Admin access** — one or more accounts can be designated admin (via an email
   allowlist in `.env`). Only an admin account can reach the configurator
-  (`http://localhost:9000/config`, which edits the shared `atmos-gl.json` default
+  (`http://localhost:9000/config`, which edits the shared `terrascope.json` default
   everyone else's overrides sit on top of) and the Data Status page.
 
 The account menu also has a settings link, sign-out, account deletion, and shows the
@@ -150,7 +150,7 @@ Github. Obviously if you don't have a Github account you will have to sign up fo
 The process of obtaining the API Key is easy once you are signed in. There is a link `API Keys`
 and you can create one there. Copy the key, and then back in the root directory edit the
 file named `.env` and replace the `AIS_API_KEY` placeholder there with your newly minted
-API Key. You will now be able to go into the Atmos GL Configurator and on the `Show` tab
+API Key. You will now be able to go into the Terrascope Configurator and on the `Show` tab
 in the `Background Processes` group enable either or both the Shipping and Lightning processes.
 
 #### Lightning Strikes API Key
@@ -180,7 +180,7 @@ setting, same as the others above.
 
 With climate change seemingly setting various regions of the planet on fire, this one
 is a really informative layer to have running. Once the key is in place, enable
-`Wildfires` in the Atmos GL Configurator's `Show` tab, under the `Events` group.
+`Wildfires` in the Terrascope Configurator's `Show` tab, under the `Events` group.
 
 #### Copernicus CDS/ADS API Key
 This is optional.
@@ -210,7 +210,7 @@ terms you saw at sign-up. Both datasets require the *same* licence (`CC-BY-4.0`)
 accepting it once, on either page, covers both — no need to repeat it on the second.
 
 Once the key is set (and, for Greenhouse Gases, the licence accepted), select
-`Greenhouse Gases` in the Atmos GL Configurator's `Show` tab under the `Climate`
+`Greenhouse Gases` in the Terrascope Configurator's `Show` tab under the `Climate`
 group, and/or `Air Quality` under the `Events` group.
 
 #### NASA Earthdata Login Token
@@ -267,24 +267,24 @@ layers underneath), line width and opacity.
 ### Watching It Work
 To tail the logs of everything:
 
-    ./atmos-gl.sh logs
+    ./terrascope.sh logs
 
 Or just one service:
 
-    ./atmos-gl.sh logs layer_builder
+    ./terrascope.sh logs layer_builder
 
 A healthy log might look something like this.
     
-    data_collector-1       | 2026-07-11 08:57:09,922 [INFO] atmos_gl.collectors.gfs_atmos: Data Collector (gfs): 20260710 12Z, hours 009..056; stored 8 field(s).
-    data_collector-1       | 2026-07-11 08:57:13,713 [INFO] atmos_gl.collectors.gfs_waves: Data Collector (waves): 20260710 12Z, hours 009..056; stored 1 field(s).
-    layer_builder-1        | 2026-07-11 09:00:38,398 [INFO] atmos_gl.tasks.common: currents: rendered 1 hour(s) (51 available, stopped early after 7 examined).
-    layer_builder-1        | 2026-07-11 09:00:39,710 [INFO] atmos_gl.tasks.waves: Waves: wrote swell velocity texture f018.
-    layer_builder-1        | 2026-07-11 09:00:39,803 [INFO] atmos_gl.tasks.common: waves: rendered 1 hour(s) (49 available, stopped early after 11 examined).
-    layer_builder-1        | 2026-07-11 09:00:41,787 [INFO] atmos_gl.tasks.isobars: Finished Isobars texture f019.
-    layer_builder-1        | 2026-07-11 09:00:41,827 [INFO] atmos_gl.tasks.common: isobars: rendered 1 hour(s) (49 available, stopped early after 12 examined).
-    layer_builder-1        | 2026-07-11 09:00:56,080 [INFO] atmos_gl.tasks.precipitation: Finished Precipitation texture f019 (low smoothing).
-    layer_builder-1        | 2026-07-11 09:00:56,714 [INFO] atmos_gl.tasks.common: precipitation: rendered 1 hour(s) (49 available, stopped early after 12 examined).
-    layer_builder-1        | 2026-07-11 09:03:38,143 [INFO] atmos_gl.tasks.scalar_field: Finished temperature texture f019.
+    data_collector-1       | 2026-07-11 08:57:09,922 [INFO] terrascope.collectors.gfs_atmos: Data Collector (gfs): 20260710 12Z, hours 009..056; stored 8 field(s).
+    data_collector-1       | 2026-07-11 08:57:13,713 [INFO] terrascope.collectors.gfs_waves: Data Collector (waves): 20260710 12Z, hours 009..056; stored 1 field(s).
+    layer_builder-1        | 2026-07-11 09:00:38,398 [INFO] terrascope.tasks.common: currents: rendered 1 hour(s) (51 available, stopped early after 7 examined).
+    layer_builder-1        | 2026-07-11 09:00:39,710 [INFO] terrascope.tasks.waves: Waves: wrote swell velocity texture f018.
+    layer_builder-1        | 2026-07-11 09:00:39,803 [INFO] terrascope.tasks.common: waves: rendered 1 hour(s) (49 available, stopped early after 11 examined).
+    layer_builder-1        | 2026-07-11 09:00:41,787 [INFO] terrascope.tasks.isobars: Finished Isobars texture f019.
+    layer_builder-1        | 2026-07-11 09:00:41,827 [INFO] terrascope.tasks.common: isobars: rendered 1 hour(s) (49 available, stopped early after 12 examined).
+    layer_builder-1        | 2026-07-11 09:00:56,080 [INFO] terrascope.tasks.precipitation: Finished Precipitation texture f019 (low smoothing).
+    layer_builder-1        | 2026-07-11 09:00:56,714 [INFO] terrascope.tasks.common: precipitation: rendered 1 hour(s) (49 available, stopped early after 12 examined).
+    layer_builder-1        | 2026-07-11 09:03:38,143 [INFO] terrascope.tasks.scalar_field: Finished temperature texture f019.
 
 The `data_collector` continuously fetches fresh data in the background regardless of
 which layers you have switched on, so it's ready the moment you enable something. The
@@ -295,7 +295,7 @@ before the next one starts.
 
 For ship/lightning counts per region, run:
 
-    ./atmos-gl.sh status
+    ./terrascope.sh status
 
 ### Starting Fresh
 If you really want a fresh start, stop the stack and remove the contents of the `data`
@@ -371,14 +371,14 @@ past guarnteeing a full sweep is available.
 
 Clouds are therefore regarded as 'eye candy' and the images we have won't perfectly
 reflect the more up to date real data (precipitation, isobars etc) that we have.
-![Clouds](docs/atmos-gl-clouds.png)
+![Clouds](docs/terrascope-clouds.png)
 
 #### Precipitation
 Often mis-labelled as rainfall, even though that's what it mostly is, it does also
 cover snow, sleet, hail etc. It's probably one of the most interesting layers from
 the point of view of the amateur meteorologist given it often affects our daily plans
 in life! Given it can be displayed forecasted, it's quite useful in that regard.
-![Precipitation](docs/atmos-gl-precipitation.png)
+![Precipitation](docs/terrascope-precipitation.png)
 
 #### Precipitable Water
 This shows the total amount of water vapour sitting in a column of atmosphere — not rain
@@ -389,7 +389,7 @@ above it get coloured, brightest where moisture is most extreme. By default it u
 same colour palette as Precipitation, so the two layers visually reinforce each other when
 shown together, though a couple of other palettes are available if you'd prefer something
 distinct.
-![Precipitable Water](docs/atmos-gl-precipitable-water.png)
+![Precipitable Water](docs/terrascope-precipitable-water.png)
 
 #### Isobars
 The cornerstone of meteorology it shows what the pressure is doing in the atmosphere
@@ -404,7 +404,7 @@ speed heatmap, so you can see both direction and intensity of the wind at a glan
 layer is quite good paired with isobars where you can see the effect of differing air
 pressure. If you want to see Precipitation at the same time as Wind then I recommend
 you set `Heatmap opacity` of the underlying wind speed canvas to zero.
-![Wind](docs/atmos-gl-wind.png)
+![Wind](docs/terrascope-wind.png)
 
 #### Jet Stream
 The high-altitude core of fastest wind (around the 250mb level), shown as animated
@@ -422,7 +422,7 @@ gets quite interesting when you watch waves interacting with a storm, or a tsuna
 eventuates from an earthquake. Unlike Wind's heatmap it doesn't cover landmasses, so it's
 usually safe to leave showing alongside other layers rather than needing `Heatmap opacity`
 zeroed out.
-![Waves](docs/atmos-gl-waves.png)
+![Waves](docs/terrascope-waves.png)
 
 #### Storm Tracks
 A storm is depicted as a track history followed by a prediction cone showing where
@@ -447,7 +447,7 @@ the same comma-delimited columns.
 
 There are a lot of configurable items on the panel for storms, so you can get
 these looking how you like to see them.
-![Storms](docs/atmos-gl-storms.png)
+![Storms](docs/terrascope-storms.png)
 
 #### Lightning
 Lightning strikes are of course very brief, so we need a shorter expiry for them to
@@ -458,7 +458,7 @@ We also have a colour code to give an idea of timing:
 * ![Bolt New](ui/images/bolt_white.png) Strikes within the last 15 minutes
 * ![Bolt New](ui/images/bolt_yellow.png) Within the last hour
 * ![Bolt New](ui/images/bolt_red.png) Older than an hour (but not yet expired)
-![Lightning](docs/atmos-gl-lightning.png)
+![Lightning](docs/terrascope-lightning.png)
 
 ### Events
 These are one-off events and cover Earthquakes and Volcanoes.
@@ -471,7 +471,7 @@ those older. You can set the `Recent activity hours` which determines this switc
 the configuration UI. The expiry hours can also be set there. Symbols:
 * ![EQ recent](ui/images/earthquake_new.png) Recent earthquake activity
 * ![EQ older](ui/images/earthquake_old.png) Older earthquakes
-![Earthquakes](docs/atmos-gl-quakes.png)
+![Earthquakes](docs/terrascope-quakes.png)
 
 #### Volcanoes
 Rather than a static historical catalog, this is an event-driven feed of currently
@@ -491,7 +491,7 @@ Hover a marker for its country, activity type and report description, plus — f
 volcanoes HANS is watching — its USGS alert level and colour code. A volcano drops off
 the map automatically once it's no longer reported as active in either source (after 14
 days of inactivity), so there's nothing to filter or configure beyond `Icon zoom`.
-![Volcanoes](docs/atmos-gl-volcanoes.png)
+![Volcanoes](docs/terrascope-volcanoes.png)
 
 ##### Smoke Plume
 Also in Volcano Properties, `Show Smoke Plume` overlays a global, volcano-specific SO2
@@ -506,7 +506,7 @@ all some of the time — CAMS only populates this variable when its model detect
 volcanic SO2 somewhere on the planet, so an empty overlay is telling you exactly
 that, not a stale or broken layer. Like Air Quality, it needs a
 [Copernicus CDS/ADS API Key](#copernicus-cdsads-api-key).
-![Volcanoes](docs/atmos-gl-volcanoes-smoke-plume.png)
+![Volcanoes](docs/terrascope-volcanoes-smoke-plume.png)
 
 #### Wildfires
 If you have a [NASA FIRMS API Key](#nasa-firms-api-key) then you can enable the
@@ -521,7 +521,7 @@ That said it does provide a very interesting view of how dry the vegetation is a
 the globe and hence how high the fire risk is, as well as highlighting areas where
 fires are most probably burning. When you see a group of many together spread across
 a line or in a cluster, there is a high probability is is a wildfire.
-![Wildfires](docs/atmos-gl-wildfires.png)
+![Wildfires](docs/terrascope-wildfires.png)
 
 #### World Events
 Sourced from the [GDELT Project](https://www.gdeltproject.org)'s real-time Event
@@ -614,7 +614,7 @@ colourising the whole globe. All four variables render every cycle, so switching
 between them in the config UI applies instantly, no render wait. Colours follow the
 familiar green → yellow → orange → red → purple AQI convention used by most phone
 weather apps' air-quality widgets.
-![Air Quality](docs/atmos-gl-air-quality.png)
+![Air Quality](docs/terrascope-air-quality.png)
 
 #### Flood Risk
 A land-only layer with two independently-sourced modes sharing one `Mode` selector — they
@@ -662,21 +662,21 @@ no problem to leave on alongside any of these.
 #### SST
 Sea Surface Temperature, sourced straight from NOAA's data. A fascinating visualisation
 of what's happening across our oceans. Here is an example showing `Absolute SST`.
-![SST Absolute](docs/atmos-gl-sst-absolute.png)
+![SST Absolute](docs/terrascope-sst-absolute.png)
 But there is another mode available `Anomaly SST` which shows the variation from historical
 `normal` for sea surface temperature. Here's an example of that view:
-![SST Anomaly](docs/atmos-gl-sst-anomaly.png)
+![SST Anomaly](docs/terrascope-sst-anomaly.png)
 
 #### Air Temperature
 Air/land temperatures are a measure of what's going on in our atmosphere, resolved
 globally at the same grid resolution as everything else here.
-![Air Temperature](docs/atmos-gl-air-temperature.png)
+![Air Temperature](docs/terrascope-air-temperature.png)
 
 #### Ocean Currents
 These are depicted as curves with arrows showing the flows going on in our oceans
 on a real-time basis. This is one layer which could be shown together with others
 such as Isobars, Clouds and Precipitation as it isn't a colouration layer.
-![Ocean Curents](docs/atmos-gl-ocean-currents.png)
+![Ocean Curents](docs/terrascope-ocean-currents.png)
 
 #### Ozone Layer
 Another interesting climate layer to have a look at. There are a couple of palettes to
@@ -685,7 +685,7 @@ stands for "Dobson Units" which is what the ozone layer density is measured in. 
 of `220.0` is considered the threshold for a "hole" in the ozone layer. Any ozone reading
 below that setting is coloured (brightest at the very worst readings), and anything above
 it fades to a dim, near-transparent "safe" tone — so you only really see the problem areas.
-![Ozone](docs/atmos-gl-ozone.png)
+![Ozone](docs/terrascope-ozone.png)
 
 #### Storm Watch
 This layer shows where there is a likelihood of a storm forming. It uses the CAPE
@@ -697,7 +697,7 @@ amount of energy required to overcome the negatively buoyant, stable "cap" or
 parcel must break through before it can tap into the CAPE (Convective Available
 Potential Energy) above it. Combining both gives us a reasonable idea of the
 actual potential for storm formation.
-![Storm Watch](docs/atmos-gl-stormwatch.png)
+![Storm Watch](docs/terrascope-stormwatch.png)
 
 #### Greenhouse Gases (CO2/CH4)
 Needs a [Copernicus CDS/ADS API Key](#copernicus-cdsads-api-key). Shows global CO2 or
@@ -728,7 +728,7 @@ other vessel types.
 Smaller vessels only appear once you're zoomed in reasonably close, with progressively
 larger ones visible from further out — this keeps busy shipping lanes from turning into
 an unreadable wall of icons at low zoom.
-![Shipping](docs/atmos-gl-shipping.png)
+![Shipping](docs/terrascope-shipping.png)
 
 #### Shipping Data Acquisition
 Ships broadcast data in the form of messages continuously at regular intervals. The main
@@ -771,7 +771,7 @@ altitude (once one is set and reachable), ground speed, heading and ICAO hex cod
 Shipping, low-altitude and on-the-ground traffic only reveals itself once you're zoomed
 in reasonably close, so busy airspace around major airports doesn't turn into a wall of
 icons from further out.
-![Flight Radar](docs/atmos-gl-flightradar.png)
+![Flight Radar](docs/terrascope-flightradar.png)
 
 #### Flight Radar Data Acquisition
 Like every other layer, Flight Radar is now backed by a `data_collector` process and a
@@ -823,7 +823,7 @@ enable something don't expect to be seeing anything on the globe for a while. If
 everything enabled the system is configured to be a light footprint in terms of remote
 download requests, so all you scarifice there is some disk space. That said, if you are
 genuinely never going to look at some of the data, it makes no sense to collect it.
-![Data Status](docs/atmos-gl-conf-status.png)
+![Data Status](docs/terrascope-conf-status.png)
 
 If you're running on a small VPS or a machine you don't want pegged, the `Global` tab's
 `Performance tier` setting (Low/Medium/High) caps how many layers `layer_builder` renders
@@ -844,7 +844,7 @@ the groups currently downloaded from Celestrak: `resource`, `science`, `stations
 `weather`. You can see what's in those by browsing to the following URL, replacing `{group}`
 with one of those 4 group names:
     https://celestrak.org/NORAD/elements/gp.php?GROUP={group}&FORMAT=tle
-![Satellites](docs/atmos-gl-satellites.png)
+![Satellites](docs/terrascope-satellites.png)
 
 ### World Data
 The `World Data` section (its own group in the `Show` tab, and its own settings tab) is
@@ -917,7 +917,7 @@ section aims to provide you with a few helpful instructions.
 ### Clone the Repository
 
     cd /your/preferred/workspace
-    git clone -v https://github.com/paulwaite87/atmos-gl
+    git clone -v https://github.com/paulwaite87/terrascope
 
 After that, most things can be done via the Makefile. To see what is available:
 
@@ -939,12 +939,12 @@ Gets your stack running (an alias for `docker compose up -d`). And to stop it:
 
 Once running, browse to `http://localhost:8180` for the live globe.
 
-If you change something in `config/atmos-gl.json` by hand rather than through the web UI,
+If you change something in `config/terrascope.json` by hand rather than through the web UI,
 or if you just want to restart the backend services:
 
     make reload
 
-`make prod`/`make prod-down` do the same job as `atmos-gl.sh start`/`stop` — running exactly
+`make prod`/`make prod-down` do the same job as `terrascope.sh start`/`stop` — running exactly
 as a package consumer would, against the published images rather than a local build.
 
 ### Logging
@@ -1014,7 +1014,7 @@ to clone the repo, update the code and give us a pull request!
 ### Regions
 The database will be seeded with a few regions, which is a legacy thing from before this
 project forked from `worldmap-desktop`. It serves no real purpose now except to provide
-a breakdown of ships and lightning strikes per region when you do `./atmos-gl.sh status`.
+a breakdown of ships and lightning strikes per region when you do `./terrascope.sh status`.
 
 However, if you want to add a region, we will need to get nerdy and insert data into your 
 database. The format of an SQL statement which will do just that is:
@@ -1032,12 +1032,12 @@ The co-ordinate ordering is already correct. Give your INSERT a new appropriate 
 (replacing 'My Region', then copy that SQL statement onto your clipboard and execute
 this command:
 
-    docker compose exec atmos_gl_db psql -U agl atmos_gl
+    docker compose exec terrascope_db psql -U agl terrascope
 
 (If you've cloned the repo, `make psql` is a shortcut for this.)
 
-That will get you into the Atmos GL database PSQL shell. Paste your INSERT into that and
-hit enter. Bingo, a brand new region. The Atmos GL configurator should read your new region
+That will get you into the Terrascope database PSQL shell. Paste your INSERT into that and
+hit enter. Bingo, a brand new region. The Terrascope configurator should read your new region
 and allow you to select it.
 
 Just hit Ctrl-d to get out of the database.

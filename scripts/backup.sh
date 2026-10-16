@@ -2,10 +2,10 @@
 # Shared by Makefile (dev) and Makefile.prod's `backup` targets.
 set -euo pipefail
 
-DB_SERVICE="${DB_SERVICE:-atmos_gl_db}"
+DB_SERVICE="${DB_SERVICE:-terrascope_db}"
 DB_USER="${DB_USER:-agl}"
-DB_NAME="${DB_NAME:-atmos_gl}"
-DUMP_FILE="${DUMP_FILE:-atmos_gl_dump.sql}"
+DB_NAME="${DB_NAME:-terrascope}"
+DUMP_FILE="${DUMP_FILE:-terrascope_dump.sql}"
 COMPOSE_ARGS="${COMPOSE_ARGS:-}"
 
 echo "Ensuring $DB_NAME database is running"

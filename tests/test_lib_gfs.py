@@ -9,7 +9,7 @@ input, not an invented shape.
 """
 from unittest.mock import patch, MagicMock
 
-from atmos_gl.lib.gfs import ATMOS_TARGETS, gfs_index_ranges
+from terrascope.lib.gfs import ATMOS_TARGETS, gfs_index_ranges
 
 
 IDX_FIXTURE = "\n".join(
@@ -40,7 +40,7 @@ def test_atmos_targets_includes_jetstream_250mb_entries():
     assert ":VGRD:250 mb:" in ATMOS_TARGETS
 
 
-@patch("atmos_gl.lib.gfs.requests.get", return_value=_mock_response())
+@patch("terrascope.lib.gfs.requests.get", return_value=_mock_response())
 def test_gfs_index_ranges_resolves_jetstream_targets(mock_get):
     ranges = gfs_index_ranges(
         "https://example/gfs.t00z.pgrb2.0p25.f024",
@@ -50,7 +50,7 @@ def test_gfs_index_ranges_resolves_jetstream_targets(mock_get):
     assert ranges == [(219700223, 220306375), (220306376, 230768854)]
 
 
-@patch("atmos_gl.lib.gfs.requests.get", return_value=_mock_response())
+@patch("terrascope.lib.gfs.requests.get", return_value=_mock_response())
 def test_gfs_index_ranges_does_not_confuse_250mb_with_other_levels(mock_get):
     """':UGRD:250 mb:' must not match the 200mb or planetary-boundary-layer lines --
     a naive substring target (e.g. just '250') would."""
@@ -61,7 +61,7 @@ def test_gfs_index_ranges_does_not_confuse_250mb_with_other_levels(mock_get):
     assert ranges == [(219700223, 220306375)]
 
 
-@patch("atmos_gl.lib.gfs.requests.get", return_value=_mock_response())
+@patch("terrascope.lib.gfs.requests.get", return_value=_mock_response())
 def test_gfs_index_ranges_still_resolves_pre_existing_wind_targets(mock_get):
     """Regression guard: the new jet-core targets must not disturb resolution of the
     existing 10m-wind targets sharing the same .idx file."""

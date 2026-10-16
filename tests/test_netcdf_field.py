@@ -16,7 +16,7 @@ reduce="mean" would never have fired on the actual valid_time dimension.
 import numpy as np
 import xarray as xr
 
-from atmos_gl.lib.netcdf_field import load_field
+from terrascope.lib.netcdf_field import load_field
 
 
 def _write_netcdf(path, *, time_dim, time_values, data_2d_per_step, lat, lon, var="tcco2"):

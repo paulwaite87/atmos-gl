@@ -12,7 +12,7 @@ this extraction.
 """
 from unittest.mock import MagicMock, patch
 
-from atmos_gl.tasks.single_hour_scalar import SingleHourScalarUpdater
+from terrascope.tasks.single_hour_scalar import SingleHourScalarUpdater
 
 
 class _StubUpdater(SingleHourScalarUpdater):
@@ -108,7 +108,7 @@ def test_constructor_sets_shared_fields_from_product():
         self.settings = {"level_of_detail": 3}
 
     with patch(
-        "atmos_gl.tasks.single_hour_scalar.Updater.__init__", fake_updater_init
+        "terrascope.tasks.single_hour_scalar.Updater.__init__", fake_updater_init
     ):
         u = SingleHourScalarUpdater(
             config=MagicMock(), product="precipitation", map_data=MagicMock()

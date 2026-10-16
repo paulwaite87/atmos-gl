@@ -10,7 +10,7 @@ import pytest
 import rasterio
 from rasterio.transform import from_origin
 
-from atmos_gl.lib import population_density as pd
+from terrascope.lib import population_density as pd
 
 
 def _write_geotiff(path, data, west, north, res, nodata=-200.0):

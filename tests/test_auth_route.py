@@ -9,11 +9,11 @@ check IS covered here, since it 404s before any client/network interaction happe
 require_login (issue #305/#314) is exercised via its real consumers instead
 (tests/test_me_settings_route.py's 401 cases), matching how require_admin itself is
 only tested via test_admin_gated_routes.py's real gated routes, not in isolation."""
-from atmos_gl.db.user_adapter import FakeUserAdapter
-from atmos_gl.lib.auth import SESSION_COOKIE_NAME
-from atmos_gl.lib.rate_limit import RateLimiter
-from atmos_gl.routes.auth import get_user_adapter
-from atmos_gl.api import app
+from terrascope.db.user_adapter import FakeUserAdapter
+from terrascope.lib.auth import SESSION_COOKIE_NAME
+from terrascope.lib.rate_limit import RateLimiter
+from terrascope.routes.auth import get_user_adapter
+from terrascope.api import app
 
 
 def test_me_reports_unauthenticated_with_no_cookie(client):
@@ -103,7 +103,7 @@ def test_login_429s_after_the_ip_rate_limit_is_exceeded(client):
     whitelist tests above -- the only part of these routes testable without a live
     OAuth round-trip): the rate-limit dependency runs before the route body's own
     provider check, so this still proves the wiring without touching the network."""
-    from atmos_gl.routes.auth import get_login_rate_limiter
+    from terrascope.routes.auth import get_login_rate_limiter
 
     limiter = RateLimiter(max_requests=1, window_seconds=60)
     app.dependency_overrides[get_login_rate_limiter] = lambda: limiter
@@ -117,7 +117,7 @@ def test_login_429s_after_the_ip_rate_limit_is_exceeded(client):
 
 
 def test_login_and_callback_share_the_same_ip_rate_limit_budget(client):
-    from atmos_gl.routes.auth import get_login_rate_limiter
+    from terrascope.routes.auth import get_login_rate_limiter
 
     limiter = RateLimiter(max_requests=1, window_seconds=60)
     app.dependency_overrides[get_login_rate_limiter] = lambda: limiter

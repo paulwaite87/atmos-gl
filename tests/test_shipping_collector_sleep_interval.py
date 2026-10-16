@@ -3,7 +3,7 @@
 "Sleep interval" slider (shipping_collector.sleep_interval, 5-30) is stored/edited in
 MINUTES, but run()'s asyncio.sleep() and heartbeat cadence need seconds.
 """
-from atmos_gl.collectors.shipping import ShippingCollector
+from terrascope.collectors.shipping import ShippingCollector
 
 
 def make_collector(settings=None):

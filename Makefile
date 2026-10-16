@@ -1,17 +1,17 @@
-# Makefile for Atmos GL Project Suite
+# Makefile for Terrascope Project Suite
 .PHONY: run stop build rebuild start-desktop-fg stop-desktop psql logs clean purge backup restore refresh-map test bash status help bootstrap-config migrate collect
 
 # Variables
 DB_USER = agl
 DB_PASS = agl
-DB_NAME = atmos_gl
-DB_SERVICE = atmos_gl_db
+DB_NAME = terrascope
+DB_SERVICE = terrascope_db
 # Host port for `make migrate`. Empty = ask Compose where the DB is actually published:
 # docker-compose.yml uses 15432, but the dev docker-compose.override.yml remaps it to
 # 25432 so a dev stack can run alongside prod. Set it to force a port.
 DB_PORT ?=
 BUILDER_SERVICE = layer_builder
-DUMP_FILE = atmos_gl_dump.sql
+DUMP_FILE = terrascope_dump.sql
 
 export DOCKER_UID := $(shell id -u)
 export DOCKER_GID := $(shell id -g)
@@ -30,7 +30,7 @@ endif
 stop:
 	docker compose down
 
-## bootstrap-config: Ensure live config/atmos-gl.json, .env, and docker-compose.override.yml exist, and keep atmos-gl.json's shape synced with its template (adds template keys you're missing, drops keys the template no longer defines, never touches the value of anything already there)
+## bootstrap-config: Ensure live config/terrascope.json, .env, and docker-compose.override.yml exist, and keep terrascope.json's shape synced with its template (adds template keys you're missing, drops keys the template no longer defines, never touches the value of anything already there)
 # Shared with Makefile.prod via scripts/bootstrap-config.sh (--with-override adds the
 # dev-only docker-compose.override.yml step prod has no equivalent of) -- see that
 # script's own comment for why this used to live separately in each Makefile.
@@ -100,11 +100,11 @@ lint-fix: lint-format
 	@echo "Fixing issues.."
 	docker compose exec $(BUILDER_SERVICE) uv run ruff check --fix src
 
-## backup: Backup database to local atmos_gl_dump.sql file
+## backup: Backup database to local terrascope_dump.sql file
 backup:
 	@DB_SERVICE=$(DB_SERVICE) DB_USER=$(DB_USER) DB_NAME=$(DB_NAME) DUMP_FILE=$(DUMP_FILE) bash scripts/backup.sh
 
-## restore: Restores the local atmos_gl_dump.sql backup
+## restore: Restores the local terrascope_dump.sql backup
 restore:
 	@DB_SERVICE=$(DB_SERVICE) DB_USER=$(DB_USER) DB_NAME=$(DB_NAME) DUMP_FILE=$(DUMP_FILE) BACKEND_SERVICES="$(BACKEND_SERVICES)" bash scripts/restore.sh
 
@@ -128,7 +128,7 @@ psql:
 
 ## migrate: Apply alembic migrations to the local dev database (via uv, outside Docker)
 migrate:
-	@echo "Ensuring atmos_gl database is running"
+	@echo "Ensuring terrascope database is running"
 	@docker compose up $(DB_SERVICE) -d --wait
 	@port="$(DB_PORT)"; \
 	[ -n "$$port" ] || port=$$(docker compose port $(DB_SERVICE) 5432 | sed 's/.*://'); \
@@ -138,8 +138,8 @@ migrate:
 ## collect: Run one collector now, outside its schedule: make collect name=world_events [force=1]
 collect:
 	@[ -n "$(name)" ] || { echo "usage: make collect name=<collector> [force=1]  (make collect name=? lists them)"; exit 2; }
-	@docker compose exec data_collector python -m atmos_gl.collectors.run_once \
-		--config /opt/project/config/atmos-gl.json $(name) $(if $(force),--force)
+	@docker compose exec data_collector python -m terrascope.collectors.run_once \
+		--config /opt/project/config/terrascope.json $(name) $(if $(force),--force)
 
 ## status: Database Status Report
 status:

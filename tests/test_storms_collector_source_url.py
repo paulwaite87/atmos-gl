@@ -6,7 +6,7 @@ CollectorBase.source_url()'s single-datasource_key lookup to try both, JTWC firs
 """
 from unittest.mock import MagicMock
 
-from atmos_gl.collectors.storms import StormsCollector
+from terrascope.collectors.storms import StormsCollector
 
 
 def make_collector(jtwc_url=None, nhc_url=None):

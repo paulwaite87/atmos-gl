@@ -31,7 +31,7 @@ import { linkProg } from './_particlegl_primitives.js';
  *
  * `sectionKey` (string) — the join-key for this layer's MapLibre source/layer ids
  * AND the config section this reads from `/api/config` — the same bare string
- * threaded through `ALL_LAYERS`/`TASK_CLASSES`/`config/atmos-gl.json`, unenforced
+ * threaded through `ALL_LAYERS`/`TASK_CLASSES`/`config/terrascope.json`, unenforced
  * (see docs/conventions/layers.md's join-key fragility note).
  *
  * `initialConfig` (object) — this layer's own section's config values, used for the

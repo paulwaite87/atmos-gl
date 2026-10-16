@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 
-from atmos_gl.tasks.currents import CurrentsUpdater
+from terrascope.tasks.currents import CurrentsUpdater
 
 
 # ---- land mask wiring ------------------------------------------------------------
@@ -17,13 +17,13 @@ from atmos_gl.tasks.currents import CurrentsUpdater
 # just confirms CurrentsUpdater wires one up correctly, not the logic again.
 
 def test_init_wires_a_land_mask_cache_labelled_currents():
-    from atmos_gl.lib.coastline import LandMaskCache
+    from terrascope.lib.coastline import LandMaskCache
 
     def fake_updater_init(self, config, section, map_data):
         self.section = section.lower()
         self.settings = {}
 
-    with patch("atmos_gl.tasks.common.Updater.__init__", fake_updater_init):
+    with patch("terrascope.tasks.common.Updater.__init__", fake_updater_init):
         u = CurrentsUpdater(config=MagicMock(), map_data=MagicMock())
 
     assert isinstance(u._land_mask, LandMaskCache)
@@ -50,9 +50,9 @@ def test_plot_masks_land_cells_as_nan_from_the_land_mask_as_is():
     u.get_output_path_for_hour = MagicMock(return_value="/data/currents_f003.png")
 
     with patch(
-        "atmos_gl.tasks.currents.nearest_fill_and_regrid_uv",
+        "terrascope.tasks.currents.nearest_fill_and_regrid_uv",
         return_value=(new_lats, new_lons, u_arr.copy(), v_arr.copy()),
-    ), patch("atmos_gl.tasks.currents.encode_uv") as m_encode:
+    ), patch("terrascope.tasks.currents.encode_uv") as m_encode:
         u.plot(field0={"u": u_arr, "v": v_arr, "lat": None, "lon": None}, state=MagicMock(fhour=3))
 
     encoded_u = m_encode.call_args.args[0]

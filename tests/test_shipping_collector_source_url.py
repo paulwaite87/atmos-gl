@@ -6,7 +6,7 @@ the two can no longer silently disagree.
 """
 from unittest.mock import MagicMock
 
-from atmos_gl.collectors.shipping import ShippingCollector
+from terrascope.collectors.shipping import ShippingCollector
 
 
 def make_collector(url=None):

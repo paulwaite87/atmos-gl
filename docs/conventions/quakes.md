@@ -7,7 +7,7 @@ just a collector keeping a DB table fresh, read back live as GeoJSON.
 
 ## Backend: collector only
 
-`QuakeCollector` (`src/atmos_gl/collectors/quakes.py`) fetches the USGS earthquake summary
+`QuakeCollector` (`src/terrascope/collectors/quakes.py`) fetches the USGS earthquake summary
 CSV (HEAD-checked first via `_head_changed_or_default`, so an unchanged file costs one
 cheap request instead of a full download every cycle), filters by `min_mag`, and upserts
 rows into the `earthquakes` table via `QuakeAdapter`. That's the entire backend — there is
@@ -17,7 +17,7 @@ to render.
 This is the shape shared by volcanoes, world_events, lightning, storms,
 shipping, satellites, flightradar, terminator, and landmass — each a collector-only DB
 sync, no render task, differing only in their data source and DB schema (see
-`src/atmos_gl/db/models.py`'s `Earthquake`, `VolcanicActivity`, `Fire`, etc.).
+`src/terrascope/db/models.py`'s `Earthquake`, `VolcanicActivity`, `Fire`, etc.).
 
 ## Frontend: `_feedhelpers.js` + `_hoverpopup.js`
 

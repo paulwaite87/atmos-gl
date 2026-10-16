@@ -6,8 +6,8 @@ were previously discarded entirely (no popup row, no DB column)."""
 from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
-from atmos_gl.collectors.base import CollectorBase
-from atmos_gl.collectors.storms import StormsCollector
+from terrascope.collectors.base import CollectorBase
+from terrascope.collectors.storms import StormsCollector
 
 
 def make_collector():

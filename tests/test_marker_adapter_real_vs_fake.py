@@ -14,13 +14,13 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.orm import sessionmaker
 
-from atmos_gl.db.marker_adapter import MarkerAdapter, FakeMarkerAdapter
+from terrascope.db.marker_adapter import MarkerAdapter, FakeMarkerAdapter
 
 
 def _make_adapter(kind, real_db):
     if kind == "real":
         TestSession = sessionmaker(bind=real_db)
-        return MarkerAdapter(), patch("atmos_gl.db.marker_adapter.Session", TestSession)
+        return MarkerAdapter(), patch("terrascope.db.marker_adapter.Session", TestSession)
     return FakeMarkerAdapter(), contextlib.nullcontext()
 
 

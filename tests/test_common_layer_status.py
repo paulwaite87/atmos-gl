@@ -14,7 +14,7 @@ regardless of when the suite runs.
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock
 
-from atmos_gl.tasks.common import Updater
+from terrascope.tasks.common import Updater
 
 
 def make_bare_updater(section="isobars", settings=None, status_product=None):

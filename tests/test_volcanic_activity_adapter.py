@@ -1,6 +1,6 @@
 import json
 
-from atmos_gl.db.volcanic_activity_adapter import FakeVolcanicActivityAdapter
+from terrascope.db.volcanic_activity_adapter import FakeVolcanicActivityAdapter
 
 
 def _geojson(adapter):

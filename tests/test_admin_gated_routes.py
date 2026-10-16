@@ -11,7 +11,7 @@ than living only implicitly by omission.
 
 Every route that reads or writes config (all of routes/config.py, plus
 routes/status.py's two POST endpoints) is patched to a throwaway tmp_path config
-file, NEVER the real config/atmos-gl.json -- these are route-level tests exercised
+file, NEVER the real config/terrascope.json -- these are route-level tests exercised
 via the real app, and load_config()/config.save() do real file I/O against
 CONFIG_PATH with no adapter seam to fake, unlike the DB-backed routes below.
 """
@@ -20,12 +20,12 @@ from unittest.mock import patch
 
 import pytest
 
-from atmos_gl.api import app
-from atmos_gl.db.process_status_adapter import FakeProcessStatusAdapter
-from atmos_gl.lib.auth import SESSION_COOKIE_NAME
-from atmos_gl.lib.config import AtmosGLConfig
-from atmos_gl.routes.auth import get_user_adapter
-from atmos_gl.routes.status import (
+from terrascope.api import app
+from terrascope.db.process_status_adapter import FakeProcessStatusAdapter
+from terrascope.lib.auth import SESSION_COOKIE_NAME
+from terrascope.lib.config import TerrascopeConfig
+from terrascope.routes.auth import get_user_adapter
+from terrascope.routes.status import (
     get_collector_classes,
     get_cache_collector_classes,
     get_field_collector_classes,
@@ -33,7 +33,7 @@ from atmos_gl.routes.status import (
     get_task_classes,
     get_process_status_adapter as status_get_process_status_adapter,
 )
-from atmos_gl.routes.system_status import (
+from terrascope.routes.system_status import (
     get_process_status_adapter as system_status_get_process_status_adapter,
 )
 from tests.conftest import make_signed_in_session
@@ -69,16 +69,16 @@ def _sign_in(client, *, is_admin: bool) -> None:
 def _stub_out_infra(tmp_path):
     """Everything the "admin admitted" case needs so each route can run its real body
     against a throwaway config file and empty/fake registries, never real Postgres or
-    the real config/atmos-gl.json. Returns the list of started patchers (caller stops
+    the real config/terrascope.json. Returns the list of started patchers (caller stops
     them)."""
-    tmp_config = tmp_path / "atmos-gl.json"
+    tmp_config = tmp_path / "terrascope.json"
     tmp_config.write_text(json.dumps({"common": {}}))
-    cfg = AtmosGLConfig(str(tmp_config))
+    cfg = TerrascopeConfig(str(tmp_config))
 
     patchers = [
-        patch("atmos_gl.routes.config.load_config", return_value=cfg),
-        patch("atmos_gl.routes.status.load_config", return_value=cfg),
-        patch("atmos_gl.routes.system_status.load_config", return_value=cfg),
+        patch("terrascope.routes.config.load_config", return_value=cfg),
+        patch("terrascope.routes.status.load_config", return_value=cfg),
+        patch("terrascope.routes.system_status.load_config", return_value=cfg),
     ]
     for p in patchers:
         p.start()
@@ -122,11 +122,11 @@ def test_gated_route_admits_a_signed_in_admin(client, method, path, tmp_path):
 def test_public_config_endpoint_stays_unauthenticated(client, tmp_path):
     """The one explicit "must not regress" acceptance criterion: the map's own
     bootstrap and timeline_boot.js's live poll both depend on this staying public.
-    Patched to a throwaway config, not the real config/atmos-gl.json (which may not
+    Patched to a throwaway config, not the real config/terrascope.json (which may not
     exist at all on a fresh checkout -- see docs/conventions/settings.md)."""
-    tmp_config = tmp_path / "atmos-gl.json"
+    tmp_config = tmp_path / "terrascope.json"
     tmp_config.write_text(json.dumps({"common": {}}))
-    with patch("atmos_gl.routes.config.load_config", return_value=AtmosGLConfig(str(tmp_config))):
+    with patch("terrascope.routes.config.load_config", return_value=TerrascopeConfig(str(tmp_config))):
         resp = client.get("/api/config")
     assert resp.status_code == 200
 
@@ -135,8 +135,8 @@ def test_public_layer_availability_endpoint_stays_unauthenticated(client, tmp_pa
     """Same "must not regress" contract as GET /api/config above: the live globe's
     _reconcile.js poll and both settings pages' Show-tab graying all depend on this
     staying public, unauthenticated (see lib/layer_availability.py's docstring)."""
-    tmp_config = tmp_path / "atmos-gl.json"
+    tmp_config = tmp_path / "terrascope.json"
     tmp_config.write_text(json.dumps({"data_collector": {"enabled": True}}))
-    with patch("atmos_gl.routes.layer_availability.load_config", return_value=AtmosGLConfig(str(tmp_config))):
+    with patch("terrascope.routes.layer_availability.load_config", return_value=TerrascopeConfig(str(tmp_config))):
         resp = client.get("/api/layer_availability")
     assert resp.status_code == 200

@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
-from atmos_gl.lib.flood_risk import (
+from terrascope.lib.flood_risk import (
     JRC_MOSAIC_GRID_STEP_DEG,
     MODIS_FLOOD_VALUE,
     build_jrc_mosaic_grid,
@@ -151,7 +151,7 @@ def test_ensure_jrc_tile_extents_cached_downloads_and_caches_when_not_present(tm
     features = [_tile_feature(1, "N70_W180", -180.0, 60.0, -170.0, 70.0)]
     valid_bytes = _make_tile_extents_geojson_bytes(features)
 
-    with patch("atmos_gl.lib.gfs.download_whole", return_value=valid_bytes) as mock_download:
+    with patch("terrascope.lib.gfs.download_whole", return_value=valid_bytes) as mock_download:
         path = ensure_jrc_tile_extents_cached()
 
     mock_download.assert_called_once()
@@ -166,7 +166,7 @@ def test_ensure_jrc_tile_extents_cached_skips_download_when_already_cached(tmp_p
     with open(dest, "wb") as f:
         f.write(b'{"type": "FeatureCollection", "features": []}')
 
-    with patch("atmos_gl.lib.gfs.download_whole") as mock_download:
+    with patch("terrascope.lib.gfs.download_whole") as mock_download:
         ensure_jrc_tile_extents_cached()
 
     mock_download.assert_not_called()
@@ -177,7 +177,7 @@ def test_ensure_jrc_tile_extents_cached_raises_and_leaves_no_file_on_corrupt_dow
 ):
     monkeypatch.setenv("HOME", str(tmp_path))
 
-    with patch("atmos_gl.lib.gfs.download_whole", return_value=b"not json at all"):
+    with patch("terrascope.lib.gfs.download_whole", return_value=b"not json at all"):
         with pytest.raises(Exception):
             ensure_jrc_tile_extents_cached()
 
@@ -192,7 +192,7 @@ def test_ensure_jrc_tile_extents_cached_raises_on_an_empty_feature_list(tmp_path
     permanently empty rather than retrying."""
     monkeypatch.setenv("HOME", str(tmp_path))
 
-    with patch("atmos_gl.lib.gfs.download_whole", return_value=_make_tile_extents_geojson_bytes([])):
+    with patch("terrascope.lib.gfs.download_whole", return_value=_make_tile_extents_geojson_bytes([])):
         with pytest.raises(Exception):
             ensure_jrc_tile_extents_cached()
 
@@ -203,7 +203,7 @@ def test_ensure_jrc_tile_cached_downloads_and_caches_when_not_present(tmp_path, 
     _write_tiny_reclass_tif(str(tif_path), np.array([[1, 2]], dtype=np.uint8), (0.0, 0.0, 10.0, 10.0))
     valid_bytes = tif_path.read_bytes()
 
-    with patch("atmos_gl.lib.gfs.download_whole", return_value=valid_bytes) as mock_download:
+    with patch("terrascope.lib.gfs.download_whole", return_value=valid_bytes) as mock_download:
         path = ensure_jrc_tile_cached(1, "N70_W180")
 
     mock_download.assert_called_once()
@@ -218,7 +218,7 @@ def test_ensure_jrc_tile_cached_skips_download_when_already_cached(tmp_path, mon
     with open(dest, "wb") as f:
         f.write(b"already-here")
 
-    with patch("atmos_gl.lib.gfs.download_whole") as mock_download:
+    with patch("terrascope.lib.gfs.download_whole") as mock_download:
         path = ensure_jrc_tile_cached(1, "N70_W180")
 
     mock_download.assert_not_called()
@@ -231,7 +231,7 @@ def test_ensure_jrc_tile_cached_raises_and_leaves_no_file_on_corrupt_download(tm
     interrupted mid-transfer for individual tiles."""
     monkeypatch.setenv("HOME", str(tmp_path))
 
-    with patch("atmos_gl.lib.gfs.download_whole", return_value=b"not a real tif"):
+    with patch("terrascope.lib.gfs.download_whole", return_value=b"not a real tif"):
         with pytest.raises(Exception):
             ensure_jrc_tile_cached(1, "N70_W180")
 
@@ -382,7 +382,7 @@ def test_ensure_modis_flood_tile_cached_downloads_and_writes_the_name_sidecar(tm
         "download_url": "https://example.test/tile.tif",
     }
 
-    with patch("atmos_gl.lib.gfs.download_whole", return_value=valid_bytes) as mock_download:
+    with patch("terrascope.lib.gfs.download_whole", return_value=valid_bytes) as mock_download:
         path = ensure_modis_flood_tile_cached(tile, "tok123")
 
     assert mock_download.call_args.kwargs["headers"] == {"Authorization": "Bearer tok123"}
@@ -398,7 +398,7 @@ def test_ensure_modis_flood_tile_cached_raises_and_leaves_no_file_on_corrupt_dow
         "download_url": "https://example.test/tile.tif",
     }
 
-    with patch("atmos_gl.lib.gfs.download_whole", return_value=b"not a real tif"):
+    with patch("terrascope.lib.gfs.download_whole", return_value=b"not a real tif"):
         with pytest.raises(Exception):
             ensure_modis_flood_tile_cached(tile, "tok123")
 
@@ -415,13 +415,13 @@ def test_prune_stale_modis_flood_tiles_removes_only_expired_tiles(tmp_path, monk
     }
     tif_path = tmp_path / "src.tif"
     _write_tiny_reclass_tif(str(tif_path), np.array([[0]], dtype=np.uint8), (0.0, 0.0, 10.0, 10.0))
-    with patch("atmos_gl.lib.gfs.download_whole", return_value=tif_path.read_bytes()):
+    with patch("terrascope.lib.gfs.download_whole", return_value=tif_path.read_bytes()):
         old_path = ensure_modis_flood_tile_cached(tile, "tok")
         fresh_path = ensure_modis_flood_tile_cached(
             {**tile, "h": 2, "filename": "fresh.tif"}, "tok"
         )
 
-    from atmos_gl.lib.flood_risk import MODIS_FLOOD_STALE_S
+    from terrascope.lib.flood_risk import MODIS_FLOOD_STALE_S
 
     old_time = time.time() - (MODIS_FLOOD_STALE_S + 3600)
     os.utime(old_path, (old_time, old_time))
@@ -445,7 +445,7 @@ def test_cached_modis_flood_tiles_parses_h_v_from_cache_filenames(tmp_path, monk
     tile = {"h": 3, "v": 4, "filename": "x.tif", "download_url": "https://example.test/tile.tif"}
     tif_path = tmp_path / "src.tif"
     _write_tiny_reclass_tif(str(tif_path), np.array([[0]], dtype=np.uint8), (0.0, 0.0, 10.0, 10.0))
-    with patch("atmos_gl.lib.gfs.download_whole", return_value=tif_path.read_bytes()):
+    with patch("terrascope.lib.gfs.download_whole", return_value=tif_path.read_bytes()):
         ensure_modis_flood_tile_cached(tile, "tok")
 
     tiles = cached_modis_flood_tiles()
@@ -479,7 +479,7 @@ def test_resample_modis_flood_tile_onto_grid_keeps_flood_within_adjacency_radius
     but not terrain-shadow-screened, so low-sun-angle terrain shadow gets
     misclassified as flood there. A Flood pixel exactly at the adjacency radius
     from water must still be kept."""
-    from atmos_gl.lib.flood_risk import MODIS_FLOOD_WATER_ADJACENCY_PX
+    from terrascope.lib.flood_risk import MODIS_FLOOD_WATER_ADJACENCY_PX
 
     row = [0] * 10
     row[0] = 1  # water
@@ -499,7 +499,7 @@ def test_resample_modis_flood_tile_onto_grid_drops_flood_beyond_adjacency_radius
     """A Flood pixel one step beyond MODIS_FLOOD_WATER_ADJACENCY_PX from the
     nearest water pixel is dropped -- this is exactly the NZ mountain-terrain
     false-positive case (see the "kept" test above)."""
-    from atmos_gl.lib.flood_risk import MODIS_FLOOD_WATER_ADJACENCY_PX
+    from terrascope.lib.flood_risk import MODIS_FLOOD_WATER_ADJACENCY_PX
 
     row = [0] * 10
     row[0] = 1  # water

@@ -11,7 +11,7 @@ import time
 
 import pytest
 
-from atmos_gl.collectors.lightning import (
+from terrascope.collectors.lightning import (
     LightningCollector,
     RateLimiter,
     build_grid,
@@ -20,7 +20,7 @@ from atmos_gl.collectors.lightning import (
     MAX_CALLS_PER_MONTH,
     SECONDS_PER_MONTH,
 )
-from atmos_gl.db.lightning_adapter import FakeLightningAdapter
+from terrascope.db.lightning_adapter import FakeLightningAdapter
 
 
 def make_collector(settings=None):

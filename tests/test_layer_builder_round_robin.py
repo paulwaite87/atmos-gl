@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from atmos_gl.layer_builder import (
+from terrascope.layer_builder import (
     MULTI_HOUR_SECTIONS,
     SINGLE_SHOT_SECTIONS,
     TASK_CLASSES,
@@ -24,7 +24,7 @@ from atmos_gl.layer_builder import (
     workers_for_tier,
     dispatchable_sections,
 )
-from atmos_gl.round_robin_order import RoundRobinOrder
+from terrascope.round_robin_order import RoundRobinOrder
 
 
 def test_multi_hour_and_single_shot_sections_partition_task_classes():
@@ -66,7 +66,7 @@ def test_workers_for_tier_defaults_unknown_tier_to_medium():
 
 
 def test_updater_class_unwraps_partial_bindings():
-    from atmos_gl.tasks.scalar_field import ScalarFieldUpdater
+    from terrascope.tasks.scalar_field import ScalarFieldUpdater
 
     assert _updater_class(TASK_CLASSES["ozone"]) is ScalarFieldUpdater
     assert _updater_class(TASK_CLASSES["isobars"]) is TASK_CLASSES["isobars"]
@@ -98,9 +98,9 @@ def test_render_worker_forwards_max_hours_and_returns_plotted_count():
     fake_updater.run.return_value = 1
     fake_cls = MagicMock(return_value=fake_updater)
 
-    with patch.dict("atmos_gl.layer_builder.TASK_CLASSES", {"fake": fake_cls}), \
-         patch("atmos_gl.layer_builder.AtmosGLConfig"), \
-         patch("atmos_gl.layer_builder.MapData"):
+    with patch.dict("terrascope.layer_builder.TASK_CLASSES", {"fake": fake_cls}), \
+         patch("terrascope.layer_builder.TerrascopeConfig"), \
+         patch("terrascope.layer_builder.MapData"):
         result = _render_worker("cfg.json", "fake", {}, max_hours=1)
 
     fake_updater.run.assert_called_once_with(max_hours=1)
@@ -115,9 +115,9 @@ def test_render_worker_reports_zero_plotted_on_none_return():
     fake_updater.run.return_value = None
     fake_cls = MagicMock(return_value=fake_updater)
 
-    with patch.dict("atmos_gl.layer_builder.TASK_CLASSES", {"fake": fake_cls}), \
-         patch("atmos_gl.layer_builder.AtmosGLConfig"), \
-         patch("atmos_gl.layer_builder.MapData"):
+    with patch.dict("terrascope.layer_builder.TASK_CLASSES", {"fake": fake_cls}), \
+         patch("terrascope.layer_builder.TerrascopeConfig"), \
+         patch("terrascope.layer_builder.MapData"):
         result = _render_worker("cfg.json", "fake", {})
 
     assert result == ("fake", None, 0)
@@ -126,9 +126,9 @@ def test_render_worker_reports_zero_plotted_on_none_return():
 def test_render_worker_catches_exceptions():
     fake_cls = MagicMock(side_effect=RuntimeError("boom"))
 
-    with patch.dict("atmos_gl.layer_builder.TASK_CLASSES", {"fake": fake_cls}), \
-         patch("atmos_gl.layer_builder.AtmosGLConfig"), \
-         patch("atmos_gl.layer_builder.MapData"):
+    with patch.dict("terrascope.layer_builder.TASK_CLASSES", {"fake": fake_cls}), \
+         patch("terrascope.layer_builder.TerrascopeConfig"), \
+         patch("terrascope.layer_builder.MapData"):
         section, error, plotted = _render_worker("cfg.json", "fake", {})
 
     assert section == "fake"
@@ -501,7 +501,7 @@ async def test_run_dispatch_cycle_stops_once_nothing_reports_progress():
 def test_handle_results_records_dispatch_timestamp_on_success():
     lb = make_bare_layer_builder()
 
-    with patch("atmos_gl.layer_builder.time.time", return_value=1000.0):
+    with patch("terrascope.layer_builder.time.time", return_value=1000.0):
         lb._handle_results(["isobars"], [("isobars", None, 1)])
 
     assert lb._last_dispatch_ts == {"isobars": 1000.0}
@@ -513,7 +513,7 @@ def test_handle_results_records_dispatch_timestamp_on_a_failed_task():
     from dispatch entirely, not one that dispatches and fails."""
     lb = make_bare_layer_builder()
 
-    with patch("atmos_gl.layer_builder.time.time", return_value=1000.0):
+    with patch("terrascope.layer_builder.time.time", return_value=1000.0):
         lb._handle_results(["isobars"], [("isobars", "RuntimeError('boom')", 0)])
 
     assert lb._last_dispatch_ts == {"isobars": 1000.0}
@@ -524,7 +524,7 @@ def test_handle_results_records_dispatch_timestamp_on_a_broken_pool():
 
     lb = make_bare_layer_builder()
 
-    with patch("atmos_gl.layer_builder.time.time", return_value=1000.0):
+    with patch("terrascope.layer_builder.time.time", return_value=1000.0):
         lb._handle_results(["isobars"], [BrokenProcessPool("worker died")])
 
     assert lb._last_dispatch_ts == {"isobars": 1000.0}
@@ -536,7 +536,7 @@ def test_handle_results_does_not_track_single_shot_sections():
     _last_dispatch_ts at all, not even as a harmless extra entry."""
     lb = make_bare_layer_builder()
 
-    with patch("atmos_gl.layer_builder.time.time", return_value=1000.0):
+    with patch("terrascope.layer_builder.time.time", return_value=1000.0):
         lb._handle_results(["sst", "isobars"], [("sst", None, 0), ("isobars", None, 1)])
 
     assert lb._last_dispatch_ts == {"isobars": 1000.0}
@@ -546,8 +546,8 @@ def test_check_watchdog_does_nothing_when_every_section_is_recent():
     lb = make_bare_layer_builder()
     lb._last_dispatch_ts = {"isobars": 1000.0, "wind": 1000.0}
 
-    with patch("atmos_gl.layer_builder.time.time", return_value=1000.0 + 60), \
-         patch("atmos_gl.layer_builder.os._exit") as exit_mock:
+    with patch("terrascope.layer_builder.time.time", return_value=1000.0 + 60), \
+         patch("terrascope.layer_builder.os._exit") as exit_mock:
         lb._check_watchdog()
 
     exit_mock.assert_not_called()
@@ -560,34 +560,34 @@ def test_check_watchdog_ignores_a_section_never_dispatched_yet():
     lb = make_bare_layer_builder()
     lb._last_dispatch_ts = {}
 
-    with patch("atmos_gl.layer_builder.time.time", return_value=1_000_000.0), \
-         patch("atmos_gl.layer_builder.os._exit") as exit_mock:
+    with patch("terrascope.layer_builder.time.time", return_value=1_000_000.0), \
+         patch("terrascope.layer_builder.os._exit") as exit_mock:
         lb._check_watchdog()
 
     exit_mock.assert_not_called()
 
 
 def test_check_watchdog_does_not_fire_just_under_the_threshold():
-    from atmos_gl.layer_builder import WATCHDOG_STALE_SECONDS
+    from terrascope.layer_builder import WATCHDOG_STALE_SECONDS
 
     lb = make_bare_layer_builder()
     lb._last_dispatch_ts = {"isobars": 1000.0}
 
-    with patch("atmos_gl.layer_builder.time.time", return_value=1000.0 + WATCHDOG_STALE_SECONDS - 1), \
-         patch("atmos_gl.layer_builder.os._exit") as exit_mock:
+    with patch("terrascope.layer_builder.time.time", return_value=1000.0 + WATCHDOG_STALE_SECONDS - 1), \
+         patch("terrascope.layer_builder.os._exit") as exit_mock:
         lb._check_watchdog()
 
     exit_mock.assert_not_called()
 
 
 def test_check_watchdog_forces_exit_once_a_section_exceeds_the_threshold():
-    from atmos_gl.layer_builder import WATCHDOG_STALE_SECONDS
+    from terrascope.layer_builder import WATCHDOG_STALE_SECONDS
 
     lb = make_bare_layer_builder()
     lb._last_dispatch_ts = {"isobars": 1000.0, "wind": 1000.0 + WATCHDOG_STALE_SECONDS}
 
-    with patch("atmos_gl.layer_builder.time.time", return_value=1000.0 + WATCHDOG_STALE_SECONDS + 1), \
-         patch("atmos_gl.layer_builder.os._exit") as exit_mock:
+    with patch("terrascope.layer_builder.time.time", return_value=1000.0 + WATCHDOG_STALE_SECONDS + 1), \
+         patch("terrascope.layer_builder.os._exit") as exit_mock:
         lb._check_watchdog()
 
     exit_mock.assert_called_once_with(1)

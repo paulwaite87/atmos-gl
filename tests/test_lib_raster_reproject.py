@@ -20,7 +20,7 @@ import numpy as np
 import rasterio
 from rasterio import Affine
 
-from atmos_gl.lib.raster_reproject import reproject_categorical_max
+from terrascope.lib.raster_reproject import reproject_categorical_max
 
 
 def _write_fixture(path, values, bounds):

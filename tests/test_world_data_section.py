@@ -5,11 +5,11 @@ max_age_years cutoff)."""
 import json
 from unittest.mock import patch
 
-from atmos_gl.lib.config import AtmosGLConfig
-from atmos_gl.lib.country_stats import INDICATORS
-from atmos_gl.routes.field_specs import validate_against_specs
+from terrascope.lib.config import TerrascopeConfig
+from terrascope.lib.country_stats import INDICATORS
+from terrascope.routes.field_specs import validate_against_specs
 from tests.test_me_settings_route import _sign_in
-from atmos_gl.db.user_settings_adapter import FakeUserSettingsAdapter
+from terrascope.db.user_settings_adapter import FakeUserSettingsAdapter
 
 _SECTIONS = {
     "country_stats": {"enabled": False, "opacity": 70, "start_indicator": "population",
@@ -22,7 +22,7 @@ _SECTIONS = {
 
 
 def _config_page(admin_client, tmp_path, monkeypatch):
-    path = tmp_path / "atmos-gl.json"
+    path = tmp_path / "terrascope.json"
     path.write_text(json.dumps(_SECTIONS))
     monkeypatch.setenv("CONFIG_PATH", str(path))
     resp = admin_client.get("/config")
@@ -91,9 +91,9 @@ def test_the_globes_config_data_carries_the_catalog(client):
 
 def test_me_settings_groups_world_data(client, tmp_path):
     _sign_in(client, FakeUserSettingsAdapter())
-    path = tmp_path / "atmos-gl.json"
+    path = tmp_path / "terrascope.json"
     path.write_text(json.dumps(_SECTIONS))
-    with patch("atmos_gl.routes.me_settings.load_config", return_value=AtmosGLConfig(str(path))):
+    with patch("terrascope.routes.me_settings.load_config", return_value=TerrascopeConfig(str(path))):
         html = client.get("/me/settings").text
     assert "World Data" in html
     assert 'id="country_stats__start_indicator"' in html

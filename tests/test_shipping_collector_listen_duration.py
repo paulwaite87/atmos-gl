@@ -3,7 +3,7 @@
 slider (shipping_collector.listen_duration, 5-60) is stored/edited in MINUTES, but
 run()'s per-slice AIS listen time (and heartbeat_period_s, via it) need seconds.
 """
-from atmos_gl.collectors.shipping import ShippingCollector
+from terrascope.collectors.shipping import ShippingCollector
 
 
 def make_collector(settings=None):

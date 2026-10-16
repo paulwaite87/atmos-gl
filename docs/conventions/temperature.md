@@ -11,14 +11,14 @@ stormwatch, and pwat, so it doubles as the entry point into that shared renderer
 
 - `ui/index.html`'s `ALL_LAYERS` array (drives the dynamic `import('./modules/temperature.js')`)
 - `ui/modules/temperature.js`'s `sectionKey` passed to `createFillLayer`
-- `src/atmos_gl/layer_builder.py`'s `TASK_CLASSES["temperature"]`
-- `config/atmos-gl.json`'s `"temperature"` section
+- `src/terrascope/layer_builder.py`'s `TASK_CLASSES["temperature"]`
+- `config/terrascope.json`'s `"temperature"` section
 
 ## Backend: `ScalarFieldUpdater`
 
-`TASK_CLASSES["temperature"]` (`src/atmos_gl/layer_builder.py`) is not the class directly —
+`TASK_CLASSES["temperature"]` (`src/terrascope/layer_builder.py`) is not the class directly —
 it's `partial(ScalarFieldUpdater, spec=SPECS["temperature"])`. `ScalarFieldUpdater`
-(`src/atmos_gl/tasks/scalar_field.py`) is the one renderer shared by four layers
+(`src/terrascope/tasks/scalar_field.py`) is the one renderer shared by four layers
 (temperature, ozone, stormwatch, pwat), each supplying its own `ScalarFieldSpec` —
 colormap, `vmin`/`vmax`, tick marks, and (for ozone/pwat only) a "critical zone" threshold
 palette. Temperature's own spec:
@@ -68,5 +68,5 @@ Animated fill layer instances. It:
 
 - [sst.md](sst.md) — the same GPU fill mechanism, minus the forecast-hour animation
 - [wind.md](wind.md) — an Animated fill layer that also drives a Particle overlay
-- `src/atmos_gl/tasks/single_hour_scalar.py` — the shared base behind `ScalarFieldUpdater`
+- `src/terrascope/tasks/single_hour_scalar.py` — the shared base behind `ScalarFieldUpdater`
   and `PrecipitationUpdater`'s `run()` wiring (see CONTEXT.md's "Single-hour scalar updater")

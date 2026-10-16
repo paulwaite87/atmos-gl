@@ -67,7 +67,7 @@ export function standardLegend(slotId, renderKeyFor, opacityFallback) {
     return { addLegend, removeLegend: () => removeLegend(slotId) };
 }
 
-const LEGENDS_HIDDEN_KEY = 'atmosgl.legendsHidden';
+const LEGENDS_HIDDEN_KEY = 'terrascope.legendsHidden';
 
 function applyLegendsHiddenState(stack, toggleBtn, hidden) {
     stack.classList.toggle('legends-hidden', hidden);

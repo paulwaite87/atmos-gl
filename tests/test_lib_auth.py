@@ -2,7 +2,7 @@
 """ADMIN_EMAILS allowlist parsing (issue #303)."""
 from unittest.mock import patch
 
-from atmos_gl.lib.auth import is_admin_email
+from terrascope.lib.auth import is_admin_email
 
 
 def test_no_admin_emails_configured_means_nobody_is_admin():

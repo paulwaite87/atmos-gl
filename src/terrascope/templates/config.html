@@ -1,0 +1,1194 @@
+{%- import "_field_macros.html" as field_macros -%}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Terrascope Config Hub</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .nav-tabs .nav-link { color: #aaa; border: none; }
+        .nav-tabs .nav-link.active { background-color: #495057 !important; color: #fff !important; font-weight: bold; }
+        .card { border-radius: 12px; }
+        .section-block { background-color: #2b3035; border-radius: 8px; padding: 15px; margin-bottom: 20px; }
+        .grouping-box { background-color: #ffffff; color: #212529; border-radius: 8px; padding: 20px; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .grouping-box h5 { color: #0d6efd; border-bottom: 2px solid #dee2e6; padding-bottom: 8px; margin-bottom: 15px; font-weight: bold; }
+        .form-check-input:checked { background-color: #0d6efd; border-color: #0d6efd; }
+
+        .status-row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; transition: opacity 0.15s ease; }
+        .status-row.channel-off { opacity: 0.55; }
+        /* Health icon (issue #215): a compact glyph, not a full badge like
+           .status-running-badge below -- it needs to stay unobtrusive on the common
+           "ok" row, unlike "running", which is rare/notable enough to warrant a
+           heavier treatment. Colours match .status-fill's own ok/warn/bad tokens. */
+        .status-health-icon, .status-health-icon-spacer { width: 20px; flex: 0 0 20px; text-align: center; font-size: 1rem; line-height: 1; cursor: default; }
+        .status-health-icon.health-ok { color: #198754; }
+        .status-health-icon.health-rate-limited { color: #ffc107; }
+        .status-health-icon.health-blocked { color: #dc3545; }
+        .status-health-icon.health-error { color: #dc3545; }
+        .status-health-icon.health-unknown { color: #6c757d; }
+        /* System Status section (Global tab): reuses .status-row/.status-fill/
+           .status-health-icon above for visual consistency with the Data Status tab,
+           but its rows (service heartbeat / DB ping / disk usage) don't fit that
+           tab's percent+segments+channel-toggle shape, so they get their own simple
+           label + detail-text layout instead of status-track's progress bar. */
+        .status-detail { font-size: 0.85rem; color: #adb5bd; flex: 1 1 auto; }
+        .status-label-block { width: 160px; flex: 0 0 160px; }
+        .status-label { font-weight: 600; font-size: 0.9rem; overflow-wrap: break-word; }
+        /* Collector rows with a known upstream URL (see CollectorBase.source_url()) render
+           their label as a link to the live source data -- same weight/colour as the plain
+           text label, underlined only on hover so it doesn't read as an error/warning link. */
+        a.status-label-link { color: inherit; text-decoration: none; }
+        a.status-label-link:hover { text-decoration: underline; color: #0d6efd; }
+        .status-via { font-size: 0.72rem; color: #6c757d; overflow-wrap: break-word; }
+        .status-off-tag { font-size: 0.72rem; font-weight: 600; color: #6c757d; white-space: nowrap; }
+        .status-track { flex: 1 1 auto; height: 18px; background-color: #e9ecef; border-radius: 9px; overflow: hidden; position: relative; }
+        .status-fill { height: 100%; border-radius: 9px; transition: width 0.4s ease, background-color 0.2s ease; }
+        .status-fill.ok { background-color: #198754; }
+        .status-fill.warn { background-color: #ffc107; }
+        .status-fill.bad { background-color: #dc3545; }
+        /* Data Volume row's track shows TWO stacked segments -- our own data/ footprint
+           (a fixed accent colour, independent of the overall ok/warn/bad reading) then
+           everything else used on that volume (the health-coloured segment) -- so
+           "how much is us vs. the rest of the disk" is visible at a glance. */
+        .status-fill.ours { background-color: #0d6efd; }
+        .status-fill.off { background-color: #ced4da; }
+        /* Multi-hour layers (isobars, wind, ...) replace the single solid .status-fill
+           with one of these per forecast hour -- green once rendered, light amber while
+           still pending, so the bar reads as "which hours" rather than just "how much". */
+        .status-segmented-track { display: flex; height: 100%; width: 100%; }
+        .status-segment { flex: 1 1 0; height: 100%; border-right: 1px solid #ffffff; cursor: default; }
+        .status-segment:last-child { border-right: none; }
+        .status-segment.rendered { background-color: #198754; }
+        .status-segment.pending { background-color: #ffddb3; }
+        .status-pct { width: 48px; flex: 0 0 48px; text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; font-size: 0.9rem; }
+        .status-runs-select, .status-runs-select-spacer { width: 74px; flex: 0 0 74px; }
+        .status-runs-select { font-size: 0.78rem; padding: 2px 6px; }
+        .status-times { width: 230px; flex: 0 0 230px; font-size: 0.78rem; color: #6c757d; text-align: right; }
+        .status-empty { color: #6c757d; font-size: 0.9rem; }
+        /* Fixed-width slot, always reserved (see the spacer fallback below) -- .status-track
+           is the only flex:1 item in the row, so a badge appended without a reserved slot
+           shrinks it (and shifts every column after it left) only on rows where it's
+           showing, throwing that row out of alignment with the rest. */
+        .status-running-badge, .status-running-badge-spacer { flex: 0 0 60px; width: 60px; }
+        .status-running-badge { font-size: 0.7rem; text-align: center; animation: status-running-pulse 1.5s ease-in-out infinite; }
+        .status-switch, .status-switch-spacer { position: relative; flex: 0 0 34px; width: 34px; height: 20px; }
+        .status-switch input { opacity: 0; width: 0; height: 0; position: absolute; }
+        .status-switch .status-slider {
+            position: absolute; inset: 0; background: #ced4da; border-radius: 20px; cursor: pointer; transition: background 0.15s ease;
+        }
+        .status-switch .status-slider::before {
+            content: ""; position: absolute; height: 14px; width: 14px; left: 3px; top: 3px;
+            background: #fff; border-radius: 50%; transition: transform 0.15s ease; box-shadow: 0 1px 2px rgba(0,0,0,0.3);
+        }
+        .status-switch input:checked + .status-slider { background: #0d6efd; }
+        .status-switch input:checked + .status-slider::before { transform: translateX(14px); }
+        .status-switch input:focus-visible + .status-slider { outline: 2px solid #0d6efd; outline-offset: 2px; }
+        @keyframes status-running-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+    </style>
+</head>
+<body class="bg-dark text-light">
+    <div class="container my-5" style="max-width: 950px;">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2>🌍 Terrascope Control Center</h2>
+            <div>
+                <a href="/" class="btn btn-outline-info btn-sm me-2">🔙 View Live Globe</a>
+                <span class="badge bg-success px-3 py-2">JSON Native Mode</span>
+            </div>
+        </div>
+
+        <ul class="nav nav-tabs mb-3" id="configTabs" role="tablist">
+            <li class="nav-item"><button class="nav-link active" id="global-tab" data-bs-toggle="tab" data-bs-target="#global-pane" type="button">Global</button></li>
+            <li class="nav-item"><button class="nav-link" id="show-tab" data-bs-toggle="tab" data-bs-target="#show-pane" type="button">Show</button></li>
+            <li class="nav-item"><button class="nav-link" id="weather-tab" data-bs-toggle="tab" data-bs-target="#weather-pane" type="button">Weather</button></li>
+            <li class="nav-item"><button class="nav-link" id="climate-tab" data-bs-toggle="tab" data-bs-target="#climate-pane" type="button">Climate</button></li>
+            <li class="nav-item"><button class="nav-link" id="events-tab" data-bs-toggle="tab" data-bs-target="#events-pane" type="button">Events</button></li>
+            <li class="nav-item"><button class="nav-link" id="world-data-tab" data-bs-toggle="tab" data-bs-target="#world-data-pane" type="button">World Data</button></li>
+            <li class="nav-item"><button class="nav-link" id="misc-tab" data-bs-toggle="tab" data-bs-target="#misc-pane" type="button">Miscellaneous</button></li>
+            <li class="nav-item"><button class="nav-link" id="background-tab" data-bs-toggle="tab" data-bs-target="#background-pane" type="button">Background</button></li>
+            <li class="nav-item"><button class="nav-link" id="data-status-tab" data-bs-toggle="tab" data-bs-target="#data-status-pane" type="button">Data Status</button></li>
+        </ul>
+
+        <div class="card bg-secondary text-light p-4 shadow">
+            <div id="loading" class="text-center my-3">
+                <div class="spinner-border text-primary" role="status"></div>
+                <div class="mt-2">Loading system configuration...</div>
+            </div>
+
+            <form id="configForm" class="d-none">
+                <div class="tab-content" id="configTabsContent">
+                    <div class="tab-pane fade show active" id="global-pane">
+                        <div id="container-global">
+                            {{ field_macros.render_tab_group(["common", "map_builder", "animation"], config_data) }}
+                        </div>
+                        <div class="grouping-box">
+                            <h5>System Status</h5>
+                            <p class="text-muted small mb-3">Backend service liveness, database connectivity, and data volume usage -- see the Data Status tab for per-layer data freshness.</p>
+                            <div id="container-system-status"></div>
+                        </div>
+                    </div>
+
+                    <div class="tab-pane fade" id="show-pane">
+                        <div class="grouping-box">
+                            <h5>Weather</h5>
+                            <div class="row g-3">
+                                <div class="col-md-4"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="clouds__enabled"><label class="form-check-label fw-bold ms-2">Clouds</label></div></div>
+                                <div class="col-md-4"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="isobars__enabled"><label class="form-check-label fw-bold ms-2">Isobars</label></div></div>
+                                <div class="col-md-4"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="wind__enabled"><label class="form-check-label fw-bold ms-2">Wind</label></div></div>
+                                <div class="col-md-4"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="jetstream__enabled"><label class="form-check-label fw-bold ms-2">Jet Stream</label></div></div>
+                                <div class="col-md-4"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="precipitation__enabled"><label class="form-check-label fw-bold ms-2">Precipitation</label></div></div>
+                                <div class="col-md-4"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="pwat__enabled"><label class="form-check-label fw-bold ms-2">Precipitable Water</label></div></div>
+                                <div class="col-md-4"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="lightning__enabled"><label class="form-check-label fw-bold ms-2">Lightning</label></div></div>
+                                <div class="col-md-4"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="storms__enabled"><label class="form-check-label fw-bold ms-2">Storm Track</label></div></div>
+                                <div class="col-md-4"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="waves__enabled"><label class="form-check-label fw-bold ms-2">Waves</label></div></div>
+                            </div>
+                        </div>
+
+                        <div class="grouping-box">
+                            <h5>Climate</h5>
+                            <div class="row g-3">
+                                <div class="col-md-4"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="sst__enabled"><label class="form-check-label fw-bold ms-2">Sea Surface Temp</label></div></div>
+                                <div class="col-md-4"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="currents__enabled"><label class="form-check-label fw-bold ms-2">Ocean Currents</label></div></div>
+                                <div class="col-md-4"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="temperature__enabled"><label class="form-check-label fw-bold ms-2">Air Temperature</label></div></div>
+                                <div class="col-md-4"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="ozone__enabled"><label class="form-check-label fw-bold ms-2">Ozone</label></div></div>
+                                <div class="col-md-4"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="stormwatch__enabled"><label class="form-check-label fw-bold ms-2">Storm Watch</label></div></div>
+                                <div class="col-md-4">
+                                    <div class="form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" id="greenhouse_gases__enabled">
+                                        <label class="form-check-label fw-bold ms-2">Greenhouse Gases</label>
+                                        <div id="key-warn-cdsapi" class="text-danger small mt-1 d-none">⚠️ Deactivated: Missing CDSAPI_KEY.</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="grouping-box">
+                            <h5>Events</h5>
+                            <div class="row g-3">
+                                <div class="col-md-6"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="quakes__enabled"><label class="form-check-label fw-bold ms-2">Earthquakes</label></div></div>
+                                <div class="col-md-6"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="volcanoes__enabled"><label class="form-check-label fw-bold ms-2">Volcanoes</label></div></div>
+                                <div class="col-md-6"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="fires__enabled"><label class="form-check-label fw-bold ms-2">Wildfires</label></div></div>
+                                <div class="col-md-6"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="world_events__enabled"><label class="form-check-label fw-bold ms-2">World Events</label></div></div>
+                                <div class="col-md-6"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="frontline__enabled"><label class="form-check-label fw-bold ms-2">Ukraine Frontline</label></div></div>
+                                <div class="col-md-6">
+                                    <div class="form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" id="air_quality__enabled">
+                                        <label class="form-check-label fw-bold ms-2">Air Quality</label>
+                                        <div id="key-warn-cdsapi-aq" class="text-danger small mt-1 d-none">⚠️ Deactivated: Missing CDSAPI_KEY.</div>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" id="flood_risk__enabled">
+                                        <label class="form-check-label fw-bold ms-2">Flood Risk</label>
+                                        <div id="key-warn-glofas" class="text-danger small mt-1 d-none">⚠️ Deactivated: Missing EARTHDATA_TOKEN (needed for Live mode -- switch to Historical instead).</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="grouping-box">
+                            <h5>World Data</h5>
+                            <div class="row g-3">
+                                <div class="col-md-6"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="country_stats__enabled"><label class="form-check-label fw-bold ms-2">Country Statistics</label></div></div>
+                                <div class="col-md-6"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="population_density__enabled"><label class="form-check-label fw-bold ms-2">Population Density</label></div></div>
+                            </div>
+                        </div>
+
+                        <div class="grouping-box">
+                            <h5>Miscellaneous</h5>
+                            <div class="row g-3">
+                                <div class="col-md-6"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="satellites__enabled"><label class="form-check-label fw-bold ms-2">Satellites</label></div></div>
+                                <div class="col-md-6"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="terminator__enabled"><label class="form-check-label fw-bold ms-2">Terminator Night/day Shade</label></div></div>
+                                <div class="col-md-6"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="markers__enabled"><label class="form-check-label fw-bold ms-2">Place Markers</label></div></div>
+                                <div class="col-md-6"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="flightradar__enabled"><label class="form-check-label fw-bold ms-2">Flight Radar</label></div></div>
+                                <div class="col-md-6"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="landmass__enabled"><label class="form-check-label fw-bold ms-2">Landmass Outlines</label></div></div>
+                                <div class="col-md-6"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="shipping__enabled"><label class="form-check-label fw-bold ms-2">Shipping</label></div></div>
+                            </div>
+                        </div>
+
+                    </div>
+
+                    <div class="tab-pane fade" id="weather-pane"><div id="container-weather">{{ field_macros.render_tab_group(["clouds", "isobars", "wind", "jetstream", "precipitation", "pwat", "lightning", "storms", "waves"], config_data) }}</div></div>
+                    <div class="tab-pane fade" id="climate-pane"><div id="container-climate">{{ field_macros.render_tab_group(["sst", "currents", "temperature", "ozone", "stormwatch", "greenhouse_gases"], config_data) }}</div></div>
+                    <div class="tab-pane fade" id="events-pane"><div id="container-events">{{ field_macros.render_tab_group(["quakes", "volcanoes", "fires", "world_events", "frontline", "air_quality", "flood_risk"], config_data) }}</div></div>
+                    <div class="tab-pane fade" id="world-data-pane"><div id="container-world-data">{{ field_macros.render_tab_group(["country_stats", "population_density"], config_data) }}</div></div>
+                    <div class="tab-pane fade" id="misc-pane"><div id="container-misc">{{ field_macros.render_tab_group(["satellites", "terminator", "markers", "flightradar", "landmass", "shipping"], config_data) }}</div></div>
+                    <div class="tab-pane fade" id="background-pane">
+                        <div class="grouping-box">
+                            <h5>Background Processes</h5>
+                            <div class="row g-3">
+                                <div class="col-md-6">
+                                    <div class="form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" id="shipping_collector__enabled">
+                                        <label class="form-check-label fw-bold ms-2" for="shipping_collector__enabled">Shipping Collector (AIS Loop)</label>
+                                        <div id="key-warn-ais" class="text-danger small mt-1 d-none">⚠️ Deactivated: Missing AIS_API_KEY.</div>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" id="lightning_collector__enabled">
+                                        <label class="form-check-label fw-bold ms-2" for="lightning_collector__enabled">Lightning Collector Daemon</label>
+                                        <div id="key-warn-openweather" class="text-danger small mt-1 d-none">⚠️ Deactivated: Missing OPENWEATHER_API_KEY.</div>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" id="satellites_collector__enabled">
+                                        <label class="form-check-label fw-bold ms-2" for="satellites_collector__enabled">Satellites Collector</label>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" id="data_collector__enabled">
+                                        <label class="form-check-label fw-bold ms-2" for="data_collector__enabled">Data Collector</label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="container-background">{{ field_macros.render_tab_group(["shipping_collector", "lightning_collector", "satellites_collector", "data_collector", "housekeeper"], config_data) }}</div>
+                    </div>
+
+                    <div class="tab-pane fade" id="data-status-pane">
+                        <div class="grouping-box">
+                            <h5>Collectors</h5>
+                            <p class="text-muted small mb-3">Backend data ingestion — how complete each source's data is, and when it last/next updates.</p>
+                            <div id="container-collectors-status"></div>
+                        </div>
+                        <div class="grouping-box">
+                            <h5>Layers</h5>
+                            <p class="text-muted small mb-3">Render tasks — how much of the available forecast data has been drawn to map layers.</p>
+                            <div id="container-layers-status"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <button type="button" class="btn btn-primary w-100 mt-4 py-2 fw-bold shadow-lg" onclick="saveActiveConfig()">
+                    💾 Save & Overwrite System Configuration
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Relative to whatever origin this page is served from -- map_api is
+        // reverse-proxied behind the same origin as the map UI (see config/nginx.conf),
+        // so no absolute host:port is hardcoded here (mirrors ui/index.html's
+        // window.MAP_UI/window.WM_API for the same reason).
+        const API_URL = "/api";
+        const CONFIG_API_URL = API_URL + "/config";
+        // ui_router routes (config.py) return HTML, not JSON, so they live outside /api.
+        const CONFIG_PAGE_BASE = API_URL.replace(/\/api$/, "");
+        const VESSEL_CLASSES_API_URL = API_URL + "/vessel_classes";
+        let masterConfigCache = {};
+        let dynamicVesselClasses = {}
+
+        const COLOR_MAP = {
+            "white": "#ffffff", "black": "#000000", "gray": "#808080", "silver": "#c0c0c0",
+            "red": "#ff0000", "maroon": "#800000", "pink": "#ffc0cb",
+            "green": "#00ff00", "lime": "#00ff00", "olive": "#808000", "teal": "#008080",
+            "blue": "#0000ff", "navy": "#000080", "cyan": "#00ffff", "aqua": "#00ffff",
+            "yellow": "#ffff00", "orange": "#ffa500", "gold": "#ffd700",
+            "purple": "#800080", "magenta": "#ff00ff", "violet": "#ee82ee"
+        };
+
+        // Live badge reformatting for server-rendered (field_macros.render_field) sliders,
+        // mirroring format_slider_badge in routes/field_specs.py so dragging updates the
+        // badge the same way the server formatted it on initial render.
+        function updateSliderBadge(badgeId, rawValue, decimals, prefix, suffix, zeroLabel, pluralize) {
+            const numeric = parseFloat(rawValue);
+            let text;
+            if (zeroLabel !== null && numeric === 0) {
+                text = zeroLabel;
+            } else {
+                const formatted = (decimals === null) ? rawValue : numeric.toFixed(decimals);
+                const finalSuffix = (pluralize && numeric !== 1) ? suffix + 's' : suffix;
+                text = prefix + formatted + finalSuffix;
+            }
+            document.getElementById(badgeId).innerText = text;
+        }
+
+        // Moves the SELECTED <option>s of a grouped_transfer field (field_macros.html)
+        // from one listbox to the other, into the matching <optgroup> (same heading)
+        // there. Both listboxes render every heading upfront (even empty), so the
+        // target optgroup always already exists -- appendChild on an <option> that's
+        // currently attached elsewhere moves it, no separate removal step needed.
+        function moveGroupedOptions(fromId, toId) {
+            const fromSelect = document.getElementById(fromId);
+            const toSelect = document.getElementById(toId);
+            Array.from(fromSelect.selectedOptions).forEach(opt => {
+                const heading = opt.parentElement.label;
+                const targetGroup = Array.from(toSelect.querySelectorAll('optgroup'))
+                    .find(g => g.label === heading);
+                if (targetGroup) targetGroup.appendChild(opt);
+            });
+        }
+
+        function findNearestNamedColor(hex) {
+            hex = hex.toLowerCase();
+            let closestName = "White";
+            let minDistance = Number.MAX_VALUE;
+            const hexToRgb = (h) => {
+                const num = parseInt(h.replace("#", ""), 16);
+                return { r: (num >> 16) & 255, g: (num >> 8) & 255, b: num & 255 };
+            };
+            const target = hexToRgb(hex);
+            for (const [name, namedHex] of Object.entries(COLOR_MAP)) {
+                const current = hexToRgb(namedHex);
+                const distance = Math.sqrt(
+                    Math.pow(target.r - current.r, 2) + Math.pow(target.g - current.g, 2) + Math.pow(target.b - current.b, 2)
+                );
+                if (distance < minDistance) {
+                    minDistance = distance;
+                    closestName = name.charAt(0).toUpperCase() + name.slice(1);
+                }
+            }
+            return closestName;
+        }
+
+        document.addEventListener("DOMContentLoaded", async () => {
+            try {
+                // Fetch configuration settings
+                const configResponse = await fetch(CONFIG_API_URL);
+                const configJson = await configResponse.json();
+                if (configJson.status === "success") {
+                    masterConfigCache = configJson.data;
+                }
+
+                // Fetch vessel classes from the database
+                const vesselClassesResponse = await fetch(VESSEL_CLASSES_API_URL);
+                const vesselClassesJson = await vesselClassesResponse.json();
+                if (vesselClassesJson.status === "success") {
+                    dynamicVesselClasses = vesselClassesJson.data;
+                }
+
+                parseExplicitElements(masterConfigCache);
+                toggleSectionVisibility();
+                applyLayerAvailability();
+
+                document.getElementById('loading').remove();
+                document.getElementById('configForm').classList.remove('d-none');
+            } catch (err) {
+                console.error("Initialization Error:", err);
+                document.getElementById('loading').innerHTML = "<span class='text-danger'>❌ Error rendering configuration. Check console for details.</span>";
+            }
+        });
+
+        function parseExplicitElements(data) {
+            ['clouds', 'isobars', 'wind', 'jetstream', 'precipitation', 'pwat', 'lightning', 'storms', 'waves', 'quakes', 'volcanoes', 'fires', 'world_events', 'frontline', 'air_quality', 'flood_risk', 'population_density', 'country_stats', 'satellites', 'shipping', 'terminator', 'markers', 'flightradar', 'landmass', 'sst', 'currents', 'temperature', 'ozone', 'stormwatch', 'greenhouse_gases'].forEach(layer => {
+                const el = document.getElementById(`${layer}__enabled`);
+                if (el && data[layer]) {
+                    el.checked = !!data[layer].enabled;
+                    el.addEventListener('change', toggleSectionVisibility);
+                }
+            });
+
+            const ghgEnabled = document.getElementById('greenhouse_gases__enabled');
+            if (ghgEnabled && data.greenhouse_gases && data.greenhouse_gases.RULE__missing_cdsapi_key) {
+                ghgEnabled.disabled = true; ghgEnabled.checked = false;
+                document.getElementById('key-warn-cdsapi').classList.remove('d-none');
+            }
+
+            const aqEnabled = document.getElementById('air_quality__enabled');
+            if (aqEnabled && data.air_quality && data.air_quality.RULE__missing_cdsapi_key) {
+                aqEnabled.disabled = true; aqEnabled.checked = false;
+                document.getElementById('key-warn-cdsapi-aq').classList.remove('d-none');
+            }
+
+            // Mode-specific gate (unlike the always-on cdsapi checks above): Historical
+            // mode needs no credential at all, so this only fires when RULE__missing_
+            // earthdata_token was actually set server-side, i.e. the stored mode is
+            // "live" and EARTHDATA_TOKEN is absent (see routes/config.py's _build_config_data).
+            const floodRiskEnabled = document.getElementById('flood_risk__enabled');
+            if (floodRiskEnabled && data.flood_risk && data.flood_risk.RULE__missing_earthdata_token) {
+                floodRiskEnabled.disabled = true; floodRiskEnabled.checked = false;
+                document.getElementById('key-warn-glofas').classList.remove('d-none');
+            }
+
+            const aisEnabled = document.getElementById('shipping_collector__enabled');
+            if (aisEnabled && data.shipping_collector) {
+                aisEnabled.checked = !!data.shipping_collector.enabled;
+                aisEnabled.addEventListener('change', toggleSectionVisibility);
+                if (data.shipping_collector.RULE__missing_ais) {
+                    aisEnabled.disabled = true; aisEnabled.checked = false;
+                    document.getElementById('key-warn-ais').classList.remove('d-none');
+                }
+            }
+
+            const lightningEnabled = document.getElementById('lightning_collector__enabled');
+            if (lightningEnabled && data.lightning_collector) {
+                lightningEnabled.checked = !!data.lightning_collector.enabled;
+                lightningEnabled.addEventListener('change', toggleSectionVisibility);
+                if (data.lightning_collector.RULE__missing_openweather_apikey) {
+                    lightningEnabled.disabled = true; lightningEnabled.checked = false;
+                    document.getElementById('key-warn-openweather').classList.remove('d-none');
+                }
+            }
+
+            const satellitesEnabled = document.getElementById('satellites_collector__enabled');
+            if (satellitesEnabled && data.satellites_collector) {
+                satellitesEnabled.checked = !!data.satellites_collector.enabled;
+                satellitesEnabled.addEventListener('change', toggleSectionVisibility);
+            }
+
+            const dataCollectorEnabled = document.getElementById('data_collector__enabled');
+            if (dataCollectorEnabled && data.data_collector) {
+                dataCollectorEnabled.checked = !!data.data_collector.enabled;
+                dataCollectorEnabled.addEventListener('change', toggleSectionVisibility);
+            }
+        }
+
+        // Grays out any layer whose data collection is actually off right now (GET
+        // /api/layer_availability -- lib/layer_availability.py), independent of and
+        // in addition to toggleSectionVisibility() above: a layer can be "enabled"
+        // (this checkbox checked) while its collector is paused by an admin setting
+        // elsewhere (the master data_collector switch, a channel_enabled opt-out, or
+        // one of shipping/lightning/flightradar's own kill-switch) -- see the grilled
+        // design. The checkbox's checked state is left exactly as saved; only its
+        // `disabled` attribute and an explanatory note are added, so re-enabling
+        // collection makes it work again with no re-toggle needed.
+        async function applyLayerAvailability() {
+            let availability = {};
+            try {
+                const resp = await fetch('/api/layer_availability');
+                const json = await resp.json();
+                if (json.status === "success") availability = json.data;
+            } catch (err) {
+                console.warn("Could not load layer availability", err);
+                return;
+            }
+
+            for (const [section, info] of Object.entries(availability)) {
+                if (info.collecting) continue;
+                const el = document.getElementById(`${section}__enabled`);
+                if (!el) continue;
+                el.disabled = true;
+                const wrap = el.closest('.form-check');
+                if (wrap && !wrap.querySelector('.layer-availability-note')) {
+                    const note = document.createElement('div');
+                    note.className = 'layer-availability-note text-danger small mt-1';
+                    note.textContent = `⚠ ${info.reason}`;
+                    wrap.appendChild(note);
+                }
+            }
+        }
+
+        function toggleSectionVisibility() {
+            const statusMap = {
+                "clouds": document.getElementById('clouds__enabled')?.checked,
+                "isobars": document.getElementById('isobars__enabled')?.checked,
+                "wind": document.getElementById('wind__enabled')?.checked,
+                "jetstream": document.getElementById('jetstream__enabled')?.checked,
+                "precipitation": document.getElementById('precipitation__enabled')?.checked,
+                "pwat": document.getElementById('pwat__enabled')?.checked,
+                "lightning": document.getElementById('lightning__enabled')?.checked,
+                "storms": document.getElementById('storms__enabled')?.checked,
+                "waves": document.getElementById('waves__enabled')?.checked,
+                "quakes": document.getElementById('quakes__enabled')?.checked,
+                "volcanoes": document.getElementById('volcanoes__enabled')?.checked,
+                "fires": document.getElementById('fires__enabled')?.checked,
+                "world_events": document.getElementById('world_events__enabled')?.checked,
+                "frontline": document.getElementById('frontline__enabled')?.checked,
+                "air_quality": document.getElementById('air_quality__enabled')?.checked,
+                "flood_risk": document.getElementById('flood_risk__enabled')?.checked,
+                "satellites": document.getElementById('satellites__enabled')?.checked,
+                "terminator": document.getElementById('terminator__enabled')?.checked,
+                "markers": document.getElementById('markers__enabled')?.checked,
+                "flightradar": document.getElementById('flightradar__enabled')?.checked,
+                "landmass": document.getElementById('landmass__enabled')?.checked,
+                "population_density": document.getElementById('population_density__enabled')?.checked,
+                "country_stats": document.getElementById('country_stats__enabled')?.checked,
+                "shipping": document.getElementById('shipping__enabled')?.checked,
+                "sst": document.getElementById('sst__enabled')?.checked,
+                "currents": document.getElementById('currents__enabled')?.checked,
+                "temperature": document.getElementById('temperature__enabled')?.checked,
+                "ozone": document.getElementById('ozone__enabled')?.checked,
+                "stormwatch": document.getElementById('stormwatch__enabled')?.checked,
+                "greenhouse_gases": document.getElementById('greenhouse_gases__enabled')?.checked,
+                "shipping_collector": document.getElementById('shipping_collector__enabled')?.checked,
+                "lightning_collector": document.getElementById('lightning_collector__enabled')?.checked,
+                "satellites_collector": document.getElementById('satellites_collector__enabled')?.checked,
+                "data_collector": document.getElementById('data_collector__enabled')?.checked
+            };
+
+            for (const [section, isEnabled] of Object.entries(statusMap)) {
+                const fieldsDiv = document.getElementById(`fields-section-${section}`);
+                const fallbackDiv = document.getElementById(`fallback-section-${section}`);
+                const resetBtn = document.getElementById(`reset-btn-${section}`);
+                if (!fieldsDiv || !fallbackDiv) continue;
+                if (isEnabled) {
+                    fieldsDiv.classList.remove('d-none'); fallbackDiv.classList.add('d-none');
+                    if (resetBtn) resetBtn.classList.remove('d-none');
+                } else {
+                    fieldsDiv.classList.add('d-none'); fallbackDiv.classList.remove('d-none');
+                    if (resetBtn) resetBtn.classList.add('d-none');
+                }
+            }
+        }
+
+        async function saveActiveConfig() {
+            // masterConfigCache is a page-load-time snapshot -- refetch first so fields
+            // with no dynamic-input DOM element (channel_enabled, runs_per_day; both
+            // edited exclusively via the Data Status tab's own save-immediately
+            // endpoints) are captured at their CURRENT value rather than silently
+            // reverted to whatever was cached when this page loaded. Everything below
+            // still only overrides what's actually visible in the form.
+            try {
+                const freshResponse = await fetch(CONFIG_API_URL);
+                const freshJson = await freshResponse.json();
+                if (freshJson.status === "success") masterConfigCache = freshJson.data;
+            } catch (err) {
+                console.error("Failed to refresh config before saving; using last-known copy.", err);
+            }
+
+            const payload = JSON.parse(JSON.stringify(masterConfigCache));
+
+            ['clouds', 'isobars', 'wind', 'jetstream', 'precipitation', 'pwat', 'lightning', 'storms', 'waves', 'quakes', 'volcanoes', 'fires', 'world_events', 'frontline', 'air_quality', 'flood_risk', 'population_density', 'country_stats', 'satellites', 'terminator', 'markers', 'flightradar', 'landmass', 'shipping', 'shipping_collector', 'lightning_collector', 'satellites_collector', 'data_collector', 'sst', 'currents', 'temperature', 'ozone', 'stormwatch', 'greenhouse_gases'].forEach(layer => {
+                if (payload[layer]) payload[layer].enabled = document.getElementById(`${layer}__enabled`)?.checked || false;
+            });
+
+            document.querySelectorAll(".dynamic-input").forEach(input => {
+                const [section, option] = input.id.split('__');
+                if (!payload[section]) payload[section] = {};
+
+                if (input.type === "checkbox") {
+                    payload[section][option] = input.checked;
+                } else if (input.classList.contains('structured-color-name-picker')) {
+                    payload[section][option] = findNearestNamedColor(input.value);
+                } else if (input.classList.contains('array-select')) {
+                    payload[section][option] = Array.from(input.selectedOptions).map(opt => opt.value);
+                } else if (input.type === "number" || input.type === "range") {
+                    if (input.classList.contains('cloud-threshold-slider')) {
+                        const pct = parseFloat(input.value);
+                        payload[section][option] = Math.min(255, Math.max(0, Math.round((pct / 100) * 255)));
+                    } else {
+                        payload[section][option] = parseFloat(input.value);
+                    }
+                } else {
+                    if (option.includes('vei')) {
+                        payload[section][option] = parseInt(input.value) || 0;
+                    } else {
+                        payload[section][option] = input.value.trim();
+                    }
+                }
+            });
+
+            try {
+                const response = await fetch(CONFIG_API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const result = await response.json();
+                if (result.status === "success") alert("Configuration saved successfully!");
+            } catch (err) {
+                alert("Error writing configuration to file system matrix.");
+            }
+        }
+
+        // "Set to Defaults" (field_macros.html's render_tab_group button, opposite every
+        // section title) -- fetches that section's field grid pre-rendered from
+        // config/terrascope.json.tmpl (routes/config.py's /config/section_defaults/{section})
+        // and swaps it into the form in place of the live values. Only replaces the FORM
+        // fields here -- like any other edit on this page, it still needs the page's own
+        // Save button below to actually persist, so a misclick is cheap to back out of
+        // (reload the page, or just don't save).
+        async function resetSectionToDefaults(section, title) {
+            if (!confirm(`This will reset "${title}" to its default values. You'll still need to click "Save & Overwrite System Configuration" below afterward for the change to take effect. Continue?`)) {
+                return;
+            }
+            try {
+                const response = await fetch(`${CONFIG_PAGE_BASE}/config/section_defaults/${section}`);
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                document.getElementById(`fields-section-${section}`).innerHTML = await response.text();
+            } catch (err) {
+                console.error(`Failed to load defaults for section "${section}":`, err);
+                alert("Could not load default values. Check console for details.");
+            }
+        }
+
+        function addDatasource(section) {
+            const name = prompt('Enter data source name (e.g., "gfs", "sst", "currents"):');
+            if (!name || name.trim() === '') return;
+
+            const url = prompt('Enter the base URL for this source:');
+            if (!url || url.trim() === '') return;
+
+            const cleanName = name.trim().toLowerCase().replace(/\s+/g, '_');
+            const cleanUrl = url.trim();
+
+            // Update the in-memory config
+            if (!masterConfigCache[section]) masterConfigCache[section] = {};
+            if (!masterConfigCache[section].datasources) masterConfigCache[section].datasources = {};
+
+            masterConfigCache[section].datasources[cleanName] = cleanUrl;
+
+            // Re-render and refresh the accordion
+            const container = document.getElementById(`datasources-accordion-${section}`);
+            if (container) {
+                container.parentElement.innerHTML = buildDatasourcesHTML(section, masterConfigCache[section].datasources);
+            }
+
+            // Mark config as dirty (unsaved)
+            document.getElementById('configForm').classList.add('unsaved-changes');
+        }
+
+        function updateDatasourceName(section, oldKey, newKey) {
+            if (!newKey || newKey.trim() === '') return;
+
+            const cleanNewKey = newKey.trim().toLowerCase().replace(/\s+/g, '_');
+            if (cleanNewKey === oldKey) return;
+
+            if (!masterConfigCache[section]?.datasources) return;
+
+            const value = masterConfigCache[section].datasources[oldKey];
+            delete masterConfigCache[section].datasources[oldKey];
+            masterConfigCache[section].datasources[cleanNewKey] = value;
+
+            // Re-render
+            const container = document.getElementById(`datasources-accordion-${section}`);
+            if (container) {
+                container.parentElement.innerHTML = buildDatasourcesHTML(section, masterConfigCache[section].datasources);
+            }
+
+            document.getElementById('configForm').classList.add('unsaved-changes');
+        }
+
+        function updateDatasourceUrl(section, key, newUrl) {
+            if (!newUrl || newUrl.trim() === '') return;
+
+            if (!masterConfigCache[section]?.datasources) return;
+
+            masterConfigCache[section].datasources[key] = newUrl.trim();
+
+            document.getElementById('configForm').classList.add('unsaved-changes');
+        }
+
+        function deleteDatasource(section, key) {
+            if (!confirm(`Delete data source "${key}"?`)) return;
+
+            if (!masterConfigCache[section]?.datasources) return;
+
+            delete masterConfigCache[section].datasources[key];
+
+            // Re-render
+            const container = document.getElementById(`datasources-accordion-${section}`);
+            if (container) {
+                container.parentElement.innerHTML = buildDatasourcesHTML(section, masterConfigCache[section].datasources);
+            }
+
+            document.getElementById('configForm').classList.add('unsaved-changes');
+        }
+
+        function buildDatasourcesHTML(section, datasources) {
+            let accordionHTML = `
+                <label class="form-label small text-white-50 fw-bold mb-3">Data Sources (Base URLs)</label>
+                <div id="datasources-accordion-${section}" class="accordion mb-3">
+            `;
+
+            Object.entries(datasources || {}).forEach(([key, url], idx) => {
+                const itemId = `datasource-${section}-${idx}`;
+                accordionHTML += `
+                    <div class="accordion-item" style="background-color: #f8f9fa; border: 1px solid #dee2e6;">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#${itemId}" style="padding: 0.75rem;">
+                                <strong style="color: #0d6efd; font-size: 0.95rem;">${key}</strong>
+                                <span class="text-muted ms-2" style="font-size: 0.8rem; font-weight: normal;">
+                                    ${url.substring(0, 55)}${url.length > 55 ? '...' : ''}
+                                </span>
+                            </button>
+                        </h2>
+                        <div id="${itemId}" class="accordion-collapse collapse" data-bs-parent="#datasources-accordion-${section}">
+                            <div class="accordion-body p-2">
+                                <div class="row g-2 align-items-end">
+                                    <div class="col-md-4">
+                                        <label class="form-label small text-dark fw-bold mb-1">Name</label>
+                                        <input type="text" class="form-control form-control-sm" value="${key}"
+                                               onchange="updateDatasourceName('${section}', '${key}', this.value)">
+                                    </div>
+                                    <div class="col-md-7">
+                                        <label class="form-label small text-dark fw-bold mb-1">URL</label>
+                                        <input type="text" class="form-control form-control-sm" value="${url}"
+                                               onchange="updateDatasourceUrl('${section}', '${key}', this.value)"
+                                               placeholder="https://...">
+                                    </div>
+                                    <div class="col-md-1">
+                                        <button type="button" class="btn btn-sm btn-danger" onclick="deleteDatasource('${section}', '${key}')">
+                                            🗑️
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+
+            if (Object.keys(datasources || {}).length === 0) {
+                accordionHTML += '<p class="text-muted small">No data sources configured yet.</p>';
+            }
+
+            accordionHTML += `
+                </div>
+                <button type="button" class="btn btn-sm btn-success" onclick="addDatasource('${section}')">
+                    + Add Data Source
+                </button>
+            `;
+
+            return accordionHTML;
+        }
+
+        // -------------------------------------------------------------
+        // Data Status tab — independent of masterConfigCache / saveActiveConfig().
+        // Nothing here uses the "dynamic-input" class or the "section__option" id
+        // convention, so it can never leak into a config save. The one write action,
+        // the channel opt-out switch (toggleChannel), deliberately bypasses that whole
+        // form too -- its own tiny endpoint, saved the instant it's clicked.
+        // -------------------------------------------------------------
+        const DATA_STATUS_API_URL = API_URL + "/data_status";
+        // Mirrors lib/data_status.py's RUNS_PER_DAY_CHOICES -- the only values the
+        // per-row cadence widget below offers.
+        const RUNS_PER_DAY_CHOICES = [1, 4, 6, 12, 24, 48, 96];
+        let dataStatusTimer = null;
+
+        function formatRelativeTime(isoString, { future = false } = {}) {
+            if (!isoString) return future ? "unknown" : "never";
+            const target = new Date(isoString).getTime();
+            if (Number.isNaN(target)) return future ? "unknown" : "never";
+            let deltaS = Math.round((target - Date.now()) / 1000);
+            if (!future) deltaS = -deltaS;
+            const overdue = deltaS < 0;
+            const abs = Math.abs(deltaS);
+            let label;
+            if (abs < 60) label = `${abs}s`;
+            else if (abs < 3600) label = `${Math.round(abs / 60)}m`;
+            else if (abs < 86400) label = `${Math.round(abs / 3600)}h`;
+            else label = `${Math.round(abs / 86400)}d`;
+            if (future) return overdue ? `overdue by ${label}` : `in ${label}`;
+            return `${label} ago`;
+        }
+
+        function statusFillClass(percent) {
+            if (percent >= 70) return "ok";
+            if (percent >= 35) return "warn";
+            return "bad";
+        }
+
+        // Health icon (issue #215): item.health/item.health_detail come from
+        // lib/data_status.py's read_health_status() -- a transient upstream condition
+        // (e.g. adsb.lol rate-limiting AircraftCollector), decoupled from item.status's
+        // own pass/fail run tracking. Three distinct glyphs/colours rather than one
+        // shape with three tooltips, so severity reads at a glance without hovering:
+        // amber "rate limited" (expected, self-throttling) vs. red "blocked" (upstream
+        // actively rejecting us) vs. red "error" (something broke in our own code) --
+        // falls back to item.status === "failed" for collectors that don't report a
+        // specific health code yet, so every row still gets SOME signal on a hard failure.
+        function healthIcon(item) {
+            if (item.health === "rate_limited") {
+                return { glyph: "⚠", cls: "health-rate-limited", title: item.health_detail || "Rate limited" };
+            }
+            if (item.health === "blocked") {
+                return { glyph: "⛔", cls: "health-blocked", title: item.health_detail || "Blocked" };
+            }
+            if (item.status === "failed") {
+                return { glyph: "✕", cls: "health-error", title: item.detail || "Error" };
+            }
+            return { glyph: "✓", cls: "health-ok", title: "OK" };
+        }
+
+        // Last successful /api/data_status fetch, kept around so toggleChannel() can
+        // re-render an optimistic update instantly without waiting on a re-fetch.
+        let lastStatusData = { collectors: [], layers: [] };
+
+        // Friendly name for a channel_key, for the "via X" line below -- reuses the
+        // Collectors row's own display_name (computed server-side by
+        // routes/status.py's _display_name()) rather than a second, separately
+        // maintained label map that could drift from it.
+        function channelDisplayName(channelKey) {
+            const row = lastStatusData.collectors.find(c => c.channel_key === channelKey);
+            return row ? row.display_name : channelKey;
+        }
+
+        // Single escaping helper for anything from a status row interpolated into this
+        // template's HTML (error details, labels, URLs) -- safe in both an attribute
+        // context (title="...", href="...") and a text-content context (a label
+        // rendered as a child node); &quot; is a harmless no-op in text content, so one
+        // function covers both rather than needing a slightly different one per
+        // context. Replaces two inconsistent one-off `.replace(/"/g, "&quot;")` calls
+        // that only handled the attribute case, and left other interpolated values
+        // (channelLabel, display_name) unescaped entirely.
+        function escapeHtml(str) {
+            return String(str)
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;");
+        }
+
+        // Multi-hour layers (isobars, wind, ...) carry a per-hour segments[] (see
+        // Updater.layer_status()) -- draw one coloured slice per forecast hour instead
+        // of a single solid fill, so which hours are actually rendered vs. still
+        // pending is visible at a glance. Every other row (collectors, single-shot
+        // layers) has segments == null and gets the plain fill bar.
+        //
+        // Flight Radar's hotspot-coverage row (issue #215, routes/status.py's
+        // _flightradar_hotspot_status()) reuses this same segmented-bar mechanism with
+        // a different segment shape ({"queried": bool}, no per-hour/run identity to
+        // show) -- detected by "queried" being present on the first segment rather than
+        // "hour", since it's a genuinely different label but the same bar/dot styling.
+        function renderStatusTrack(item, pct, fillClass) {
+            if (!item.segments || !item.segments.length) {
+                return `<div class="status-fill ${fillClass}" style="width: ${pct}%;"></div>`;
+            }
+            const isHotspot = "queried" in item.segments[0];
+            const segmentsHtml = item.segments.map(seg => {
+                let done, label;
+                if (isHotspot) {
+                    done = seg.queried;
+                    label = done ? "Hotspot cell: queried" : "Hotspot cell: pending";
+                } else {
+                    const fhour = String(seg.hour).padStart(3, "0");
+                    done = seg.rendered;
+                    label = `Run ${item.run_id}Z ${item.run_date} · f${fhour} ` + (done ? "(rendered)" : "(pending)");
+                }
+                return `<div class="status-segment ${done ? "rendered" : "pending"}" title="${escapeHtml(label)}"></div>`;
+            }).join("");
+            return `<div class="status-segmented-track">${segmentsHtml}</div>`;
+        }
+
+        // Collectors carry a source_url (see CollectorBase.source_url()) when they
+        // fetch from one identifiable upstream URL -- render the label as a new-tab
+        // link to it. Layers and sourceless collectors (e.g. markers, which syncs a
+        // local file) have source_url == null and keep a plain label.
+        function renderStatusLabel(item) {
+            if (!item.source_url) return escapeHtml(item.display_name);
+            return `<a href="${escapeHtml(item.source_url)}" target="_blank" rel="noopener noreferrer" class="status-label-link">${escapeHtml(item.display_name)}</a>`;
+        }
+
+        function renderStatusRows(containerId, items, { withToggle = false } = {}) {
+            const container = document.getElementById(containerId);
+            if (!container) return;
+            if (!items || items.length === 0) {
+                container.innerHTML = '<div class="status-empty">No data yet.</div>';
+                return;
+            }
+            container.innerHTML = items.map(item => {
+                const channelKey = item.channel_key;
+                // channel_on is null for a row not gated by channel_enabled at all
+                // (storms, markers, shipping/lightning) -- treat that the same as "on".
+                const channelOn = item.channel_on !== false;
+                const pct = channelOn ? Math.max(0, Math.min(100, item.percent ?? 0)) : 0;
+                const fillClass = channelOn ? statusFillClass(pct) : "off";
+                const lastUpdated = formatRelativeTime(item.last_updated);
+                // next_update is only ever null for a real kill-switch (e.g. the async
+                // shipping/lightning collectors, or the data_collector master toggle) —
+                // collectors and layers gated only by a frontend-visibility `enabled`
+                // flag still get collected/rendered in the background and always report
+                // a real next_update, so trust the value over the enabled flag.
+                const nextUpdate = item.next_update
+                    ? formatRelativeTime(item.next_update, { future: true })
+                    : (item.enabled === false ? "disabled" : "—");
+                // "running" means the process is CURRENTLY mid-collect/render (e.g. a
+                // slow multi-hundred-MB SST download) -- percent/last_updated still
+                // reflect the last COMPLETED run (not faked fresh), so the badge is the
+                // only signal that something is happening right now rather than the row
+                // just sitting on a stale reading until the run finishes.
+                const runningBadge = item.status === "running"
+                    ? '<span class="badge bg-primary status-running-badge">running</span>'
+                    : '<span class="status-running-badge-spacer"></span>';
+                // Suppressed while toggled off -- a green check on a row that's simply
+                // disabled would misleadingly read as "healthy" rather than "not running".
+                const healthHtml = channelOn
+                    ? (() => {
+                        const h = healthIcon(item);
+                        return `<span class="status-health-icon ${h.cls}" title="${escapeHtml(h.title)}">${h.glyph}</span>`;
+                    })()
+                    : '<span class="status-health-icon-spacer"></span>';
+                const title = item.detail ? escapeHtml(item.detail) : "";
+                const channelLabel = escapeHtml(channelDisplayName(channelKey));
+
+                // Cadence widget: only Collectors-panel rows carry runs_per_day (null for
+                // layers and every row not migrated onto it -- see routes/status.py's
+                // RUNS_PER_DAY_SECTIONS). runs_per_day_section is which config section a
+                // change actually saves to -- the backend resolves this (architecture
+                // review candidate "one source of truth for which rows get the cadence
+                // widget"), rather than this template re-deriving the gfs_atmos special
+                // case itself; it's almost always item.name, except the gfs_atmos row
+                // (shared cadence with gfs_waves/rtofs_currents, saved under
+                // "data_collector" -- see updateRunsPerDay below).
+                const runsPerDaySection = item.runs_per_day_section;
+                const runsPerDayHtml = (withToggle && item.runs_per_day != null)
+                    ? `<select class="form-select form-select-sm status-runs-select"
+                               title="${runsPerDaySection !== item.name ? "Governs GFS Atmos, GFS Waves &amp; RTOFS Currents together" : "Runs per day"}"
+                               onchange="updateRunsPerDay('${runsPerDaySection}', this.value)">
+                           ${RUNS_PER_DAY_CHOICES.map(v =>
+                               `<option value="${v}" ${v === item.runs_per_day ? "selected" : ""}>${v}/day</option>`
+                           ).join("")}
+                       </select>`
+                    : (withToggle ? `<span class="status-runs-select-spacer"></span>` : "");
+
+                // Collectors panel: a real opt-out switch per gated row, an inert spacer
+                // (keeps columns aligned) for an ungated one (storms, markers, ...).
+                const toggleHtml = withToggle
+                    ? (channelKey
+                        ? `<label class="status-switch">
+                               <input type="checkbox" ${channelOn ? "checked" : ""} onchange="toggleChannel('${channelKey}', this.checked)">
+                               <span class="status-slider"></span>
+                           </label>`
+                        : `<span class="status-switch-spacer"></span>`)
+                    : "";
+
+                // Layers panel: no switch (opting out happens on the Collectors row
+                // upstream) -- instead, always name which channel feeds this layer, so
+                // the dependency is visible even before anything's toggled off.
+                const viaHtml = (!withToggle && channelKey)
+                    ? `<div class="status-via">${
+                        channelOn
+                            ? `via ${channelLabel}`
+                            : `<span class="status-off-tag">&#9208; ${channelLabel} off</span>`
+                      }</div>`
+                    : "";
+
+                const timesHtml = (withToggle && !channelOn)
+                    ? `<span class="status-off-tag">&#9208; opted out</span>`
+                    : `updated ${lastUpdated} &middot; next ${nextUpdate}`;
+
+                const trackHtml = renderStatusTrack(item, pct, fillClass);
+                const labelHtml = renderStatusLabel(item);
+
+                return `
+                    <div class="status-row ${channelOn ? "" : "channel-off"}" title="${title}">
+                        ${toggleHtml}
+                        ${healthHtml}
+                        <div class="status-label-block">
+                            <div class="status-label">${labelHtml}</div>
+                            ${viaHtml}
+                        </div>
+                        <div class="status-track">
+                            ${trackHtml}
+                        </div>
+                        <div class="status-pct">${pct.toFixed(0)}%</div>
+                        ${runsPerDayHtml}
+                        <div class="status-times">${timesHtml}</div>
+                        ${runningBadge}
+                    </div>
+                `;
+            }).join("");
+        }
+
+        function renderDataStatus() {
+            renderStatusRows("container-collectors-status", lastStatusData.collectors, { withToggle: true });
+            renderStatusRows("container-layers-status", lastStatusData.layers, { withToggle: false });
+        }
+
+        async function loadDataStatus() {
+            try {
+                const res = await fetch(DATA_STATUS_API_URL);
+                const json = await res.json();
+                if (json.status !== "success") return;
+                lastStatusData = json.data;
+                renderDataStatus();
+            } catch (err) {
+                console.error("Data Status fetch failed:", err);
+            }
+        }
+
+        // Opts a channel in/out immediately -- its own tiny endpoint rather than the big
+        // "Save & Overwrite System Configuration" form (see the comment above this
+        // section: the Data Status tab is deliberately independent of masterConfigCache).
+        // Updates every row sharing this channel_key (collector + every dependent layer)
+        // optimistically, then reverts on failure.
+        async function toggleChannel(channelKey, checked) {
+            for (const item of [...lastStatusData.collectors, ...lastStatusData.layers]) {
+                if (item.channel_key === channelKey) item.channel_on = checked;
+            }
+            renderDataStatus();
+            try {
+                const res = await fetch(
+                    `${API_URL}/data_status/channel_enabled/${encodeURIComponent(channelKey)}`,
+                    {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ enabled: checked }),
+                    }
+                );
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            } catch (err) {
+                console.error(`Failed to save channel_enabled.${channelKey}:`, err);
+                for (const item of [...lastStatusData.collectors, ...lastStatusData.layers]) {
+                    if (item.channel_key === channelKey) item.channel_on = !checked;
+                }
+                renderDataStatus();
+            }
+        }
+
+        // Saves a row's cadence immediately -- its own tiny endpoint, same rationale as
+        // toggleChannel above. `section` is item.runs_per_day_section (see above) --
+        // "data_collector" for the gfs_atmos row (shared cadence with gfs_waves/
+        // rtofs_currents) and the row's own name for every other collector.
+        async function updateRunsPerDay(section, value) {
+            const runsPerDay = Number(value);
+            const previous = {};
+            for (const item of lastStatusData.collectors) {
+                if (item.runs_per_day_section === section) {
+                    previous[item.name] = item.runs_per_day;
+                    item.runs_per_day = runsPerDay;
+                }
+            }
+            renderDataStatus();
+            try {
+                const res = await fetch(
+                    `${API_URL}/data_status/runs_per_day/${encodeURIComponent(section)}`,
+                    {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ runs_per_day: runsPerDay }),
+                    }
+                );
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            } catch (err) {
+                console.error(`Failed to save ${section}.runs_per_day:`, err);
+                for (const item of lastStatusData.collectors) {
+                    if (item.name in previous) item.runs_per_day = previous[item.name];
+                }
+                renderDataStatus();
+            }
+        }
+
+        document.getElementById("data-status-tab")?.addEventListener("shown.bs.tab", () => {
+            loadDataStatus();
+            if (!dataStatusTimer) {
+                dataStatusTimer = setInterval(loadDataStatus, 12000);
+            }
+        });
+        document.getElementById("data-status-tab")?.addEventListener("hidden.bs.tab", () => {
+            clearInterval(dataStatusTimer);
+            dataStatusTimer = null;
+        });
+
+        // --- System Status (Global tab) -- infrastructure health (service liveness,
+        // DB connectivity, disk usage), distinct from the Data Status tab's per-layer
+        // data FRESHNESS above. Reuses .status-row/.status-fill/.status-health-icon
+        // for visual consistency, but with its own simple render function -- these
+        // rows (heartbeat / DB ping / disk usage) don't fit renderStatusRows' percent+
+        // segments+channel-toggle shape built for collectors/layers. ---
+        const SYSTEM_STATUS_API_URL = API_URL + "/system_status";
+        let systemStatusTimer = null;
+
+        function serviceHealthIcon(status) {
+            if (status === "ok") return { glyph: "✓", cls: "health-ok", title: "Running" };
+            if (status === "stale") return { glyph: "⚠", cls: "health-rate-limited", title: "Heartbeat is late" };
+            if (status === "dead") return { glyph: "⛔", cls: "health-blocked", title: "No recent heartbeat -- likely down" };
+            return { glyph: "?", cls: "health-unknown", title: "No heartbeat recorded yet" };
+        }
+
+        // Inverted polarity vs statusFillClass() above: for disk usage, HIGH percent
+        // is bad, not good.
+        function diskStatusIcon(pctUsed) {
+            if (pctUsed >= 90) return { glyph: "⛔", cls: "health-blocked", fillClass: "bad", title: "Data volume is nearly full" };
+            if (pctUsed >= 75) return { glyph: "⚠", cls: "health-rate-limited", fillClass: "warn", title: "Data volume usage is high" };
+            return { glyph: "✓", cls: "health-ok", fillClass: "ok", title: "Data volume usage is healthy" };
+        }
+
+        function formatBytes(bytes) {
+            if (bytes == null) return "unknown";
+            return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
+        }
+
+        function renderSystemStatusRow(icon, label, detailHtml, trackHtml = "") {
+            return `
+                <div class="status-row">
+                    <span class="status-health-icon ${icon.cls}" title="${escapeHtml(icon.title || "")}">${icon.glyph}</span>
+                    <div class="status-label-block"><div class="status-label">${escapeHtml(label)}</div></div>
+                    ${trackHtml}
+                    <div class="status-detail">${detailHtml}</div>
+                </div>`;
+        }
+
+        function renderSystemStatus(data) {
+            const container = document.getElementById("container-system-status");
+            if (!container) return;
+            if (!data) {
+                container.innerHTML = '<div class="status-empty">No data yet.</div>';
+                return;
+            }
+
+            const serviceRows = (data.services || []).map(svc => {
+                const icon = serviceHealthIcon(svc.status);
+                const detail = svc.last_seen
+                    ? `last seen ${formatRelativeTime(svc.last_seen)}`
+                    : escapeHtml(svc.detail || "no heartbeat yet");
+                return renderSystemStatusRow(icon, svc.display_name, detail);
+            }).join("");
+
+            const db = data.database || {};
+            const dbIcon = db.ok
+                ? { glyph: "✓", cls: "health-ok", title: "Connected" }
+                : { glyph: "⛔", cls: "health-blocked", title: db.error || "Unreachable" };
+            const dbDetail = db.ok
+                ? `connected &middot; ${db.latency_ms} ms`
+                : escapeHtml(db.error || "unreachable");
+            const dbRow = renderSystemStatusRow(dbIcon, "Database", dbDetail);
+
+            const disk = data.disk || {};
+            let diskRow;
+            if (disk.percent_used == null) {
+                diskRow = renderSystemStatusRow(
+                    { glyph: "?", cls: "health-unknown", title: "Disk usage unavailable" },
+                    "Data Volume", "unavailable"
+                );
+            } else {
+                const icon = diskStatusIcon(disk.percent_used);
+                // "Ours" (data/'s own footprint: renders + fieldstore cache) as a fixed
+                // accent segment, then everything else used on this volume in the
+                // health-coloured segment -- two stacked fills inside one track.
+                const oursPct = (disk.our_data_bytes != null && disk.total_bytes)
+                    ? Math.max(0, Math.min(100, 100 * disk.our_data_bytes / disk.total_bytes))
+                    : 0;
+                const otherUsedPct = Math.max(0, disk.percent_used - oursPct);
+                const trackHtml = `
+                    <div class="status-track" style="max-width: 200px;">
+                        <div style="display: flex; height: 100%; width: 100%;">
+                            <div class="status-fill ours" style="width: ${oursPct}%;" title="terrascope data: ${formatBytes(disk.our_data_bytes)}"></div>
+                            <div class="status-fill ${icon.fillClass}" style="width: ${otherUsedPct}%;" title="Other usage on this volume"></div>
+                        </div>
+                    </div>
+                    <div class="status-pct">${disk.percent_used.toFixed(0)}%</div>`;
+                const detail = disk.our_data_bytes != null
+                    ? `${formatBytes(disk.our_data_bytes)} terrascope data &middot; ${formatBytes(disk.free_bytes)} free of ${formatBytes(disk.total_bytes)}`
+                    : `${formatBytes(disk.free_bytes)} free of ${formatBytes(disk.total_bytes)}`;
+                diskRow = renderSystemStatusRow(icon, "Data Volume", detail, trackHtml);
+            }
+
+            container.innerHTML = serviceRows + dbRow + diskRow;
+        }
+
+        async function loadSystemStatus() {
+            try {
+                const res = await fetch(SYSTEM_STATUS_API_URL);
+                const json = await res.json();
+                if (json.status !== "success") return;
+                renderSystemStatus(json.data);
+            } catch (err) {
+                console.error("System Status fetch failed:", err);
+            }
+        }
+
+        // Global is the default active tab, so load immediately on page ready (not
+        // gated on a "shown.bs.tab" event the way Data Status's lazy-loaded tab is),
+        // then pause/resume the poll timer same as Data Status when navigating away.
+        loadSystemStatus();
+        systemStatusTimer = setInterval(loadSystemStatus, 15000);
+        document.getElementById("global-tab")?.addEventListener("shown.bs.tab", () => {
+            loadSystemStatus();
+            if (!systemStatusTimer) {
+                systemStatusTimer = setInterval(loadSystemStatus, 15000);
+            }
+        });
+        document.getElementById("global-tab")?.addEventListener("hidden.bs.tab", () => {
+            clearInterval(systemStatusTimer);
+            systemStatusTimer = null;
+        });
+    </script>
+</body>
+</html>

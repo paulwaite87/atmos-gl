@@ -6,7 +6,7 @@ _run_dispatch_cycle builds for the NEXT round -- see layer_builder.py's
 _run_dispatch_cycle, which asks ordered() fresh each round)."""
 import pytest
 
-from atmos_gl.round_robin_order import RoundRobinOrder
+from terrascope.round_robin_order import RoundRobinOrder
 
 
 def test_ordered_defaults_to_construction_order():

@@ -1,12 +1,12 @@
-# Makefile.prod -- bespoke consumer/production Makefile for atmos-gl.
+# Makefile.prod -- bespoke consumer/production Makefile for terrascope.
 .PHONY: prod prod-down release logs psql backup restore status help bootstrap-config install-shell-alias check-git
 .DEFAULT_GOAL := prod
 
 # Variables
 DB_USER = agl
-DB_NAME = atmos_gl
-DB_SERVICE = atmos_gl_db
-DUMP_FILE = atmos_gl_dump.sql
+DB_NAME = terrascope
+DB_SERVICE = terrascope_db
+DUMP_FILE = terrascope_dump.sql
 BUILDER_SERVICE = layer_builder
 BACKEND_SERVICES = data_collector layer_builder housekeeper map_api
 
@@ -33,7 +33,7 @@ bootstrap-config: install-shell-alias
 	@bash scripts/bootstrap-config.sh
 
 install-shell-alias:
-	@marker="# atmos-gl: bare 'make' here runs 'make -f Makefile.prod' (added by install-shell-alias)"; \
+	@marker="# terrascope: bare 'make' here runs 'make -f Makefile.prod' (added by install-shell-alias)"; \
 	if [ -f ~/.bashrc ] && grep -qF "$$marker" ~/.bashrc 2>/dev/null; then \
 		: ; \
 	else \
@@ -73,15 +73,15 @@ release: bootstrap-config
 logs:
 	@COMPOSE_ARGS="-f docker-compose.yml" bash scripts/logs.sh $(service)
 
-## psql: Open psql session in the atmos_gl database
+## psql: Open psql session in the terrascope database
 psql:
 	@COMPOSE_ARGS="-f docker-compose.yml" DB_SERVICE=$(DB_SERVICE) DB_USER=$(DB_USER) DB_NAME=$(DB_NAME) bash scripts/psql.sh
 
-## backup: Backup database to local atmos_gl_dump.sql file
+## backup: Backup database to local terrascope_dump.sql file
 backup:
 	@COMPOSE_ARGS="-f docker-compose.yml" DB_SERVICE=$(DB_SERVICE) DB_USER=$(DB_USER) DB_NAME=$(DB_NAME) DUMP_FILE=$(DUMP_FILE) bash scripts/backup.sh
 
-## restore: Restores the local atmos_gl_dump.sql backup
+## restore: Restores the local terrascope_dump.sql backup
 restore:
 	@COMPOSE_ARGS="-f docker-compose.yml" DB_SERVICE=$(DB_SERVICE) DB_USER=$(DB_USER) DB_NAME=$(DB_NAME) DUMP_FILE=$(DUMP_FILE) BACKEND_SERVICES="$(BACKEND_SERVICES)" bash scripts/restore.sh
 

@@ -6,8 +6,8 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 
-from atmos_gl.tasks.common import ForecastState
-from atmos_gl.tasks.wind import WindUpdater
+from terrascope.tasks.common import ForecastState
+from terrascope.tasks.wind import WindUpdater
 
 
 def make_bare_plot_updater():
@@ -39,8 +39,8 @@ def test_plot_still_encodes_velocity_texture_when_contourf_raises():
     }
     state = ForecastState.at_hour("2026-06-13", "18", 3)
 
-    with patch("atmos_gl.tasks.wind.Plot") as MockPlot, patch(
-        "atmos_gl.tasks.wind.encode_uv"
+    with patch("terrascope.tasks.wind.Plot") as MockPlot, patch(
+        "terrascope.tasks.wind.encode_uv"
     ) as mock_encode:
         MockPlot.return_value.ax.contourf.side_effect = ValueError(
             "Sequences of multi-polygons are not valid arguments"

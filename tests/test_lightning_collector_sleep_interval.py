@@ -6,7 +6,7 @@ hardcoded 600s sleep with a fixed 900s heartbeat allowance; both must now scale 
 configured value, not just the sleep itself, or a long sleep_interval would make the
 Data Status UI falsely report the collector as stale between scans.
 """
-from atmos_gl.collectors.lightning import LightningCollector
+from terrascope.collectors.lightning import LightningCollector
 
 
 def make_collector(settings=None):

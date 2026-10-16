@@ -7,14 +7,14 @@ from unittest.mock import patch
 import pytest
 from sqlalchemy.orm import sessionmaker
 
-from atmos_gl.db.user_adapter import UserAdapter
-from atmos_gl.db.user_settings_adapter import UserSettingsAdapter, FakeUserSettingsAdapter
+from terrascope.db.user_adapter import UserAdapter
+from terrascope.db.user_settings_adapter import UserSettingsAdapter, FakeUserSettingsAdapter
 
 
 def _make_adapter(kind, real_db):
     if kind == "real":
         TestSession = sessionmaker(bind=real_db)
-        return UserSettingsAdapter(), patch("atmos_gl.db.user_settings_adapter.Session", TestSession), TestSession
+        return UserSettingsAdapter(), patch("terrascope.db.user_settings_adapter.Session", TestSession), TestSession
     return FakeUserSettingsAdapter(), contextlib.nullcontext(), None
 
 
@@ -23,7 +23,7 @@ def _make_user_id(kind, TestSession, email):
     actual row there first; the fake case has no such constraint, so any id works."""
     if kind == "fake":
         return 1
-    with patch("atmos_gl.db.user_adapter.Session", TestSession):
+    with patch("terrascope.db.user_adapter.Session", TestSession):
         user = UserAdapter().get_or_create_user(
             email=email, name="Test", provider="google", provider_user_id=email,
         )
@@ -99,8 +99,8 @@ def test_deleting_the_user_cascades_to_their_user_settings_row(real_db):
     Real-DB only: FakeUserAdapter/FakeUserSettingsAdapter are separate objects with no
     shared cascade to prove."""
     TestSession = sessionmaker(bind=real_db)
-    with patch("atmos_gl.db.user_adapter.Session", TestSession), \
-            patch("atmos_gl.db.user_settings_adapter.Session", TestSession):
+    with patch("terrascope.db.user_adapter.Session", TestSession), \
+            patch("terrascope.db.user_settings_adapter.Session", TestSession):
         user_adapter = UserAdapter()
         settings_adapter = UserSettingsAdapter()
         user = user_adapter.get_or_create_user(

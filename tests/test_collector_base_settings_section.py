@@ -12,7 +12,7 @@ quakes, ...) reads settings from self.section exactly as before.
 """
 from unittest.mock import MagicMock
 
-from atmos_gl.collectors.base import CollectorBase
+from terrascope.collectors.base import CollectorBase
 
 
 def make_config(sections: dict):

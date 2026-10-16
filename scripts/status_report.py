@@ -11,8 +11,8 @@ map-layer data.
 """
 from sqlalchemy import Numeric, cast, func, select
 
-from atmos_gl.db.engine import Session
-from atmos_gl.db.models import (
+from terrascope.db.engine import Session
+from terrascope.db.models import (
     Aircraft,
     Earthquake,
     FieldCatalog,

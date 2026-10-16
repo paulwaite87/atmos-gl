@@ -6,20 +6,20 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 
-from atmos_gl.tasks.waves import WavesUpdater
+from terrascope.tasks.waves import WavesUpdater
 
 
 def test_init_wires_a_land_mask_cache_labelled_waves():
     """Every LandMaskCache consumer (currents, waves) now shares one GSHHG 'h'
     geometry -- see docs/adr/0013 -- so there's no per-caller resolution to assert
     here anymore, just that WavesUpdater wires up its own labelled cache."""
-    from atmos_gl.lib.coastline import LandMaskCache
+    from terrascope.lib.coastline import LandMaskCache
 
     def fake_updater_init(self, config, section, map_data):
         self.section = section.lower()
         self.settings = {}
 
-    with patch("atmos_gl.tasks.common.Updater.__init__", fake_updater_init):
+    with patch("terrascope.tasks.common.Updater.__init__", fake_updater_init):
         u = WavesUpdater(config=MagicMock(), map_data=MagicMock())
 
     assert isinstance(u._land_mask, LandMaskCache)
@@ -44,7 +44,7 @@ def test_masked_uv_masks_land_cells_as_nan_from_the_land_mask_as_is():
     u._land_mask.get.return_value = land
 
     with patch(
-        "atmos_gl.tasks.waves.nearest_fill_and_regrid_uv",
+        "terrascope.tasks.waves.nearest_fill_and_regrid_uv",
         return_value=(new_lats, new_lons, u_arr.copy(), v_arr.copy()),
     ):
         _, out_u, out_v = u._masked_uv({"u": u_arr, "v": v_arr, "lat": None, "lon": None})

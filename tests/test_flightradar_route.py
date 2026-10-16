@@ -6,9 +6,9 @@ records viewer interest -- adapter-level upsert/read/prune behavior is already c
 by tests/test_aircraft_adapter.py against the Fake directly."""
 from datetime import datetime, timezone
 
-from atmos_gl.db.aircraft_adapter import FakeAircraftAdapter
-from atmos_gl.routes.flightradar import get_aircraft_adapter
-from atmos_gl.api import app
+from terrascope.db.aircraft_adapter import FakeAircraftAdapter
+from terrascope.routes.flightradar import get_aircraft_adapter
+from terrascope.api import app
 
 
 def _bbox_params(viewer_id="viewer-1"):

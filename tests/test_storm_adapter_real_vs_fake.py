@@ -16,13 +16,13 @@ from unittest.mock import patch
 import pytest
 from sqlalchemy.orm import sessionmaker
 
-from atmos_gl.db.storm_adapter import StormAdapter, FakeStormAdapter
+from terrascope.db.storm_adapter import StormAdapter, FakeStormAdapter
 
 
 def _make_adapter(kind, real_db):
     if kind == "real":
         TestSession = sessionmaker(bind=real_db)
-        return StormAdapter(), patch("atmos_gl.db.storm_adapter.Session", TestSession)
+        return StormAdapter(), patch("terrascope.db.storm_adapter.Session", TestSession)
     return FakeStormAdapter(), contextlib.nullcontext()
 
 

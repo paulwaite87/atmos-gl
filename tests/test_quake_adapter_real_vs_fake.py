@@ -12,13 +12,13 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.orm import sessionmaker
 
-from atmos_gl.db.quake_adapter import QuakeAdapter, FakeQuakeAdapter
+from terrascope.db.quake_adapter import QuakeAdapter, FakeQuakeAdapter
 
 
 def _make_adapter(kind, real_db):
     if kind == "real":
         TestSession = sessionmaker(bind=real_db)
-        return QuakeAdapter(), patch("atmos_gl.db.quake_adapter.Session", TestSession)
+        return QuakeAdapter(), patch("terrascope.db.quake_adapter.Session", TestSession)
     return FakeQuakeAdapter(), contextlib.nullcontext()
 
 

@@ -31,7 +31,7 @@ jobs:
         # CI on ~70 files with no code change involved, purely a version drift.
         run: uv run ruff check ./src
       - name: Bootstrap live config from template
-        run: cp config/atmos-gl.json.tmpl config/atmos-gl.json
+        run: cp config/terrascope.json.tmpl config/terrascope.json
       - name: Run pytest
         run: uv run pytest tests/ -q
       - name: Set up Node

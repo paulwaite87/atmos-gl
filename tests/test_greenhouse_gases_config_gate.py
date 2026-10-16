@@ -13,12 +13,12 @@ from unittest.mock import patch
 import pytest
 from fastapi.testclient import TestClient
 
-from atmos_gl.api import app
-from atmos_gl.lib.auth import SESSION_COOKIE_NAME
-from atmos_gl.lib.config import AtmosGLConfig
-from atmos_gl.db.user_settings_adapter import FakeUserSettingsAdapter
-from atmos_gl.routes.auth import get_user_adapter
-from atmos_gl.routes.config import get_user_settings_adapter
+from terrascope.api import app
+from terrascope.lib.auth import SESSION_COOKIE_NAME
+from terrascope.lib.config import TerrascopeConfig
+from terrascope.db.user_settings_adapter import FakeUserSettingsAdapter
+from terrascope.routes.auth import get_user_adapter
+from terrascope.routes.config import get_user_settings_adapter
 from tests.conftest import make_signed_in_session
 
 client = TestClient(app)
@@ -40,11 +40,11 @@ def _admin_session():
 
 
 def _with_temp_config(tmp_path, initial: dict):
-    tmp_config = tmp_path / "atmos-gl.json"
+    tmp_config = tmp_path / "terrascope.json"
     tmp_config.write_text(json.dumps(initial))
     return patch(
-        "atmos_gl.routes.config.load_config",
-        return_value=AtmosGLConfig(str(tmp_config)),
+        "terrascope.routes.config.load_config",
+        return_value=TerrascopeConfig(str(tmp_config)),
     ), tmp_config
 
 

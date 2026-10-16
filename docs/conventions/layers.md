@@ -35,8 +35,8 @@ its own bespoke `plot()`.
 
 A single layer is threaded together by a **bare string repeated in four unenforced
 places**: its `ALL_LAYERS` entry, the `sectionKey` passed to `createFillLayer`/
-`createStaticFillLayer`, its `TASK_CLASSES` dict key (`src/atmos_gl/layer_builder.py`), and
-its `config/atmos-gl.json` section name. Nothing in the code checks that these four strings
+`createStaticFillLayer`, its `TASK_CLASSES` dict key (`src/terrascope/layer_builder.py`), and
+its `config/terrascope.json` section name. Nothing in the code checks that these four strings
 agree — a typo in any one silently detaches that piece from the other three (e.g. a config
 section nothing reads, or a `TASK_CLASSES` entry no layer ever requests). This is a known,
 accepted fragility, documented here rather than enforced in code — see each shape's example

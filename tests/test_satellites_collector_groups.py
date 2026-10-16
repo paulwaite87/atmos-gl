@@ -3,7 +3,7 @@
 control (field_specs.py's _CELESTRAK_GROUPS) saves an array, like every other
 MultiSelectSpec-backed field, replacing the old comma-separated string.
 """
-from atmos_gl.collectors.satellites import SatellitesCollector
+from terrascope.collectors.satellites import SatellitesCollector
 
 
 def make_collector(settings=None):

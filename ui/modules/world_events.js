@@ -31,7 +31,7 @@ const CATEGORY_TOGGLE_KEYS = {
 
 // Every category defaults to shown when its toggle is unset (matches every other
 // layer's boolean-setting convention: absence means "on" unless the config default
-// says otherwise -- config/atmos-gl.json.tmpl's world_events section already defaults
+// says otherwise -- config/terrascope.json.tmpl's world_events section already defaults
 // all four to true).
 const visibleCategories = (cfg) => Object.keys(CATEGORY_TOGGLE_KEYS)
     .filter((cat) => cfg[CATEGORY_TOGGLE_KEYS[cat]] !== false);

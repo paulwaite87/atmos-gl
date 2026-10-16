@@ -3,7 +3,7 @@
 live map."""
 from collections import Counter
 
-from atmos_gl.lib.country_stats import GROUPS, INDICATORS, catalog
+from terrascope.lib.country_stats import GROUPS, INDICATORS, catalog
 
 _COLORMAPS = {"viridis", "magma", "inferno", "ylorrd", "coolwarm", "turbo"}  # country_stats.js's
 

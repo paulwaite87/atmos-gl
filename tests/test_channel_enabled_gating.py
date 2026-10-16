@@ -10,9 +10,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from atmos_gl.collectors.driving import EventFeedDriver
-from atmos_gl.collectors.base import CollectorBase
-from atmos_gl.collectors.service import CollectorService
+from terrascope.collectors.driving import EventFeedDriver
+from terrascope.collectors.base import CollectorBase
+from terrascope.collectors.service import CollectorService
 
 
 # EventFeedDriver takes a Postgres advisory lock per collector; no DB here.
@@ -63,7 +63,7 @@ def make_fake_config(channel_enabled):
     return config
 
 
-@patch("atmos_gl.collectors.driving.ProcessStatusAdapter")
+@patch("terrascope.collectors.driving.ProcessStatusAdapter")
 def test_drive_skips_a_collector_whose_channel_is_disabled(mock_psa):
     FakeCls, calls = make_fake_collector_class("quakes", channel_key="quakes")
     config = make_fake_config({"quakes": False})
@@ -73,7 +73,7 @@ def test_drive_skips_a_collector_whose_channel_is_disabled(mock_psa):
     assert calls == []
 
 
-@patch("atmos_gl.collectors.driving.ProcessStatusAdapter")
+@patch("terrascope.collectors.driving.ProcessStatusAdapter")
 def test_drive_runs_normally_when_channel_is_enabled(mock_psa):
     FakeCls, calls = make_fake_collector_class("quakes", channel_key="quakes")
     config = make_fake_config({"quakes": True})
@@ -83,7 +83,7 @@ def test_drive_runs_normally_when_channel_is_enabled(mock_psa):
     assert calls == ["is_stale", "has_new_data", "collect"]
 
 
-@patch("atmos_gl.collectors.driving.ProcessStatusAdapter")
+@patch("terrascope.collectors.driving.ProcessStatusAdapter")
 def test_drive_runs_normally_when_channel_key_absent_from_dict(mock_psa):
     """A channel not yet present in channel_enabled defaults to enabled -- an operator
     on an older config (or one edited by hand) shouldn't silently lose data."""
@@ -95,7 +95,7 @@ def test_drive_runs_normally_when_channel_key_absent_from_dict(mock_psa):
     assert "collect" in calls
 
 
-@patch("atmos_gl.collectors.driving.ProcessStatusAdapter")
+@patch("terrascope.collectors.driving.ProcessStatusAdapter")
 def test_drive_ignores_channel_enabled_for_a_collector_with_no_channel_key(mock_psa):
     """markers isn't part of the channel_enabled feature (reads a local file, not a
     remote source) -- channel_key stays None, so it always runs regardless of what's
@@ -108,7 +108,7 @@ def test_drive_ignores_channel_enabled_for_a_collector_with_no_channel_key(mock_
     assert "collect" in calls
 
 
-@patch("atmos_gl.collectors.driving.ProcessStatusAdapter")
+@patch("terrascope.collectors.driving.ProcessStatusAdapter")
 def test_drive_does_not_advance_last_runs_for_a_disabled_channel(mock_psa):
     """Re-enabling a channel should trigger immediate collection, not wait out an
     already-ticking period -- confirmed by last_runs staying untouched while disabled."""
@@ -155,7 +155,7 @@ def test_collect_fields_skips_disabled_and_runs_enabled_field_collectors():
     svc = make_bare_service(config)
 
     with patch(
-        "atmos_gl.collectors.service.FIELD_COLLECTOR_CLASSES",
+        "terrascope.collectors.service.FIELD_COLLECTOR_CLASSES",
         (gfs_atmos_cls, gfs_waves_cls),
     ):
         svc._collect_fields()
@@ -169,7 +169,7 @@ def test_collect_fields_runs_all_when_channel_enabled_missing_entirely():
     config = make_fake_config({})
     svc = make_bare_service(config)
 
-    with patch("atmos_gl.collectors.service.FIELD_COLLECTOR_CLASSES", (gfs_atmos_cls,)):
+    with patch("terrascope.collectors.service.FIELD_COLLECTOR_CLASSES", (gfs_atmos_cls,)):
         svc._collect_fields()
 
     assert gfs_atmos_calls == ["gfs_atmos"]
@@ -179,6 +179,6 @@ def test_storms_collector_is_gated_by_the_storms_channel():
     """storms hits an external network source (NHC/JTWC) same as quakes/volcanoes/
     satellites, with no existing kill-switch of its own -- it belongs in
     channel_enabled just like them (unlike markers, which reads a local file)."""
-    from atmos_gl.collectors.storms import StormsCollector
+    from terrascope.collectors.storms import StormsCollector
 
     assert StormsCollector.channel_key == "storms"

@@ -7,13 +7,13 @@ image — it only enriches DB rows the frontend reads back exactly like a Point-
 
 ## Two independent backend pieces
 
-**`MarkersSyncCollector`** (`src/atmos_gl/collectors/markers_sync.py`) is a collector like
+**`MarkersSyncCollector`** (`src/terrascope/collectors/markers_sync.py`) is a collector like
 [quakes.md](quakes.md)'s — but its "remote feed" is a local file: it keeps the DB `markers`
 table in sync with the canonical `markers/markers.geojson`, upserting every feature and
 deleting rows no longer present. This owns the *structural* data (name, kind, country,
 lat/lon) — the marker definitions themselves.
 
-**`MarkerUpdater`** (`src/atmos_gl/tasks/markers.py`) *is* a `TASK_CLASSES["markers"]`
+**`MarkerUpdater`** (`src/terrascope/tasks/markers.py`) *is* a `TASK_CLASSES["markers"]`
 entry — so it runs in the render pool alongside every fill-layer `Updater` — but its
 `run()` has no `plot()` and produces no PNG or texture. Instead, when
 `markers.weather_popup` is on, it bilinearly samples the GFS fields already ingested for

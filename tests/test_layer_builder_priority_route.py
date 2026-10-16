@@ -16,7 +16,7 @@ def _fake_response(status_code, payload):
 
 
 def test_get_priority_returns_the_upstream_order(client):
-    with patch("atmos_gl.routes.layer_builder.requests.get") as mock_get:
+    with patch("terrascope.routes.layer_builder.requests.get") as mock_get:
         mock_get.return_value = _fake_response(200, {"order": ["isobars", "wind"]})
 
         resp = client.get("/api/layer_builder/priority")
@@ -28,7 +28,7 @@ def test_get_priority_returns_the_upstream_order(client):
 
 
 def test_get_priority_returns_502_when_layer_builder_is_unreachable(client):
-    with patch("atmos_gl.routes.layer_builder.requests.get") as mock_get:
+    with patch("terrascope.routes.layer_builder.requests.get") as mock_get:
         mock_get.side_effect = requests.ConnectionError("refused")
 
         resp = client.get("/api/layer_builder/priority")
@@ -37,7 +37,7 @@ def test_get_priority_returns_502_when_layer_builder_is_unreachable(client):
 
 
 def test_post_priority_forwards_the_payload_and_returns_the_new_order(client):
-    with patch("atmos_gl.routes.layer_builder.requests.post") as mock_post:
+    with patch("terrascope.routes.layer_builder.requests.post") as mock_post:
         mock_post.return_value = _fake_response(200, {"order": ["wind", "isobars"]})
 
         resp = client.post(
@@ -56,7 +56,7 @@ def test_post_priority_rejects_an_empty_sections_list(client):
 
 
 def test_post_priority_surfaces_a_400_from_upstream(client):
-    with patch("atmos_gl.routes.layer_builder.requests.post") as mock_post:
+    with patch("terrascope.routes.layer_builder.requests.post") as mock_post:
         mock_post.return_value = _fake_response(400, {"error": "unknown section(s): bogus"})
 
         resp = client.post("/api/layer_builder/priority", json={"sections": ["bogus"]})
@@ -66,7 +66,7 @@ def test_post_priority_surfaces_a_400_from_upstream(client):
 
 
 def test_post_priority_reset_forwards_to_upstream(client):
-    with patch("atmos_gl.routes.layer_builder.requests.post") as mock_post:
+    with patch("terrascope.routes.layer_builder.requests.post") as mock_post:
         mock_post.return_value = _fake_response(200, {"order": ["isobars", "wind"]})
 
         resp = client.post("/api/layer_builder/priority/reset")

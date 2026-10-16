@@ -2,7 +2,7 @@
 
 Linked from [AGENTS.md](../../AGENTS.md).
 
-- Production image: `ghcr.io/paulwaite87/atmos-gl:latest`
+- Production image: `ghcr.io/paulwaite87/terrascope:latest`
 - `PYTHONPATH=/opt/project/src` in the container — see
   [Architecture & repository layout](architecture.md) for why only `src/` is importable
 - Service-level env vars (API keys, DB credentials) live in `docker-compose.yml`

@@ -2,14 +2,14 @@
 import sys
 import os
 
-# Add the current directory to sys.path so we can import the atmos_gl module
+# Add the current directory to sys.path so we can import the terrascope module
 sys.path.append(os.getcwd())
 
 from sqlalchemy import select
 
-from atmos_gl.db.engine import Session
-from atmos_gl.db.models import Ship
-from atmos_gl.lib.shipping import get_vessel_class_from_type
+from terrascope.db.engine import Session
+from terrascope.db.models import Ship
+from terrascope.lib.shipping import get_vessel_class_from_type
 
 
 def main():

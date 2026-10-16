@@ -1,4 +1,4 @@
-# Roadmap: Terrascope rename and candidate layers
+# Roadmap: Terrascope and candidate layers
 
 Captured 2026-10-16 so the suggestions aren't lost. The name decision is made (Terrascope);
 the layer list is a brainstorm, not a commitment.
@@ -33,9 +33,20 @@ Alternatives considered:
 
 Before committing: check name collisions, domains and GitHub.
 
-A rename touches the repo and the `atmos_gl` package, `config/atmos-gl.json`, `atmos-gl.sh`,
-the Docker images, the installer URL and the docs. It is mechanical but wide, so do it as one
-dedicated PR.
+**Status: renamed.** The package, config (`config/terrascope.json`), `terrascope.sh`, Docker
+image names, installer URL and docs now use Terrascope. Still to do by hand: rename the GitHub
+repo to `terrascope` (GitHub redirects the old URL) and re-publish the images. `gfs_atmos` and
+other atmosphere-meaning names were deliberately left alone.
+
+## Next: chosen layers (in order)
+
+1. GDACS alerts
+2. Tsunami warnings
+3. Internet outages
+4. Night lights
+5. UV index
+
+The remaining candidates below stay as the backlog.
 
 ## b) Candidate layers
 

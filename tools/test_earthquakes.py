@@ -4,9 +4,9 @@ import os
 import uuid
 from datetime import datetime, timedelta, timezone
 
-# Ensure we can import the atmos_gl module
+# Ensure we can import the terrascope module
 sys.path.append(os.getcwd())
-from atmos_gl.db.quake_adapter import QuakeAdapter
+from terrascope.db.quake_adapter import QuakeAdapter
 
 
 def generate_test_quakes():

@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 from PIL import Image
 
-from atmos_gl.lib.texture import encode_uv, encode_frames
+from terrascope.lib.texture import encode_uv, encode_frames
 
 
 def _decode_uv_channel(byte, vmax):

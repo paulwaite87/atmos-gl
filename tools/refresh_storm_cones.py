@@ -4,11 +4,11 @@ import logging
 from sqlalchemy import func, select
 
 # Import your core modules based on the project structure
-from atmos_gl.db.engine import Session
-from atmos_gl.db.models import Storm, StormTrack
-from atmos_gl.lib.config import AtmosGLConfig
-from atmos_gl.tasks.common import MapData
-from atmos_gl.tasks.storms import StormUpdater
+from terrascope.db.engine import Session
+from terrascope.db.models import Storm, StormTrack
+from terrascope.lib.config import TerrascopeConfig
+from terrascope.tasks.common import MapData
+from terrascope.tasks.storms import StormUpdater
 
 # Configure basic logging so you can watch the progress in the terminal
 logging.basicConfig(level=logging.INFO, format='%(levelname)s - %(message)s')
@@ -32,7 +32,7 @@ def refresh_all_cones():
     logger.info("Initializing dependencies...")
 
     # 1. Core Initialization
-    config = AtmosGLConfig(config_path="/opt/project/config/atmos-gl.json")
+    config = TerrascopeConfig(config_path="/opt/project/config/terrascope.json")
     updater = StormUpdater(config, MapData(config))
 
     try:

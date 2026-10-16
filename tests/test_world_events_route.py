@@ -5,9 +5,9 @@ override it with FakeWorldEventAdapter and exercise the real route end-to-end.
 """
 from datetime import datetime, timedelta, timezone
 
-from atmos_gl.db.world_event_adapter import FakeWorldEventAdapter
-from atmos_gl.routes.world_events import get_world_event_adapter
-from atmos_gl.api import app
+from terrascope.db.world_event_adapter import FakeWorldEventAdapter
+from terrascope.routes.world_events import get_world_event_adapter
+from terrascope.api import app
 
 
 def _event(event_id, event_date_iso, category="warfare", avg_tone=-2.0):

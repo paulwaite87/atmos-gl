@@ -7,13 +7,13 @@ from unittest.mock import patch
 import pytest
 from sqlalchemy.orm import sessionmaker
 
-from atmos_gl.db.country_stats_adapter import CountryStatsAdapter, FakeCountryStatsAdapter
+from terrascope.db.country_stats_adapter import CountryStatsAdapter, FakeCountryStatsAdapter
 
 
 def _make_adapter(kind, real_db):
     if kind == "real":
         TestSession = sessionmaker(bind=real_db)
-        return CountryStatsAdapter(), patch("atmos_gl.db.country_stats_adapter.Session", TestSession)
+        return CountryStatsAdapter(), patch("terrascope.db.country_stats_adapter.Session", TestSession)
     return FakeCountryStatsAdapter(), contextlib.nullcontext()
 
 

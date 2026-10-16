@@ -6,15 +6,15 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from atmos_gl.collectors import CACHE_COLLECTORS, COLLECTORS
-from atmos_gl.collectors.run_once import (
+from terrascope.collectors import CACHE_COLLECTORS, COLLECTORS
+from terrascope.collectors.run_once import (
     EXIT_FAILED,
     EXIT_OK,
     EXIT_USAGE,
     run_once,
     runnable_collectors,
 )
-from atmos_gl.db.collector_lock import collector_lock
+from terrascope.db.collector_lock import collector_lock
 
 
 def make_config(channel_enabled=None):
@@ -44,7 +44,7 @@ class _RecordingLock:
 
 def _run(cls, config=None, force=False):
     lock, status = _RecordingLock(), MagicMock()
-    with patch("atmos_gl.collectors.run_once.runnable_collectors",
+    with patch("terrascope.collectors.run_once.runnable_collectors",
                return_value={cls.section: cls}):
         code = run_once(config or make_config(), cls.section, force=force,
                         lock=lock, process_status_adapter=status)
@@ -153,5 +153,5 @@ def test_collector_lock_wait_calls_on_wait_then_blocks_until_free(real_db):
 def _no_real_status_writes():
     """run_once defaults to the real ProcessStatusAdapter; every test above injects
     a mock, this just guarantees none slips through to a database."""
-    with patch("atmos_gl.collectors.run_once.ProcessStatusAdapter", side_effect=AssertionError):
+    with patch("terrascope.collectors.run_once.ProcessStatusAdapter", side_effect=AssertionError):
         yield

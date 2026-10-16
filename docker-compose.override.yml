@@ -3,7 +3,7 @@
 # The base docker-compose.yml is the consumer/production config: published GHCR images,
 # nothing mounted over the code. This override makes LOCAL DEV self-contained — it builds
 # a local image and bind-mounts the source, and crucially it NEVER pulls from GHCR:
-#   * image: atmos_gl:latest  — overrides the GHCR ref with a local tag, so dev doesn't
+#   * image: terrascope:latest  — overrides the GHCR ref with a local tag, so dev doesn't
 #                               touch the registry (no "denied" if the package is private
 #                               or not yet published).
 #   * pull_policy: build      — Compose builds rather than pulls.
@@ -15,7 +15,7 @@
 # `docker compose -f docker-compose.yml up`) gets the clean published images.
 
 x-app-dev: &app-dev
-  image: atmos_gl:latest
+  image: terrascope:latest
   pull_policy: build
   build:
     context: .
@@ -37,7 +37,7 @@ services:
     <<: *app-dev
     ports: !override
       - "19000:9000"
-  atmos_gl_db_migrate:
+  terrascope_db_migrate:
     <<: *app-dev
 
   # Dev: serve the UI from the working tree (live edits) via stock nginx.
@@ -52,6 +52,6 @@ services:
   # Alternate host port so dev can run alongside a continuously-running prod
   # stack on the same host without a port clash; loopback-only since nothing
   # outside this host needs direct dev DB access.
-  atmos_gl_db:
+  terrascope_db:
     ports: !override
       - "127.0.0.1:25432:5432"

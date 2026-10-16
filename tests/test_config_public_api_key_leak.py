@@ -10,8 +10,8 @@ it's already public by design. See routes/config.py::_strip_backend_only_secrets
 import json
 from unittest.mock import patch
 
-from atmos_gl.lib.config import AtmosGLConfig
-from atmos_gl.routes.config import _strip_backend_only_secrets
+from terrascope.lib.config import TerrascopeConfig
+from terrascope.routes.config import _strip_backend_only_secrets
 
 
 def test_strip_backend_only_secrets_drops_api_key_from_non_common_sections():
@@ -52,7 +52,7 @@ def test_get_config_omits_backend_collector_api_keys(client, tmp_path, monkeypat
     monkeypatch.setenv("FIRMS_API_KEY", "firms-secret")
     monkeypatch.setenv("MAPTILER_API_KEY", "maptiler-public-key")
 
-    tmp_config = tmp_path / "atmos-gl.json"
+    tmp_config = tmp_path / "terrascope.json"
     tmp_config.write_text(json.dumps({
         "common": {},
         "shipping_collector": {"enabled": True},
@@ -61,8 +61,8 @@ def test_get_config_omits_backend_collector_api_keys(client, tmp_path, monkeypat
     }))
 
     with patch(
-        "atmos_gl.routes.config.load_config",
-        return_value=AtmosGLConfig(str(tmp_config)),
+        "terrascope.routes.config.load_config",
+        return_value=TerrascopeConfig(str(tmp_config)),
     ):
         resp = client.get("/api/config")
 

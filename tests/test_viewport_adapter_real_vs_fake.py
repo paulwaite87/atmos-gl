@@ -7,13 +7,13 @@ import pytest
 from sqlalchemy.orm import sessionmaker
 from unittest.mock import patch
 
-from atmos_gl.db.viewport_adapter import ViewportAdapter, FakeViewportAdapter
+from terrascope.db.viewport_adapter import ViewportAdapter, FakeViewportAdapter
 
 
 def _make_adapter(kind, real_db):
     if kind == "real":
         TestSession = sessionmaker(bind=real_db)
-        return ViewportAdapter(), patch("atmos_gl.db.viewport_adapter.Session", TestSession)
+        return ViewportAdapter(), patch("terrascope.db.viewport_adapter.Session", TestSession)
     return FakeViewportAdapter(), contextlib.nullcontext()
 
 
