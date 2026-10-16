@@ -54,6 +54,7 @@ def upgrade() -> None:
         'gdacs_footprints',
         sa.Column('event_type', sa.String(length=2), nullable=False),
         sa.Column('event_id', sa.BigInteger(), nullable=False),
+        sa.Column('part_index', sa.Integer(), nullable=False),
         sa.Column('feature_class', sa.String(length=64), nullable=False),
         sa.Column('source_modified', sa.String(length=32), nullable=True),
         sa.Column(
@@ -66,7 +67,7 @@ def upgrade() -> None:
             ['gdacs_events.event_type', 'gdacs_events.event_id'],
             ondelete='CASCADE',
         ),
-        sa.PrimaryKeyConstraint('event_type', 'event_id', 'feature_class'),
+        sa.PrimaryKeyConstraint('event_type', 'event_id', 'part_index'),
     )
 
 

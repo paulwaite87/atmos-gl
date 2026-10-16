@@ -135,7 +135,7 @@ class GdacsAdapter:
         """Replaces all of an event's footprint geometry with `parts` -- a list of
         {"feature_class": str, "geometry": GeoJSON geometry dict} -- simplified."""
         rows = []
-        for part in parts:
+        for index, part in enumerate(parts):
             geom = func.ST_SimplifyPreserveTopology(
                 func.ST_SetSRID(
                     func.ST_GeomFromGeoJSON(json.dumps(part["geometry"])), 4326
@@ -146,6 +146,7 @@ class GdacsAdapter:
                 {
                     "event_type": event_type,
                     "event_id": event_id,
+                    "part_index": index,
                     "feature_class": part["feature_class"],
                     "source_modified": source_modified,
                     "geom": geom,
@@ -166,7 +167,7 @@ class GdacsAdapter:
             logger.error(f"Error saving GDACS footprint {event_type}/{event_id}: {e}")
 
     def get_footprint_as_geojson(self, event_type: str, event_id: int) -> str:
-        """One event's stored footprint as a FeatureCollection, ordered by class."""
+        """One event's stored footprint as a FeatureCollection, in stored (GDACS) order."""
         feature = func.jsonb_build_object(
             "type",
             "Feature",
@@ -227,8 +228,8 @@ class FakeGdacsAdapter:
 
     def __init__(self):
         self._events: dict[tuple[str, int], dict] = {}
-        # (event_type, event_id) -> (source_modified, {feature_class: GeoJSON geometry})
-        self._footprints: dict[tuple[str, int], tuple[str, dict]] = {}
+        # (event_type, event_id) -> (source_modified, [(feature_class, GeoJSON geometry)])
+        self._footprints: dict[tuple[str, int], tuple[str, list]] = {}
 
     def upsert_event(self, event: dict) -> None:
         stored = dict(event)
@@ -260,30 +261,30 @@ class FakeGdacsAdapter:
     def replace_footprint(
         self, event_type: str, event_id: int, source_modified: str, parts: list[dict]
     ) -> None:
-        simplified = {}
+        simplified = []
         for part in parts:
             geom = shape(part["geometry"]).simplify(
                 FOOTPRINT_SIMPLIFY_DEG, preserve_topology=True
             )
-            simplified[part["feature_class"]] = mapping(geom)
+            simplified.append((part["feature_class"], mapping(geom)))
         self._footprints[(event_type, event_id)] = (source_modified, simplified)
 
     def get_footprint_as_geojson(self, event_type: str, event_id: int) -> str:
-        _, parts = self._footprints.get((event_type, event_id), (None, {}))
+        _, parts = self._footprints.get((event_type, event_id), (None, []))
         features = [
             {
                 "type": "Feature",
-                "geometry": json.loads(json.dumps(parts[cls])),
+                "geometry": json.loads(json.dumps(geometry)),
                 "properties": {
                     "event_type": event_type,
                     "event_id": event_id,
-                    "feature_class": cls,
+                    "feature_class": feature_class,
                 },
             }
-            for cls in sorted(parts)
+            for feature_class, geometry in parts
         ]
         return json.dumps({"type": "FeatureCollection", "features": features})
 
     def footprint_marker(self, event_type: str, event_id: int) -> str | None:
-        marker, _ = self._footprints.get((event_type, event_id), (None, {}))
+        marker, _ = self._footprints.get((event_type, event_id), (None, []))
         return marker

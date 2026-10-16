@@ -242,3 +242,34 @@ def test_an_event_with_no_stored_footprint_serves_an_empty_collection(kind, real
         body = json.loads(adapter.get_footprint_as_geojson("FL", 999999999))
 
     assert body == {"type": "FeatureCollection", "features": []}
+
+
+@pytest.mark.parametrize("kind", ["real", "fake"])
+def test_several_parts_of_one_class_are_all_kept_in_order(kind, real_db):
+    """A GDACS cyclone footprint has e.g. nine separate Poly_Green polygons (one per
+    forecast step) -- the class names repeat, so parts are kept by position."""
+    adapter, ctx = _make_adapter(kind, real_db)
+    with ctx:
+        adapter.upsert_event(make_event(event_type="TC", event_id=7304))
+        adapter.replace_footprint(
+            "TC",
+            7304,
+            "2026-10-16T02:00:00",
+            [
+                {"feature_class": "Poly_Green", "geometry": rectangle(0, 0, 1, 1)},
+                {"feature_class": "Poly_Green", "geometry": rectangle(2, 2, 3, 3)},
+                {"feature_class": "Poly_Red", "geometry": rectangle(4, 4, 5, 5)},
+            ],
+        )
+        feats = footprint(adapter, "TC", 7304)
+
+    assert [f["properties"]["feature_class"] for f in feats] == [
+        "Poly_Green",
+        "Poly_Green",
+        "Poly_Red",
+    ]
+    assert [f["geometry"]["coordinates"][0][0] for f in feats] == [
+        [0, 0],
+        [2, 2],
+        [4, 4],
+    ]

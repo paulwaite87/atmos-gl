@@ -171,8 +171,8 @@ class GdacsEvent(Base):
 
 
 class GdacsFootprint(Base):
-    """One simplified impact geometry of a GDACS event, one row per GDACS feature class
-    (e.g. Poly_Affected, Poly_Orange, Line_Line_0). Replaced wholesale whenever the event
+    """One simplified impact geometry of a GDACS event, one row per GDACS feature
+    (class e.g. Poly_Affected, Poly_Orange, Line_Line_0; may repeat within an event). Replaced wholesale whenever the event
     is re-fetched; deleted with its event. source_modified is the GDACS modified-timestamp
     the geometry was fetched at, so an unchanged event is never re-fetched."""
 
@@ -187,7 +187,10 @@ class GdacsFootprint(Base):
 
     event_type: Mapped[str] = mapped_column(String(2), primary_key=True)
     event_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    feature_class: Mapped[str] = mapped_column(String(64), primary_key=True)
+    # Position within the event's footprint: GDACS repeats class names (a cyclone has
+    # nine Poly_Green polygons), so the class can't be part of the key.
+    part_index: Mapped[int] = mapped_column(Integer, primary_key=True)
+    feature_class: Mapped[str] = mapped_column(String(64), nullable=False)
     source_modified: Mapped[str | None] = mapped_column(String(32))
     geom: Mapped[str | None] = mapped_column(
         Geometry("GEOMETRY", srid=4326, spatial_index=False)
