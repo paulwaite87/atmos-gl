@@ -436,6 +436,29 @@ FIELD_SPECS = {
     ("quakes", "expiry_hours"): SliderSpec(min=0, max=96, step=1, suffix="h", personalizable=True),
     ("quakes", "label_fontsize"): _FONTSIZE,
     ("quakes", "min_mag"): SliderSpec(min=0, max=10, step=0.1, decimals=1, prefix="M ", personalizable=True),
+    # GDACS Alerts (collectors/gdacs.py). min_alert and types gate what GdacsCollector
+    # stores and downloads footprints for -- shared collection controls, so NOT
+    # personalizable. grace_days is a pure read-time filter over the shared rows (how long
+    # an ended event stays on the map), like world_events' expiry_days, so it is. Its max
+    # matches the Housekeeper's gdacs_expiry_days default headroom. alert_overrides (a
+    # per-type minimum map) is template/JSON-only, like other structured settings.
+    ("gdacs", "enabled"): _ENABLED_PERSONALIZABLE,
+    ("gdacs", "min_alert"): SelectSpec([
+        ("Green", "Green - every GDACS alert"),
+        ("Orange", "Orange - significant events"),
+        ("Red", "Red - most severe only"),
+    ]),
+    ("gdacs", "types"): MultiSelectSpec([
+        ("EQ", "Earthquakes"),
+        ("TC", "Tropical cyclones"),
+        ("FL", "Floods"),
+        ("VO", "Volcanoes"),
+        ("DR", "Droughts"),
+        ("WF", "Wildfires"),
+    ]),
+    ("gdacs", "grace_days"): SliderSpec(
+        min=1, max=14, step=1, suffix=" day", pluralize=True, personalizable=True
+    ),
     ("volcanoes", "enabled"): _ENABLED_PERSONALIZABLE,
     ("volcanoes", "icon_zoom"): _ICON_ZOOM,
     # "Show Smoke Plume" (issue #254) -- Volcano Properties is the SOLE owner of the
@@ -930,6 +953,7 @@ SECTION_LABELS = {
     "ozone": "Ozone",
     "stormwatch": "Storm Watch",
     "quakes": "Earthquakes",
+    "gdacs": "GDACS Alerts",
     "volcanoes": "Volcanoes",
     "fires": "Wildfires",
     "world_events": "World Events",

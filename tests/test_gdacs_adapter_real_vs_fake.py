@@ -273,3 +273,38 @@ def test_several_parts_of_one_class_are_all_kept_in_order(kind, real_db):
         [2, 2],
         [4, 4],
     ]
+
+
+@pytest.mark.parametrize("kind", ["real", "fake"])
+def test_prune_deletes_long_ended_events_with_their_footprints_and_spares_the_rest(
+    kind, real_db
+):
+    now = datetime.now(timezone.utc).replace(microsecond=0)
+    adapter, ctx = _make_adapter(kind, real_db)
+    square = [{"feature_class": "Poly_Affected", "geometry": rectangle(1, 1, 2, 2)}]
+    with ctx:
+        # 7401: ended 30 days ago -> pruned. 7402: ended 3 days ago -> kept.
+        # 7403: still flagged current though its last date is 90 days old -> kept.
+        for event_id, current, days in (
+            (7401, False, 30),
+            (7402, False, 3),
+            (7403, True, 90),
+        ):
+            adapter.upsert_event(
+                make_event(
+                    event_id=event_id,
+                    is_current=current,
+                    to_date=iso(now - timedelta(days=days)),
+                )
+            )
+            adapter.replace_footprint("FL", event_id, "2026-10-16T02:00:00", square)
+
+        deleted = adapter.prune_expired(7)
+
+        survivors = served_ids(adapter, {7401, 7402, 7403}, grace_days=100000)
+        footprints = {i: footprint(adapter, "FL", i) for i in (7401, 7402, 7403)}
+
+    assert deleted >= 1
+    assert survivors == {7402, 7403}
+    assert footprints[7401] == []
+    assert len(footprints[7402]) == 1 and len(footprints[7403]) == 1

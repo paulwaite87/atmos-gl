@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-from fastapi import APIRouter, Response, Depends
+from fastapi import APIRouter, Response, Query, Depends
 
 from terrascope.db.gdacs_adapter import GdacsAdapter
 
@@ -11,9 +11,13 @@ def get_gdacs_adapter() -> GdacsAdapter:
 
 
 @router.get("/gdacs/geojson")
-async def get_gdacs_geojson(gdacs_adapter: GdacsAdapter = Depends(get_gdacs_adapter)):
+async def get_gdacs_geojson(
+    grace_days: int = Query(7),
+    gdacs_adapter: GdacsAdapter = Depends(get_gdacs_adapter),
+):
     return Response(
-        content=gdacs_adapter.get_events_as_geojson(), media_type="application/json"
+        content=gdacs_adapter.get_events_as_geojson(grace_days),
+        media_type="application/json",
     )
 
 

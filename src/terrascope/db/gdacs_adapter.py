@@ -222,6 +222,19 @@ class GdacsAdapter:
             logger.error(f"Error reading GDACS footprint marker: {e}")
             return None
 
+    def prune_expired(self, expiry_days: float) -> int:
+        """Deletes events GDACS no longer flags current whose end date is more than
+        `expiry_days` old; their footprints go with them (ON DELETE CASCADE). Returns the
+        number of events deleted."""
+        cutoff = func.now() - timedelta(days=expiry_days)
+        stmt = delete(GdacsEvent).where(
+            GdacsEvent.is_current.is_not(True), GdacsEvent.to_date < cutoff
+        )
+        with Session() as session:
+            result = session.execute(stmt)
+            session.commit()
+            return result.rowcount
+
 
 class FakeGdacsAdapter:
     """In-memory fake for GDACS events, matching GdacsAdapter's method contracts."""
@@ -288,3 +301,15 @@ class FakeGdacsAdapter:
     def footprint_marker(self, event_type: str, event_id: int) -> str | None:
         marker, _ = self._footprints.get((event_type, event_id), (None, []))
         return marker
+
+    def prune_expired(self, expiry_days: float) -> int:
+        cutoff = datetime.now(timezone.utc) - timedelta(days=expiry_days)
+        expired = [
+            key
+            for key, e in self._events.items()
+            if not e["is_current"] and e["to_date"] < cutoff
+        ]
+        for key in expired:
+            del self._events[key]
+            self._footprints.pop(key, None)
+        return len(expired)

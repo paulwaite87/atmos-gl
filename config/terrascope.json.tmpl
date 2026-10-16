@@ -180,6 +180,20 @@
     "min_mag": 3.5,
     "runs_per_day": 24
   },
+  "gdacs": {
+    "enabled": false,
+    "min_alert": "Orange",
+    "alert_overrides": {
+      "FL": "Green",
+      "DR": "Green",
+      "TC": "Green"
+    },
+    "types": ["EQ", "TC", "FL", "VO", "DR", "WF"],
+    "grace_days": 7,
+    "lookback_days": 14,
+    "max_footprints_per_cycle": 25,
+    "runs_per_day": 48
+  },
   "volcanoes": {
     "enabled": false,
     "icon_zoom": 1.0,
@@ -303,6 +317,7 @@
       "jtwc": "https://www.ssd.noaa.gov/PS/TROP/DATA/ATCF/JTWC/",
       "nhc": "https://ftp.nhc.noaa.gov/atcf/fst/",
       "quakes": "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.csv",
+      "gdacs": "https://www.gdacs.org/gdacsapi/api/events/geteventlist/SEARCH",
       "gvp": "https://volcano.si.edu/news/WeeklyVolcanoRSS.xml",
       "hans": "https://volcanoes.usgs.gov/hans-public/api/volcano/getElevatedVolcanoes",
       "fires": "https://firms.modaps.eosdis.nasa.gov/api/area/csv",
@@ -328,6 +343,7 @@
       "flood_risk_live": true,
       "flood_risk_historical": true,
       "quakes": true,
+      "gdacs": true,
       "volcanoes": true,
       "fires": true,
       "world_events": true,
@@ -381,6 +397,7 @@
     "field_expiry_hours": 24,
     "volcanic_activity_expiry_days": 14,
     "world_events_expiry_days": 14,
+    "gdacs_expiry_days": 7,
     "frontline_expiry_days": 60,
     "dry_run": false,
     "log_level": "INFO"
