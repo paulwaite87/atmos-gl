@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import {
-    ATTRIBUTION, badgeImageId, badgeSpec, classColor, createFootprintSelector, popupHtml, styleFootprint,
+    ATTRIBUTION, badgeImageId, badgeSpec, classColor, createFootprintSelector, popupHtml, selectionFilter,
+    styleFootprint,
 } from './gdacs.js';
 
 // Properties as the /api/gdacs/geojson route serves them for the recorded Red cyclone.
@@ -115,6 +116,20 @@ describe('styleFootprint', () => {
     });
 });
 
+describe('selectionFilter', () => {
+    test('matches exactly the selected event on the markers source', () => {
+        expect(selectionFilter({ event_type: 'TC', event_id: 1001338 })).toEqual([
+            'all',
+            ['==', ['get', 'event_type'], 'TC'],
+            ['==', ['get', 'event_id'], 1001338],
+        ]);
+    });
+
+    test('matches nothing when no event is selected', () => {
+        expect(selectionFilter(null)).toEqual(['==', ['get', 'event_id'], -1]);
+    });
+});
+
 describe('createFootprintSelector', () => {
     const footprint = (cls) => ({
         type: 'FeatureCollection',
@@ -167,5 +182,49 @@ describe('createFootprintSelector', () => {
         const { selector, drawn } = make({ '/api/gdacs/TC/9/footprint': Promise.reject(new Error('HTTP 500')) });
         await selector.select({ event_type: 'TC', event_id: 9 });
         expect(drawn).toEqual([]);
+    });
+
+    describe('reporting the selection (for the highlight ring)', () => {
+        function makeReporting(responses) {
+            const events = [];
+            const selector = createFootprintSelector({
+                apiBase: '/api',
+                fetchJson: (url) => responses[url],
+                setData: (data) => events.push(data.features.length ? 'draw' : 'erase'),
+                onSelect: (sel) => events.push(sel ? `select:${sel.event_type}/${sel.event_id}` : 'select:none'),
+            });
+            return { selector, events };
+        }
+
+        test('reports the selection once its footprint is drawn, and none when cleared', async () => {
+            const { selector, events } = makeReporting({ '/api/gdacs/TC/1/footprint': Promise.resolve(footprint('Poly_Red')) });
+            await selector.select({ event_type: 'TC', event_id: 1, name: 'ignored' });
+            selector.clear();
+            expect(events).toEqual(['draw', 'select:TC/1', 'erase', 'select:none']);
+        });
+
+        test('a failed fetch leaves the previously reported selection standing', async () => {
+            const { selector, events } = makeReporting({
+                '/api/gdacs/TC/1/footprint': Promise.resolve(footprint('Poly_Red')),
+                '/api/gdacs/FL/2/footprint': Promise.reject(new Error('HTTP 500')),
+            });
+            await selector.select({ event_type: 'TC', event_id: 1 });
+            await selector.select({ event_type: 'FL', event_id: 2 });
+            expect(events).toEqual(['draw', 'select:TC/1']);
+        });
+
+        test('a superseded slow response reports nothing', async () => {
+            let release;
+            const slow = new Promise((resolve) => { release = () => resolve(footprint('Poly_Red')); });
+            const { selector, events } = makeReporting({
+                '/api/gdacs/TC/1/footprint': slow,
+                '/api/gdacs/FL/2/footprint': Promise.resolve(footprint('Poly_Affected')),
+            });
+            const first = selector.select({ event_type: 'TC', event_id: 1 });
+            await selector.select({ event_type: 'FL', event_id: 2 });
+            release();
+            await first;
+            expect(events).toEqual(['draw', 'select:FL/2']);
+        });
     });
 });
