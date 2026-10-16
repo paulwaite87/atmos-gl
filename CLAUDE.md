@@ -27,3 +27,17 @@ is a pointer, not a second copy: don't add instructions here that belong in one 
 `.claude/CLAUDE.md` (untracked — this repo's `.gitignore` excludes `.claude/` entirely) carries
 CodeGraph MCP usage instructions and the local `PreToolUse` hook setup that only apply to Claude
 Code sessions on this machine. Don't assume every contributor or session has it.
+
+## Agent skills
+
+### Issue tracker
+
+GitHub Issues for paulwaite87/terrascope, via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default vocabulary (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: one `GLOSSARY.md` plus `docs/adr/` at the repo root. See `docs/agents/domain.md`.

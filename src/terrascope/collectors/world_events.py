@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""GDELT Event Database 2.0 -> database ("World Events" layer -- see CONTEXT.md).
+"""GDELT Event Database 2.0 -> database ("World Events" layer -- see GLOSSARY.md).
 Real-time export files, tab-delimited, no header, 61 fields (see _COL_* below, field
 positions verified against a live export file rather than assumed from GDELT's own
 published codebook alone, which is easy to miscount from: EventBaseCode and the two

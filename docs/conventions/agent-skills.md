@@ -14,7 +14,7 @@ Default label vocabulary (`needs-triage`, `needs-info`, `ready-for-agent`, `read
 
 ## Domain docs
 
-Single-context layout — one `CONTEXT.md` + `docs/adr/` at the repo root. See
+Single-context layout — one `GLOSSARY.md` + `docs/adr/` at the repo root. See
 `docs/agents/domain.md`.
 
 ## Prioritized skills
@@ -32,7 +32,6 @@ are the ones actively in use for this repo:
 - `triage` — move incoming issues/PRs through the triage label state machine
 - `implement` — implement a piece of work from a PRD or set of issues
 - `improve-codebase-architecture` — scan for deepening opportunities, report, then grill through one
-- `ubiquitous-language` — extract a domain glossary into `CONTEXT.md`
 - `handoff` — compact the current conversation into a handoff doc for another agent
 - `claude-handoff` — hand the current conversation to a fresh background agent
 - `grilling` — grill the user relentlessly about a plan or design before building

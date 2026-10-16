@@ -62,7 +62,7 @@ def _swell_uv(swh, mwd):
 
     Returns the travel vector (u east, v north, in m) plus the NaN-masked magnitude
     (`values` for the heat-tile / legend path). dirpw/mwd is the WMO "FROM" convention
-    (see CONTEXT.md's "Direction convention (FROM)"): the angle the swell arrives FROM,
+    (see GLOSSARY.md's "Direction convention (FROM)"): the angle the swell arrives FROM,
     not heads toward -- computing sin/cos directly gives a vector pointing back the way
     the swell came, 180 degrees opposite of its actual travel. NEGATE to get the
     heading-toward vector, matching wind/currents' u/v convention (verified against

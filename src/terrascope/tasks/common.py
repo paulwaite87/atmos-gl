@@ -175,7 +175,7 @@ class MapData:
 class ForecastState:
     """Which forecast run + hour a render call operates on (GFS or RTOFS; the same
     shape either way). Passed explicitly wherever a render needs to know "when" -- see
-    CONTEXT.md's "ForecastState" entry. Two ways to build one:
+    GLOSSARY.md's "ForecastState" entry. Two ways to build one:
       * Updater.get_gfs_state()/get_rtofs_state() -- the shared per-cycle NOMADS/RTOFS
         baseline plus a computed now-offset.
       * ForecastState.at_hour(run_date, run_id, fhour) -- a specific catalog hour,
@@ -738,7 +738,7 @@ class MultiHourRenderMixin:
     should_plot_for_hour, but only when self.status_product is set — which only
     multi-hour subclasses do, and they always pair it with this mixin. Which forecast
     run + hour a call operates on is always passed explicitly as a ForecastState — see
-    that class's docstring and CONTEXT.md's "ForecastState" entry.
+    that class's docstring and GLOSSARY.md's "ForecastState" entry.
     """
 
     def get_output_path_for_hour(self, fhour: int | str) -> str:
