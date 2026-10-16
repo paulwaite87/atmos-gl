@@ -984,3 +984,33 @@ def test_config_page_renders_glofas_warning_markup_for_the_flood_risk_gate():
     html = resp.text
     assert 'id="key-warn-glofas"' in html
     assert "RULE__missing_earthdata_token" in html
+
+
+def test_config_page_renders_gdacs_controls_and_tolerates_the_structured_overrides_map(
+    tmp_path, monkeypatch
+):
+    config_path = _write_temp_config(
+        tmp_path,
+        gdacs={
+            "enabled": False,
+            "min_alert": "Orange",
+            "alert_overrides": {"FL": "Green", "DR": "Green", "TC": "Green"},
+            "types": ["EQ", "FL"],
+            "grace_days": 7,
+            "lookback_days": 14,
+            "max_footprints_per_cycle": 25,
+            "runs_per_day": 48,
+        },
+    )
+    monkeypatch.setenv("CONFIG_PATH", str(config_path))
+
+    resp = client.get("/config")
+
+    assert resp.status_code == 200
+    html = resp.text
+    idx = html.index('id="gdacs__min_alert"')
+    assert '<option value="Orange" selected>' in html[idx : idx + 600]
+    idx = html.index('id="gdacs__types"')
+    assert '<option value="FL" selected>' in html[idx : idx + 1200]
+    assert 'id="gdacs__enabled"' in html
+    assert "GDACS Alerts" in html
