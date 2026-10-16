@@ -3,7 +3,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 
 from shapely.geometry import mapping, shape
-from sqlalchemy import cast, delete, func, or_, select, text
+from sqlalchemy import cast, delete, func, or_, select, text, update
 from sqlalchemy.dialects.postgresql import (
     JSONB,
     aggregate_order_by,
@@ -148,7 +148,6 @@ class GdacsAdapter:
                     "event_id": event_id,
                     "part_index": index,
                     "feature_class": part["feature_class"],
-                    "source_modified": source_modified,
                     "geom": geom,
                 }
             )
@@ -162,6 +161,14 @@ class GdacsAdapter:
                 )
                 if rows:
                     session.execute(pg_insert(GdacsFootprint).values(rows))
+                session.execute(
+                    update(GdacsEvent)
+                    .where(
+                        GdacsEvent.event_type == event_type,
+                        GdacsEvent.event_id == event_id,
+                    )
+                    .values(footprint_modified=source_modified)
+                )
                 session.commit()
         except Exception as e:
             logger.error(f"Error saving GDACS footprint {event_type}/{event_id}: {e}")
@@ -207,13 +214,8 @@ class GdacsAdapter:
 
     def footprint_marker(self, event_type: str, event_id: int) -> str | None:
         """The GDACS modified-timestamp the stored footprint was fetched at, or None."""
-        stmt = (
-            select(GdacsFootprint.source_modified)
-            .where(
-                GdacsFootprint.event_type == event_type,
-                GdacsFootprint.event_id == event_id,
-            )
-            .limit(1)
+        stmt = select(GdacsEvent.footprint_modified).where(
+            GdacsEvent.event_type == event_type, GdacsEvent.event_id == event_id
         )
         try:
             with Session() as session:

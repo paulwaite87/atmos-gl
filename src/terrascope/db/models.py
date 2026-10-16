@@ -163,6 +163,10 @@ class GdacsEvent(Base):
     date_modified: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     is_current: Mapped[bool | None] = mapped_column(Boolean)
     report_url: Mapped[str | None] = mapped_column(Text)
+    # The GDACS modified-timestamp this event's footprint was last fetched at -- on the
+    # event, not its parts, since an event can legitimately have none (GDACS returns only
+    # a centroid for e.g. volcanoes) and must still not be re-fetched every cycle.
+    footprint_modified: Mapped[str | None] = mapped_column(String(32))
     lat: Mapped[float | None] = mapped_column()
     lon: Mapped[float | None] = mapped_column()
     geom: Mapped[str | None] = mapped_column(
@@ -172,9 +176,9 @@ class GdacsEvent(Base):
 
 class GdacsFootprint(Base):
     """One simplified impact geometry of a GDACS event, one row per GDACS feature
-    (class e.g. Poly_Affected, Poly_Orange, Line_Line_0; may repeat within an event). Replaced wholesale whenever the event
-    is re-fetched; deleted with its event. source_modified is the GDACS modified-timestamp
-    the geometry was fetched at, so an unchanged event is never re-fetched."""
+    (class e.g. Poly_Affected, Poly_Orange, Line_Line_0; may repeat within an
+    event). Replaced wholesale whenever the event is re-fetched; deleted with its event.
+    The fetched-at marker lives on GdacsEvent.footprint_modified."""
 
     __tablename__ = "gdacs_footprints"
     __table_args__ = (
@@ -191,7 +195,6 @@ class GdacsFootprint(Base):
     # nine Poly_Green polygons), so the class can't be part of the key.
     part_index: Mapped[int] = mapped_column(Integer, primary_key=True)
     feature_class: Mapped[str] = mapped_column(String(64), nullable=False)
-    source_modified: Mapped[str | None] = mapped_column(String(32))
     geom: Mapped[str | None] = mapped_column(
         Geometry("GEOMETRY", srid=4326, spatial_index=False)
     )

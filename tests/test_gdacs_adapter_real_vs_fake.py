@@ -308,3 +308,19 @@ def test_prune_deletes_long_ended_events_with_their_footprints_and_spares_the_re
     assert survivors == {7402, 7403}
     assert footprints[7401] == []
     assert len(footprints[7402]) == 1 and len(footprints[7403]) == 1
+
+
+@pytest.mark.parametrize("kind", ["real", "fake"])
+def test_an_event_whose_footprint_is_empty_still_records_that_it_was_fetched(kind, real_db):
+    """GDACS returns only a centroid for e.g. volcanoes, which isn't stored -- so there
+    are zero parts, but the marker must still say this version was fetched, or the
+    collector would re-download the empty footprint every cycle."""
+    adapter, ctx = _make_adapter(kind, real_db)
+    with ctx:
+        adapter.upsert_event(make_event(event_type="VO", event_id=7501))
+        adapter.replace_footprint("VO", 7501, "2026-10-16T02:08:27", [])
+        marker = adapter.footprint_marker("VO", 7501)
+        feats = footprint(adapter, "VO", 7501)
+
+    assert marker == "2026-10-16T02:08:27"
+    assert feats == []

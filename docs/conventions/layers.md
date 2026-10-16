@@ -2,7 +2,7 @@
 
 A "layer" is one entry in `ui/index.html`'s `ALL_LAYERS` array — a toggleable item in the
 map's layer list, each dynamically `import()`-ed from its own `ui/modules/<name>.js`. There
-are 30 of them, and despite the variety (weather fields, particle animation, live event
+are 31 of them, and despite the variety (weather fields, particle animation, live event
 feeds, place markers, country statistics), they only come in **six distinct shapes**. This
 page is the index; each shape has a worked example in its own file, tracing one real layer end to end.
 
@@ -21,7 +21,7 @@ layer you're about to touch.
 | **Markers** (one instance) | A hybrid: backend-enriched like a render task, but frontend-consumed as a plain point feed like shape 4. | `_layerstack.js` + `_hoverpopup.js` | `MarkerUpdater` — no image render, writes live weather into the DB row | [markers.md](markers.md) |
 | **Choropleth layer** (one instance) | Each country coloured by one value, over bundled Natural Earth country polygons. | A MapLibre `fill` + `line` over `ui/geo/countries_50m.json`, coloured by a `match` expression on country code (`country_stats.js`) | A collector + DB table + JSON route; no `TASK_CLASSES` entry, like shape 4 | `country_stats` (see CONTEXT.md's Country Statistics) |
 
-10 of the 27 `ALL_LAYERS` entries are Point-feed layers (quakes, volcanoes, world_events,
+11 of the 28 `ALL_LAYERS` entries are Point-feed layers (quakes, gdacs, volcanoes, world_events,
 lightning, storms, shipping, satellites, flightradar, terminator, landmass);
 `markers` is the only layer of its shape. The rest split across the first three shapes, with
 several — wind chief among them — combining more than one.
