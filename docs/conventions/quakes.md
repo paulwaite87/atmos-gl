@@ -27,7 +27,7 @@ any file the backend writes. Popups for every Point-feed layer (and `markers`, s
 
 - `buildPopupHtml` (`ui/modules/_feedhelpers.js`) — a typed `blocks` array (`divider`,
   `rows`, `line`, `emphasis`, `notice`, `fallback`) rather than raw HTML strings, so every
-  popup layout stays expressible through one shared model. See CONTEXT.md's "Popup content
+  popup layout stays expressible through one shared model. See GLOSSARY.md's "Popup content
   block" and "Title variant" entries.
 - `hoverPopup` (`ui/modules/_hoverpopup.js`) — show/hide/positioning, accepting a
   `layerId` (string or array), a configurable trigger event, and a live `enabled`

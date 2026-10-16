@@ -2,7 +2,7 @@
 """Tests for the pure numeric transforms in lib/unpack.py (architecture review
 candidate "lock down the numeric core with tests"). _swell_uv, _standardize_lon, and
 _regrid_curvilinear had zero coverage before this -- _swell_uv is where the real
-waves_data_unpack sign-flip bug lived (see CONTEXT.md's "Direction convention (FROM)").
+waves_data_unpack sign-flip bug lived (see GLOSSARY.md's "Direction convention (FROM)").
 fosberg_ffwi (the Fire Weather Index formula behind fire_weather_data_unpack) is
 covered the same way, for the same reason. The GRIB-opening glue in each
 *_data_unpack function stays untested here; it needs real cfgrib to exercise

@@ -48,5 +48,5 @@ shared timeline.
 
 - [temperature.md](temperature.md) — the Animated fill layer sibling of this same GPU
   fill family
-- CONTEXT.md's "Flood Risk" entry — the third Static fill layer, with two independently
+- GLOSSARY.md's "Flood Risk" entry — the third Static fill layer, with two independently
   sourced modes sharing one section

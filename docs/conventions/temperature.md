@@ -69,4 +69,4 @@ Animated fill layer instances. It:
 - [sst.md](sst.md) — the same GPU fill mechanism, minus the forecast-hour animation
 - [wind.md](wind.md) — an Animated fill layer that also drives a Particle overlay
 - `src/terrascope/tasks/single_hour_scalar.py` — the shared base behind `ScalarFieldUpdater`
-  and `PrecipitationUpdater`'s `run()` wiring (see CONTEXT.md's "Single-hour scalar updater")
+  and `PrecipitationUpdater`'s `run()` wiring (see GLOSSARY.md's "Single-hour scalar updater")

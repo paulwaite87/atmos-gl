@@ -26,7 +26,7 @@ module's own docstring for the full oriented-quad vs. streamline-ribbon breakdow
 
 ## Direction convention
 
-Wind's direction field follows the same WMO "FROM" convention as waves (see CONTEXT.md's
+Wind's direction field follows the same WMO "FROM" convention as waves (see GLOSSARY.md's
 "Direction convention (FROM)" entry) — the angle is where the flow arrives from, not where
 it's heading. Getting this backwards silently points every particle 180° off; both particle
 engines and the fill's own vector decode share this convention, so it only needs fixing
