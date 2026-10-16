@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?><alert xmlns="urn:oasis:names:tc:emergency:cap:1.2">
+  <identifier>PHEB-1-26289000</identifier>
+  <sender>ntwc@noaa.gov</sender>
+  <sent>2026-10-16T03:46:40-00:00</sent>
+  <status>Actual</status>
+  <msgType>Alert</msgType>
+  <source>PTWC</source>
+  <scope>Public</scope>
+  <code>IPAWSv1.0</code>
+  <incidents>26289000</incidents>
+  <info>
+    <category>Geo</category>
+    <event>Tsunami Information</event>
+    <responseType>None</responseType>
+    <urgency>Unknown</urgency>
+    <severity>Minor</severity>
+    <certainty>Unlikely</certainty>
+    <onset>2026-10-16T03:46:40-00:00</onset>
+    <expires>2026-10-16T04:46:40-00:00</expires>
+    <senderName>NWS PACIFIC TSUNAMI WARNING CENTER HONOLULU HI</senderName>
+    <headline>  </headline>
+    <description>   - Event details: Preliminary magnitude 7.0 (Mwp) earthquake / Lat: 51.860, Lon: 157.428 at 2026-10-16T03:35:31Z </description>
+    <instruction>  N/A </instruction>
+    <web>http://www.tsunami.gov/events/PHEB/2026/10/16/26289000/1/WEGM42/WEGM42.txt</web>
+    <parameter>
+      <valueName>EventLocationName</valueName>
+      <value>NEAR THE EAST COAST OF KAMCHATKA  RUSSIA</value>
+    </parameter>
+    <parameter>
+      <valueName>EventPreliminaryMagnitude</valueName>
+      <value>7.0</value>
+    </parameter>
+    <parameter>
+      <valueName>EventPreliminaryMagnitudeType</valueName>
+      <value>Mwp</value>
+    </parameter>
+    <parameter>
+      <valueName>EventOriginTime</valueName>
+      <value>2026-10-16T03:35:31-00:00</value>
+    </parameter>
+    <parameter>
+      <valueName>EventDepth</valueName>
+      <value>148 kilometers</value>
+    </parameter>
+    <parameter>
+      <valueName>EventLatLon</valueName>
+      <value>51.860,157.428 0.000</value>
+    </parameter>
+    <parameter>
+      <valueName>NWSUGC</valueName>
+      <value>GUZ001-MPZ001&gt;003-160546-</value>
+    </parameter>
+    <parameter>
+      <valueName>ProductDefinition</valueName>
+      <value/>
+    </parameter>
+    <parameter>
+      <valueName>EAS-ORG</valueName>
+      <value>WXR</value>
+    </parameter>
+    <resource>
+      <resourceDesc>Energy Map</resourceDesc>
+      <mimeType>image/jpeg</mimeType>
+      <uri>http://www.tsunami.gov/events/PHEB/2026/10/16/26289000/1/WEGM42/ </uri>
+    </resource>
+    <resource>
+      <resourceDesc>Event Data as a JSON document</resourceDesc>
+      <mimeType>application/json</mimeType>
+      <uri>http://www.tsunami.gov/events/PHEB/2026/10/16/26289000/1/WEGM42/PHEB.json</uri>
+    </resource>
+    <area>
+      <areaDesc>NEAR THE EAST COAST OF KAMCHATKA  RUSSIA</areaDesc>
+      <circle>51.86,157.428 0.0</circle>
+    </area>
+  </info>
+</alert>

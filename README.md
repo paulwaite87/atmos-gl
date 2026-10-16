@@ -322,6 +322,7 @@ The full list is:
 * Active storms
 * Earthquakes
 * GDACS Alerts (floods, droughts, cyclones and other disasters, rated by impact)
+* Tsunami Warnings (official NOAA advisories, watches and warnings, with the affected coastal zones)
 * Volcanoes (with a Smoke Plume/SO2 overlay)
 * Wildfires
 * World Events (conflict, explosions and high-level diplomacy)
@@ -504,6 +505,32 @@ GDACS content is available under the European Commission's reuse terms (generall
 CC BY 4.0), so credit is shown in every popup. GDACS itself describes its information as
 purely indicative and not for decision-making without other sources, and our footprints are
 simplified, so treat this as an overview rather than an authority.
+
+#### Tsunami Warnings
+The two NOAA tsunami warning centres (the Pacific centre in Honolulu and the National centre
+in Palmer, Alaska) publish a bulletin for every large earthquake. This layer puts each one
+on the map at its epicentre as a badge whose colour *and* shape give the category: a red
+octagon for a **Warning**, an orange diamond for a **Watch**, a yellow triangle for an
+**Advisory**, and a grey circle for an **Information** statement (the "no threat" bulletin,
+hidden by default). No API key is needed.
+
+Hover a badge for the magnitude, depth, times, the centre's own note and a link to the full
+bulletin on tsunami.gov. **Click it** to shade the coastal forecast zones the bulletin
+covers, coloured by category, with a white ring on the selected badge; click empty map to
+clear. Zone shading is only available where NOAA lists zones, which is the US and Canadian
+coasts and the Pacific territories such as Guam: for most of the world's coasts a bulletin
+names no zones, so you get the epicentre and its details only.
+
+The centres' feeds only ever hold their latest bulletin, so the collector checks them every
+five minutes and keeps its own history. `Include information statements` adds the no-threat
+bulletins, and `Grace days` is how long an event stays on the map after its bulletin
+expires. The Housekeeper deletes events after `housekeeper.tsunami_expiry_days` (default 7);
+the zone outlines it downloaded are kept.
+
+Real Advisories, Watches and Warnings are rare, so with the defaults this layer is usually
+empty, which is the correct picture. **Terrascope is not an official warning channel**: in a
+real event follow your local authorities and tsunami.gov. NOAA/NWS data is US government
+work and free to reuse; credit is shown in every popup.
 
 #### Volcanoes
 Rather than a static historical catalog, this is an event-driven feed of currently

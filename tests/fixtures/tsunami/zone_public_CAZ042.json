@@ -1,0 +1,35 @@
+{
+ "type": "Feature",
+ "geometry": {
+  "type": "Polygon",
+  "coordinates": [
+   [
+    [
+     -118,
+     33
+    ],
+    [
+     -117,
+     33
+    ],
+    [
+     -117,
+     34
+    ],
+    [
+     -118,
+     34
+    ],
+    [
+     -118,
+     33
+    ]
+   ]
+  ]
+ },
+ "properties": {
+  "id": "CAZ042",
+  "@type": "wx:PublicZone",
+  "name": "fixture"
+ }
+}

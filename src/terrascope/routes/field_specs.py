@@ -459,6 +459,16 @@ FIELD_SPECS = {
     ("gdacs", "grace_days"): SliderSpec(
         min=1, max=14, step=1, suffix=" day", pluralize=True, personalizable=True
     ),
+    # Tsunami Warnings (collectors/tsunami.py). include_information gates what
+    # TsunamiCollector stores (shared collection control, so NOT personalizable). grace_days
+    # is a pure read-time filter over the shared rows (how long an expired bulletin stays
+    # on the map), so it is; its max matches the Housekeeper's tsunami_expiry_days default.
+    # The feeds list is template/JSON-only, like other structured settings.
+    ("tsunami", "enabled"): _ENABLED_PERSONALIZABLE,
+    ("tsunami", "include_information"): ToggleSpec(),
+    ("tsunami", "grace_days"): SliderSpec(
+        min=1, max=7, step=1, suffix=" day", pluralize=True, personalizable=True
+    ),
     ("volcanoes", "enabled"): _ENABLED_PERSONALIZABLE,
     ("volcanoes", "icon_zoom"): _ICON_ZOOM,
     # "Show Smoke Plume" (issue #254) -- Volcano Properties is the SOLE owner of the
@@ -954,6 +964,7 @@ SECTION_LABELS = {
     "stormwatch": "Storm Watch",
     "quakes": "Earthquakes",
     "gdacs": "GDACS Alerts",
+    "tsunami": "Tsunami Warnings",
     "volcanoes": "Volcanoes",
     "fires": "Wildfires",
     "world_events": "World Events",

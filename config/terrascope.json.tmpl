@@ -194,6 +194,17 @@
     "max_footprints_per_cycle": 25,
     "runs_per_day": 48
   },
+  "tsunami": {
+    "enabled": false,
+    "include_information": false,
+    "feeds": [
+      "https://www.tsunami.gov/events/xml/PHEBCAP.xml",
+      "https://www.tsunami.gov/events/xml/PAAQCAP.xml"
+    ],
+    "grace_days": 1,
+    "max_zones_per_cycle": 25,
+    "runs_per_day": 288
+  },
   "volcanoes": {
     "enabled": false,
     "icon_zoom": 1.0,
@@ -318,6 +329,7 @@
       "nhc": "https://ftp.nhc.noaa.gov/atcf/fst/",
       "quakes": "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.csv",
       "gdacs": "https://www.gdacs.org/gdacsapi/api/events/geteventlist/SEARCH",
+      "tsunami": "https://www.tsunami.gov/",
       "gvp": "https://volcano.si.edu/news/WeeklyVolcanoRSS.xml",
       "hans": "https://volcanoes.usgs.gov/hans-public/api/volcano/getElevatedVolcanoes",
       "fires": "https://firms.modaps.eosdis.nasa.gov/api/area/csv",
@@ -344,6 +356,7 @@
       "flood_risk_historical": true,
       "quakes": true,
       "gdacs": true,
+      "tsunami": true,
       "volcanoes": true,
       "fires": true,
       "world_events": true,
@@ -398,6 +411,7 @@
     "volcanic_activity_expiry_days": 14,
     "world_events_expiry_days": 14,
     "gdacs_expiry_days": 7,
+    "tsunami_expiry_days": 7,
     "frontline_expiry_days": 60,
     "dry_run": false,
     "log_level": "INFO"

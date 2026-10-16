@@ -15,6 +15,7 @@ from terrascope.routes import (
     volcanoes,
     quakes,
     gdacs,
+    tsunami,
     fires,
     world_events,
     frontline,
@@ -101,6 +102,7 @@ app.include_router(storms.router)
 app.include_router(volcanoes.router)
 app.include_router(quakes.router)
 app.include_router(gdacs.router)
+app.include_router(tsunami.router)
 app.include_router(fires.router)
 app.include_router(world_events.router)
 app.include_router(frontline.router)
