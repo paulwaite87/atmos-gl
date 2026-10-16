@@ -68,6 +68,13 @@ def test_a_red_cyclone_is_served_with_its_type_alert_level_and_severity(client):
     assert champi["properties"]["country"] == "Guam"
     assert champi["properties"]["severity_text"].startswith("Tropical Storm")
     assert champi["geometry"]["type"] == "Point"
+    # GDACS sends booleans as the strings "true"/"false"; the route serves a real bool.
+    assert champi["properties"]["is_current"] is True
+    assert champi["properties"]["report_url"].startswith(
+        "https://www.gdacs.org/report.aspx?eventid=1001338"
+    )
+    assert champi["properties"]["from_date"] == "2026-10-14T12:00:00Z"
+    assert champi["properties"]["name"] == "Tropical Cyclone CHAMPI-26"
 
 
 def served_ids(body):

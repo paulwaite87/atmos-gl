@@ -39,6 +39,34 @@ class GdacsCollector(CollectorBase):
         minimum = overrides.get(event_type, self.settings.get("min_alert", "Orange"))
         return ALERT_RANK[alert_level] >= ALERT_RANK[minimum]
 
+    @staticmethod
+    def _event_from_feature(feature: dict) -> dict:
+        """One GDACS GeoJSON feature -> the adapter's event dict. GDACS sends booleans
+        as the strings "true"/"false" and dates as naive UTC ISO strings."""
+        p = feature["properties"]
+        severity = p.get("severitydata") or {}
+        lon, lat = feature["geometry"]["coordinates"]
+        return {
+            "event_type": p["eventtype"],
+            "event_id": p["eventid"],
+            "episode_id": p.get("episodeid"),
+            "name": p.get("name"),
+            "alert_level": p["alertlevel"],
+            "alert_score": p.get("alertscore"),
+            "severity": severity.get("severity"),
+            "severity_text": severity.get("severitytext"),
+            "severity_unit": severity.get("severityunit"),
+            "country": p.get("country"),
+            "iso3": p.get("iso3"),
+            "from_date": p.get("fromdate"),
+            "to_date": p.get("todate"),
+            "date_modified": p.get("datemodified"),
+            "is_current": str(p.get("iscurrent")).lower() == "true",
+            "report_url": (p.get("url") or {}).get("report"),
+            "lat": lat,
+            "lon": lon,
+        }
+
     def collect(self) -> None:
         """Fetch the GDACS event list and upsert the events into the database."""
         url = self.datasource_url("gdacs")
@@ -58,18 +86,7 @@ class GdacsCollector(CollectorBase):
                 p = feature["properties"]
                 if not self._passes_alert_filter(p["eventtype"], p["alertlevel"]):
                     continue
-                lon, lat = feature["geometry"]["coordinates"]
-                self.gdacs_adapter.upsert_event(
-                    {
-                        "event_type": p["eventtype"],
-                        "event_id": p["eventid"],
-                        "alert_level": p["alertlevel"],
-                        "country": p["country"],
-                        "severity_text": p["severitydata"]["severitytext"],
-                        "lat": lat,
-                        "lon": lon,
-                    }
-                )
+                self.gdacs_adapter.upsert_event(self._event_from_feature(feature))
                 count += 1
             if len(features) < PAGE_SIZE:
                 break
