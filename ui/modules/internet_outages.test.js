@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import {
-    ATTRIBUTION, CAVEAT, affectedFilter, fillColorExpression, fillOpacityExpression, formatDuration, legendItems,
+    ATTRIBUTION, CAVEAT, affectedFilter, badgeSpec, fillColorExpression, fillOpacityExpression, formatDuration, legendItems,
     popupHtml, severityColor, severityLabel, signalLabel,
 } from './internet_outages.js';
 
@@ -131,5 +131,13 @@ describe('legendItems', () => {
         const items = legendItems();
         expect(items.map((i) => i.color)).toEqual(['#f7e463', '#f39c12', '#d62828']);
         expect(items.map((i) => i.label)).toEqual(['1 signal', '2 signals', '3 signals']);
+    });
+});
+
+describe('badgeSpec', () => {
+    test('the badge carries the country\'s severity colour and an alert mark, ahead of the click', () => {
+        expect(badgeSpec({ severity: 1 })).toEqual({ fill: '#f7e463', glyph: '!' });
+        expect(badgeSpec({ severity: 2 })).toEqual({ fill: '#f39c12', glyph: '!' });
+        expect(badgeSpec({ severity: 3 })).toEqual({ fill: '#d62828', glyph: '!' });
     });
 });

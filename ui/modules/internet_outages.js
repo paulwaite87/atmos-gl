@@ -3,10 +3,11 @@
 // over the bundled Natural Earth country polygons, by how many independent signals agree
 // (routing, active probing, Google Transparency Report) -- corroboration, not IODA's raw
 // scores, which aren't comparable between signals. Ongoing outages are drawn strong, ended
-// ones lighter. Everything is read from our own /api/internet_outages route -- the browser
+// ones lighter. Hovering a country with an outage badges it; clicking opens its popup (see
+// _choropleth_popup.js). Everything is read from our own /api/internet_outages route -- the browser
 // never calls IODA.
 import { liveDataSync } from './_datasync.js';
-import { hoverPopup } from './_hoverpopup.js';
+import { attachChoroplethInspector } from './_choropleth_popup.js';
 import { fetchOrThrow, escapeHtml, buildPopupHtml } from './_feedhelpers.js';
 import { replaceSlot, removeLegend } from './_legend.js';
 
@@ -109,6 +110,11 @@ export function popupHtml(code, entry) {
     });
 }
 
+// The hover badge: the severity colour with an alert mark, so severity reads before the click.
+export function badgeSpec(entry) {
+    return { fill: severityColor(entry.severity), glyph: '!' };
+}
+
 export function legendItems() {
     return [1, 2, 3].map((n) => ({ color: severityColor(n), label: severityLabel(n) }));
 }
@@ -142,7 +148,7 @@ export function loadLayer(map, config) {
     const sourceId = 'internet-outages-source';
     const fillId = 'internet-outages-fill';
     const lineId = 'internet-outages-line';
-    let stopPopup = null;
+    let inspector = null;
     let geometry = null;      // fetched once; the polygons never change
     let countries = {};
 
@@ -156,11 +162,6 @@ export function loadLayer(map, config) {
         map.setFilter(lineId, affectedFilter(countries));
         map.setPaintProperty(fillId, 'fill-color', fillColorExpression(countries));
         map.setPaintProperty(fillId, 'fill-opacity', fillOpacityExpression(countries));
-    };
-
-    const popupFor = (f) => {
-        const code = f.properties.iso2;
-        return countries[code] ? popupHtml(code, countries[code]) : '';
     };
 
     const mount = async (cfg) => {
@@ -178,19 +179,24 @@ export function loadLayer(map, config) {
             filter: affectedFilter(countries),
             paint: { 'line-color': 'rgba(255,255,255,0.5)', 'line-width': 0.6 },
         });
-        // 'move': neighbouring countries share one fill layer, so mouseenter alone wouldn't
-        // update crossing a border.
-        stopPopup = hoverPopup(map, fillId, { html: popupFor, maxWidth: '320px', event: 'move' });
+        inspector = attachChoroplethInspector(map, {
+            id: 'internet-outages', fillLayerId: fillId, codeProp: 'iso2', geometry,
+            hasData: (code) => Boolean(countries[code]),
+            popupHtml: (code) => popupHtml(code, countries[code]),
+            badgeSpec: (code) => badgeSpec(countries[code]),
+        });
         addLegend();
     };
 
     const refresh = async (cfg) => {
         countries = await fetchData(cfg);
         paint();
+        inspector?.dataChanged();
     };
 
     const unmount = () => {
-        stopPopup?.();
+        inspector?.destroy();
+        inspector = null;
         removeLegend(LEGEND_SLOT);
         for (const id of [lineId, fillId]) {
             if (map.getLayer(id)) map.removeLayer(id);
