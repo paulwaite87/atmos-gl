@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
     NO_DATA_COLOR, colorDomain, rampPosition, fillColorExpression, formatValue, withUnit,
-    countryLine, attributionHtml, legendTicks, legendTitle, pickerGroups, initialIndicator,
+    countryLine, attributionHtml, legendTicks, legendTitle, pickerGroups, initialIndicator, badgeSpec,
 } from './country_stats.js';
 
 const LOG = { scale: 'log', colormap: 'viridis', title: 'Population', unit: 'people', short_unit: null };
@@ -164,5 +164,11 @@ describe('World Data picker', () => {
         const cfg = { show_people: false, show_economy: false, show_environment: false };
         expect(pickerGroups(CATALOG, cfg)).toEqual([]);
         expect(initialIndicator(CATALOG, cfg)).toBeNull();
+    });
+});
+
+describe('badgeSpec', () => {
+    it('is a plain white dot, so it does not compete with the colour that already carries the value', () => {
+        expect(badgeSpec()).toEqual({ fill: '#ffffff', glyph: '' });
     });
 });

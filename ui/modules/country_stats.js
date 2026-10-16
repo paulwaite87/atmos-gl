@@ -1,5 +1,5 @@
 import { liveDataSync } from './_datasync.js';
-import { hoverPopup } from './_hoverpopup.js';
+import { attachChoroplethInspector } from './_choropleth_popup.js';
 import { fetchOrThrow, buildPopupHtml, escapeHtml } from './_feedhelpers.js';
 import { standardLegend } from './_legend.js';
 import { opacityUniform } from './_opacity.js';
@@ -71,6 +71,12 @@ export function rampPosition(value, indicator, [lo, hi]) {
     const v = toScale(value, indicator);
     if (v === null) return 0;
     return Math.max(0, Math.min(1, (v - lo) / (hi - lo)));
+}
+
+// The hover badge: a plain white dot, so it doesn't compete with the colour that already
+// carries the value.
+export function badgeSpec() {
+    return { fill: '#ffffff', glyph: '' };
 }
 
 const lutOf = (indicator) => COLORMAPS[indicator.colormap] || CMAP_VIRIDIS;
@@ -216,7 +222,7 @@ export function loadLayer(map, config, fullConfig = {}) {
     const fillId = 'country-stats-fill';
     const lineId = 'country-stats-line';
     const catalog = fullConfig.country_stats_catalog || [];
-    let stopPopup = null;
+    let inspector = null;
     let geometry = null;      // fetched once; the polygons never change
     let data = null;          // the selected indicator's latest route response
     let selected = null;      // the indicator id the picker shows; null: "None"
@@ -261,8 +267,7 @@ export function loadLayer(map, config, fullConfig = {}) {
 
     const opacity = (cfg) => opacityUniform(cfg, 0.7);
 
-    const popupHtml = (f) => {
-        const { code, name } = f.properties;
+    const popupHtml = (code, { name }) => {
         const entry = data?.countries?.[code];
         return buildPopupHtml({
             title: { text: name },
@@ -286,6 +291,8 @@ export function loadLayer(map, config, fullConfig = {}) {
             map.setPaintProperty(fillId, 'fill-opacity', opacity(cfg));
         }
         showLegend(cfg);
+        // Changing indicator (or "None") closes a popup that belongs to the previous one.
+        inspector?.dataChanged();
     };
 
     const onPick = async (id) => {
@@ -328,10 +335,11 @@ export function loadLayer(map, config, fullConfig = {}) {
             id: lineId, type: 'line', source: sourceId,
             paint: { 'line-color': OUTLINE_COLOR, 'line-width': 0.5 },
         });
-        // 'move': neighbouring countries share one fill layer, so mouseenter alone
-        // wouldn't update crossing a border. Off while "None" is picked.
-        stopPopup = hoverPopup(map, fillId, {
-            html: popupHtml, maxWidth: '300px', event: 'move', enabled: () => data !== null,
+        // Off while "None" is picked: no data, so no badge and no popup.
+        inspector = attachChoroplethInspector(map, {
+            id: 'country-stats', fillLayerId: fillId, codeProp: 'code', geometry,
+            hasData: (code) => Boolean(data?.countries?.[code]),
+            popupHtml, badgeSpec,
         });
         await applySelection(cfg);
     };
@@ -343,7 +351,8 @@ export function loadLayer(map, config, fullConfig = {}) {
     };
 
     const unmount = () => {
-        stopPopup?.();
+        inspector?.destroy();
+        inspector = null;
         legend.removeLegend();
         picker?.wrap.remove();
         for (const id of [lineId, fillId]) {
