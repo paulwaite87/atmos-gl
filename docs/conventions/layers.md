@@ -19,9 +19,9 @@ layer you're about to touch.
 | **Particle overlay** | A GPU particle/streamline animation layered on top of an Animated fill layer's own vector field. | `_particles_gl.js` (oriented-quad) or `_streamparticles_gl.js` (streamline-ribbon) | Same backend as the fill layer it rides on | [wind.md](wind.md) |
 | **Point-feed layer** | Discrete point/symbol features with no server-side render task at all — pure DB-backed GeoJSON. | `_feedhelpers.js` + `_hoverpopup.js` | A collector only; no `TASK_CLASSES` entry | [quakes.md](quakes.md) |
 | **Markers** (one instance) | A hybrid: backend-enriched like a render task, but frontend-consumed as a plain point feed like shape 4. | `_layerstack.js` + `_hoverpopup.js` | `MarkerUpdater` — no image render, writes live weather into the DB row | [markers.md](markers.md) |
-| **Choropleth layer** (one instance) | Each country coloured by one value, over bundled Natural Earth country polygons. | A MapLibre `fill` + `line` over `ui/geo/countries_50m.json`, coloured by a `match` expression on country code (`country_stats.js`) | A collector + DB table + JSON route; no `TASK_CLASSES` entry, like shape 4 | `country_stats` (see CONTEXT.md's Country Statistics) |
+| **Choropleth layer** (two instances) | Each country coloured by one value, over bundled Natural Earth country polygons. | A MapLibre `fill` + `line` over `ui/geo/countries_50m.json`, coloured by a `match` expression on country code (`country_stats.js`; `internet_outages.js` joins on the polygons' two-letter `iso2` instead, since IODA keys by ISO2) | A collector + DB table + JSON route; no `TASK_CLASSES` entry, like shape 4 | `country_stats`, `internet_outages` (see CONTEXT.md) |
 
-12 of the 32 `ALL_LAYERS` entries are Point-feed layers (quakes, gdacs, tsunami, volcanoes, world_events,
+12 of the 33 `ALL_LAYERS` entries are Point-feed layers (quakes, gdacs, tsunami, volcanoes, world_events,
 lightning, storms, shipping, satellites, flightradar, terminator, landmass);
 `markers` is the only layer of its shape. The rest split across the first three shapes, with
 several — wind chief among them — combining more than one.
