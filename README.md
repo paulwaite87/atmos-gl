@@ -323,6 +323,7 @@ The full list is:
 * Earthquakes
 * GDACS Alerts (floods, droughts, cyclones and other disasters, rated by impact)
 * Tsunami Warnings (official NOAA advisories, watches and warnings, with the affected coastal zones)
+* Internet Outages (countries where the internet is failing, shaded by how many detection signals agree)
 * Volcanoes (with a Smoke Plume/SO2 overlay)
 * Wildfires
 * World Events (conflict, explosions and high-level diplomacy)
@@ -531,6 +532,30 @@ Real Advisories, Watches and Warnings are rare, so with the defaults this layer 
 empty, which is the correct picture. **Terrascope is not an official warning channel**: in a
 real event follow your local authorities and tsunami.gov. NOAA/NWS data is US government
 work and free to reuse; credit is shown in every popup.
+
+#### Internet Outages
+[IODA](https://ioda.inetintel.cc.gatech.edu) (Internet Outage Detection and Analysis, from
+Georgia Tech) watches the internet from three independent angles: whether a country's
+networks are still announcing their routes (**BGP**), whether its address space still answers
+**active probing**, and Google's **Transparency Report** traffic data. This layer shades each
+country with an outage by how many of those signals agree: **pale yellow** for one, **orange**
+for two, **red** for three. No API key is needed.
+
+Outages still going on are drawn strong; ones that ended recently (`Grace days`, default 1)
+are lighter. Hover a country for each signal that saw it, when it started and whether it is
+ongoing or how long it lasted, with a link to IODA's own page for it. Outages shorter than
+`Minimum duration` (default 30 minutes) are ignored, and the collector checks IODA every
+15 minutes (`runs_per_day`). The Housekeeper deletes ended events after
+`housekeeper.internet_outages_expiry_days` (default 7).
+
+Detection is automated, so expect the odd false positive, and an outage is not necessarily a
+government shutdown (power cuts and cable breaks look the same). Very small countries and
+island states are barely visible as polygons, and Guadeloupe and Réunion are drawn as part of
+France, so they cannot be shaded on their own.
+
+IODA's responses carry a Georgia Tech copyright notice and we found no published terms of
+use. Credit and a link back appear on every popup, but **confirm reuse terms with the IODA
+team before depending on this layer**.
 
 #### Volcanoes
 Rather than a static historical catalog, this is an event-driven feed of currently

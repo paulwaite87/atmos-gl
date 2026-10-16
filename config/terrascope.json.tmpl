@@ -194,6 +194,13 @@
     "max_footprints_per_cycle": 25,
     "runs_per_day": 48
   },
+  "internet_outages": {
+    "enabled": false,
+    "grace_days": 1,
+    "lookback_days": 3,
+    "min_duration_minutes": 30,
+    "runs_per_day": 96
+  },
   "tsunami": {
     "enabled": false,
     "include_information": false,
@@ -330,6 +337,7 @@
       "quakes": "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.csv",
       "gdacs": "https://www.gdacs.org/gdacsapi/api/events/geteventlist/SEARCH",
       "tsunami": "https://www.tsunami.gov/",
+      "internet_outages": "https://api.ioda.inetintel.cc.gatech.edu/v2/outages/events",
       "gvp": "https://volcano.si.edu/news/WeeklyVolcanoRSS.xml",
       "hans": "https://volcanoes.usgs.gov/hans-public/api/volcano/getElevatedVolcanoes",
       "fires": "https://firms.modaps.eosdis.nasa.gov/api/area/csv",
@@ -357,6 +365,7 @@
       "quakes": true,
       "gdacs": true,
       "tsunami": true,
+      "internet_outages": true,
       "volcanoes": true,
       "fires": true,
       "world_events": true,
@@ -412,6 +421,7 @@
     "world_events_expiry_days": 14,
     "gdacs_expiry_days": 7,
     "tsunami_expiry_days": 7,
+    "internet_outages_expiry_days": 7,
     "frontline_expiry_days": 60,
     "dry_run": false,
     "log_level": "INFO"

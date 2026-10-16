@@ -469,6 +469,18 @@ FIELD_SPECS = {
     ("tsunami", "grace_days"): SliderSpec(
         min=1, max=7, step=1, suffix=" day", pluralize=True, personalizable=True
     ),
+    # Internet Outages (collectors/internet_outages.py). min_duration_minutes gates what
+    # InternetOutagesCollector stores (shared collection control, so NOT personalizable).
+    # grace_days is a pure read-time filter over the shared rows (how long an ended outage
+    # stays shaded), so it is; its max matches the Housekeeper's internet_outages_expiry_days
+    # default. lookback_days is template/JSON-only.
+    ("internet_outages", "enabled"): _ENABLED_PERSONALIZABLE,
+    ("internet_outages", "grace_days"): SliderSpec(
+        min=1, max=7, step=1, suffix=" day", pluralize=True, personalizable=True
+    ),
+    ("internet_outages", "min_duration_minutes"): SliderSpec(
+        min=0, max=240, step=5, suffix=" min"
+    ),
     ("volcanoes", "enabled"): _ENABLED_PERSONALIZABLE,
     ("volcanoes", "icon_zoom"): _ICON_ZOOM,
     # "Show Smoke Plume" (issue #254) -- Volcano Properties is the SOLE owner of the
@@ -965,6 +977,7 @@ SECTION_LABELS = {
     "quakes": "Earthquakes",
     "gdacs": "GDACS Alerts",
     "tsunami": "Tsunami Warnings",
+    "internet_outages": "Internet Outages",
     "volcanoes": "Volcanoes",
     "fires": "Wildfires",
     "world_events": "World Events",

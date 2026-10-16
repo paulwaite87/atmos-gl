@@ -3,9 +3,12 @@
 1:50m admin-0 countries, plus the backend's matching set of country codes.
 
 Writes:
-  ui/geo/countries_50m.json          -- {code, name} per country, coordinates rounded
+  ui/geo/countries_50m.json          -- {code, name, iso2} per country, coordinates rounded
                                         to 0.01deg (~1 km, about 1:50m's own precision)
   src/terrascope/lib/country_codes.py  -- COUNTRY_CODES, the codes those polygons carry
+
+iso2 is ISO_A2_EH ("" where Natural Earth has none), for layers whose feeds are keyed by
+the two-letter code (Internet Outages).
 
 A country's code is ISO_A3_EH, falling back to ADM0_A3 where Natural Earth has no
 ISO code (-99): Kosovo (KOS), Somaliland (SOL), Northern Cyprus (CYN), Siachen (KAS).
@@ -29,6 +32,11 @@ DECIMALS = 2
 def country_code(properties: dict) -> str:
     code = properties["ISO_A3_EH"]
     return properties["ADM0_A3"] if code == "-99" else code
+
+
+def country_iso2(properties: dict) -> str:
+    code = properties["ISO_A2_EH"]
+    return "" if code == "-99" else code
 
 
 def _ring(ring: list) -> list:
@@ -55,7 +63,8 @@ def main() -> None:
         source = json.load(r)
     features = [
         {"type": "Feature",
-         "properties": {"code": country_code(f["properties"]), "name": f["properties"]["NAME"]},
+         "properties": {"code": country_code(f["properties"]), "name": f["properties"]["NAME"],
+                        "iso2": country_iso2(f["properties"])},
          "geometry": _geometry(f["geometry"])}
         for f in source["features"]
     ]

@@ -28,6 +28,7 @@ from terrascope.db.world_event_adapter import WorldEventAdapter
 from terrascope.db.frontline_adapter import FrontlineAdapter
 from terrascope.db.gdacs_adapter import GdacsAdapter
 from terrascope.db.tsunami_adapter import TsunamiAdapter
+from terrascope.db.internet_outages_adapter import InternetOutagesAdapter
 from terrascope.lib.frontline_changes import CHANGE_WINDOWS_DAYS
 from terrascope.db.process_status_adapter import ProcessStatusAdapter
 
@@ -270,6 +271,23 @@ class Housekeeper:
         except Exception as e:
             logger.warning(f"Housekeeper: tsunami prune failed: {e}")
 
+    def prune_expired_internet_outages_events(self, expiry_days: float):
+        """Prune internet outage events that ended more than expiry_days ago (0/missing ->
+        keep forever); ongoing events are never pruned. InternetOutagesCollector only ever
+        upserts; this is the only place the table shrinks. Defaults to 7 days (see run()),
+        well past the layer's own grace period."""
+        if not expiry_days or expiry_days <= 0:
+            return
+        try:
+            deleted = InternetOutagesAdapter().prune_expired(expiry_days)
+            if deleted:
+                logger.info(
+                    f"Housekeeper pruned {deleted} internet outage event(s) ended more "
+                    f"than {expiry_days:g}d ago."
+                )
+        except Exception as e:
+            logger.warning(f"Housekeeper: internet outages prune failed: {e}")
+
     def prune_frontline_snapshots(self, expiry_days: float):
         """Prune DeepState front-line snapshots older than expiry_days before the
         latest one (0/missing -> keep forever) -- FrontlineCollector only ever inserts.
@@ -466,6 +484,10 @@ class Housekeeper:
                     self.prune_expired_gdacs_events(gdacs_expiry_d)
                     tsunami_expiry_d = float(self.settings.get("tsunami_expiry_days", 7))
                     self.prune_expired_tsunami_events(tsunami_expiry_d)
+                    internet_outages_expiry_d = float(
+                        self.settings.get("internet_outages_expiry_days", 7)
+                    )
+                    self.prune_expired_internet_outages_events(internet_outages_expiry_d)
                     frontline_expiry_d = float(
                         self.settings.get("frontline_expiry_days", 60)
                     )

@@ -263,6 +263,25 @@ class TsunamiZone(Base):
     )
 
 
+class InternetOutageEvent(Base):
+    """One IODA country-level outage event, one row per (country_code, signal, start).
+    Upserted in place each cycle: an ongoing event's end keeps moving, and an event IODA
+    stops returning is closed (ongoing -> false) rather than left ongoing forever. Visibility
+    and pruning are driven by end_time and ongoing. score is IODA's raw severity, kept for
+    reference but not used for colouring (it is not comparable between signals)."""
+
+    __tablename__ = "internet_outage_events"
+    __table_args__ = (Index("idx_internet_outage_events_end_time", "end_time"),)
+
+    country_code: Mapped[str] = mapped_column(String(2), primary_key=True)
+    signal: Mapped[str] = mapped_column(String(24), primary_key=True)
+    start_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), primary_key=True)
+    country_name: Mapped[str | None] = mapped_column(Text)
+    end_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    ongoing: Mapped[bool | None] = mapped_column(Boolean)
+    score: Mapped[float | None] = mapped_column(Double)
+
+
 class VolcanicActivity(Base):
     """Current-state volcanic activity, one row per volcano, upserted from two live
     sources joined on the shared Smithsonian VNUM (confirmed identical scheme in both):
