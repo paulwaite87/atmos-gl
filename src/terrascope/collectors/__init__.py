@@ -27,6 +27,7 @@ Synchronous file caches  (CACHE_COLLECTORS)  — write an image/netCDF under {wo
 --------------------------------------------------------------------------
   sst        — OISST yearly netCDF (SstCollector, collectors/sst.py)
   clouds     — NASA GIBS global cloud image (CloudsCollector, collectors/clouds.py)
+  night_lights — NASA GIBS Black Marble night-lights image (NightLightsCollector)
   greenhouse_gases — CAMS current CO2/CH4 forecast + CAMS EGG4 historical baseline
                (CamsGhgForecastCollector, CamsEgg4BaselineCollector, collectors/
                greenhouse_gases.py) -- two collectors sharing one settings section
@@ -103,6 +104,7 @@ from .tsunami import TsunamiCollector
 from .internet_outages import InternetOutagesCollector
 from terrascope.collectors.sst import SstCollector
 from terrascope.collectors.clouds import CloudsCollector
+from terrascope.collectors.night_lights import NightLightsCollector
 from terrascope.collectors.greenhouse_gases import (
     CamsEgg4BaselineCollector,
     CamsGhgForecastCollector,
@@ -142,6 +144,7 @@ COLLECTORS = (
 CACHE_COLLECTORS = (
     SstCollector,
     CloudsCollector,
+    NightLightsCollector,
     CamsGhgForecastCollector,
     CamsEgg4BaselineCollector,
     AirQualityCollector,
