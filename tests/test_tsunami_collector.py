@@ -6,6 +6,7 @@ FakeTsunamiAdapter, and every assertion is on what the layer's HTTP routes then 
 never on adapter internals. Prior art: test_gdacs_collector.py."""
 
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -35,6 +36,21 @@ class FakeResponse:
 def forget_unresolved_zones():
     """Retired-zone memory is process-level; keep it from leaking between tests."""
     TsunamiCollector._unresolved.clear()
+
+
+@pytest.fixture(autouse=True)
+def clock_just_after_the_recorded_bulletin(monkeypatch):
+    """The Kamchatka fixture was recorded live and expires 2026-10-16T04:46Z; the layer
+    keeps expired events for a one-day grace, so against the real clock these tests
+    would start failing a day after the recording. Pin the fake adapter's "now" to
+    shortly after the bulletin so they describe the moment it was recorded."""
+
+    class PinnedDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 10, 16, 5, 0, tzinfo=timezone.utc)
+
+    monkeypatch.setattr("terrascope.db.tsunami_adapter.datetime", PinnedDatetime)
 
 
 def fixture(name):
