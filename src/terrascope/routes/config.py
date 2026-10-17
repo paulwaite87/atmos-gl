@@ -63,6 +63,7 @@ SOURCES = {
             "wind",
             "temperature",
             "ozone",
+            "uv_index",
             "stormwatch",
             "waves",
         ],
@@ -75,6 +76,17 @@ SOURCES = {
 
 # Backwards-compatible alias: the GFS-source products (some call sites referenced this).
 SCRUBBER_PRODUCTS = SOURCES["gfs"]["products"]
+
+
+def _scalar_field_spec_payload(s):
+    """The display contract the frontend reads for one scalar field. Banded specs
+    (uv_index) also carry their bands and the value below which nothing is drawn, so the
+    legend and colour lookup share the backend's single definition."""
+    out = {"vmin": s.vmin, "vmax": s.vmax, "ticks": s.ticks, "title": s.title}
+    if s.bands:
+        out["bands"] = [{"from": lo, "name": name, "color": color} for lo, name, color in s.bands]
+        out["visible_from"] = s.visible_from
+    return out
 
 
 def load_config():
@@ -266,8 +278,7 @@ def _build_config_data() -> dict:
     # settings) so every one of those four modules reads the same value the backend
     # actually renders from.
     data["scalar_field_specs"] = {
-        name: {"vmin": s.vmin, "vmax": s.vmax, "ticks": s.ticks, "title": s.title}
-        for name, s in SCALAR_FIELD_SPECS.items()
+        name: _scalar_field_spec_payload(s) for name, s in SCALAR_FIELD_SPECS.items()
     }
 
     # The World Data picker's options (lib/country_stats.py's catalog, grouped), same

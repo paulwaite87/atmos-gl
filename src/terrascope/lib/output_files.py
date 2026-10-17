@@ -23,6 +23,7 @@ OUTFILES = {
     "waves": "data/waves.png",
     "temperature": "data/temperature.png",
     "ozone": "data/ozone.png",
+    "uv_index": "data/uv_index.png",
     "stormwatch": "data/stormwatch.png",
     "pwat": "data/pwat.png",
     "sst": "data/sst.png",

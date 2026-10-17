@@ -25,7 +25,7 @@ def test_get_config_exposes_scalar_field_specs_for_every_field(client, tmp_path)
         resp = client.get("/api/config")
 
     specs = resp.json()["data"]["scalar_field_specs"]
-    assert set(specs) == {"temperature", "ozone", "stormwatch", "pwat"}
+    assert set(specs) == {"temperature", "ozone", "uv_index", "stormwatch", "pwat"}
 
 
 def test_get_config_scalar_field_specs_match_the_backend_spec_exactly(client, tmp_path):
@@ -40,6 +40,8 @@ def test_get_config_scalar_field_specs_match_the_backend_spec_exactly(client, tm
 
     specs = resp.json()["data"]["scalar_field_specs"]
     for name, spec in SPECS.items():
-        assert specs[name] == {
-            "vmin": spec.vmin, "vmax": spec.vmax, "ticks": spec.ticks, "title": spec.title,
-        }
+        expected = {"vmin": spec.vmin, "vmax": spec.vmax, "ticks": spec.ticks, "title": spec.title}
+        if spec.bands:  # banded specs (uv_index) add bands + visible_from -- tested in test_uv_index_config_specs
+            expected["bands"] = specs[name]["bands"]
+            expected["visible_from"] = spec.visible_from
+        assert specs[name] == expected

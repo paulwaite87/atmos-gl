@@ -95,8 +95,8 @@ def test_plot_skips_when_field_missing():
     MockPlot.assert_not_called()
 
 
-def test_specs_cover_the_four_scalar_fields():
-    assert set(SPECS) == {"temperature", "ozone", "stormwatch", "pwat"}
+def test_specs_cover_the_scalar_fields():
+    assert set(SPECS) == {"temperature", "ozone", "uv_index", "stormwatch", "pwat"}
     for key, spec in SPECS.items():
         assert isinstance(spec, ScalarFieldSpec)
         assert spec.product == key

@@ -23,10 +23,15 @@ union file (the single-variable tasks used to open unfiltered).
 """
 
 import logging
+from datetime import timezone
+
+import pandas as pd
 import numpy as np
 import xarray as xr
 from scipy.ndimage import gaussian_filter
 from scipy.spatial import cKDTree
+
+from terrascope.lib.uv_index import uv_index
 
 
 logging.getLogger("cfgrib.messages").setLevel(logging.ERROR)
@@ -180,6 +185,37 @@ def ozone_data_unpack(path):
     ds.close()
     out = _blank()
     out.update(lat=np.asarray(lats), lon=lons, values=o)
+    return out
+
+
+def uv_index_data_unpack(path):
+    """UV Index, derived from TOZNE (total ozone) and whole-column TCDC (cloud cover %)
+    plus the sun's position at the file's valid time -- see lib/uv_index.py. Like
+    fire_weather_data_unpack it combines two separately-filtered opens of the shared
+    union file, both sorted north-first so the two grids are row-aligned."""
+    ds_o = xr.open_dataset(
+        path, engine="cfgrib", backend_kwargs={"filter_by_keys": {"shortName": "tozne"}}
+    ).sortby("latitude", ascending=False)
+    ozone = ds_o[list(ds_o.data_vars)[0]].values.squeeze()
+    lats = ds_o["latitude"].values
+    lon_raw = ds_o["longitude"].values
+    valid = pd.Timestamp(ds_o["valid_time"].values).to_pydatetime().replace(tzinfo=timezone.utc)
+    ds_o.close()
+
+    ds_c = xr.open_dataset(
+        path,
+        engine="cfgrib",
+        backend_kwargs={"filter_by_keys": {"shortName": "tcc", "typeOfLevel": "atmosphere"}},
+    ).sortby("latitude", ascending=False)
+    cloud = ds_c[list(ds_c.data_vars)[0]].values.squeeze()
+    ds_c.close()
+
+    # Sun position needs longitudes as degrees east; compute on the raw grid, then wrap
+    # the result with the same lon standardisation every other unpacker applies.
+    uvi = uv_index(ozone, cloud, lats, lon_raw, valid)
+    lons, (uvi,) = _standardize_lon(lon_raw, uvi)
+    out = _blank()
+    out.update(lat=np.asarray(lats), lon=lons, values=uvi)
     return out
 
 
@@ -529,6 +565,7 @@ ATMOS_UNPACKERS = {
     "temperature": temperature_data_unpack,
     "humidity": rh_data_unpack,
     "ozone": ozone_data_unpack,
+    "uv_index": uv_index_data_unpack,
     "pwat": pwat_data_unpack,
     "wind": wind_data_unpack,
     "jetstream": jetstream_data_unpack,

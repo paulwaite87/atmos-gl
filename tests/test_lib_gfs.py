@@ -71,3 +71,31 @@ def test_gfs_index_ranges_still_resolves_pre_existing_wind_targets(mock_get):
     )
 
     assert ranges == [(431003038, 431985606), (431985607, 485853114)]
+
+
+# Trimmed from a real f006 .idx (gfs.20261016/18): the whole-column cloud cover has an
+# instantaneous record, then a 0-6 hour AVERAGE record, then layer variants. UV needs the
+# instantaneous one, and gfs_index_ranges takes the first match.
+CLOUD_IDX_FIXTURE = "\n".join(
+    [
+        "629:446051862:d=2026101618:TOZNE:entire atmosphere (considered as a single layer):6 hour fcst:",
+        "630:451131855:d=2026101618:HGT:cloud ceiling:6 hour fcst:",
+        "636:451131855:d=2026101618:TCDC:entire atmosphere:6 hour fcst:",
+        "637:451964289:d=2026101618:TCDC:entire atmosphere:0-6 hour ave fcst:",
+        "650:466159759:d=2026101618:TCDC:convective cloud layer:6 hour fcst:",
+        "651:466868326:d=2026101618:TCDC:boundary layer cloud layer:0-6 hour ave fcst:",
+    ]
+)
+
+
+def test_atmos_targets_include_whole_column_cloud_cover_for_the_uv_index():
+    assert ":TCDC:entire atmosphere:" in ATMOS_TARGETS
+
+
+@patch("terrascope.lib.gfs.requests.get")
+def test_cloud_cover_target_picks_the_instantaneous_record_not_the_average(mock_get):
+    mock_get.return_value = MagicMock(text=CLOUD_IDX_FIXTURE, raise_for_status=MagicMock())
+    ranges = gfs_index_ranges(
+        "https://example/gfs.t18z.pgrb2.0p25.f006", [":TCDC:entire atmosphere:"]
+    )
+    assert ranges == [(451131855, 451964288)]

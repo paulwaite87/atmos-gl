@@ -73,6 +73,7 @@ TASK_CLASSES = {
     "waves": WavesUpdater,
     "temperature": partial(ScalarFieldUpdater, spec=SPECS["temperature"]),
     "ozone": partial(ScalarFieldUpdater, spec=SPECS["ozone"]),
+    "uv_index": partial(ScalarFieldUpdater, spec=SPECS["uv_index"]),
     "stormwatch": partial(ScalarFieldUpdater, spec=SPECS["stormwatch"]),
     "pwat": partial(ScalarFieldUpdater, spec=SPECS["pwat"]),
     "markers": MarkerUpdater,
