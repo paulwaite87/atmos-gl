@@ -25,7 +25,6 @@ from terrascope.round_robin_order import RoundRobinOrder
 # Task imports
 from terrascope.tasks.common import MapData, LAYER_CYCLE_SECONDS, MultiHourRenderMixin
 from terrascope.tasks.clouds import CloudUpdater
-from terrascope.tasks.night_lights import NightLightsUpdater
 from terrascope.tasks.isobars import IsobarUpdater
 from terrascope.tasks.wind import WindUpdater
 from terrascope.tasks.precipitation import PrecipitationUpdater
@@ -65,7 +64,6 @@ TASK_CLASSES = {
     "isobars": IsobarUpdater,
     "precipitation": PrecipitationUpdater,
     "clouds": CloudUpdater,
-    "night_lights": NightLightsUpdater,
     "wind": WindUpdater,
     "sst": SSTUpdater,
     "greenhouse_gases": GhgUpdater,
