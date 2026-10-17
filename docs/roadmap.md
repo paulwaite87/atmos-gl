@@ -38,13 +38,19 @@ image names, installer URL and docs now use Terrascope. Still to do by hand: ren
 repo to `terrascope` (GitHub redirects the old URL) and re-publish the images. `gfs_atmos` and
 other atmosphere-meaning names were deliberately left alone.
 
+## Done
+
+GDACS alerts, tsunami warnings, internet outages and UV index are built. Night lights was
+built and then dropped: the GIBS Black Marble daily product has swath and wedge artifacts
+(for example a wedge across Chad) that neither a noise floor nor an ocean mask removes.
+
 ## Next: chosen layers (in order)
 
-1. GDACS alerts
-2. Tsunami warnings
-3. Internet outages
-4. Night lights
-5. UV index
+1. Aurora and space weather (OVATION aurora oval; built, a Kp readout is left out)
+2. Sea ice
+3. Dust and aerosols
+4. Soil moisture and drought
+5. WHO disease outbreaks
 
 The remaining candidates below stay as the backlog.
 

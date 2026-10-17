@@ -103,6 +103,7 @@ from .tsunami import TsunamiCollector
 from .internet_outages import InternetOutagesCollector
 from terrascope.collectors.sst import SstCollector
 from terrascope.collectors.clouds import CloudsCollector
+from terrascope.collectors.aurora import AuroraCollector
 from terrascope.collectors.greenhouse_gases import (
     CamsEgg4BaselineCollector,
     CamsGhgForecastCollector,
@@ -142,6 +143,7 @@ COLLECTORS = (
 CACHE_COLLECTORS = (
     SstCollector,
     CloudsCollector,
+    AuroraCollector,
     CamsGhgForecastCollector,
     CamsEgg4BaselineCollector,
     AirQualityCollector,
