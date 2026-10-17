@@ -189,8 +189,11 @@
          runs_per_day is excluded the same way -- edited exclusively via the
          Data Status tab's per-row cadence widget (routes/status.py's
          set_runs_per_day), not this Settings tab, for every section that
-         still carries the key in config. #}
-      {% if not ((option == "enabled" and section != "housekeeper") or option.startswith("RULE__") or option == "outfile" or option == "runs_per_day" or (section == "data_collector" and option == "channel_enabled")) %}
+         still carries the key in config. Any other dict/list value with no
+         widget spec (gdacs.alert_overrides, tsunami.feeds) is template/JSON-only
+         and excluded the same way -- the text-input fallback would stringify it
+         and a save would overwrite the real value with that string. #}
+      {% if not ((option == "enabled" and section != "housekeeper") or option.startswith("RULE__") or option == "outfile" or option == "runs_per_day" or (section == "data_collector" and option == "channel_enabled") or ((value is mapping or (value is iterable and value is not string)) and not field_specs.get((section, option)) and not (section == "data_collector" and option == "datasources"))) %}
         {% if section == "data_collector" and option == "datasources" %}
           {{ render_datasources_accordion(section, value) }}
         {% else %}

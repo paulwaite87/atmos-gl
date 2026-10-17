@@ -1014,3 +1014,26 @@ def test_config_page_renders_gdacs_controls_and_tolerates_the_structured_overrid
     assert '<option value="FL" selected>' in html[idx : idx + 1200]
     assert 'id="gdacs__enabled"' in html
     assert "GDACS Alerts" in html
+
+
+def test_config_page_has_no_input_for_structured_settings_without_a_widget(tmp_path, monkeypatch):
+    # gdacs.alert_overrides (dict) and tsunami.feeds (list) are template/JSON-only: a
+    # text input would show their Python repr and saving would overwrite the real value
+    # with that string, breaking the collectors that read them.
+    config_path = _write_temp_config(
+        tmp_path,
+        gdacs={
+            "enabled": False, "min_alert": "Orange", "grace_days": 7,
+            "alert_overrides": {"FL": "Green"},
+        },
+        tsunami={
+            "enabled": False, "grace_days": 1,
+            "feeds": ["https://www.tsunami.gov/events/xml/PHEBCAP.xml"],
+        },
+    )
+    monkeypatch.setenv("CONFIG_PATH", str(config_path))
+
+    html = client.get("/config").text
+    assert 'id="gdacs__alert_overrides"' not in html
+    assert 'id="tsunami__feeds"' not in html
+    assert 'id="gdacs__grace_days"' in html
