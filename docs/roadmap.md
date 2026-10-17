@@ -47,7 +47,7 @@ built and then dropped: the GIBS Black Marble daily product has swath and wedge 
 ## Next: chosen layers (in order)
 
 1. Aurora and space weather (OVATION aurora oval; built, a Kp readout is left out)
-2. Sea ice
+2. Sea ice (NOAA OISST ice concentration; built)
 3. Dust and aerosols
 4. Soil moisture and drought
 5. WHO disease outbreaks

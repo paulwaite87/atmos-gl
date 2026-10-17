@@ -318,6 +318,7 @@ The full list is:
 * Ozone layer density
 * UV Index (modelled sun UV strength, in the standard WHO bands)
 * Aurora (NOAA's live aurora probability, with the observation and forecast times)
+* Sea Ice (NOAA's daily sea-ice concentration, pale blue to white)
 * Storm watch
 * Greenhouse gases (CO2/CH4)
 * Lightning strikes
@@ -811,6 +812,23 @@ forecast probability from a statistical model driven by recent solar-wind data, 
 observation of the sky and not a guarantee that you will see anything. A Kp index and
 storm-scale readout is not part of this layer.
 
+#### Sea Ice
+Where the sea is frozen: NOAA's daily sea-ice concentration, the fraction of each patch
+of ocean covered by ice. It is drawn as translucent pale blue where the ice is sparse,
+through to opaque white where the pack is solid, and nothing at all below 15%, the
+standard definition of the ice edge. The scale is fixed, so the pack always reads against
+the same colours, and the faded edge shows the marginal ice zone. Watch the Arctic shrink
+towards its September minimum and the Antarctic pack grow through the southern winter.
+
+It shows one picture: the **latest day** NOAA has published, which is usually about two
+days old, and the legend states which date that is. It comes from NOAA's OISST dataset, in
+the same place as the Sea Surface Temperature data, so no API key is needed. Terrascope
+checks twice a day (`runs_per_day`, editable on the Data Status page) and downloads the
+~50 MB yearly file only when NOAA has updated it. If NOAA is unreachable the previous
+picture stays up with its original date. Early in January, before NOAA has published the
+new year's file, the last days of the previous year are shown. It is NOAA's coarser
+quarter-degree analysis, so the ice edge is smooth rather than detailed.
+
 #### Storm Watch
 This layer shows where there is a likelihood of a storm forming. It uses the CAPE
 measurement (Convective Available Potential Energy) which, as the name suggests is
@@ -934,6 +952,7 @@ The data collector is a separate background process which collects data for:
   * Stormwatch
 * Clouds
 * Aurora (NOAA SWPC OVATION)
+* Sea Ice (NOAA OISST)
 * Waves
 * Currents
 * Shipping
