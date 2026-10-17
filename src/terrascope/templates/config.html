@@ -152,6 +152,7 @@
                                 <div class="col-md-4"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="ozone__enabled"><label class="form-check-label fw-bold ms-2">Ozone</label></div></div>
                                 <div class="col-md-4"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="uv_index__enabled"><label class="form-check-label fw-bold ms-2">UV Index</label></div></div>
                                 <div class="col-md-4"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="aurora__enabled"><label class="form-check-label fw-bold ms-2">Aurora</label></div></div>
+                                <div class="col-md-4"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="sea_ice__enabled"><label class="form-check-label fw-bold ms-2">Sea Ice</label></div></div>
                                 <div class="col-md-4"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="stormwatch__enabled"><label class="form-check-label fw-bold ms-2">Storm Watch</label></div></div>
                                 <div class="col-md-4">
                                     <div class="form-check form-switch">
@@ -214,7 +215,7 @@
                     </div>
 
                     <div class="tab-pane fade" id="weather-pane"><div id="container-weather">{{ field_macros.render_tab_group(["clouds", "isobars", "wind", "jetstream", "precipitation", "pwat", "lightning", "storms", "waves"], config_data) }}</div></div>
-                    <div class="tab-pane fade" id="climate-pane"><div id="container-climate">{{ field_macros.render_tab_group(["sst", "currents", "temperature", "ozone", "uv_index", "aurora", "stormwatch", "greenhouse_gases"], config_data) }}</div></div>
+                    <div class="tab-pane fade" id="climate-pane"><div id="container-climate">{{ field_macros.render_tab_group(["sst", "currents", "temperature", "ozone", "uv_index", "aurora", "sea_ice", "stormwatch", "greenhouse_gases"], config_data) }}</div></div>
                     <div class="tab-pane fade" id="events-pane"><div id="container-events">{{ field_macros.render_tab_group(["quakes", "gdacs", "tsunami", "internet_outages", "volcanoes", "fires", "world_events", "frontline", "air_quality", "flood_risk"], config_data) }}</div></div>
                     <div class="tab-pane fade" id="world-data-pane"><div id="container-world-data">{{ field_macros.render_tab_group(["country_stats", "population_density"], config_data) }}</div></div>
                     <div class="tab-pane fade" id="misc-pane"><div id="container-misc">{{ field_macros.render_tab_group(["satellites", "terminator", "markers", "flightradar", "landmass", "shipping"], config_data) }}</div></div>
@@ -380,7 +381,7 @@
         });
 
         function parseExplicitElements(data) {
-            ['clouds', 'isobars', 'wind', 'jetstream', 'precipitation', 'pwat', 'lightning', 'storms', 'waves', 'quakes', 'gdacs', 'tsunami', 'internet_outages', 'volcanoes', 'fires', 'world_events', 'frontline', 'air_quality', 'flood_risk', 'population_density', 'country_stats', 'satellites', 'shipping', 'terminator', 'markers', 'flightradar', 'landmass', 'sst', 'currents', 'temperature', 'ozone', 'uv_index', 'aurora', 'stormwatch', 'greenhouse_gases'].forEach(layer => {
+            ['clouds', 'isobars', 'wind', 'jetstream', 'precipitation', 'pwat', 'lightning', 'storms', 'waves', 'quakes', 'gdacs', 'tsunami', 'internet_outages', 'volcanoes', 'fires', 'world_events', 'frontline', 'air_quality', 'flood_risk', 'population_density', 'country_stats', 'satellites', 'shipping', 'terminator', 'markers', 'flightradar', 'landmass', 'sst', 'currents', 'temperature', 'ozone', 'uv_index', 'aurora', 'sea_ice', 'stormwatch', 'greenhouse_gases'].forEach(layer => {
                 const el = document.getElementById(`${layer}__enabled`);
                 if (el && data[layer]) {
                     el.checked = !!data[layer].enabled;
@@ -513,6 +514,7 @@
                 "ozone": document.getElementById('ozone__enabled')?.checked,
                 "uv_index": document.getElementById('uv_index__enabled')?.checked,
                 "aurora": document.getElementById('aurora__enabled')?.checked,
+                "sea_ice": document.getElementById('sea_ice__enabled')?.checked,
                 "stormwatch": document.getElementById('stormwatch__enabled')?.checked,
                 "greenhouse_gases": document.getElementById('greenhouse_gases__enabled')?.checked,
                 "shipping_collector": document.getElementById('shipping_collector__enabled')?.checked,
@@ -553,7 +555,7 @@
 
             const payload = JSON.parse(JSON.stringify(masterConfigCache));
 
-            ['clouds', 'isobars', 'wind', 'jetstream', 'precipitation', 'pwat', 'lightning', 'storms', 'waves', 'quakes', 'gdacs', 'tsunami', 'internet_outages', 'volcanoes', 'fires', 'world_events', 'frontline', 'air_quality', 'flood_risk', 'population_density', 'country_stats', 'satellites', 'terminator', 'markers', 'flightradar', 'landmass', 'shipping', 'shipping_collector', 'lightning_collector', 'satellites_collector', 'data_collector', 'sst', 'currents', 'temperature', 'ozone', 'uv_index', 'aurora', 'stormwatch', 'greenhouse_gases'].forEach(layer => {
+            ['clouds', 'isobars', 'wind', 'jetstream', 'precipitation', 'pwat', 'lightning', 'storms', 'waves', 'quakes', 'gdacs', 'tsunami', 'internet_outages', 'volcanoes', 'fires', 'world_events', 'frontline', 'air_quality', 'flood_risk', 'population_density', 'country_stats', 'satellites', 'terminator', 'markers', 'flightradar', 'landmass', 'shipping', 'shipping_collector', 'lightning_collector', 'satellites_collector', 'data_collector', 'sst', 'currents', 'temperature', 'ozone', 'uv_index', 'aurora', 'sea_ice', 'stormwatch', 'greenhouse_gases'].forEach(layer => {
                 if (payload[layer]) payload[layer].enabled = document.getElementById(`${layer}__enabled`)?.checked || false;
             });
 

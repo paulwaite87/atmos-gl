@@ -21,7 +21,7 @@ layer you're about to touch.
 | **Markers** (one instance) | A hybrid: backend-enriched like a render task, but frontend-consumed as a plain point feed like shape 4. | `_layerstack.js` + `_hoverpopup.js` | `MarkerUpdater` — no image render, writes live weather into the DB row | [markers.md](markers.md) |
 | **Choropleth layer** (two instances) | Each country coloured by one value, over bundled Natural Earth country polygons. | A MapLibre `fill` + `line` over `ui/geo/countries_50m.json` (each country carrying `code`, `name`, `iso2` and a land-guaranteed `label` point), with hover-badge / click-popup behaviour shared via `_choropleth_popup.js`, coloured by a `match` expression on country code (`country_stats.js`; `internet_outages.js` joins on the polygons' two-letter `iso2` instead, since IODA keys by ISO2) | A collector + DB table + JSON route; no `TASK_CLASSES` entry, like shape 4 | `country_stats`, `internet_outages` (see GLOSSARY.md) |
 
-12 of the 35 `ALL_LAYERS` entries are Point-feed layers (quakes, gdacs, tsunami, volcanoes, world_events,
+12 of the 36 `ALL_LAYERS` entries are Point-feed layers (quakes, gdacs, tsunami, volcanoes, world_events,
 lightning, storms, shipping, satellites, flightradar, terminator, landmass);
 `markers` is the only layer of its shape. The rest split across the first three shapes, with
 several — wind chief among them — combining more than one.
