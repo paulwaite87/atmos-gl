@@ -34,6 +34,7 @@ ALLOWED_PRODUCTS = {
     "precipitation",
     "temperature",
     "ozone",
+    "uv_index",
     "stormwatch",
     "currents",
     "waves",

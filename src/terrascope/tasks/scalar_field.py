@@ -29,6 +29,7 @@ import cartopy.crs as ccrs
 
 from terrascope.lib.config import TerrascopeConfig
 from terrascope.lib.texture import encode_frames
+from terrascope.lib.uv_index import UV_BANDS, UV_MIN_VISIBLE
 from .common import MapData, ForecastState
 from .plotting import Plot, clamp_lats_to_mercator_limit
 from .single_hour_scalar import SingleHourScalarUpdater
@@ -79,6 +80,23 @@ class ScalarFieldSpec:
     palette_setting: str | None = None
     palette_default: str | None = None
     palettes: dict | None = None
+
+    # --- banded rendering -- uv_index ---
+    # ((lower_bound, name, colour), ...) ascending: each band is filled with its own flat
+    # colour, the last extends to vmax and beyond, and anything below `visible_from` is
+    # left unfilled (transparent). Takes precedence over cmap/threshold rendering.
+    bands: tuple | None = None
+    visible_from: float | None = None
+
+
+def _banded_render(spec):
+    """(cmap, norm, levels) for a banded spec: contour levels at the band edges, one
+    flat colour per band, the top band also covering values past vmax."""
+    edges = [spec.visible_from] + [lower for lower, _, _ in spec.bands[1:]] + [spec.vmax]
+    cmap = mcolors.ListedColormap([c for _, _, c in spec.bands]).with_extremes(
+        over=spec.bands[-1][2]
+    )
+    return cmap, mcolors.BoundaryNorm(edges, cmap.N), edges
 
 
 def _threshold_colormap(vmin, vmax, threshold, focus, palette_colors, flat_color):
@@ -164,6 +182,19 @@ SPECS = {
         palette_setting="palette",
         palette_default="alert",
         palettes=_OZONE_PALETTES,
+    ),
+    # UV Index (lib/uv_index.py): derived per hour at unpack time from GFS ozone + cloud
+    # cover + sun position, so this spec renders it like any other scalar field, just
+    # in WHO bands with everything below UVI 1 left transparent.
+    "uv_index": ScalarFieldSpec(
+        product="uv_index",
+        vmin=0.0,
+        vmax=14.0,
+        extend="max",
+        ticks=[0, 3, 6, 8, 11],
+        title="UV Index",
+        bands=UV_BANDS,
+        visible_from=UV_MIN_VISIBLE,
     ),
     "stormwatch": ScalarFieldSpec(
         product="stormwatch",
@@ -270,8 +301,12 @@ class ScalarFieldUpdater(SingleHourScalarUpdater):
             plot = Plot(self.map_data.region)
             plot.get_figure()
 
-            cmap = self._resolve_cmap()
-            norm = mcolors.Normalize(vmin=self.spec.vmin, vmax=self.spec.vmax)
+            if self.spec.bands:
+                cmap, norm, levels = _banded_render(self.spec)
+            else:
+                cmap = self._resolve_cmap()
+                norm = mcolors.Normalize(vmin=self.spec.vmin, vmax=self.spec.vmax)
+                levels = 20
 
             # Closes the antimeridian seam for this static render only -- see
             # close_lon_seam_for_contour's docstring. regrid_for_lod's own new_lons/
@@ -283,7 +318,7 @@ class ScalarFieldUpdater(SingleHourScalarUpdater):
                 contour_lons,
                 clamp_lats_to_mercator_limit(new_lats),
                 contour_values,
-                levels=20,
+                levels=levels,
                 cmap=cmap,
                 norm=norm,
                 transform=ccrs.PlateCarree(),

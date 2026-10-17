@@ -316,6 +316,7 @@ The full list is:
 * Wave height & direction
 * Air temperature
 * Ozone layer density
+* UV Index (modelled sun UV strength, in the standard WHO bands)
 * Storm watch
 * Greenhouse gases (CO2/CH4)
 * Lightning strikes
@@ -771,6 +772,24 @@ below that setting is coloured (brightest at the very worst readings), and anyth
 it fades to a dim, near-transparent "safe" tone — so you only really see the problem areas.
 ![Ozone](docs/terrascope-ozone.png)
 
+#### UV Index
+How strong the sun's ultraviolet radiation is, in the standard WHO bands: **Low** (0-2,
+green), **Moderate** (3-5, yellow), **High** (6-7, orange), **Very high** (8-10, red) and
+**Extreme** (11+, violet). Anything below 1 (night, low sun) is fully transparent, so only
+the sunlit side is painted. It plays on the timeline like the other forecast layers, so you
+can watch the strong-UV zone sweep across the globe.
+
+There is no UV feed behind it: Terrascope works the index out for each forecast hour from
+the GFS **total ozone** it already downloads for the Ozone layer, the sun's height at that
+hour, and GFS **total cloud cover**, which dims UV under cloud. No API key is needed.
+
+It is a model, not a measurement. Checked against Open-Meteo's UV Index at the same hour,
+values agreed to within about 25% (Auckland 7.6 against 7.4, central Australia 5.9 against
+4.7, cloudy northern China 0.15 against 0.05). It ignores aerosols, altitude and snow or
+ice on the ground, tends to read a little high under clear tropical skies, and is not
+medical advice, so follow local sun-safety guidance. The ozone download must stay in place
+even if you switch the Ozone layer itself off.
+
 #### Storm Watch
 This layer shows where there is a likelihood of a storm forming. It uses the CAPE
 measurement (Convective Available Potential Energy) which, as the name suggests is
@@ -889,6 +908,7 @@ The data collector is a separate background process which collects data for:
   * Precipitation
   * Temperature
   * Ozone
+  * UV Index (derived from ozone + cloud cover)
   * Wind
   * Stormwatch
 * Clouds
