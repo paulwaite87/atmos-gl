@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<WMS_Capabilities version="1.3.0" xmlns="http://www.opengis.net/wms">
+  <Capability>
+    <Layer>
+      <Layer queryable="0" opaque="0" cascaded="0">
+        <Name>VIIRS_NOAA20_GapFilled_BRDF_Corrected_DayNightBand_Radiance</Name>
+        <Dimension name="time" units="ISO8601" default="2026-10-14" nearestValue="0">2024-11-06/2026-10-14/P1D</Dimension>
+      </Layer>
+      <Layer queryable="0" opaque="0" cascaded="0">
+        <Name>VIIRS_SNPP_GapFilled_BRDF_Corrected_DayNightBand_Radiance</Name>
+        <Title>VIIRS_SNPP_GapFilled_BRDF_Corrected_DayNightBand_Radiance</Title>
+        <Dimension name="time" units="ISO8601" default="2026-10-15" nearestValue="0">2026-04-30/2026-07-10/P1D,2026-07-16/2026-08-03/P1D,2026-08-06/2026-10-15/P1D</Dimension>
+      </Layer>
+    </Layer>
+  </Capability>
+</WMS_Capabilities>

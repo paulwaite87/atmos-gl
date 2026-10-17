@@ -306,6 +306,7 @@ Apart from shipping there are, of course, other elements to the map display.
 The full list is:
 
 * Clouds
+* Night Lights (NASA Black Marble: where the world is lit at night)
 * Isobars
 * Wind speed & direction
 * Jet stream
@@ -375,6 +376,28 @@ past guarnteeing a full sweep is available.
 Clouds are therefore regarded as 'eye candy' and the images we have won't perfectly
 reflect the more up to date real data (precipitation, isobars etc) that we have.
 ![Clouds](docs/terrascope-clouds.png)
+
+#### Night Lights
+NASA's Black Marble product turns the night-time readings of the Suomi NPP satellite into a
+daily, gap-filled picture of artificial light: cities, industry, shipping and fishing fleets,
+gas flares. This layer draws it as a transparent overlay: faint lights are **deep orange**,
+the brightest are **near-white**, and anything below the `Noise floor` (default 40, on the
+satellite's 0-255 scale) is fully transparent, so the basemap and your other layers show
+through. Brightness is stretched logarithmically so a small town reads next to a megacity.
+No API key is needed, and the browser never calls NASA.
+
+It is not live. NASA publishes the newest day about two days late, so the legend always says
+which date the image shows ("Night lights · 15 Oct 2026"). The collector reads NASA's list of
+available dates, takes the newest, and falls back to the one before it if that fails or comes
+back empty. It checks four times a day (`runs_per_day`) and downloads again only once the
+cached image is older than `Expiry hours` (default 12); if NASA is down the last good image
+and its date stay.
+
+Lights are drawn on every longitude, not only the night side (the image is a daily composite),
+so combine it with the Terminator layer to see day and night. It pairs well with Internet
+Outages, to see a blackout's effect on the lights. Expect some glow over snow and ice near the
+poles, which is moonlight and twilight rather than lamps: raise the `Noise floor` to remove it.
+Imagery credit: NASA Black Marble / GIBS, VIIRS Suomi NPP.
 
 #### Precipitation
 Often mis-labelled as rainfall, even though that's what it mostly is, it does also
