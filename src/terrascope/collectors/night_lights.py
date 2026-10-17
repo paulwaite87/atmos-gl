@@ -27,7 +27,7 @@ from terrascope.lib.gibs import (
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_GEOMETRY = "2048x1024"
+_DEFAULT_SIZE = 4096
 _UA = {"User-Agent": "Terrascope-NightLights-Fetcher/1.0"}
 
 
@@ -66,11 +66,10 @@ class NightLightsCollector(CollectorBase):
             logger.error(f"Night lights: capabilities fetch failed: {e}")
             return
 
-        geom = self.config.get_setting("common", "target_geometry", _DEFAULT_GEOMETRY)
-        try:
-            width, height = (int(x) for x in geom.lower().split("x"))
-        except Exception:
-            width, height = 2048, 1024
+        # Web Mercator's world is square; a 2:1 image would be stretched vertically on
+        # the map, which smears the lights. Sized well above the clouds image because
+        # city lights are fine detail.
+        width = height = int(self.settings.get("image_size", _DEFAULT_SIZE))
 
         for day in dates[:2]:
             try:

@@ -581,6 +581,7 @@ FIELD_SPECS = {
     ("night_lights", "opacity"): _OPACITY,
     ("night_lights", "noise_floor"): SliderSpec(min=0, max=254, step=1),
     ("night_lights", "expiry_hours"): _HOURS,
+    ("night_lights", "image_size"): SliderSpec(min=1024, max=8192, step=1024, suffix="px"),
     ("markers", "enabled"): _ENABLED_PERSONALIZABLE,
     ("markers", "marker_color"): ColorSpec(personalizable=True),
     ("markers", "marker_fontsize"): _FONTSIZE,

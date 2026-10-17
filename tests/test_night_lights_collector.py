@@ -75,6 +75,20 @@ def test_collect_fetches_the_newest_date_the_layer_offers(tmp_path):
     assert read_night_lights_date(str(tmp_path)) == "2026-10-15"
 
 
+def test_the_image_is_requested_as_a_square_mercator_world(tmp_path):
+    seen = []
+    gibs = FakeGibs({"2026-10-15": png(b"x")})
+
+    def spy(req, timeout=None):
+        seen.append(req.full_url)
+        return gibs(req, timeout)
+
+    with patch.object(mod.urllib.request, "urlopen", spy):
+        make_collector(str(tmp_path), {"image_size": 3000}).collect()
+    getmap = [u for u in seen if "GetMap" in u][0]
+    assert "WIDTH=3000" in getmap and "HEIGHT=3000" in getmap
+
+
 def test_a_failing_newest_date_falls_back_to_the_previous_one(tmp_path):
     gibs = FakeGibs(
         {"2026-10-15": urllib.error.URLError("boom"), "2026-10-14": png(b"prev")}
