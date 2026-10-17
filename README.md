@@ -317,6 +317,7 @@ The full list is:
 * Air temperature
 * Ozone layer density
 * UV Index (modelled sun UV strength, in the standard WHO bands)
+* Aurora (NOAA's live aurora probability, with the observation and forecast times)
 * Storm watch
 * Greenhouse gases (CO2/CH4)
 * Lightning strikes
@@ -790,6 +791,26 @@ ice on the ground, tends to read a little high under clear tropical skies, and i
 medical advice, so follow local sun-safety guidance. The ozone download must stay in place
 even if you switch the Ozone layer itself off.
 
+#### Aurora
+Where the aurora is right now: NOAA's OVATION model of the probability, from 0 to 100%,
+of seeing aurora at each point on the globe. It is drawn on a fixed scale from green
+(low) through yellow to red (a strong storm), and anything below 5% is transparent. On a
+quiet night you see only a faint green band around each pole; in a geomagnetic storm the
+oval swells towards the equator and turns red. The scale is fixed on purpose, so a quiet
+night never looks like a storm.
+
+The legend gives the **observation time** and the **forecast time** the grid carries,
+so you always know how current it is (the forecast looks about an hour ahead). NOAA
+refreshes it about every five minutes and Terrascope polls at the same rate by default;
+change `runs_per_day` on the Data Status page to poll less often. If NOAA is unreachable the last picture stays up with
+its original times, so a stale picture is visibly stale. No API key is needed.
+
+The whole oval is drawn on every longitude, day or night, so add the Terminator layer to
+see which part of it is in darkness, and Clouds to judge the sky above it. It is a
+forecast probability from a statistical model driven by recent solar-wind data, not an
+observation of the sky and not a guarantee that you will see anything. A Kp index and
+storm-scale readout is not part of this layer.
+
 #### Storm Watch
 This layer shows where there is a likelihood of a storm forming. It uses the CAPE
 measurement (Convective Available Potential Energy) which, as the name suggests is
@@ -912,6 +933,7 @@ The data collector is a separate background process which collects data for:
   * Wind
   * Stormwatch
 * Clouds
+* Aurora (NOAA SWPC OVATION)
 * Waves
 * Currents
 * Shipping

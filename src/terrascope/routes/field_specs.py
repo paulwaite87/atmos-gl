@@ -593,6 +593,10 @@ FIELD_SPECS = {
     ("landmass", "halo_color"): ColorSpec(personalizable=True),
     ("landmass", "linewidth"): SliderSpec(min=0.2, max=5.0, step=0.1, decimals=1, suffix="px", personalizable=True),
     ("landmass", "opacity"): _OPACITY,
+    # Aurora (NOAA SWPC OVATION, tasks/aurora.py): a raw data texture; the colour ramp
+    # and the 5% cutoff are fixed client-side, so only visibility and opacity are settings.
+    ("aurora", "enabled"): _ENABLED_PERSONALIZABLE,
+    ("aurora", "opacity"): _OPACITY,
     # Population Density (GHSL, tasks/population_density.py): a raw data texture
     # coloured client-side, so every display choice is personalizable. min_density is
     # the threshold below which nothing is drawn, and also the bottom of the colour
